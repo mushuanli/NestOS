@@ -44,3 +44,43 @@ it('disposes attachment views after preparation failure without masking the orig
         source: {documentPath: '/note.md', defaultPrompt: 'ask'}, signal: new AbortController().signal})).rejects.toBe(error);
     expect(f.assets.dispose).toHaveBeenCalledOnce(); expect(f.backend.submitSession).not.toHaveBeenCalled();
 });
+
+it('appends anchored sends to one branch, quotes the selection and navigates only on explicit open', async () => {
+    const choices = [entry('default')], endpoint = {sessionId: 'linked-session', branch: 'chat-anchor'};
+    let linked: any = {anchorId: 'anchor', selection: 'Selected passage', defaultPrompt: '', status: 'unbound', endpoint};
+    const port = {get: vi.fn(async () => ({link: linked})), create: vi.fn(async () => linked), reserve: vi.fn(async () => linked),
+        prepare: vi.fn(async (_id, request) => {linked.pending = request;}), bind: vi.fn(async (_id, request) => {
+            linked = {...linked, pending: undefined, status: 'bound', binding: linked.binding ?? {...endpoint, initialRoundId: request.submission.id}}; return linked;
+        }), reconcile: vi.fn(async () => {}), subscribe: vi.fn(() => () => {}), dispose: vi.fn(async () => {})};
+    const manifest = {currentBranch: 'main', branches: {main: null} as Record<string, null>};
+    const services = {commandBus: {execute: vi.fn(async name => name === 'session.targets.list' ? {entries: choices} : {status: 'not-accepted'})},
+        sessionRepository: {getManifest: vi.fn(async () => manifest), openAttachments: vi.fn(async () => ({dispose: async () => {}}))}};
+    const backend = {documentChatFile: vi.fn(async () => port), createSessionDraft: vi.fn(async () => {manifest.branches[endpoint.branch] = null;}),
+        submitSession: vi.fn(async request => ({operationId: request.submission.id, status: 'accepted'}))};
+    let configured: any, saved!: () => void;
+    const editor = {flushPendingSave: vi.fn(async () => {}), getText: () => 'Other text ::@anchor@', destroy: vi.fn(async () => {}),
+        on: (_name, callback) => {saved = callback; return () => {};}};
+    const base = (async (_container, options) => {configured = options; return editor;}) as EditorFactory;
+    const prepare = vi.fn(async ({request}) => request), navigate = vi.fn(async () => {});
+    const factory = createDocumentChatFactory(base, services as any, backend as any, prepare, navigate);
+    const mounted = await factory(document.createElement('div'), {target: {kind: 'file', path: '/note.md'},
+        files: {fs: {driver: {getNode: async () => ({metadata: {}})}}} as any});
+    const host: AiChatHost = configured.plugins[0][1].host;
+    const input = {prompt: 'Question', attachments: [], target: {kind: 'agent' as const, id: JSON.stringify(choices[0].target), label: 'Default'},
+        source: {anchorId: 'anchor', documentPath: '/note.md', defaultPrompt: ''}, signal: new AbortController().signal};
+    await host.onSubmit({...input, operationId: 'first'}); await host.onSubmit({...input, operationId: 'second'});
+    expect(backend.createSessionDraft).toHaveBeenCalledOnce(); expect(backend.submitSession).toHaveBeenCalledTimes(2);
+    expect(backend.submitSession.mock.calls.map(([request]) => [request.expectedSessionId, request.expectedBranch])).toEqual([
+        [endpoint.sessionId, endpoint.branch], [endpoint.sessionId, endpoint.branch]]);
+    const quoted = prepare.mock.calls[0][0].files[0]; expect(quoted.size).toBe(new Blob(['Selected passage']).size);
+    expect(linked.binding.initialRoundId).toBe('first'); expect(navigate).not.toHaveBeenCalled();
+    linked.pending = structuredClone(backend.submitSession.mock.calls[0][0]);
+    await expect(host.onSubmit({...input, prompt: 'Changed', operationId: 'changed'})).rejects.toMatchObject({code: 'SUBMISSION_PENDING'});
+    expect((await host.getAnchor!({source: input.source, signal: input.signal})).defaultPrompt).toBe('Question');
+    await host.onSubmit({...input, operationId: 'reopened-retry'});
+    expect(backend.submitSession.mock.calls[2][0].submission.id).toBe('first');
+    expect(backend.createSessionDraft).toHaveBeenCalledOnce();
+
+    await host.openConversation!({source: input.source, signal: input.signal}); expect(navigate).toHaveBeenCalledOnce();
+    saved(); await mounted.destroy(); expect(port.reconcile).toHaveBeenCalledWith(['anchor']); expect(port.dispose).toHaveBeenCalledOnce();
+});

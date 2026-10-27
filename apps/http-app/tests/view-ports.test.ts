@@ -21,6 +21,42 @@ async function setup(providerAuthorization?: ProviderAuthorizationHost) {
     return { root, server, client, runtime };
 }
 describe('full application view ports', () => {
+    it('drains queued file unsubscriptions before disposing their owning workspace', async () => {
+        const {root, server, client} = await setup();
+        const settings = await root.backend.settings([{name: 'Notes', workspace: 'minds'}]);
+        const files = await settings.openWorkspace('Notes');
+        const stop = files.on('node:created', () => {}); await client.whenIdle();
+        let finish!: () => void, begun = false; const gate = new Promise<void>(resolve => {finish = resolve;});
+        const order: string[] = [], handle = server.handle.bind(server);
+        vi.spyOn(server, 'handle').mockImplementation(async (call, refresh) => {
+            if (call.method === 'call') {begun = true; order.push('unsubscribe-start'); await gate; order.push('unsubscribe-end');}
+            if (call.method === 'dispose') order.push('dispose');
+            return handle(call, refresh);
+        });
+        stop(); await vi.waitFor(() => expect(begun).toBe(true));
+        const closing = settings.dispose(); await Promise.resolve(); await Promise.resolve();
+        expect(order).toEqual(['unsubscribe-start']);
+        finish(); await closing; await client.whenIdle();
+        expect(order).toEqual(['unsubscribe-start', 'unsubscribe-end', 'dispose']);
+    });
+
+    it('roundtrips document anchor capabilities and releases subscriptions without disposing borrowed files', async () => {
+        const {root} = await setup();
+        const files = await root.services.vfs.openFileSystem('/home/admin/minds');
+        await files.driver.createFile({parentPath: '/', name: 'anchors.md', content: 'Selected text'});
+        const port = await root.backend.documentChatFile({files, path: '/anchors.md'});
+        expect(await port.get('a')).toEqual({});
+        const created = await port.create('a', 'Selected text');
+        expect(created.selection).toBe('Selected text');
+        const changed = vi.fn(), stop = port.subscribe(changed);
+        await root.services.sessionRepository.createSession('Trigger');
+        await vi.waitFor(() => expect(changed).toHaveBeenCalled());
+        stop(); await port.dispose();
+        await expect(port.get('a')).rejects.toMatchObject({code: 'ECAPABILITY'});
+        expect(await files.driver.exists('/anchors.md')).toBe(true);
+        expect(await root.backend.documentChatBacklinks('absent', 'main')).toEqual([]);
+    });
+
     it('exports disposal for owned attachment views and keeps the repository alive after release', async () => {
         const {root, runtime} = await setup();
         const sessionId = await runtime.sessionRepository.createSession('Owned attachments');
@@ -106,6 +142,7 @@ describe('full application view ports', () => {
         expect(root.services.commandBus.register).toBeUndefined();
         const result = await server.handle({ target: 'server:1', method: 'constructor', args: [] });
         expect(result.error?.code).toBe('ECAPABILITY');
+        expect(result.error?.remoteCode).toBe('RPC_CAPABILITY_NOT_FOUND');
         await expect(root.services.vfs.openFileSystem('/')).rejects.toThrow();
         const etc = await root.services.vfs.openFileSystem('/etc');
         await expect(etc.driver.writeContent('/llm/providers.seq', '{}')).rejects.toThrow();

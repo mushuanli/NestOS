@@ -91,3 +91,16 @@ it('advances the recovery base after an acknowledged save so later offline edits
     const next = await file('Saved edit'); expect(next.editor.getText()).toBe('Next offline edit');
     expect(next.mount.querySelector('.file-recovery')).toBeNull();
 });
+
+it('keeps the pre-refresh backup separate from the active draft and follows rename before another backup', async () => {
+    let configured: any; const events = new Map<string, () => void>();
+    const factory = vi.fn(async (_mount, options) => {configured = options; return {on: (name, changed) => {events.set(name,changed);return()=>{};},
+        getText: () => 'Loaded', setText() {}, isDirty: () => false, destroy: async()=>{}, updateNodeId() {}};});
+    const editor = await createRecoverableFileEditor(factory as never,document.createElement('div'),{target:{kind:'file',path:'/old.md'},initialContent:'Loaded',
+        hostContext:{reloadContent:async()=>{}} as any},'documents'); cleanup.push(()=>editor.destroy());
+    await configured.hostContext.reloadRecovery.preserve('Unsaved before refresh');
+    events.get('contentLoaded')!();
+    expect((await new FileRecoveryStore('documents','/old.md','reload-backup').read())?.text).toBe('Unsaved before refresh');
+    editor.updateNodeId!('/new.md'); await configured.hostContext.reloadRecovery.preserve('Another draft');
+    expect((await new FileRecoveryStore('documents','/new.md','reload-backup').read())?.text).toBe('Another draft');
+});

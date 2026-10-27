@@ -321,3 +321,5 @@ Flow 连接准入错误通过 `code` 和 `field`（槽位名）定位；RPC 只�
 [ExecutionArtifactReference / ArtifactCommand](../shared/app-contracts/src/session/artifacts.ts) 是宿主读取协议。app.artifacts.list 以 Session/Task 读取已提交输出，按 offset/limit 返回目录；app.artifacts.read 按不可变引用及字节范围返回 ArrayBuffer、总大小、SHA-256 和 nextOffset，单页最多 1 MiB。两者均只读，不激活会话或运行任务。
 
 [TaskArtifacts](../backend/app-core/src/session/task-artifacts.ts) 从既有 Kernel 输出派生引用，复用 TaskAssetReader 验证二进制归属与内容，不保存第二份执行状态。session.artifact.get 及 Context 装配通过 [ArtifactLoader](../backend/llm-session/src/contracts/artifacts.ts) 读取语义值；未导入的远端 file 明确不可读取。UI 的 [TaskArtifactBrowser](../ui/llm-ui-adapter/src/components/dag/TaskArtifactBrowser.ts) 只在用户操作时加载并校验分页，保持执行锚点及视图销毁边界。
+
+文档 AI Chat 的宿主回调、DocumentChatFile 端口与规范双向关系见 [文档 AI Chat](./design/document-ai-chat.md)。

@@ -18,7 +18,7 @@ Browser + client certificate + shared AppShell
 
 也可运行 `pnpm --filter @itookit/http-app create:certs --cert-host 192.168.31.10`。脚本可从任意目录调用，`--help` 查看参数；使用 `--cert-dir /path/to/private/certs` 指定输出目录，相对路径按调用目录解析。脚本设置私有文件权限，并复用服务端证书生成逻辑。
 
-默认生成到 `~/.config/mindos/http-certs`；目录已存在时拒绝覆盖。`--cert-host` 可填写逗号分隔的 IP/DNS 名称，必须覆盖实际访问地址。初始化只打印文件位置，不打印密钥或密码。
+默认生成到 `~/.config/mindos/http-certs`，可通过 `mindos.json` 的 `http.certDir` 修改；目录已存在时拒绝覆盖。`--cert-host` 可填写逗号分隔的 IP/DNS 名称，必须覆盖实际访问地址。初始化只打印文件位置，不打印密钥或密码。
 
 如果提示 `Certificate directory already exists`（旧版本为 `EEXIST`），说明目标目录已经存在。已生成的证书覆盖实际访问地址时，跳过初始化，直接用该目录启动服务；需要新证书时通过 `--cert-dir` 指定尚不存在的新目录，并在启动服务时使用同一个目录。新 CA 和浏览器身份需要重新导入浏览器。
 
@@ -38,7 +38,28 @@ pnpm httpd
 
 发布使用根目录的 `pnpm httpd:build` 构建并选择独立 release，再运行 `pnpm httpd`（或 `pnpm --filter @itookit/http-app start`）。`--cert-dir` 指定证书目录，`--audit-file` 指定 JSONL 日志；缺少有效证书或指纹允许名单时拒绝启动。没有匿名或明文降级开关。更新 UI 也需构建新 release，并在重启后生效。
 
-`pnpm httpd` 直接启动已选 release；默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），Runtime 直接使用本地存储，不再监听内部 VFS 端口。默认读取 `~/.config/mindos/mindos.json`，设置了 `XDG_CONFIG_HOME` 时读取其下的 `mindos/mindos.json`；文件缺失时创建与 CLI/桌面端相同的默认配置。证书也使用该配置目录。可用 `pnpm httpd --host 127.0.0.1 --port 3000 --root /path/to/data` 覆盖启动参数。监听所有网卡不改变证书要求，`--cert-host` 仍需包含浏览器实际访问的 IP/DNS。
+`pnpm httpd` 直接启动已选 release；默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），Runtime 直接使用本地存储，不再监听内部 VFS 端口。默认读取 `~/.config/mindos/mindos.json`，设置了 `XDG_CONFIG_HOME` 时读取其下的 `mindos/mindos.json`；文件缺失时创建与 CLI/桌面端相同的默认配置。证书默认使用该配置目录，可通过下面的 `http` 配置覆盖。可用 `pnpm httpd --host 127.0.0.1 --port 3000 --root /path/to/data` 覆盖启动参数。监听所有网卡不改变证书要求，`--cert-host` 仍需包含浏览器实际访问的 IP/DNS。
+
+可在 `mindos.json` 指定宿主私有目录，证书初始化和启动读取同一配置：
+
+```json
+{
+  "rootDir": "/home/li/share/prj/pair-x1/mindos",
+  "http": {
+    "certDir": "/home/li/share/prj/pair-x1/mindos-host/http-certs",
+    "authDir": "/home/li/share/prj/pair-x1/mindos-host/http-auth"
+  }
+}
+```
+
+路径优先级：显式 `--cert-dir` / `--auth-dir` → `http.certDir` / `http.authDir` → 原配置目录下的默认位置。
+配置内相对路径按 `mindos.json` 所在目录解析，命令行相对路径按调用目录解析；配置请使用绝对路径或相对路径，不使用 `~`。
+`http.authDir` 是认证目录基址：`pnpm httpd` 使用其 `release/`，`pnpm httpd:dev` 使用其 `dev/`，
+直接启动 standalone 不添加后缀；显式 `--auth-dir` 是最终目录，不添加后缀。
+本地 CLI 的 desktop profile 也使用同一 `release/` 认证目录，其他独立 profile 保持隔离。
+省略配置保持原有路径，不自动搬迁文件、不生成替代身份。迁移时先停止使用该目录的宿主，完整复制原证书目录和认证目录，
+保留目录私有权限后再修改配置并重启；不要删除 SQLite 锁文件绕过正在运行的宿主。
+这些目录必须留在数据根和静态 UI 根之外；不要放进可被 VFS 读取的 `<root>/etc` 或尚未隔离的 `<root>/_etc`。
 
 HTTPS 监听队列默认为 4096，可用 `--backlog <正整数>` 调整，例如 `pnpm httpd --backlog 8192`。此参数缓冲等待接收的突发连接，不是 HTTP 并发上限；Linux 实际队列受 `net.core.somaxconn` 限制。重启服务后用 `ss -ltnp` 查看 `Send-Q` 确认生效。
 

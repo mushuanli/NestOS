@@ -12,7 +12,7 @@ export class AssetManagerPlugin implements MDxPlugin {
         private assets?: IFileSystem, private options: AssetConfigOptions = {}) {}
     install(context: PluginContext): void {
         const open = () => this.open(context.pluginManager.editorInstance as MDxEditor);
-        context.registerTitleBarButton?.({ id: 'asset-manager', title: '附件管理', icon: ACTION_ICONS.import,
+        context.registerTitleBarButton?.({ id: 'asset-manager', title: '附件管理', icon: ACTION_ICONS.attachment,
             location: 'right', onClick: open });
         context.registerCommand?.('openAssetManager', open);
     }

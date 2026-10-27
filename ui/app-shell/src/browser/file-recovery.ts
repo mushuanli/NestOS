@@ -8,7 +8,16 @@ export async function createRecoverableFileEditor(factory: EditorFactory, panel:
     const store = new FileRecoveryStore(scope, options.target.path), original = options.initialContent ?? '';
     let draft: FileRecovery | undefined, unavailable = false;
     try { draft = await store.read(); } catch { unavailable = true; }
-    const editor = await factory(panel, options);
+    let path = options.target.path;
+    const editor = await factory(panel, {...options, hostContext: options.hostContext ? {...options.hostContext,
+        reloadRecovery: options.hostContext.reloadRecovery ?? {
+            preserve: text => new FileRecoveryStore(scope, path, 'reload-backup').write({base: sha256HexSync(original), text, savedAt: Date.now()}),
+            read: async () => {
+                const backup = await new FileRecoveryStore(scope, path, 'reload-backup').read();
+                return backup ? {content: backup.text, savedAt: backup.savedAt} : undefined;
+            },
+        },
+    } : undefined});
     if (typeof editor.on !== 'function' || typeof editor.getText !== 'function') return editor;
     const recovery = new FileRecoveryBinding(editor, panel, store, scope, original, !!options.readOnly, draft, unavailable);
     if (!editor.captureRecovery) {
@@ -17,7 +26,7 @@ export async function createRecoverableFileEditor(factory: EditorFactory, panel:
         editor.suspendForRecovery = () => {editor.flushPendingSave = async () => {}; recovery.release();};
     }
     const rename = editor.updateNodeId?.bind(editor);
-    if (rename) editor.updateNodeId = path => {rename(path); recovery.move(path);};
+    if (rename) editor.updateNodeId = next => {rename(next); path = next; recovery.move(next);};
     const destroy = editor.destroy.bind(editor);
     editor.destroy = async () => { await destroy(); recovery.release(); };
     return editor;
@@ -37,7 +46,7 @@ class FileRecoveryBinding {
     constructor(private readonly editor: IEditor, private readonly panel: HTMLElement, private store: FileRecoveryStore,
         private readonly scope: string, original: string, private readonly readOnly: boolean, private draft?: FileRecovery, unavailable = false) {
         this.base = sha256HexSync(original); this.failed = unavailable;
-        this.stops = [editor.on('change', () => this.capture()), editor.on('saveError', () => this.capture()), editor.on('saved', () => this.saved())];
+        this.stops = [editor.on('change', () => this.capture()), editor.on('saveError', () => this.capture()), editor.on('saved', () => this.saved()), editor.on('contentLoaded', () => this.saved())];
         window.addEventListener('beforeunload', this.guard);
         if (unavailable) this.failure();
         if (draft && draft.text !== original) {

@@ -294,7 +294,10 @@ httpd 使用 `startupMode: 'server'`：LLM 配置与设备、MCP 首次自动连
 
 默认只监听 HTTPS `0.0.0.0:2000`，backlog 为 4096。TLS 验证客户端证书与 clients.json 的 SHA-256 指纹，没有匿名或明文入口。CA、密钥、浏览器导入包和审计日志位于数据根之外。
 
-数据根优先级：`--root` → `MINDOS_ROOT` → mindos.json 的 rootDir → 配置目录/data。配置目录遵循 XDG_CONFIG_HOME，默认 `~/.config/mindos`。SQLite 默认保存在 `<root>/_meta/index.db`；`--sidecar` 可以指定数据根之外的位置。`--internal-port` 已移除。
+数据根优先级：`--root` → `MINDOS_ROOT` → mindos.json 的 rootDir → 配置目录/data。配置目录遵循 XDG_CONFIG_HOME，默认 `~/.config/mindos`。SQLite 默认保存在 `<root>/_meta/index.db`；`--sidecar` 可以指定数据根之外的位置。
+`mindos.json` 的 `http.certDir` 指定证书目录，`http.authDir` 指定认证基址（release/dev 分别追加子目录）；
+显式 `--cert-dir` / `--auth-dir` 仍优先且为最终目录，省略配置保持旧路径，不自动迁移。
+配置路径相对配置目录解析，CLI 路径相对调用目录解析；两类私有目录仍须在数据根、静态 UI 根之外。`--internal-port` 已移除。
 
 审计仅记录请求和认证元数据，不记录正文、参数、消息或凭据。服务器退出记录 `server.stopping`，先结束 SSE 并停止接入，最多等待 5 秒排空 HTTP 连接，随后关闭残留连接并记录 `server.stopped`，再关闭视图、Runtime、存储、日志和锁。完整释放后运行日志输出 `HTTP host stopped; data and credential locks released`。原生目录选择、Shell/TTY、存储快照等平台能力由宿主注入；统一界面不意味着 Node、浏览器和 Tauri 的平台权限相同。
 

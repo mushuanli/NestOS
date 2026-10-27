@@ -37,6 +37,22 @@ Schema：
 }
 ```
 
+Node HTTP 宿主还支持可选的宿主私有配置（不进入应用 VFS 或服务图）：
+
+```json
+{
+  "http": {
+    "certDir": "http-certs",
+    "authDir": "http-auth"
+  }
+}
+```
+
+`http.certDir` 供证书初始化和 httpd 启动读取，`http.authDir` 是认证目录基址，release/dev 分别添加相应子目录。
+显式 `--cert-dir` / `--auth-dir` 优先；参数是最终目录。配置内相对路径按配置目录解析，命令行路径按调用目录解析。
+不配置时保留旧路径；不会自动迁移现有凭据。目录须在数据根、静态 UI 根之外，可使用数据根的同级 `mindos-host/`。
+详细迁移和 CLI 共享规则见 [HTTP app](../apps/http-app/README.md)。
+
 数据根解析顺序：
 
 ```text

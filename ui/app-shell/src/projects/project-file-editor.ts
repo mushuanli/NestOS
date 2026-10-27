@@ -72,6 +72,11 @@ async function createTextEditor(context: FileSystemContextOwner, path: string, c
         mountWindowList: options.mountWindowList,
         initialContent: content, readOnly, signal: load.signal, title: buildRenamedFilename(filename, filename).title,
         hostContext: { ...options.host,
+            reloadContent: async (file, accept) => {
+                let nextRevision: string | undefined;
+                const bytes = await fs.driver.readContent(file, {encoding: 'binary', onRevision: value => {nextRevision = value;}});
+                if (await accept(new TextDecoder().decode(bytes))) revision = nextRevision;
+            },
             saveContent: readOnly ? undefined : async (file, text) => {
                 try {
                     await fs.driver.writeContent(file, text, { ifRevision: revision, onRevision: value => { revision = value; } }); options.changed();

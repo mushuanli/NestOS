@@ -3,15 +3,16 @@ import { mkdir, realpath, access } from 'node:fs/promises';
 import path from 'node:path';
 import { loadCertificates } from './certificates';
 import { createCertificates } from './create-certificates';
-import { configDirectory, resolveDataRoot } from '../runtime/profile';
+import { configDirectory, resolveDataRoot, resolveHttpDirectories } from '../runtime/profile';
 import { options } from './options';
 
 export async function runHttpHost(args = process.argv.slice(2), defaultStaticDir?: string, logMode = process.env.MINDOS_HTTPD_MODE ?? 'standalone'): Promise<void> {
     const values = options(args);
-    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --backlog 4096\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file> --auth-dir <private directory>'); return; }
+    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --backlog 4096\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  mindos.json: http.certDir / http.authDir (config-relative paths; flags override)\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file> --auth-dir <private directory>'); return; }
     const backlog = validBacklog(values.backlog);
     const cwd = process.env.INIT_CWD ?? process.cwd(), config = configDirectory();
-    const certDir = path.resolve(cwd, values['cert-dir'] ?? path.join(config, 'http-certs'));
+    const {certDir, authDir: authPath} = await resolveHttpDirectories(config, cwd,
+        {certDir: values['cert-dir'], authDir: values['auth-dir']}, logMode);
     if (values['init-certs']) {
         await createCertificates(certDir, (values['cert-host'] ?? (values.host === '0.0.0.0' || values.host === '::' ? '127.0.0.1' : values.host)).split(',').map(host => host.trim()));
         console.log(`Certificates created: ${certDir}\nBrowser identity: ${path.join(certDir, 'browser-client.p12')}\nImport password file: ${path.join(certDir, 'client-password.txt')}`); return;
@@ -19,7 +20,6 @@ export async function runHttpHost(args = process.argv.slice(2), defaultStaticDir
     const root = await resolveDataRoot(config, cwd, values.root), sidecar = path.resolve(cwd, values.sidecar ?? path.join(root, '_meta'));
     const staticDir = values.static ? path.resolve(cwd, values.static) : defaultStaticDir ?? (() => { throw new Error('Expected --static UI directory'); })();
     const auditFile = path.resolve(cwd, values['audit-file'] ?? path.join(config, 'logs', 'http', `httpd-${logMode}-audit.jsonl`));
-    const authPath = path.resolve(cwd, values['auth-dir'] ?? path.join(config, 'http-auth'));
     await mkdir(authPath, { recursive: true, mode: 0o700 });
     const authDir = await realpath(authPath);
     await access(path.join(staticDir, 'index.html')); await mkdir(root, { recursive: true }); await mkdir(sidecar, { recursive: true });

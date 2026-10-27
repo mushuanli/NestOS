@@ -14,3 +14,10 @@ it('distinguishes business errors from HTTP success without logging exception me
         .toEqual({rpcErrorCount: 1, rpcErrorCodes: ['INPUT_ASSET_PERSISTENCE', 'EACCES']});
     expect(replyDiagnostics([{error: {name: 'Error', message: 'secret', code: 'invalid\nprivate'}}])).toEqual({rpcErrorCount: 1, rpcErrorCodes: ['UNCLASSIFIED']});
 });
+
+it('records only bounded capability IDs and registered missing methods for stale handles', () => {
+    const details = callDiagnostics([{target:'server:123',method:'dispose',args:[{text:'PRIVATE'}]},
+        {target:'PRIVATE target',method:'dispose',args:[]}], ['unknown.dispose','unknown.dispose'],new Set());
+    expect(details).toEqual({rpcUnavailable:[{target:'server:123',method:'dispose'}]});
+    expect(JSON.stringify(details)).not.toContain('PRIVATE');
+});

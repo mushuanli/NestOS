@@ -74,6 +74,10 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 if (!await engine.driver.getNode(path)) throw new FSError('ENOENT', 'File not found', 'open', path);
                 await openResource(path); await selectionWork;
                 if (anchor && tabs.current?.id === path) await tabs.current.value?.editor?.navigateTo({ elementId: anchor });
+            }, reloadContent: async (path, accept) => {
+                let revision: string | undefined;
+                const bytes = await engine.driver.readContent(path, {encoding: 'binary', onRevision: value => {revision = value;}});
+                if (await accept(new TextDecoder().decode(bytes))) revisions.set(path, revision);
             }, chatFromFile: external?.chatFromFile, toggleSidebar: () => external?.toggleSidebar ? external.toggleSidebar() : vfs.toggleSidebar(),
             navigate: async (request: NavigationRequest) => { await external?.navigate?.(request); }, saveContent: persist };
     }

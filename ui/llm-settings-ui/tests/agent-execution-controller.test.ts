@@ -136,3 +136,26 @@ it('stops waiting for an obsolete Flow read when switching back to an ordinary A
         pending.resolve({ revision: 1 }); await f.controller.ready();
     }
 });
+
+it('correlates the exact failing read with Agent, Flow, revision and safe remote error fields', async () => {
+    const secret = 'PRIVATE_PARAMETER_ERROR_TEXT';
+    const f = mount([{id: 'a', name: 'Private display label'}], {getFlowRevision: async () => {
+        throw Object.assign(new Error(secret), {code: 'ECAPABILITY', remoteCode: 'RPC_CAPABILITY_RETIRED', requestId: 'request-123', outcome: 'unknown'});
+    }}, 3);
+    await f.controller.ready();
+    const rows = vi.mocked(console.error).mock.calls;
+    const read = rows.find(([event]) => event === 'agent.flow.configuration.read.failed')![1] as any;
+    const summary = rows.find(([event]) => event === 'agent.flow.configuration.failed')![1] as any;
+    expect(read).toMatchObject({agentId: 'agent', flowId: 'a', requestedRevision: 3, stage: 'definition', code: 'FLOW_DEFINITION_READ_FAILED',
+        causeCode: 'ECAPABILITY', remoteCode: 'RPC_CAPABILITY_RETIRED', requestId: 'request-123', outcome: 'unknown'});
+    expect(summary).toMatchObject({operationId: read.operationId, stage: 'definition', code: 'FLOW_DEFINITION_READ_FAILED'});
+    expect(JSON.stringify(rows)).not.toContain(secret); expect(JSON.stringify(rows)).not.toContain('Private display label');
+});
+it('identifies catalog, version and exposure validation failures without losing their stage', async () => {
+    const missing = mount([], {}, undefined, 'removed'); await missing.controller.ready();
+    expect(vi.mocked(console.error).mock.calls.at(-1)![1]).toMatchObject({flowId: 'removed', stage: 'selection', code: 'FLOW_NOT_IN_CATALOG', flowCount: 0});
+    const version = mount([{id:'a',name:'Flow'}], {getFlowRevision: async () => ({revision:1}), listFlowRevisions:async()=>[{revision:1}]}, 7); await version.controller.ready();
+    expect(vi.mocked(console.error).mock.calls.at(-1)![1]).toMatchObject({requestedRevision: 7, stage: 'revision', code: 'FLOW_REVISION_UNAVAILABLE'});
+    const local = mount([{id:'a',name:'Flow'}], {getFlowRevision:async()=>({revision:1,exposure:'local'})}); await local.controller.ready();
+    expect(vi.mocked(console.error).mock.calls.at(-1)![1]).toMatchObject({stage: 'exposure', code: 'FLOW_EXPOSURE_DENIED'});
+});

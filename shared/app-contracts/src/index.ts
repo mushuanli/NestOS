@@ -35,3 +35,5 @@ export {ArtifactCommand} from './session/artifacts';
 export type * from './session/artifacts';
 
 export type * from './ports/flow-installation';
+
+export {DOCUMENT_CHAT_META_KEY} from './ports/document-chat';

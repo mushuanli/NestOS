@@ -41,6 +41,8 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    documentChatFile(request: import('./document-chat').DocumentChatFileRequest): Promise<import('./document-chat').DocumentChatFile>;
+    documentChatBacklinks(sessionId: string, branch: string): Promise<import('./document-chat').DocumentChatLink[]>;
     openView(request: import('./open-view').OpenViewRequest): Promise<import('./open-view').OpenedApplicationView>;
     prepareSessionBranch(request: import('@itookit/llm-session/contracts').SubmissionRequest): Promise<import('@itookit/llm-session/contracts').SubmissionRequest>;
     submitSession(request: import('@itookit/llm-session/contracts').SubmissionRequest): Promise<import('@itookit/llm-session/contracts').SubmissionReceipt>;

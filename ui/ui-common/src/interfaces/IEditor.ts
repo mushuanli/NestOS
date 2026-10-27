@@ -71,6 +71,9 @@ export interface EditorFileReference {
 export interface EditorHostContext {
     /** Open a resolved path in the editor's file namespace, optionally at a document anchor. */
     openFile?: (path: string, anchor?: string) => Promise<void>;
+    /** Read the latest file; advance the save revision only after accept returns successfully. */
+    reloadRecovery?: {preserve(content: string): Promise<void>; read(): Promise<string | {content: string; savedAt?: number} | undefined>};
+    reloadContent?: (path: string, accept: (content: string) => Promise<boolean>) => Promise<void>;
     /** Prepare a new chat draft; association is supplied by the file host, never inferred by MDX. */
     chatFromFile?: (reference: EditorFileReference, association?: {
         projectFolder?: string;

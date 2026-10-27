@@ -16,7 +16,9 @@ export function callDiagnostics(calls: Call[], operations: string[], commands: R
         const encoded = url.length - prefix[0].length;
         return [{mimeType: prefix[1].toLowerCase(), bytes: Math.max(0, Math.floor(encoded * 3 / 4) - (url.endsWith('==') ? 2 : url.endsWith('=') ? 1 : 0))}];
     });
-    return {...(rpcCommands.length ? {rpcCommands} : {}), ...(uploads.length ? {uploads} : {})};
+    const rpcUnavailable = calls.flatMap((call, index) => operations[index]?.startsWith('unknown.') && /^(?:client|server):(?:[a-f0-9-]{36}:)?[0-9]{1,10}$/.test(call.target)
+        ? [{target: call.target, method: operations[index].slice(8)}] : []);
+    return {...(rpcUnavailable.length ? {rpcUnavailable} : {}), ...(rpcCommands.length ? {rpcCommands} : {}), ...(uploads.length ? {uploads} : {})};
 }
 
 function fileMetadata(value: unknown): {mimeType: string; bytes?: number} {

@@ -1,4 +1,5 @@
 import { WorkbenchWindows } from './workbench/windows';
+import {cleanupFileRefreshBackups} from './persistence/file-recovery-cleanup';
 import {t as translate} from '@itookit/common';
 import {rememberPagePresentation, writePageHistory, type PagePresentation} from './navigation/page-history';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
@@ -50,6 +51,7 @@ import { FILE_REGISTRY, EditorTypeKey } from './config/file-registry';
 import { themeService, ThemeMode } from './ThemeService';
 
 export async function initApp(options: AppOptions): Promise<AppHandle> {
+    await cleanupFileRefreshBackups();
     let diagnostics = false;
     try { diagnostics = localStorage.getItem('vfs:debug') === '1'; } catch { /* Diagnostics remain opt-in when storage is unavailable. */ }
     setBootTraceEnabled(diagnostics);

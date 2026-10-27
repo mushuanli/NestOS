@@ -1,3 +1,5 @@
+import {DocumentChatFileView} from '../document-chat/file';
+import {documentChatBacklinks} from '../document-chat/backlinks';
 import {submitSession, prepareSessionBranch} from '../session/submit-session';
 import { navigationView, warmNavigation } from './navigation-view';
 import { createMindosProviderTemplates } from '@itookit/kernel-adapters/llm/presets';
@@ -50,6 +52,8 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     const lifecycle = () => new SessionLifecycleService({ repository, kernel: kernel.kernel });
     let opening = false;
     const backend: ApplicationBackend = {
+        documentChatFile: request => scope.own(new DocumentChatFileView(services, request)),
+        documentChatBacklinks: (sessionId, branch) => documentChatBacklinks(services, sessionId, branch),
         openView: async request => {
             if (opening) throw new FSError('EBUSY', 'A view is already opening');
             opening = true;

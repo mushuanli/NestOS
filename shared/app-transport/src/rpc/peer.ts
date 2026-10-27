@@ -20,6 +20,7 @@ export class RpcPeer {
     private readonly observerReleases = new Map<string, () => void>();
     private readonly observing = new Map<string, Promise<void>>();
     private readonly retired = new Set<string>();
+    private readonly localRetirements = new CapabilityRetirements();
     private readonly remoteRetirements = new CapabilityRetirements();
     private operations = 0;
     private collectionNeeded = false;
@@ -33,6 +34,9 @@ export class RpcPeer {
     private readonly updateWaiters = new Set<() => void>();
     private readonly lookupArgs = new Map<string, Map<string, unknown[]>>();
     private readonly releases = new Set<() => void | Promise<void>>();
+    private readonly remoteCleanups = new Set<string>();
+    private readonly pendingUnsubscriptions = new Set<Promise<unknown>>();
+    private unsubscribing = 0;
     private readonly pendingBindings = new Set<Promise<unknown>>();
     private readonly pendingInvocations = new Set<Promise<unknown>>();
     private readonly eventCallbacks = new Set<string>();
@@ -128,7 +132,8 @@ export class RpcPeer {
     /** Diagnostics contain only registered public names, never caller-supplied arguments. */
     operationName(call: Call): string {
         const handle = this.handles.get(call.target);
-        return handle && Object.hasOwn(handle.schema.methods, call.method) ? `${handle.kind}.${call.method}` : 'unknown';
+        if (handle && Object.hasOwn(handle.schema.methods, call.method)) return `${handle.kind}.${call.method}`;
+        return Object.values(this.schemas).some(schema => Object.hasOwn(schema.methods, call.method)) ? `unknown.${call.method}` : 'unknown';
     }
     remoteBinding(call: Call): boolean {
         const kind = this.descriptors.get(call.target)?.kind;
@@ -290,7 +295,13 @@ export class RpcPeer {
         if ('$capability' in value) return this.hydrate(value.$capability as unknown as Descriptor);
         const result: Record<string, unknown> = {};
         const fields = ('$object' in value ? value.$object : value) as Record<string, WireValue>;
-        for (const [key, item] of Object.entries(fields)) Object.defineProperty(result, key, { value: this.decode(item), enumerable: true, configurable: true, writable: true });
+        for (const [key, item] of Object.entries(fields)) {
+            const decoded = this.decode(item);
+            if (['dispose', 'release', 'return', 'close'].includes(key) && typeof decoded === 'function') {
+                const id = this.remoteIds.get(decoded); if (id) this.remoteCleanups.add(id);
+            }
+            Object.defineProperty(result, key, {value: decoded, enumerable: true, configurable: true, writable: true});
+        }
         return result;
     }
     private hydrate(descriptor: Descriptor): any {
@@ -369,7 +380,7 @@ export class RpcPeer {
     private retireRemote(id: string): void {
         this.remoteRetirements.add(id);
         const proxy = this.remote.get(id); if (proxy) this.remoteIds.delete(proxy);
-        this.remote.delete(id); this.descriptors.delete(id); this.pendingPatches.delete(id); this.listeners.delete(id);
+        this.remote.delete(id); this.descriptors.delete(id); this.remoteCleanups.delete(id); this.pendingPatches.delete(id); this.listeners.delete(id);
         for (const key of this.projectionsLoaded.keys()) if (key.startsWith(id + ':')) this.projectionsLoaded.delete(key);
     }
     private drainPatches(): void {
@@ -436,7 +447,11 @@ export class RpcPeer {
         } };
         void pending.catch(() => { if (!stopped) { stopped = true; listeners.delete(callback); finish(); } });
         return { ready: pending, stop: () => { if (stopped) return; stopped = true; listeners.delete(callback);
-            void this.trackInvocation(pending.then(release => release?.()).finally(finish)).catch(this.report); } };
+            const work = pending.then(release => {
+                this.unsubscribing++; try {return release?.();} finally {this.unsubscribing--;}
+            }).finally(finish);
+            this.pendingUnsubscriptions.add(work);
+            void this.trackInvocation(work.finally(() => this.pendingUnsubscriptions.delete(work))).catch(this.report); } };
     }
     private async *iterate(id: string, name: string, args: unknown[]): AsyncIterable<unknown> {
         const iterator = await this.invoke(id, name, args);
@@ -449,6 +464,8 @@ export class RpcPeer {
         const bindings = this.side === 'client' && !subscriptionMode(mode)
             && !this.remoteQuery({target: id, method, args: args as Call['args']})
             ? [...this.pendingBindings] : [];
+        if (!this.unsubscribing && (['dispose', 'release', 'return', 'close'].includes(method) || this.remoteCleanups.has(id)) && this.pendingUnsubscriptions.size)
+            bindings.push(Promise.allSettled([...this.pendingUnsubscriptions]));
         return this.trackInvocation(this.operation(() => bindings.length ? Promise.all(bindings).then(() => this.invokeOrdered(id, method, args))
             : this.invokeOrdered(id, method, args)));
     }
@@ -505,7 +522,7 @@ export class RpcPeer {
         if (active) use.active--; if (persistent) use.persistent--;
         if (!use.active && !use.persistent) {
             const handle = this.handles.get(key); if (handle) this.ids.delete(handle.value);
-            this.lifetime.release(key); this.retired.add(key);
+            this.lifetime.release(key); this.retired.add(key); this.localRetirements.add(key);
             this.handles.delete(key); this.callbackUses.delete(key); this.eventCallbacks.delete(key); this.dirty.delete(key);
         }
     }
@@ -569,7 +586,13 @@ export class RpcPeer {
     private publicHandle(call: Call): Handle {
         if (this.closed) throw new FSError('EIO', 'View connection is closed');
         const handle = this.handles.get(call.target);
-        if (!handle || handle.retired || !Object.hasOwn(handle.schema.methods, call.method)) throw new FSError('ECAPABILITY', 'Unknown public capability');
+        if (!handle || handle.retired || !Object.hasOwn(handle.schema.methods, call.method)) {
+            const remoteCode = !handle ? (this.localRetirements.has(call.target) ? 'RPC_CAPABILITY_RETIRED' : 'RPC_CAPABILITY_NOT_FOUND')
+                : handle.retired ? 'RPC_CAPABILITY_RETIRED' : 'RPC_METHOD_NOT_EXPOSED';
+            const method = /^[a-zA-Z][a-zA-Z0-9_]{0,79}$/.test(call.method) ? call.method : '[invalid]';
+            const target = /^(?:client|server):(?:[a-f0-9-]{36}:)?[0-9]{1,10}$/.test(call.target) ? call.target : '[invalid]';
+            throw Object.assign(new FSError('ECAPABILITY', `Unknown public capability: ${remoteCode}; method=${method}; target=${target}`), {remoteCode});
+        }
         return handle;
     }
     private callArguments(call: Call, handle: Handle, binary?: ArrayBuffer): { args: any[]; callbacks: Promise<unknown>[] } {
@@ -611,15 +634,15 @@ export class RpcPeer {
             const release = this.observerReleases.get(id);
             if (release) { this.observerReleases.delete(id); this.releases.delete(release); release(); }
             this.ids.delete(handle.value); this.handles.delete(id); this.emitted.delete(id); this.dirty.delete(id);
-            this.lookupArgs.delete(id); this.lifetime.forget(id); this.retired.add(id);
+            this.lookupArgs.delete(id); this.lifetime.forget(id); this.retired.add(id); this.localRetirements.add(id);
         }
     }
     async close(): Promise<void> {
         this.closed = true;
         for (const ready of this.updateWaiters) ready();
         await Promise.allSettled([...this.releases].map(release => release()));
-        this.releases.clear(); this.pendingBindings.clear(); this.subscriptionReleases.clear(); this.observerReleases.clear(); this.lifetime.clear(); this.retired.clear(); this.remoteRetirements.clear(); this.handles.clear(); this.remote.clear();
-        this.descriptors.clear(); this.emitted.clear(); this.dirty.clear(); this.pendingPatches.clear(); this.domains.clear();
+        this.releases.clear(); this.pendingBindings.clear(); this.subscriptionReleases.clear(); this.observerReleases.clear(); this.lifetime.clear(); this.retired.clear(); this.localRetirements.clear(); this.remoteRetirements.clear(); this.handles.clear(); this.remote.clear();
+        this.remoteCleanups.clear(); this.pendingUnsubscriptions.clear(); this.descriptors.clear(); this.emitted.clear(); this.dirty.clear(); this.pendingPatches.clear(); this.domains.clear();
         this.callbackUses.clear(); this.listeners.clear(); this.eventCallbacks.clear(); this.notificationTails.clear(); this.projectionsLoaded.clear(); this.lookupArgs.clear();
     }
 }

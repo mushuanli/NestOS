@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { openNodeApplication, configDirectory, type NodeApplicationHost } from '@itookit/node-host/runtime';
+import { openNodeApplication, configDirectory, resolveHttpDirectories, type NodeApplicationHost } from '@itookit/node-host/runtime';
 import { openApplicationView } from '@itookit/app-core/host';
 import type { ApplicationClient } from '@itookit/app-contracts/services';
 import type { CommandOptions } from './commands';
@@ -9,8 +9,10 @@ import { runtimeDiagnosticPath } from './diagnostics';
 
 export async function openLocalApplication(options: CommandOptions, initializeWorkspace = false): Promise<NodeApplicationHost> {
     const root = resolveProfileRoot(options.profile), config = configDirectory();
+    const authDir = options.profile && options.profile !== 'desktop' ? options.authDir ?? root + '.auth'
+        : (await resolveHttpDirectories(config, process.env.INIT_CWD ?? process.cwd(), {authDir: options.authDir}, 'release')).authDir;
     return openNodeApplication({root, sidecar: path.join(root, '_meta'),
-        authDir: options.authDir ?? (options.profile && options.profile !== 'desktop' ? root + '.auth' : path.join(config, 'http-auth', 'release')),
+        authDir,
         auditFile: options.auditFile ?? path.join(path.dirname(runtimeDiagnosticPath() ?? path.join(config, 'logs', 'cli', 'cli-local.jsonl')), `cli-local-${process.pid}-audit.jsonl`),
         runtime: {startupMode: 'headless', digitalTwinAutoStart: initializeWorkspace,
             directorySourceProvider: new CliDirectorySourceProvider(root),

@@ -73,7 +73,7 @@ export function hostArguments(mode, args, env = process.env) {
     const paths = runtimePaths(mode, env);
     const values = [...args];
     const add = (name, value) => { if (!args.some(arg => arg === name || arg.startsWith(name + '='))) values.push(name, value); };
-    add('--audit-file', paths.audit); add('--auth-dir', paths.auth);
+    add('--audit-file', paths.audit);
     if (mode === 'dev') { add('--port', '2001'); add('--root', paths.developmentRoot); }
     return values;
 }

@@ -1,3 +1,4 @@
+import {configurationScope, configurationFailure, configurationError, reportFlowConfiguration, type FlowConfigurationScope} from './agent-flow-diagnostics';
 import { ACTION_ICONS, FILE_BROWSER_ICONS, escapeHTML, randomUUID, t } from '@itookit/common';
 import { editHarnessConnection } from './agent-harness-connections';
 import { requestSettingsSave } from '@itookit/ui-common';
@@ -89,6 +90,7 @@ export function bindAgentExecution(root: HTMLElement, agent: AgentDefinition, fl
 /** Own only form drafts and reads; publishing, persistence and execution stay with the host. */
 export class AgentExecutionController {
     private generation = 0;
+    private readonly agentId: string;
     private disposed = false;
     private pending?: Promise<void>;
     private interrupt?: () => void;
@@ -105,6 +107,7 @@ export class AgentExecutionController {
     private readonly status: HTMLElement;
 
     constructor(private readonly root: HTMLElement, agent: AgentDefinition, private readonly flows: AgentFlowChoice[], private readonly options: AgentExecutionOptions) {
+        this.agentId = agent.id;
         this.section = root.querySelector('[data-agent-execution]')!;
         this.fields = root.querySelector('[data-agent-flow-fields]')!;
         this.status = root.querySelector('[data-agent-flow-status]')!;
@@ -218,40 +221,49 @@ export class AgentExecutionController {
     private async load(generation: number, changed: boolean): Promise<void> {
         const flowId = field(this.root, 'executionFlowId').value;
         const operationId = randomUUID(), started = performance.now();
+        const requested = this.activeFlow && this.activeFlow !== flowId ? this.selections.get(flowId) ?? '' : field(this.root, 'executionRevision').value;
+        const scope = configurationScope(operationId, this.agentId, flowId, requested, this.flows.length);
+        reportFlowConfiguration('agent.flow.configuration.started', scope, started, {stage: 'selection', result: 'started', catalogCached: this.catalog.has(flowId), connectionsCached: !!this.connections});
         this.setState('loading', t('agent.execution.loading'));
         try {
-            if (!this.flows.some(flow => flow.id === flowId)) throw new Error(t(this.flows.length ? 'agent.execution.required' : 'agent.execution.noFlows'));
-            const data = await this.loadCatalog(flowId, operationId);
+            if (!this.flows.some(flow => flow.id === flowId)) throw configurationFailure(new Error(t(this.flows.length ? 'agent.execution.required' : 'agent.execution.noFlows')), 'selection', !flowId ? 'FLOW_SELECTION_REQUIRED' : 'FLOW_NOT_IN_CATALOG');
+            const data = await this.loadCatalog(flowId, scope);
             if (!this.current(generation)) return;
             this.apply(flowId, data);
-            console.info('agent.flow.configuration.loaded', { operation: 'agent.flow.configuration', operationId, stage: 'render', result: 'success', durationMs: Math.round(performance.now() - started), revisionCount: data.revisions.length });
+            reportFlowConfiguration('agent.flow.configuration.loaded', scope, started, {stage: 'render', result: 'success', revisionCount: data.revisions.length, latestRevision: data.latest?.revision ?? null});
             if (changed) requestSettingsSave(this.root);
         } catch (error) {
             if (!this.current(generation)) return;
             this.setState('error', error instanceof Error ? error.message : t('agent.execution.unavailable'));
-            console.error('agent.flow.configuration.failed', { operation: 'agent.flow.configuration', operationId, stage: 'load', result: 'failure', code: 'FLOW_CONFIGURATION_LOAD_FAILED', durationMs: Math.round(performance.now() - started) });
+            reportFlowConfiguration('agent.flow.configuration.failed', scope, started, {result: 'failure', ...configurationError(error)});
         }
     }
 
-    private async loadCatalog(id: string, operationId: string): Promise<Catalog> {
+    private async loadCatalog(id: string, scope: FlowConfigurationScope): Promise<Catalog> {
         let data = this.catalog.get(id);
         if (!data) {
             const [revisions, latest] = await Promise.all([
-                this.stage('revisions', operationId, () => this.options.listFlowRevisions?.(id) ?? Promise.resolve([])),
-                this.stage('definition', operationId, () => this.options.getFlowRevision?.(id) ?? Promise.resolve(undefined)),
+                this.stage('revisions', scope, () => this.options.listFlowRevisions?.(id) ?? Promise.resolve([])),
+                this.stage('definition', scope, () => this.options.getFlowRevision?.(id) ?? Promise.resolve(undefined)),
             ]);
             data = { revisions, latest }; this.catalog.set(id, data);
         }
-        this.connections ??= await this.stage('connections', operationId, () => this.options.listConnections?.() ?? Promise.resolve([]));
+        this.connections ??= await this.stage('connections', scope, () => this.options.listConnections?.() ?? Promise.resolve([]));
         return data;
     }
 
-    private async stage<T>(stage: string, operationId: string, read: () => Promise<T>): Promise<T> {
+    private async stage<T>(stage: 'revisions' | 'definition' | 'connections', scope: FlowConfigurationScope, read: () => Promise<T>): Promise<T> {
         const started = performance.now();
-        try { return await read(); }
-        catch (error) {
-            console.error('agent.flow.configuration.read.failed', { operation: 'agent.flow.configuration', operationId, stage, result: 'failure', code: `FLOW_${stage.toUpperCase()}_READ_FAILED`, durationMs: Math.round(performance.now() - started) });
-            throw error;
+        reportFlowConfiguration('agent.flow.configuration.read.started', scope, started, {stage, result: 'started'});
+        try {
+            const value = await read();
+            reportFlowConfiguration('agent.flow.configuration.read.completed', scope, started, {stage, result: 'success',
+                ...(Array.isArray(value) ? {count: value.length} : {found: value != null})});
+            return value;
+        } catch (error) {
+            const failure = configurationFailure(error, stage, `FLOW_${stage.toUpperCase()}_READ_FAILED`);
+            reportFlowConfiguration('agent.flow.configuration.read.failed', scope, started, {result: 'failure', ...configurationError(failure)});
+            throw failure;
         }
     }
 
@@ -262,9 +274,9 @@ export class AgentExecutionController {
         revisionField.innerHTML = revisionOptions(data.revisions, selected);
         const latest = this.options.getFlowRevision ? data.latest : [...data.revisions].sort((a, b) => b.revision - a.revision)[0];
         const revision = selected === undefined ? latest : data.revisions.find(item => item.revision === selected);
-        if (selected !== undefined && !revision) throw new Error(t('agent.execution.missingRevision', { revision: selected }));
+        if (selected !== undefined && !revision) throw configurationFailure(new Error(t('agent.execution.missingRevision', { revision: selected })), 'revision', 'FLOW_REVISION_UNAVAILABLE');
         const definition: AgentFlowDefinition = revision ?? this.flows.find(flow => flow.id === flowId)!;
-        if (definition && definition.exposure !== undefined && definition.exposure !== 'global') throw new Error(t('callable.exposure.rootDenied'));
+        if (definition && definition.exposure !== undefined && definition.exposure !== 'global') throw configurationFailure(new Error(t('callable.exposure.rootDenied')), 'exposure', 'FLOW_EXPOSURE_DENIED');
         const key = JSON.stringify([flowId, selected ?? 'latest']);
         let view = this.views.get(key);
         if (!view) {

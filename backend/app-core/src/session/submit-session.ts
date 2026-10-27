@@ -10,7 +10,7 @@ export async function submitSession(services: LocalApplicationServices, supplied
     if (!services.acquireConversation) throw Object.assign(new Error('Conversation submission context is unavailable'), {code: 'SUBMISSION_CONTEXT_UNAVAILABLE'});
     const lease = await services.acquireConversation(sessionId);
     try {
-        if (request.branchFrom) await lease.commandBus.execute('vcs.branch.switch', {branchName: request.expectedBranch});
+        await lease.commandBus.execute('vcs.branch.switch', {branchName: request.expectedBranch});
         await lease.commandBus.execute(SessionCommand.Submit, request);
         const receipt = await lease.commandBus.execute<SubmissionReceipt>(SessionCommand.InspectSubmissionReceipt, request);
         log.info('session.submit', {sessionId, operationId, stage: 'admission', result: receipt.status, durationMs: Date.now() - started});

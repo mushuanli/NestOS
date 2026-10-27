@@ -1,19 +1,19 @@
 import {randomUUID} from '@itookit/common';
 
-export interface FileRecovery { base: string; text: string; }
+export interface FileRecovery { base: string; text: string; savedAt?: number; retentionStartedAt?: number; }
 
 /** Per-tab small drafts are synchronous; larger documents use browser storage without an RPC. */
 export class FileRecoveryStore {
     private readonly key: string;
     private available = true;
-    constructor(scope: string, path: string) {
+    constructor(scope: string, path: string, slot?: 'reload-backup') {
         let tab = 'unavailable';
         try {
             const existing = sessionStorage.getItem('mindos.file-recovery.tab');
             tab = existing ?? randomUUID();
             if (!existing) sessionStorage.setItem('mindos.file-recovery.tab', tab);
         } catch { this.available = false; }
-        this.key = 'mindos.file-recovery.v1:' + JSON.stringify([tab, scope, path]);
+        this.key = 'mindos.file-recovery.v1:' + JSON.stringify([tab, scope, path]) + (slot ? ':' + slot : '');
     }
     async read(): Promise<FileRecovery | undefined> {
         if (!this.available) throw new Error('Recovery tab identity unavailable');

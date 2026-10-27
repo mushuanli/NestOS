@@ -1,4 +1,4 @@
-export { configDirectory, resolveDataRoot } from './profile';
+export { configDirectory, resolveDataRoot, resolveHttpDirectories } from './profile';
 export { closeHostResources, openHostRuntime } from './host-runtime';
 export type { HostCleanup } from './host-runtime';
 export { openNodeApplication } from './application';

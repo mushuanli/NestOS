@@ -303,6 +303,12 @@
 .flow-parameter-image [data-image-preview] { display: flex; flex-wrap: wrap; gap: 8px; color: var(--dag-text-secondary); font-size: .8rem; line-height: 1.5; }
 .flow-parameter-image .flow-image-clear { justify-self: start; min-height: 44px; }
 .flow-parameter-image { grid-column: 1 / -1; }
+.flow-parameter-files { grid-column: 1 / -1; }
+.flow-file-picker { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--dag-text-secondary); border-radius: 8px; }
+.flow-file-picker__action { font-weight: 500; }
+.flow-file-fields__summary { white-space: pre-wrap; color: var(--dag-text-secondary); font-size: .8rem; }
+.flow-file-fields__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.flow-file-fields__actions button { min-height: 44px; }
 .flow-parameter-section + .flow-parameter-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--dag-border); }
 .flow-parameter-section__title { margin: 0 0 16px; color: var(--dag-text-primary); font-size: .9rem; font-weight: 600; }
 .flow-parameter-section__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; min-width: 0; }
@@ -752,13 +758,6 @@
 .dag-output-dialog > header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dag-output-dialog > header select { max-width: 45%; }
 .dag-output-dialog__body { height: 70vh; overflow: auto; }
-
-.flow-parameter-files { grid-column: 1 / -1; }
-.flow-file-picker { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--dag-text-secondary); border-radius: 8px; }
-.flow-file-picker__action { font-weight: 500; }
-.flow-file-fields__summary { white-space: pre-wrap; color: var(--dag-text-secondary); font-size: .8rem; }
-.flow-file-fields__actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.flow-file-fields__actions button { min-height: 44px; }
 
 .dag-artifacts {
     display: grid;

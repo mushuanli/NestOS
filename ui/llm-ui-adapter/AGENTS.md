@@ -1,6 +1,10 @@
 # llm-ui-adapter 开发说明
 
-本地 Session 指令队列由 InstructionQueuePanel 展示并经命令编辑，发送与自动续发归 Session 后端。忙时保留发送与停止按钮，确认持久接纳后清除本次输入；排序、合并、删除携带已展示 revision，冲突时刷新，不自动重试写命令。
+本地和远程 Session 指令队列通过 InstructionQueuePanel 绑定独立 llm-ui 的 InstructionQueueView，支持正文编辑；发送与自动续发归宿主后端。忙时保留发送与停止按钮，确认持久接纳后清除本次输入；排序、合并、删除携带已展示 revision，冲突时刷新，不自动重试写命令。
+
+NativeCommandOutput 在原命令消息锚点展示截断预览和按需完整读取；默认工作台与独立 extension 共用该组件。优先逐页 readCommandOutput，每页至多64KiB，页前后检查本视图的取消信号；不把 AbortSignal 序列化过应用 RPC。复用 Artifact 的有界拼接与 SHA/字节核验，完整验证后只挂载当前64Ki字符文本页，UTF-8及surrogate边界不得漏字或替换；销毁/隐藏取消后续页和迟到DOM并回收URL。读失败只在该结果卡片提供重试，不写全局refreshError、不消费输入、不改变执行终态。resultError 使用原 operationId 查询，不能以重新发送或合成成功恢复。
+
+正式 Session 与本地项目首次草稿通过 session.targets.list 读取公开 Agent/Flow 目录，TargetRef 与旧 agentId 偏好分开，按分支保存 inputTarget；Flow 不伪装为 Agent，首次提交复用草稿 UUID 及输入 DOM。参数表单确认后走 session.submit，arguments 是执行输入，presentation 只用于历史。WorkspaceArgumentDraft 的 JSON、修订、签名和目标随分支 inputArguments 保存；composerText 仅为预填依据，重开保留用户实际确认的参数。OperationLedger 经既有 Session UI 的 operationRecords 持久保存，登记完成后才派发；队列通知触发完整摘要核对，同一台账的接纳可以释放仍悬挂的发送 RPC。独立核对条经 session.submission.receipt 查询原冻结请求，不重填表、不重发；session.submission.committed 仍只证明真实历史提交。原回执不消费新文字、新参数或其他分支草稿；已提交附件草稿经 token、文件身份和摘要核对后恢复消费；同分支多视图草稿并发写入与独立视图替换仍在迁移；UI 不导入 Session 运行时或读取 Round 协议。
 
 项目草稿的 `selectDraftAgent` 命令只切换明确指定且仍可用的智能体，沿用 ChatInput 的配置通知与保存队列，保留文字、附件和模型偏好；不创建正式 Session、不发送内容。工作台快捷入口消费此命令，项目选择和资源列表不进入聊天组件。
 
@@ -98,6 +102,7 @@ Flow Session 标题栏「流程输出」挂接当前 Session 的持久 Run，显
 - Flow 编辑器右侧默认显示「运行参数」，「节点与连线」切换到原编辑能力；参数表单 DOM 在节点选择、画布重绘和面板切换时保留，参数/连接声明变化或更换 Flow 时重建。运行按钮位于参数面板顶部固定栏，参数和节点内容各自滚动；错误仅滚动参数区域，不调用跨祖先 scrollIntoView。运行先校验参数、图片，并通过 session.check-flow-connections 校验当前连接和模型能力，再保存发布并通过 FlowLauncher 直接提交；提交去重，销毁/切换草稿后不得启动旧提交。
 - 其他入口的参数对话框在关闭前校验；取消不创建 Session，草稿版本冲突不启动。新入口通过 CreateFromFlow 的 invocation 模式直接创建持久调用，旧 manifest.flow 会话保持兼容。
 - `/flow` 在当前 Session 启动独立调用；`InvocationPanel` 按 root Task 显示各调用及人工确认，结果可放入聊天草稿。`builtin.flow@2.0.0` 提供参数与命名返回值组合。契约见 [Flow 调用与组合](../../doc/design/flow-invocation-composition.md)。
+- InvocationPanel 的“再次调用”捕获原 Invocation/Session 身份，以新提交建立 retryOf 关联；调用卡片保留兼容 requestId 标记，另有稳定 invocationId 标记。DagWorkbench 只为非终态 Run 提供新的节点/图重试，终态展示从调用卡片或运行入口新建调用的提示；迟到快照与程序调用也须经过同一限制。
 - UI 通过命令总线接入，不读写 Kernel 存储。DOM 回归见 `ui/app-shell/tests/flow-launch.test.ts`，实际模板 DAG 执行见 llm-flow 的 structured-flow 测试。
 
 内置模板安装通过 `flow.draft.install` 保存独立安装记录；删除 `.flow` 后记录仍在，重启不再恢复该模板。聊天侧栏将同一 FlowEngine 挂到 `/@flows`，支持展开、打开和右键运行/删除。新增作文文件统一名为 `essay-review.flow`。
@@ -166,13 +171,27 @@ FlowParameterForm 的 images/json 字段通过 FlowImageFields 按 imageConstrai
 
 Flow 文件的更多菜单将「运行…」放在首项，随后才是分组、导出和编辑操作；宿主把完整资源菜单交给 Flow 菜单扩展排序，子流程分组内的文件共用同一入口。
 
-普通输入选择 execution.kind=flow 的 Agent 时，发送前按绑定读取当前发布或固定 Flow，复用 FlowParameterForm 收集额外参数及连接；默认顺序为 Flow → Agent → 本次输入，提示词由 input.prompt 提供。发送只透传 flowParameters/flowConnectionBindings，后端重新解析 Agent 绑定，不相信 UI 的 flowId。availability=disabled 保留原选择和草稿、禁选禁发并显示原因，配置通知更新可用性；隐藏、销毁及删除 Flow 时取消尚未提交的参数表单。Flow Agent 不要求全局聊天模型，图片经共享 input-assets 端口持久化。DOM 回归见 app-shell/tests/agent-flow-input.test.ts。
+普通输入选择 execution.kind=flow 的 Agent 时，发送前按绑定读取当前发布或固定 Flow，复用 FlowParameterForm 收集额外参数及连接；默认顺序为 Flow → Agent → 本次输入，提示词由 input.prompt 提供。发送透传 flowParameters/flowConnectionBindings/flowExpectedSignature，后端重新解析 Agent 绑定，不相信 UI 的 flowId。availability=disabled 保留原选择和草稿、禁选禁发并显示原因，配置通知更新可用性；隐藏、销毁及删除 Flow 时取消尚未提交的参数表单。Flow Agent 不要求全局聊天模型，图片经共享 input-assets 端口持久化。DOM 回归见 app-shell/tests/agent-flow-input.test.ts。
+
+Flow Agent 允许空文字打开参数表单；参数表单返回 flowExpectedSignature，发送、草稿转正和 Session 队列均支持参数/默认/零参数调用，后端复核真实 Agent 绑定与签名。FlowLauncher 和 promptInvocation 也携带发布签名，CreateFromFlow 先核对后创建会话。独立 Session binding 可由宿主注入 inputContract/subscribeInput，将 ChatSubmission.input 转为同一 Session.Send 参数及签名；这不代表工作台已全部迁移。原生目标未声明结构化映射时明确拒绝，不丢弃参数后继续发消息。InvocationPanel 显示及重新填写使用冻结 inputResolution.parameters，原 parameters 保持原始提交。
 
 Flow Agent 参数预填使用点击发送时的文字与附件快照，只消费 FlowParameter.inputSource 的 composer.text/composer.attachments 声明，不按字段名或工具业务猜测；文字覆盖声明字段的默认值，附件经 FlowParameterExtension.initialFiles 在初始弹窗内校验、预览并导入，取消或失败不清除聊天草稿。只有显式 inputGroups.mode=oneOf 的组要求用户选择一个来源；未声明互斥组保留多来源输入。flowImageAssets 按命令总线缓存公开资产端口，导入缓存不能跨运行时复用；条件连接验证将当前参数传给宿主重新核对。
 右侧 Flow 工具栏以「流程名称 → 运行记录」开头，不重复显示 Flow Design；「运行」移至参数面板顶部固定栏，与菜单共用 ACTION_ICONS.run 和主题绿色提示，禁用态恢复中性色。连接表单标注必选/可选，设置可编辑 required、tier 和 requirements；需求由 Flow 声明，不按业务名称推断。文案走中英文 i18n。
 运行表单的缺项提示区分填写参数、选择图片/选项和选择模型连接；参数优先显示 label，连接优先显示 description，缺省回退 name，与表单标签保持一致，不按业务或槽名映射文案。
 
 Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或用途默认连接，是否可运行由后端准入决定。槽位错误消费结构化 field，经本地或 HTTP 同样定位，不匹配英文错误正文。
+
+原生取消使用独立 OperationContext.operationId 和冻结 sessionId/turnId，经 interrupt/reconcileControl 结算对应控制台账，不借用输入接纳回执。工作台停止与控制核对不受原发送 working 锁限制；停止待确认与输入待确认分别展示。取消不清草稿、不增加用户气泡、不隐式暂停队列，实际终态以原生事实为准。
+
+原生 canQueryCommand 与输入 canCommand/canSend 分离；独立 llm-ui 将 query 分类和报告接纳交给同一 OperationLedger，reconcileQuery 不调用修改回执核对。旧工作台只读查询不占 working/ConversationComposer 提交槽，不清原 remoteSubmission；文字只按匹配修订清理。ChatInput 在原发送 Promise 悬挂时只为明确只读命令放行，计数保留仍在途的其他提交。
+
+Session 附件发送经 AssetService.prepareUpload 取得 Markdown 引用及同批内容摘要元数据，再由同一冻结 Submission 发送。上传采用不可变命名，同身份同内容可读取核对，内容变化必须新提交；不得覆盖已排队文件。日志只记录身份、阶段、结果、索引、大小、错误码及耗时，不记录文件名、正文和原始存储错误。原 uploadFiles 仅保留引用返回兼容入口。
+
+TaskArtifactBrowser 为运行页及正式 Session 的终态助手历史提供按需目录、预览和下载；scope 来自真实 Session/ExecutionRef，不解析气泡文本。它逐页校验引用、范围、总大小和摘要，完整下载再次核验内容；文字转义显示，图片使用宿主字节创建对象 URL。缓存和 URL 归单个视图，重绘不重发读取，目标切换/清空/销毁取消后续读取并回收 URL，旧 scope 的迟到回复不得污染新执行。产物读取走只读命令，不消费草稿或修改 OperationLedger 接纳状态。远程原生 URI 尚未导入时显示不可用，不能自行抓取。
+
+原生输入的纯附件提交保留原始空正文，不由视图填充本地化 prompt 或 trim 后改写提交；原生端口负责派生实际 turn 提示。文本 UTF-8 传输保留 BOM。独立 native binding 将 not-committed 的具体 remoteCode 投影为 rejected，未知结果仍只核对；新增提交日志仅含 operationId、阶段、结果分类和耗时，不记录正文或附件内容。
+
+Flow 通用 files 控件与 images 共用 input-assets 上传端口，稳定 uploadId 在取消重开和失败重试时保留；取消只结束当前观察，重新使用必须 Inspect 实际内容。文件选择捕获固定 signal/修订，不使用新选择的取消信号继续旧批次。多个 composer 附件字段不自动复制全批文件；逐文件核对冻结实参，未绑定保留并提示。确认的 Flow 文件不重复走 Session 聊天附件上传或追加引用文本；清除是显式 []。
 
 默认原生工作台的 NativeInstructionQueuePanel 直接适配 ConversationControls 与独立 InstructionQueueView，不伪造 SessionCommandBus。awaitNativeAdmission 只缩短当前 UI 的接纳等待：订阅原 operationId 的持久事实后再派发，接纳可先于 RPC 返回，迟到结果不参与后续草稿消费；销毁只终止视图等待，不取消或重发原生操作。
 
@@ -184,17 +203,11 @@ Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或
 
 SessionRenderer 使用消息 Map 同时维护身份与包装 DOM，已知消息查找不扫描整段历史。historyId/Flow 窗口别名仅从当前视图持有的引用解析；删除先撤销引用再动画，重复内容中的同名属性不抢占归属，clear/destroy 释放引用。产物与其他可选展示不能通过逐消息全树扫描放大恢复耗时。
 
-Session 附件发送经 AssetService.prepareUpload 取得 Markdown 引用及同批内容摘要元数据，再由同一冻结 Submission 发送。上传采用不可变命名，同身份同内容可读取核对，内容变化必须新提交；不得覆盖已排队文件。日志只记录身份、阶段、结果、索引、大小、错误码及耗时，不记录文件名、正文和原始存储错误。原 uploadFiles 仅保留引用返回兼容入口。
-
-Flow 通用 files 控件与 images 共用 input-assets 上传端口，稳定 uploadId 在取消重开和失败重试时保留；取消只结束当前观察，重新使用必须 Inspect 实际内容。文件选择捕获固定 signal/修订，不使用新选择的取消信号继续旧批次。多个 composer 附件字段不自动复制全批文件；逐文件核对冻结实参，未绑定保留并提示。确认的 Flow 文件不重复走 Session 聊天附件上传或追加引用文本；清除是显式 []。
-
 正式 Session 和本地项目草稿通过已发布 Agent/Flow 目录保持平级目标。默认工作台先在现有 OperationLedger 持久保存冻结请求再提交；独立 ChatView 在同一台账保存原 Session/分支的 sessionRequest。队列通知只触发完整摘要核对，恢复使用原请求的只读 inspect，不重新填表或重发。晚回复不消费新修订或其他分支草稿；已保存附件草稿复用 DraftFilesCodec 和原上传身份，匹配 token 与内容后消费；同分支多视图草稿并发写入和独立子会话路由继续按计划验收。
 
 OperationPersistence 只在 UI 适配层按 llm-ui 的纯规则合并 operationRecords，经 Session.compareAndSetUIState 对现有修订条件写入，并返回实际保存快照。未知写回执只读核对；条件冲突有界重读合并，不重发业务。缺少条件写能力不降级覆盖。台账合并不代表同分支正文可自动合并，草稿冲突继续独立处理。
 
 分支输入的持久数据仍归 SessionRepository。StateService/DraftPersistence 仅持有本编辑器的已读基线，复用现有 Session 修订条件写入；冲突保留 dirty 输入，经 WorkspaceDraftRecovery 显式加载或替换，期间新编辑、分支切换和隐藏使迟到恢复失效。台账与草稿共用 conditional-ui-state，不重放业务操作；读取失败不可当作空草稿。共享偏好在草稿检查后仅按实际修改保存。独立 llm-ui 继续只消费展示、输入控制和宿主持久化端口，不依赖文件系统。
-
-TaskArtifactBrowser 为运行页及正式 Session 的终态助手历史提供按需目录、预览和下载；scope 来自真实 Session/ExecutionRef，不解析气泡文本。它逐页校验引用、范围、总大小和摘要，完整下载再次核验内容；文字转义显示，图片使用宿主字节创建对象 URL。缓存和 URL 归单个视图，重绘不重发读取，目标切换/清空/销毁取消后续读取并回收 URL，旧 scope 的迟到回复不得污染新执行。产物读取走只读命令，不消费草稿或修改 OperationLedger 接纳状态。远程原生 URI 尚未导入时显示不可用，不能自行抓取。
 
 
 工作台上下文选择由 WorkspaceContextPicker 消费可选 ContextOptionsPort，按显式 Session/分支/目标查询，只保存用户确认的 InputContextDraft。选择通过既有分支与项目草稿恢复，OperationLedger 分别保存执行请求和 UI 消费证据；捕获的 draftConfig 优先于当前输入框。旧接纳不得消费新修订、其他分支或目标的草稿；清除后重选同点也产生新修订。目录静态兼容不替代宿主派发复验，无端口的普通聊天保持可用。流程和限制见 [功能合入计划第 34 节](../../doc/design/functional-merge-plan.md#34-f22-工作台上下文选择草稿与提交证据)。

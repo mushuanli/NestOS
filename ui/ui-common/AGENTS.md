@@ -76,6 +76,8 @@ EditorOptions 的第二个泛型参数描述编辑器专属 initialData，本包
 
 - SessionDraftControls.refresh 是可选宿主端口：确认旧草稿提交后返回新的草稿控制对象，不让编辑器自行跟随或覆盖共享存储。
 
+- ConversationMessage.commandOutput 只表达原生命令的预览、不可变内容引用及独立可用性错误；不等于 Task Artifact 或新的执行事实。readCommandOutput/loadCommandOutput 是可选只读端口，纯 DTO 不导入 driver 实现；resultError 表示已持久提交但结果身份待核对，不能降为可重发的拒绝。
+
 - OcrSettingsForm 对相同配置保留输入 DOM 和保存反馈；失败替换内容后清除渲染缓存，下一次读取成功必须能恢复表单。
 
 - EditorOptions.mountWindowList 向已有编辑器标题栏挂载宿主窗口切换按钮并返回释放函数；它与用于聊天完整导航的 mountCompactNavigation 分开使用，避免重复标题和侧栏按钮。

@@ -35,6 +35,8 @@
 | 聊天 UI 独立化 | [单依赖边界、操作回调与快照订阅（设计提案）](design/llm-ui-independent-module.md) |
 | 功能合入计划 | [功能切片、模块归属、依赖、提交与未完成范围](design/functional-merge-plan.md) |
 | 子会话与函数调用视图 | [Session/Invocation 归属、最小输入输出视图、会话详情分期与 C4](design/session-invocation-ui.md) |
+| Agent Session Connection 统一模型 | [执行抽象、Flow 实现、llm-ui 接口、存储与 C4 事件流评审稿](design/agent-session-connection-review.md) |
+| 调用配套协议 | [上下文绑定](design/execution-context-binding.md)、[输入解析与文件传输](design/invocation-input-resolution.md)、[Invocation 展示](design/invocation-presentation.md)、[控制与状态矩阵](design/invocation-control-state.md) |
 | 图片处理与聊天接入 | [image-parser、Scanic、裁剪及默认 1024 resize](design/chat-image-editing.md) |
 | 非 ML 纸边检测验收 | [风险、68例回归与正式接入门槛](design/image-parser-detector-validation.md) |
 | 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/mindos-node-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/mindos-node-sync.md) |

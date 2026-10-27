@@ -16,6 +16,8 @@
 
 - `ContextEngineOptions` 注入窗口默认值与完整请求计量；服务后续预算校验经 `IContextEngine.measure`，不得绕回固定估算器。摘要请求在宿主使用同一计量。
 
+ContextAssemblerDeps.resolveMessage 是可选宿主材料解析端口，只处理经过 Profile/历史选择的消息；预算估算和最终 canonicalMessages 使用解析结果。核心不读取文件、不导入驱动或持有资产授权；解析失败必须保留，不能发送缺少材料的消息。
+
 /digest 只加载 contracts/digest 的纯算法，不经过 Context 运行时根入口；契约层及前端需要摘要时使用此入口。content/digest 仅保留包内兼容转发，不复制算法。新增入口同时维护源码与发布 exports、ESM/CJS 和声明构建。
 
 当前输入去重比较正文结构与附件身份，不使用拼接后的显示文本作为身份；附件也进入预算估算，禁止只因正文相同丢掉新材料。

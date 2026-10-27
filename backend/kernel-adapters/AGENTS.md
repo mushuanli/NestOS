@@ -6,6 +6,7 @@
 
 - **只依赖下层**：`llm-context`、`driver-llm`、`durable-kernel`、`vfs-core`、`tools`；不得依赖 `llm-session` / `llm-flow` / `llm-tasks` / `app-core` / UI 包或任何 app。
 - **Effect 必须可取消且确认停止**：能力适配器（`llm.chat`、`llm.media`、`tool.call`、`skill.load`、`skill.unload`、`process.exec`、`tty.command`）全部实现 `EffectAdapter.cancel`；`effects/in-flight.ts` 从执行或恢复入口记录整个在途过程（含能力获取），`cancel` 必须等它结束才确认。取得能力后再次检查取消状态，不能在取消确认后启动外部核对。
+- Harness 上下文契约在 contracts/context-binding：Invocation、绑定、原生 thread 和操作身份分开。HarnessProgram 的 host-assembled 输入必须持久保存同 ID/摘要的 contextSnapshot 依据，并核对实际 canonical messages 的 SHA-256；native-continuation 只允许增量 prompt 与附件，不能再注入完整 messages。有附件的增量摘要覆盖规范化 prompt 和实际附件字节；无附件保持旧 prompt 摘要。上下文已冻结时禁止自动追加未计入快照的依赖输出，须在装配前显式纳入。绑定持久状态及原生能力协商由宿主实现，不把本地 CAS 或 resume/fork 布尔能力当作原生 head 条件写保证。
 - **装配即接线**：`createKernelAdaptersRuntime` 只做组合与生命周期；策略（工具白名单、Skill 触发、项目规则）由注入的 `SkillSource` / `configureSession` / `additionalTools` 决定，调用方（CLI / app-core）负责宿主差异。
 - **Skill 身份持久化**：成功 `load_skill` 后把身份写入 `kernel-adapters.skills.loaded`（`skill/loaded-state.ts`）；身份写入失败必须回滚（新加载卸载、已加载保留），回滚自身失败以 `AggregateError` 保留原始错误。
 
@@ -133,4 +134,14 @@ AgentDefinition.execution 可声明普通 Agent 或 Flow 引用（flowId、可�
 
 Provider 支持目录、模型/价格/接口资料的权威定义在 device-llm；kernel-adapters/contracts 复用 device-llm/contracts 的纯契约。禁止在本包重新建立同一厂家目录或全局注册器，MindOS 的 Agent、默认连接及宿主存储保持应用策略。
 
-- Harness 上下文契约在 contracts/context-binding：Invocation、绑定、原生 thread 和操作身份分开。HarnessProgram 的 host-assembled 输入必须持久保存同 ID/摘要的 contextSnapshot 依据，并核对实际 canonical messages 的 SHA-256；native-continuation 只允许增量 prompt 与附件，不能再注入完整 messages。有附件的增量摘要覆盖规范化 prompt 和实际附件字节；无附件保持旧 prompt 摘要。上下文已冻结时禁止自动追加未计入快照的依赖输出，须在装配前显式纳入。绑定持久状态及原生能力协商由宿主实现，不把本地 CAS 或 resume/fork 布尔能力当作原生 head 条件写保证。
+- ConnectionCancelResult 只在连接边界表达停止/清理结果；HarnessExecutionEffect 只接受 stopped/cleanup=confirmed 且证明匹配当前 Session/Task/Effect，随后仍等待 in-flight 退出。pending/unknown、旧 void、缺失或串用证明一律保留 Kernel cleanupPending；不把返回标签、取消接纳或断线当作已释放。宿主 Provider 必须从原持久 journal 及绑定收尾产生证明，Kernel 的 EffectAdapter.cancel 仍为 Promise<void>。
+
+- ConnectionReconcileResult 在 effects/connection-reconcile 映射到 Kernel：running/unknown 保留 indeterminate；只有同一执行的 not-started 证明才能变成 retry。旧 retry 返回值或无效证明不能触发执行。诊断保存安全的具体原因，区分仍运行、epoch 变化与无效结果，不合并为同一个未知类别。
+
+- Harness Effect 的诊断是旁路：注入的日志回调失败不能覆盖原执行结果、原失败或物理清理确认；故障注入覆盖 execute/reconcile/cancel，不在厂商 driver 或 UI 内补偿日志故障。
+
+readMediaAsset 的身份不符、内容缺失、摘要不符和存储读取失败分别携带稳定错误码；存储失败只保留白名单 storageCode，不传播原路径或原始异常文本。调用者可保留具体故障分类，不把授权拒绝误报成内容缺失。
+
+HarnessInputAttachment 区分内联文件与不可变资产引用；纯 prepareHarnessInput 只验证、规范化和冻结引用，不读取文件或 URL。结构化 image/file 资产块转为资产附件，引用字段顺序不改变名称或摘要；实际 bytes 的授权读取与核验由宿主在原生修改前完成。现有无附件及内联输入的编码和摘要保持兼容。
+
+agent-publication 只提供 AgentPublishRequest/Status/Revision 纯契约与 publishedAgentDefinition 投影，不加载 VFS 或调度。定义来源标签与执行发布版本分开；新发布身份为不透明 ap1_SHA256，不能改写旧 Task 或历史版本。

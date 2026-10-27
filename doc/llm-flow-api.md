@@ -54,7 +54,7 @@ class DurableFlowExecutor {
 }
 ```
 
-> `submit` 在持久聚合根建立并取得调度租约后、派发任何节点之前就解析（fresh 与 restored 一致），返回的是 live 句柄：`nodes`/`iterations` 随调度填充，最终状态用 `root.wait()` 读取。派发前的确定性校验（图规模、边 schema 引用、`maxNodes`）仍以 rejection 报错；发布之后的调度期失败落在根任务上（`flow.schedule.failed`），宿主应监视 Run 而不是依赖 `submit` 的 rejection。
+> `submit` 在持久聚合根建立并取得调度租约后、派发任何节点之前就解析（fresh 与 restored 一致），返回的是 live 句柄：`nodes`/`iterations` 随调度填充，最终状态用 `root.wait()` 读取。派发前的确定性校验（图规模、边 schema 引用、`maxNodes`）仍以 rejection 报错；取得调度所有权后的调度期失败落在根任务上（`flow.schedule.failed`），宿主应监视 Run 而不是依赖 `submit` 的 rejection。聚合根提交回执丢失或调度租约竞争失败仍可使 `submit` 拒绝；拒绝本身不表示根未接纳。
 
 **`DurableFlowExecutorOptions`**：
 
@@ -278,6 +278,8 @@ flowchart LR
 
 `FlowRunLifecycle` 处理工作区创建/恢复、收尾、失败清理与 detached drain；宿主只提供 manager 和 dispose 状态，调用方传入 fenced Session/租约。`FlowRunAggregation` 处理根 Task、运行成员、变量和结果投影，保持输出抑制、失败容忍、结果顺序与嵌套 invocation 幂等请求。根创建使用当前 Session，取得租约后最终投影使用 fenced Session。
 
+根接纳与清理权限分别核对：未取得调度租约的竞争者不能向已存在的根写入 `flow.schedule.failed`，也不能清理它可能引用的工作区。执行器在纯输入与初始快照准备完毕、实际提交根之前标记接纳边界；提交后丢回复、持久目录失败或 `FLOW_SCHEDULER_BUSY` 都保留原根及 `initialWorkspace`，后续按持久身份核对或恢复。边界之前的准备失败仍可清理私有工作区；已获得且仍持有租约的执行者按既有调度失败与收尾协议处理。未被根引用的准备工作区仍由宿主已有收尾机制处理，不凭错误码猜测资源是否释放。回归见 `scheduler-admission-ownership.test.ts`。
+
 `FlowAggregateProgram` 的可变状态只保留依赖、调度等待标记、变量、结果、失败及已消费回执；初始检查点、工作区和运行元数据留在 Task input 中。旧状态在下一次 reduce 时投影为同一结构，避免每个子任务退出事件再次复制大块初始数据。节点退出事件、错误分类和持久提交顺序不变。
 
 FlowValue、FlowHuman 和 FlowAggregate 的后续等待集合仅包含尚未消费退出回执的依赖；完整依赖及已消费身份仍留在持久 state 中。恢复后不重新注册已经完成的等待，历史队列中已存在的重复回执仍按原语义消费，不依赖进程内去重。
@@ -338,7 +340,9 @@ backend/llm-flow/src/
 
 `dag.run.get({ taskId, sessionId? })` 支持从保存的 Run 根记录重新连接；没有内存句柄时必须提供 sessionId，返回 `attachedFromStorage: true`。依靠 input.run（v1 目标/用量）与 input.runTasks 恢复任务树、最新节点、实例计数及 detached 标记。目标更新使用 Session shared 状态持久保存，读取优先于初始目标。每次快照也刷新持久 Run metadata 中的最终用量，因此先打开的观察控制台在运行完成后能显示最终 token/耗时，与重开一致。`DagWorkbench.openRun(taskId, sessionId?)` 可打开这类记录。若需要继续调度，用 `DurableFlowExecutor.resume(sessionId, rootTaskId)` 从 `flow.run.<rootTaskId>.scheduler` 检查点恢复（首 shared 检查点缺失时回退根 input 的初始快照；版本不支持或隔离 workspace 无法恢复时抛错），`waitForCheckpoint(sessionId, rootTaskId, taskIds, timeoutMs?)` 可等待检查点已包含指定任务。**运行定义在 submit 时冻结并随检查点持久化**：检查点保存 `spec`、`parameters`、`sessionContext`、live `nodes`/`edges`/`edgeState`（含动态 patch 结果）以及 `nodeDefaults`/`nodeConnections`；`resume` 不接受任何宿主定义参数，因此宿主之后改动的 Flow/定义不会改变已在进行的 Run。未被冻结的是宿主插件**实现代码**（同名 `plugin@version` 的新实现会在下一回合生效）。回归：`durable-flow-executor.test.ts`「resumes the Run definition frozen at submit instead of a later host definition」。旧根记录缺少 v1 元数据时拒绝猜测重建。
 
-`prepareFlowTaskRetry(session, rootTaskId, sourceTaskId, requestId)` 返回已登记 Run 成员的 deferred 新 Task，要求非空请求 ID 和当前 Run 的终态源任务。成员含 nodeId/iteration/retryOfTaskId/budget，保存在 `flow.run.<rootTaskId>.retries`；RunGet、重连及 transcript 合并读取。此 API 不授权或启动，不重写旧根输出，也不重算下游，`retryFlowTask` 与 `FlowCommand.RunTaskRetry`（`dag.run.task.retry`）则继续按原 input 白名单和成员预算授权/启动，命令接受 `{ sessionId, taskId, targetTaskId, requestId, downstream? }`，返回新的 targetTaskId 与 retryOfTaskId。旧根输出不改写，新的 Task 结果进入成员查询/transcript；UI 已提供终态任务重试入口与来源标记，进行中禁重，失败复用请求身份；根结束后仍刷新活动成员。RunCancel 包括所有持久成员。
+`prepareFlowTaskRetry(session, rootTaskId, sourceTaskId, requestId)` 返回已登记 Run 成员的 deferred 新 Task，要求非空请求 ID、当前 Run 的终态源任务，以及尚未终结的根 Run。成员含 nodeId/iteration/retryOfTaskId/budget、retryRequestId/retryMode，保存在既有 `flow.run.<rootTaskId>.retries`；RunGet、重连及 transcript 合并读取。`retryFlowTask` 与 `FlowCommand.RunTaskRetry`（`dag.run.task.retry`）按原 input 白名单和成员预算授权/启动，命令接受 `{ sessionId, taskId, targetTaskId, requestId, downstream? }`，返回 targetTaskId 与 retryOfTaskId；新尝试不重写根输出，未指定 downstream 时不重算下游。
+
+根 Run 已终结时，新请求返回 `FLOW_RUN_TERMINAL`，用户须通过调用卡片“再次调用”或 Flow 运行入口创建新的 Invocation。已登记的同 requestId 仍可核对并返回原 Task；换源任务或换单任务/图重试模式会得到 `FLOW_RETRY_IDENTITY_CONFLICT`。准备完成后根已终结的 deferred 尝试会取消而不启动。UI 同时限制两种新重试入口，保留历史尝试及进行中成员的观察；RunCancel 包括所有持久成员。可选 onControlDiagnostic 输出操作身份、模式、阶段、结果、分类和耗时，Session 宿主连接既有日志，诊断不含参数或异常正文。
 
 ### 图级 retry（下游重算）
 
@@ -411,7 +415,11 @@ DagWorkbench 在 Run 未终态时为终态成员提供「重试并重算下游�
 
 根任务 input 与 `initialScheduler`（冻结的初始检查点）及可选 `initialWorkspace` 一起提交，覆盖根创建至首个 shared 检查点/工作区租约之间的崩溃。恢复优先读最新 shared 检查点，缺失时才使用初始记录；桌面意图清理识别根中的工作区认领。终态恢复会补做尚未写入 pending 的工作区收尾，已成功收尾不会重复执行。
 
-`DagCommandService` 接受 `canWriteSession` 与 `workspaceManager` 宿主端口，独立 DAG 与会话运行共用授权及工作区实现。Run 控制在 `withFlowControl` 内执行：本 Kernel 活跃调度器的租约可复用，其他 Kernel 的活跃所有权不可借用；无调度器时短暂取得租约。Task 响应与所有控制写入携带固定 epoch。每个 Run 的本地控制请求串行执行；暂停先停根调度再停成员，恢复顺序相反，同 Session 其他 Run 不受影响。
+`DagCommandService` 接受 `canWriteSession` 与 `workspaceManager` 宿主端口，独立 DAG 与会话运行共用授权及工作区实现。Run 控制在 `withFlowControl` 内执行：本 Kernel 活跃调度器的租约可复用，其他 Kernel 的活跃所有权不可借用；无调度器时短暂取得租约。Task 响应与所有控制写入携带固定 epoch，每个 Run 的本地控制请求串行执行。
+
+新 Run 在初始 checkpoint 冻结 `controlTreeVersion=1`；普通节点、动态图节点及内部重试保留根的真实 Kernel 父子控制关系。整体 pause/resume 只控制根，祖先 hold 覆盖动态子任务，恢复不会解除节点自己的暂停；节点提交与父状态在同一事务检查，碰到暂停竞态时保留原 requestId 等待，不把正常暂停当成执行失败。其他 Run 不受影响。当前 detached 表示脱离 join 等待，仍受该 Run 的持久监督、预算及收尾约束，不能据此获得独立执行所有权。
+
+`RunPauseWithdraw`（`dag.run.pause.withdraw`）接收 `{taskId, requestId, expectedEpoch}`，仅撤销该根尚未确认的 pause；已确认时使用正常恢复。命令保留原 Effect、原 turn 和已保存回答，其他持久屏障继续生效。缺少控制树版本的旧 Run 不改写原提交摘要，不开放新的强范围暂停；已存在旧批量暂停的有限解除需保留无法证明属于该批量操作的独立暂停，不能将它标成完整迁移。实际停止确认、按钮能力及原生审批准入见[控制协议](design/invocation-control-state.md)。
 
 工作区收尾超过 5 秒仍未完成时，`workspaceFinalization` 保持 `pending` 并持久记录说明；桌面轮询显示该说明，CLI 退出等待同时报告。超时提示不代表物理清理完成，不释放调度所有权，也不删除仍在使用的文件。完成后的 succeeded 写入排在提示之后，避免迟到提示覆盖终态；确认成功后清除 pending 说明。
 
@@ -425,7 +433,7 @@ DagWorkbench 在 Run 未终态时为终态成员提供「重试并重算下游�
 
 运行参数支持 `minimum` / `maximum` / `integer`。`flowToDag` 将参数声明保存为 `DagRunSpec.parameterSchema`；`prepareFlowParameters` 合并默认值并校验，执行器在创建 Task 前调用。route@2 的 maxRounds/maxConcurrency 可使用完整参数模板，运行时保持 number 类型。详见 [参数契约](design/essay-review-flow.md)。
 
-参数可显式声明 `inputSource: 'composer.text' | 'composer.attachments'`，聊天发送时只按此声明预填当前草稿快照，不按字段名猜测。附件源使用现有 `type: 'json', widget: 'images'` 图片契约。需要互斥输入的 Flow 可声明 `inputGroups: [{ name: 'source', mode: 'oneOf', parameters: ['body', 'pages'] }]`；表单展示来源选择，只提交被选字段，并在参数准备、子调用和持久运行中校验恰有一个非空值。没有互斥声明时允许同时提供多种输入；Anki 保留文本和图片合用及 combined/grouped 行为。`DagRunSpec.inputGroups` 与作用域 groups 一起冻结，未选成员的默认值不会重新加入提交。全组缺省只有在所有成员都声明 `onMissing: 'interact'` 时才交给既有显式输入节点补齐。
+参数可显式声明 `inputSource: 'composer.text' | 'composer.attachments'`，聊天发送时只按此声明预填当前草稿快照，不按字段名猜测。附件源使用 `type: 'json', widget: 'images' | 'files'` 契约；仅一个声明字段时自动预填，多个字段由用户明确分类，未绑定附件不能静默丢弃。需要互斥输入的 Flow 可声明 `inputGroups: [{ name: 'source', mode: 'oneOf', parameters: ['body', 'pages'] }]`；表单展示来源选择，只提交被选字段，并在参数准备、子调用和持久运行中校验恰有一个非空值。没有互斥声明时允许同时提供多种输入；Anki 保留文本和图片合用及 combined/grouped 行为。`DagRunSpec.inputGroups` 与作用域 groups 一起冻结，未选成员的默认值不会重新加入提交。全组缺省只有在所有成员都声明 `onMissing: 'interact'` 时才交给既有显式输入节点补齐。
 
 
 `FlowCommand.DraftInstall` 校验内置模板后调用 `FlowDefinitionStore.installBuiltinDraft`。独立安装记录防止用户删除模板后重启被自动补装；已有草稿保持原样。
@@ -525,6 +533,8 @@ CLI 使用 `node apps/cli/dist/cli.js run -f job.flow --profile <profile> --conn
 
 上传值复用现有多模态消息内容块，例如 `[{ type: 'image_url', image_url: { url: 'data:image/png;base64,...' } }]`；UI 提供选择、预览、清除；浏览器及 CLI 在持久化前把 inline 图片暂存成资产引用。底层执行器保留 inline 调用兼容，模型发送前再解析授权引用。`builtin.agent.config.messageTemplates` 声明标准消息数组，例如 `[{ role: 'user', content: '${param.images}' }]`，支持文本、图片、音频等已有内容块。模板在节点执行前仅渲染一次，并建立上游引用依赖；插入数据中的 `${...}` 不再解释。`messages` 继续表示已有消息快照，不能整体作为模板再次渲染。连接准入推断可见的内容块模态；整体动态内容引用应在连接槽或节点 requirements 中显式声明所需模态。
 
+通用文件使用 `{type: 'json', widget: 'files', fileConstraints: {minItems: 1, maxItems: 4, maxBytes: 20971520, mimeTypes: ['text/plain', 'application/pdf']}}`，根参数与 builtin.input 共用声明和消费校验。文件值是带 name 的标准 file/asset 内容块；空文件合法，清除是显式 `[]`。表单、设计器运行面板及 Flow 设置已接入；上传、接纳与实际 Harness 消费的范围见[输入协议 7.4](design/invocation-input-resolution.md#74-通用文件上传与结构化提交)。宿主上传容量不等于连接支持的格式或大小，派发前仍校验真实资产及目标能力。
+
 `builtin.input.config.review: true` 即使初始值有效也会请求用户提交，并在交互 payload.values 中携带预填内容；恢复保持同一待回复交互。默认行为仍只询问缺失或无效字段。
 
 `builtin.flow@2` 的 `config.connectionBindings` 显式映射子槽到父槽，例如 `{ writer: 'text' }`。父槽先完成准入，子槽继续按自己的能力要求校验；运行时的 `callId/writer` 绑定优先于该映射。不隐式继承未映射的槽。
@@ -550,6 +560,24 @@ CLI 用 `mindos validate -f example.flow --json` 检查源码和同目录子流�
 平台无关的 `FlowInstallationService` 统一执行定义检查、工具 ensure、默认参数与条件连接检查。`ready`、`needsConfiguration`、`missingTools`、`failed` 明确区分就绪、待填写配置、缺少工具和失败；报告保留 tools、parameters、connections、errors 明细。工具箱 `flowInstallations.check/ensure/list` 和 `toolPackages.list/ensure` 可查询或重试，`importWithReport` 返回导入路径和安装报告。宿主 `ApplicationRuntimeOptions.toolDependencies` 只能按工具 ID/版本发现并注册已安装或可信本机工具包，不下载未知依赖。
 
 默认 Flow 播种、导入和显式系统恢复复用此机制。资源已存在时保留当前草稿和已发布修订，并对当前保存的声明重新检查；不会用新版产品模板替换用户定义，也不会捏造或写回缺失参数、凭据或连接。系统恢复结果逐项返回 dependencies，`initialFiles.prepareDependencies(ids)` 只重试依赖，不重复恢复资源。
+
+### 子调用身份与尝试投影
+
+新运行将 `invocationIdentityVersion=1` 冻结到初始 checkpoint。带根 `DagRunSpec.invocation.invocationId` 的运行，在节点提交前派生独立的子调用身份；循环轮次、并行派发控制器、分支 key 和动态 worker 轮次分别参与作用域，Kernel Task ID 和图重试代次不参与。Task labels 保存 invocationId/parentInvocationId，图内替代及内部 Task retry 保留该业务身份；用户再次调用的新根身份产生不同子树。根调用、节点调用与真实 Task/Effect 尝试仍是不同对象。
+
+`FlowRunSummary.invocation`、`DurableFlowSnapshot.invocation`、`nodes[].invocation` 及 `FlowRunMember.invocation` 提供显式关联。Task 状态与旧尝试终态继续来自 Kernel，不能因有子调用 ID 就把失败尝试直接认作业务调用的最终失败。Run 查询从当前持久成员选择最新实例；历史 taskTree 可按调用父子关系补全被替代的旧尝试，重新打开后仍能追溯。`controlTaskIds` 来自当前持久成员；历史补全不扩大可控制成员，也不反向修改正在调度的节点映射。旧尝试的 transcript 使用只读归属核对。缺少身份版本的旧 checkpoint 保留原提交摘要，未知版本拒绝恢复。旧根、旧任务缺少调用身份时保留未知，不宣称已恢复派发前身份。
+
+此增量覆盖已有根身份的节点、循环、结构化 worker 及图重试恢复；任意 DAG/CLI 根调用的统一准入、调用组 UI、完整长期历史，以及 Agent/Flow 定义与跨编排调用迁移仍未完成。身份关联不会自动开放当前受限的嵌套动态派发。
+
+### 调用范围与根准入
+
+`FlowDraft.exposure` / `FlowRevision.exposure` 可取 `global` 或 `local`，旧定义缺省为 global。显式值在发布、内联定义和归档投影中保留并参与摘要；缺省字段不补写，保持旧发布身份。范围属于所选修订，修改新修订不代替资源撤权。
+
+`prepareFlowRun` 拒绝 local 根调用，`flowToDag` 保留编译 local 子 Flow 的能力；源码检查、发布和依赖编译不因 local 被拒绝。公共 `FlowCommand.RunStart` 从存储解析现有发布身份，不信任调用方对发布正文或 exposure 的覆盖；已存在资源的缺失修订不能作为匿名正文运行。可信宿主保存的 `preparedGraph` 通过 `submitPrepared` 执行，已接纳调用和恢复不重读最新定义。不存在发布资源的显式图正文仍可经完整根准入运行。
+
+纯契约入口提供 `callableExposure`、`isRootCallable`、`assertRootCallable` 及 `CallableExposureError`。未知值返回 `CALLABLE_EXPOSURE_INVALID`，local 根调用返回 `CALLABLE_LOCAL_ONLY`；没有客户端可声明的内部调用标记。Flow 内部调用资格由真实编译路径与依赖解析提供，调用范围不替代授权。
+
+Harness builtin.agent 节点现保留结构化消息与标准 image/file 资产引用，messageTemplates 可引用参数或同 Flow Tool 输出。Task/Effect 只保存引用与内容身份，宿主通过真实消费 Task 的 TaskAssetReader 在原生修改前完成读取和内联准备；未声明支持的格式明确拒绝。实际覆盖、恢复边界与剩余上传/传输限制见[输入解析协议](design/invocation-input-resolution.md#73-flow-资产引用与-harness-目标准备)。
 
 ### 调度准入与清理权限
 

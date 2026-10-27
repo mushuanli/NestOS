@@ -40,7 +40,15 @@ Flow 重新运行通过 `FlowRerunService` 校验参数并创建替代分支，�
 
 FlowInvocationService 通过注入的 prepareRun/submitPrepared 端口先完成完整 DAG 准入，再持久化 preparedGraph 与调用意图，最后提交根 Task。准入图覆盖最终连接选择及子 Flow，提交重试不重新读取模型配置；根 Task 持有执行快照后删除临时图。编译与任务提交仍归 llm-flow，会话层不实现第二套 DAG 编译器或执行器。
 
+FlowInvocation 的 source/expectedSignature 经 prepareFlowCallInput 生成并保存 inputResolution 与损坏检测摘要，原 parameters/source 继续用于同 requestId 去重；重试、运行及内容来源核对使用冻结实参。旧记录缺少 resolution 时走原参数兼容路径。Flow Agent 接纳也保存同一解析结果，flowExpectedSignature 约束参数表单的发布版本。空文字指令必须在入队前取得后端验证的 flowBinding，不能仅凭调用方提供 flowParameters 就接纳普通空聊天。
+
+独立 Flow 调用新建时保存 invocationId 并传入根 spec；并发接纳选中同一 CAS 胜者，提交核对不新建身份。flowInvocationRequest 只复制公开请求字段，防止调用方注入冻结计划、根任务或定义。用户重新运行以新 requestId/Invocation 关联 retryOfInvocationId，来源须有真实 Kernel 根终态；retryOfSessionId 跨会话时，来源必须是宿主读取的目标 parentSessionId。flowInvocationId 为旧记录提供确定性别名，不在读取时迁移。原记录与根身份不符时拒绝，不按 requestId 盲目接管根。
+
+普通 Agent/Flow Agent 的 InvocationIdentity 在队列 claim 写入时分配，先于 Task 提交；恢复不得换身份。prepareInstruction 只接纳公开字段，拒绝注入内部身份或冻结绑定。根 labels、Flow spec 与 Round.executions 保持同一身份。重新生成、编辑后重跑及 Flow 参数重跑验证原 Kernel 终态并创建新身份，已有执行的空助手 Round 也必须保留；旧 Task 无标签时用确定性旧任务别名记录 retryOf，不在读取时迁移。Round 执行关联通过 round:updated.execution 更新用户/助手投影，message:updated.execution 不改正文；正文及终态仍走既有 refreshSession。原生 bindingId 不复用任何 Task/Invocation 身份。
+
 SessionRepository.createSession 的可选 initialState 与新会话身份在同一记录事务提交，并在首次变更通知前可读；入口复制调用方数据，不把文件引用或项目选择策略放入 Session 持久化。
+
+session.context.bindings 是显式 Session 身份的只读目录，先核对 manifest/可选分支，再调用宿主 ContextBindingReader；不要求绑定视图、不获取 Session 写租约，不用 Task ID 代替 binding。分页 DTO 不包含原生控制引用、操作 fingerprint 或完整策略；缺少端口、存储异常和坏记录均明确报错，不能冒充空目录。
 
 ## 观察生命周期
 
@@ -71,6 +79,8 @@ Flow 重跑以 Session manifest/持久 Round 索引为来源，空分支或无�
 
 Agent 定义的 `capabilityPolicy` 位于顶层；`AgentResolver` 读取 `agentDef.capabilityPolicy`，不是 `agentDef.config.capabilityPolicy`。
 
+AgentResolver 的根解析及宿主 fallback 必须拒绝 local/无效 exposure，不能把准入拒绝降级成缺失 Agent；Flow 的 resolveExact 保留 local 身份。Flow Agent 的实现目标按严格规则不能是 local Flow；独立 Flow 新调用在参数/材料/Task 副作用前复验范围，已接纳记录继续使用冻结计划核对。定义管理列表保留 local，根选择器单独过滤，不能用 UI 隐藏代替后端准入。
+
 VFSAgentService 的 `configureFlowAvailability` 接受宿主提供的最小 Flow 观察端口，列表与精确读取返回派生 `availability`；该字段不写入 Agent 源文件，也不计入 Agent 身份。FlowEngine 发布资产后通知观察者，底层资产不发普通 VFS 节点事件；文件删除、移动和恢复继续由宿主资源事件驱动刷新。绑定缺失、未发布、修订缺失和定义无效分别呈现，不删除失联 Agent。
 
 Flow 指令接纳通过 llm-flow 的 prepareFlowRun 生成图，在 flowBinding.plan 保存图、引用身份与摘要。对话历史和宿主上下文在派发时绑定；静态引用与批量子模板不能重读源定义。派发仍复验当前连接/授权，动态新身份在扩展时准入并随图持久化。计划损坏拒绝恢复，无计划的旧队列沿用兼容路径。可用性按 Flow ID/修订缓存并合并在途检查，资源事件失效，单个 Agent 读取不刷新整个目录。
@@ -89,18 +99,25 @@ ConversationContextBuilder 负责 Round/Branch 选择、宿主材料与 Context 
 
 连接准入的缺失绑定和能力错误携带稳定 code 与 field（槽位名）；前端不解析错误消息。session.check-flow-connection-slots 独立返回槽位配置问题，复用完整图准入的 admitFlowConnectionSlot，不构造空节点的临时 Flow。必需槽位未覆盖时可继承用途默认连接，可选槽位的空字符串表示显式解绑。
 
+普通 Agent 新指令在 connectionBinding.agent 冻结身份及策略并验证摘要；派发与恢复不可用最新目录覆盖它。连接授权与实际历史仍按原边界复验/装配。队列显示投影不得携带新增身份正文，公开输入不能注入 binding；旧无身份快照队列保留兼容路径，不伪造旧接纳事实。
+
+session.submit 通过 SubmissionRequest 选择真实 Agent/Flow 根目标，核对 expectedTarget、expectedSessionId 与新提交的 expectedBranch，conversation 来源必须属于实际绑定 Session。原接纳核对先于当前分支检查，切分支后仍能核对旧请求；expectedBranch 缺省保持旧摘要，不补造分支身份。目录只读公开发布元数据，坏条目隔离；原生 writer 不参与目录读取。结构化表单确认后的 presentation 只用于历史，不能参与 arguments 解析；Round 与实时 SessionGroup 保留相同 callInput/target。session.submission.receipt 必须带已有提交身份，按原请求摘要只读查既有队列接纳回执或真实历史，返回 accepted/unknown；不读取最新目标来重新解释输入，不派发或恢复，不以 accepted 宣称执行完成。session.submission.inspect 复用同一读取实现，要求 expectedSessionId，可在未绑定或当前绑定其他 Session 时查询，不创建、激活、恢复 Session 或唤醒队列；原 receipt 的绑定校验保持严格。仅 Kernel SESSION_NOT_FOUND 可视为未初始化的未知回执，其他读取/损坏错误必须保留。session.submission.committed 仍只核对持久历史。回执查询日志区分 input/binding/lookup 失败，不记录正文、参数或原异常文本。新队列 identityVersion=1，旧队列不根据当前定义补造 target 标签。UI 操作台账和分支 inputArguments 在 ConversationUIState 中作为不透明展示恢复数据保存，不拥有 Kernel 执行权威。
+
+指令附件在接纳前复制到现有 Session attachments，以提交身份、序号及 SHA-256 命名并保存 content={sha256,bytes}；运行时 Blob 在原请求摘要前取得内容身份，已准备引用的摘要由宿主核验。原 submissionDigest 不被宿主快照名称改写。writeAttachment 为不可变写，内容相同可核对重试，不同内容拒绝；未知写回执须读取相同内容确认。派发前及上下文物化时复验大小与摘要，缺文件、读失败或损坏不得跳过。显式 @asset 引用为必需附件，普通未解析文档链接保留文字语义。选中历史通过 ContextAssembler.resolveMessage 物化为可序列化内容后参与预算与模型调用，持久 Round 仍只保存引用和内容身份；不得在历史选择前读取被排除的附件。
+
+ArtifactLoader 由宿主注入，接收实际调用的 sessionId 与不可变 artifactId；ConversationContextBuilder 按 ExecutionTask 的 Session 调用，不能使用当前编辑器绑定。SessionManager.getArtifact 和 ContextPreview 已接真实读取器；预览先捕获 Session 身份，后续异步解析不跟随切换后的绑定。二进制文件须显式转换后才能作为文字 Context，不能把路径或元数据当作文件正文。独立库未注入读取端口时明确报不可用。
+
+普通 Harness Agent 的当前输入由宿主单独物化并保存在实际 Task 输入；host-assembled 使用选定历史和本轮材料，显式 checkpoint fork 仅使用本轮增量。文本附件按严格 UTF-8 解码，图片保持内联文件边界，不同时把附件正文拼入 prompt；不支持格式须显式转换。Context 预算包含物化附件，Round 仍只保存引用。原生项目记忆不属于宿主完整上下文保证。
+
+validateCallAssets 由宿主注入，贯通 Flow/Flow Agent 根接纳、实际队列实参编辑及 DagCommandService 准备；独立 FlowInvocation 使用同一准备边界。新派发在创建 Task 前再次核验，消费时仍按 Task 授权读取。原提交与无变更编辑先核对持久事实，不能因文件后来丢失抹掉接纳或自动重发。
+
+AgentPublications/AgentRevisionStore 在现有 agents VFS 的隐藏 SeqFile 保存定义版本、最新指针和发布回执；不是执行状态库。发布前读取真实来源及提示词，校验来源/依赖摘要，事务一起提交；旧 operationId 回执不回退指针。AgentResolver 优先发布身份，精确旧版不跟随新草稿；旧未发布资源保留兼容，已接纳队列仍走原快照。删除来源拒绝新调用，保留发布记录供只读追溯。完整传递依赖、implementation/body 和归档映射尚未完成。
+
 Agent 发布修订与回执位于既有 VFS 定义平面。显式发布冻结共享提示词与实现依赖，AgentResolver 读取发布身份；普通 Agent 队列接纳保存策略摘要，连接凭据和实际上下文不进入该快照。诊断异常不能覆盖已持久结果或原拒绝；新身份元数据不得改变旧接纳 Task 指纹。
 
 session.submit 将 Agent/Flow 根调用送入既有队列，外部字段不授予内部计划或 Invocation。编辑从冻结定义重编译，claim 先持久分配根调用身份；用户重跑新建身份并保留原终态。submission.inspect 只读显式 Session 的接纳事实，不激活视图或执行。附件接纳冻结不可变字节，派发核验后通过 Context.resolveMessage 装配；完整子调用身份、默认工作台台账和通用文件传输继续分批验收。
 
-validateCallAssets 由宿主注入，贯通 Flow/Flow Agent 根接纳、实际队列实参编辑及 DagCommandService 准备；独立 FlowInvocation 使用同一准备边界。新派发在创建 Task 前再次核验，消费时仍按 Task 授权读取。原提交与无变更编辑先核对持久事实，不能因文件后来丢失抹掉接纳或自动重发。
-
 ConversationUIState.operationRecords 仅保存宿主 UI 的不透明操作台账；Kernel、队列、Round 的事实权威保持原位置。默认工作台与独立视图查询原冻结 Submission 的完整摘要，不能只凭队列 ID 判定接纳，也不能在恢复时使用当前分支或最新目标改写请求。
-
-ArtifactLoader 由宿主注入，接收实际调用的 sessionId 与不可变 artifactId；ConversationContextBuilder 按 ExecutionTask 的 Session 调用，不能使用当前编辑器绑定。SessionManager.getArtifact 和 ContextPreview 已接真实读取器；预览先捕获 Session 身份，后续异步解析不跟随切换后的绑定。二进制文件须显式转换后才能作为文字 Context，不能把路径或元数据当作文件正文。独立库未注入读取端口时明确报不可用。
-
-
-原生上下文选择由 ExecutionOverrides.harnessConversation 进入冻结指令；模型/Flow 目标不得静默忽略，严格 continue 缺少原生条件写保障时明确拒绝。普通 Harness Task 保存宿主快照依据和实际消息，显式 fork 只发送本轮增量及已核验附件。session.context.bindings/options 查询显式 Session/分支，不切换当前绑定；静态兼容不是授权，实际派发仍核对策略和 binding 修订。
 
 
 ContentTransferService.createChild 在入口冻结请求，以原 content.child 记录核对并发或丢回执，不能仅凭写入异常新建身份。请求字段顺序不影响身份，不同标题/材料来源明确冲突。SessionRepository 在同一实例内按 Session ID 串行初始化文件和元数据，避免两个独立调用同时 ensure 相同子会话时的文件竞态；持久 CAS 和宿主 lease 仍是跨实例权威。该机制不自动提供 Agent/Task 调用路由或父子控制所有权。

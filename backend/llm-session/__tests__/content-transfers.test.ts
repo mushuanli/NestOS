@@ -121,18 +121,6 @@ it('prepares child execution before navigation even when repository creation onl
     await raw.dispose();
 });
 
-it('freezes a named structured Flow output and preserves the concrete run and output port', async () => {
-    const catalog = new CommandBus(); let score = 7;
-    catalog.register('session.flow.invocations', async () => [{requestId: 'review-call', rootTaskId: 'review-root', flow: {name: 'Review'}}]);
-    catalog.register('dag.run.get', async () => ({root: {task: {status: 'succeeded', output: {nodes: {__flow_return: {report: {score}}}}}}}));
-    const service = new ContentTransferService({kernel, repository, commands: catalog});
-    const capture = await service.capture(sessionId); score = 99;
-    const transfer = await service.resolve({sessionId, captureId: capture.id, selection: {kind: 'output', outputId: 'review-call/report'}});
-    expect(transfer.value).toEqual({score: 7});
-    expect(transfer.output).toMatchObject({taskId: 'review-root', requestId: 'review-call', port: 'report'});
-    await expect(service.resolve({sessionId, captureId: capture.id, selection: {kind: 'unknown'} as never})).rejects.toThrow('CONTENT_SELECTION_INVALID');
-});
-
 it('prepares child storage before the recovery gate and retries a refused lease with the same child identity', async () => {
     const raw = new SessionRepository(await manager.openFileSystem('/')); await raw.init();
     const stages: string[] = [], children: string[] = [];
@@ -159,6 +147,17 @@ it('prepares child storage before the recovery gate and retries a refused lease 
     } finally {await raw.dispose();}
 });
 
+it('freezes a named structured Flow output and preserves the concrete run and output port', async () => {
+    const catalog = new CommandBus(); let score = 7;
+    catalog.register('session.flow.invocations', async () => [{requestId: 'review-call', rootTaskId: 'review-root', flow: {name: 'Review'}}]);
+    catalog.register('dag.run.get', async () => ({root: {task: {status: 'succeeded', output: {nodes: {__flow_return: {report: {score}}}}}}}));
+    const service = new ContentTransferService({kernel, repository, commands: catalog});
+    const capture = await service.capture(sessionId); score = 99;
+    const transfer = await service.resolve({sessionId, captureId: capture.id, selection: {kind: 'output', outputId: 'review-call/report'}});
+    expect(transfer.value).toEqual({score: 7});
+    expect(transfer.output).toMatchObject({taskId: 'review-root', requestId: 'review-call', port: 'report'});
+    await expect(service.resolve({sessionId, captureId: capture.id, selection: {kind: 'unknown'} as never})).rejects.toThrow('CONTENT_SELECTION_INVALID');
+});
 
 it('freezes a waiting duplicate before caller mutation', async () => {
     let release!: () => void;

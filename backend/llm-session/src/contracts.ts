@@ -8,10 +8,13 @@ export * from './contracts/agent';
 export * from './contracts/connection';
 export * from './contracts/pricing';
 export * from './contracts/chat';
+export type * from './contracts/artifacts';
 export * from './contracts/restore';
 export * from './contracts/commands';
 export type * from './contracts/instruction-queue';
 export type * from './contracts/submission';
+export * from './contracts/context-bindings';
+export * from './contracts/context-options';
 export * from './contracts/flow-invocations';
 export * from './contracts/content-transfer';
 export type * from './contracts/prompt-history';
@@ -69,8 +72,3 @@ export type * from './contracts/memory';
 
 export { inferFlowConnectionRequirements } from './contracts/flow-connection-policy';
 export type { FlowConnectionSelection, FlowConnectionSnapshot } from './contracts/flow-connection-snapshot';
-
-export type * from './contracts/artifacts';
-
-export * from './contracts/context-bindings';
-export * from './contracts/context-options';

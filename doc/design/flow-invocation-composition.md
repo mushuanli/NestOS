@@ -230,6 +230,7 @@ C4Component
 - 发布新 revision 时保存递归 dependencyLocks（子 id/revision/digest/子锁），计入父 digest。原有已发布版本不会被改写；新版本拒绝循环、过深和过大依赖。重复运行使用原 revision 的锁定依赖。
 - `FlowInvocationService` 在 Session shared 的 `flow.invocation.<requestId>` 保存独立调用记录和提交意图，不向普通聊天分支追加未完成 user Round。来源 branch/head 在宿主装配时冻结；Task/Run 是运行状态权威。
 - 根 Task 原子提交携带 requestId 及 invocation 元数据。重复请求或丢失记录回执通过根 Task 核对，避免再次启动；同 requestId 不允许更改参数。宿主启动核对已有根并恢复调度，补交尚无根且未记录启动错误的意图。
+- 新独立调用在既有记录中保存 invocationId，根携带相同身份，requestId 继续用于接纳去重。用户“再次调用”创建新 Invocation 并保存 retryOfInvocationId/retryOfSessionId；来源必须有已确认根终态，跨会话仅沿持久父子关系。旧调用由 flowInvocationId 提供确定性别名。内部节点新重试只允许未终结 Run；同一旧重试请求的核对仍返回原尝试，不追加副作用。
 - 卡片通过 `RunGet` 的任务成员表恢复所有 pending interaction，并以根 taskId、具体 taskId、interactionId 提交。提交前重读待处理状态；停止订阅后拒绝旧回复。
 - 原聊天 Session 的单前台运行限制保留；独立 Flow 调用不占用该槽位。Flow 调用卡片的输出仅在用户“用于对话”后进入草稿，不自动注入模型 history。
 

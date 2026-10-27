@@ -1,6 +1,6 @@
 # Session 指令队列
 
-本地 Chat / Agent Session 在执行时仍可发送后续指令。后端先持久接纳，当前轮历史提交完成、Session 打开且无运行任务、待交互任务或待清理副作用时自动发送下一条。页面只展示与编辑队列，释放页面观察不停止仍存活的宿主。HTTP 宿主可在关页后继续执行；纯浏览器本地运行在重开后恢复队列。远程原生 harness 保持现有发送协议，本次不在浏览器补建第二套队列。
+本地 Chat / Agent 与远程原生 Session 在执行时仍可发送后续指令。后端先持久接纳，当前轮历史提交完成、Session 打开且无运行任务、待交互任务或待清理副作用时自动发送下一条。页面只展示与编辑队列，释放页面观察不停止仍存活的宿主。HTTP 宿主可在关页后继续执行；纯浏览器本地运行在重开后恢复队列。本地与远程使用独立 llm-ui 的 InstructionQueueView，支持正文编辑、排序、合并、删除、暂停与继续；队列接纳与调度均归宿主，不在浏览器自动重发。
 
 ## 模块与 C4
 
@@ -9,7 +9,7 @@ C4Component
     title Session 指令队列的前后端边界
     Container_Boundary(frontend, "前端 ui/llm-ui-adapter") {
         Component(input, "ChatInput", "DOM / TypeScript", "执行时保留发送和停止；确认接纳后清除本次输入")
-        Component(panel, "InstructionQueuePanel", "DOM / TypeScript", "展示、删除、排序、合并、暂停与继续")
+        Component(panel, "InstructionQueuePanel", "DOM / TypeScript", "展示、正文编辑、删除、排序、合并、暂停与继续")
     }
     Container_Boundary(backend, "后端") {
         Component(commands, "Session 命令契约", "llm-session/contracts", "可序列化请求、队列快照及版本条件")
@@ -60,7 +60,8 @@ sequenceDiagram
 
 - 队列属于 Session；指令捕获入队分支、用户选择的 Agent、覆盖参数、执行意图和附件元数据。历史头在实际执行时读取，不能在入队时固定旧历史。密钥与完整 Provider 配置不写入队列；实际执行重新校验配置与权限。
 - `session.send` 始终返回稳定的指令 ID。空闲和繁忙使用同一接纳入口：先持久记录请求、摘要和回执，再领取并调用既有运行协调器。空闲首条在持久写入前只校验配置，不调用模型；持久化失败不启动付费执行。UI 读取权威队列确认接纳位置，不把未执行指令伪装为历史轮次；仅有当前 dispatching 指令时隐藏队列面板。
-- `session.instructions.get` 是只读命令。`session.instructions.edit` 接受 `expectedRevision` 和 `remove / reorder / merge / pause / resume / retry`。旧版本或已被领取的指令返回冲突，不覆盖服务器状态。
+- 新指令首次领取时由宿主分配 `invocation.invocationId`，与 `dispatching` 状态同次 CAS 持久保存，先于根 Task 和付费调用。接纳入口只复制公开字段，不接受调用方注入 Invocation 或冻结连接/Flow 计划。恢复保留原领取身份；旧持久记录允许缺失身份，不能为核对未知结果补建新调用。根任务 labels 与 `Round.executions[].invocation` 沿用已领取身份，指令 ID 仍用于队列及提交去重，不充当原生上下文 binding。
+- `session.instructions.get` 是只读命令。`session.instructions.edit` 接受 `expectedRevision` 和 `update / remove / reorder / merge / pause / resume / retry`。旧版本或已被领取的指令返回冲突，不覆盖服务器状态。
 - `reorder.ids` 必须恰好包含全部 pending 指令。`merge.ids` 必须是相邻 pending 指令，且分支、Agent、执行意图与覆盖参数相同；按当前队列顺序用空行连接正文，合并附件，保留首条身份。
 - 已领取指令不允许删除、排序或合并。面板的暂停只停止续发；停止当前执行会先暂停后续队列，再调用既有取消链。执行失败或停止后队列暂停，用户处理后显式继续。
 - 单条至多 1 MiB，队列至多 100 条、4 MiB；保存最近 256 个接纳身份与内容摘要。同身份同内容返回原接纳结果，同身份异内容拒绝；删除、合并和完成后的近期重试不会重新添加已处理指令。
@@ -71,7 +72,7 @@ sequenceDiagram
 
 ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActivity`，由它持有唯一 `SessionInstructionRuntime`。视图只登记执行上下文端口和观察者，不各自创建队列、发送串行表或权威投影。统一串行入口覆盖所有视图的接纳、编辑、领取和收尾；运行占用从异步准入前保持到历史收尾后。队列收尾必须确认原指令 ID，不能用“当前队首”代替。持久领取继续依靠 CAS，跨宿主写入沿用 Session 单写者租约。退出先关闭共享入口并排空持久写入，再释放视图和 Kernel。
 
-附件使用稳定的提交身份及序号生成存储名，显示名称保留原文件名，后续同名上传不能覆盖排队内容。RPC 对同一观察回调按调用顺序完成编码和传送，防止较大的队列快照被后来的流式事件超越；普通查询及独立回调继续并行。
+附件使用稳定的提交身份及序号生成上传存储名，Markdown 标签保留原文件名；宿主在接纳前另存含 SHA-256 的内容快照，队列保存 `content={sha256,bytes}`。原始请求摘要保留上传引用及调用方内容预期，运行时 Blob 在计算该摘要前补上内容身份；宿主快照名不改写原摘要。已有同名同内容写入可核对成功，不同内容拒绝，后续上传不能覆盖排队内容。RPC 对同一观察回调按调用顺序完成编码和传送，防止较大的队列快照被后来的流式事件超越；普通查询及独立回调继续并行。
 
 队列保存在 Session 的 `conversation/instructions` shared record；版本来自 Kernel 的 shared version。`/var/lib/kernel/instruction-queues.seq` 索引未排空的 Session，先写索引再写队列，持久排空后再删除索引；删除索引失败只记录安全诊断，残留索引只会多一次冷读取。这样统一接纳不会使后续启动扫描所有历史会话。恢复用例位于 app-core/session，runtime 只负责调用与生命周期接线。启动先冷读队列，跳过已排空的记录，只为仍有指令的 Session 打开宿主上下文并释放观察租约，执行上下文仍由 Runtime 持有。处于待发送或正在接纳状态的上下文不会被闲置清理回收；队列排空或暂停且执行空闲后可释放。
 
@@ -80,6 +81,22 @@ ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActi
 关键日志包含 `operation=session.instructions`、阶段、结果、错误分类、Session/指令身份、队列版本、数量和耗时，不记录正文、完整参数、附件内容或凭据。前端保留错误原因，发生版本冲突后读取最新队列，不自动重放编辑命令。
 
 验证覆盖 `llm-session/__tests__/instruction-queue.test.ts`、`app-core/tests/instruction-queue.test.ts`、`app-shell/tests/instruction-queue-panel.test.ts` 与输入就绪测试：持久 CAS、跨视图串行、关闭页面后续发、前一轮历史、删除/排序/合并、去重、失败及未知结果、界面转义和迟到响应。
+
+## 远程原生 Session
+
+`mindos-node-driver/harness` 的 `HarnessInstructionRuntime` 将原生队列写入既有 `HarnessRecovery.instructionQueue`；app-core 的 `RemoteConversationStore` 继续用 SeqFile CAS 保存。入队冻结文字、附件、原生模型/推理选择和命令种类；最近 256 个接纳身份保存原始内容摘要，编辑和合并不改变原始接纳回执。快照仅投影附件名称，不回传排队附件正文。支持 100 条、单条 1 MiB、整队列 4 MiB。
+
+`enqueue` 返回持久接纳事实，`editInstructionQueue` 接收显示的 `expectedRevision`；正文编辑捕获开始编辑时的版本，后续通知不升级该写入条件。原生斜杠命令沿用原命令端口，不作为模型消息发送；命令不能合并，也不能在编辑中切换消息/命令种类。派发前重新校验命令能力与模型选择。
+
+命令目录以 `execution: query|serial` 区分并发查询与串行操作，`kind: prompt|action` 继续表达输入语义；旧节点缺少 execution 时按 serial 处理。query 直接走 command，不进发送队列、不恢复或接管外部 Session，可在 active 时查询状态；仍需新鲜观察、授权及明确回执。普通消息和 serial 命令共用队列。入队冻结定义 id/revision，用户明确编辑后重新绑定；执行时客户端与节点复验 expectedCommand，目录变化须报错，不能按旧名字执行新定义。
+
+异步命令接纳返回 `status: running`，通过带 commandId/turnId 的 `harness/command/updated` 或确切原生 turn 终态确认完成。队列项单独持久保存自己的接纳回执；之后的状态查询不能覆盖它，也不能据无关 Session 空闲推断异步命令完成。观察快照的 scope/loaded 区分当前受控执行与外部历史，外部历史缺少进程证据时不宣称已经空闲。
+
+app-core 的 `ConversationRegistry` 按项目、profile、Session、只读属性及授权指纹共享同一会话控制面；独立页面只持有视图租约。最后一个页面关闭时，未暂停的非空队列继续通过宿主的已有事件订阅和低频恢复推进；排空或暂停后可释放。宿主退出只关闭观察并保留持久记录；重开 Session 时恢复队列。当前不在宿主冷启动时扫描并主动连接所有远程队列。
+
+原生空闲且无待答交互、未知回执时才能领取队首。派发接纳不代表模型完成；只有对应 turn 的终态证据，或原生空闲且对应助手消息已完成，才移除该指令并继续。失败/停止暂停后续队列；未知结果保留原生 requestId 并核对 receipt，不能重放。明确拒绝后用户可重试，队列身份保持不变，原生执行尝试使用新 requestId，避免重放此前拒绝回执。原生 action command 的接纳和 handler 失败分别保留，失败暂停后续队列。
+
+远程输入的冻结 submissionId 在发送前捕获。订阅可能先于发送响应确认接纳并清除草稿锁；发送回调必须用捕获的 ID 核对回执，不能读取已清空的 composer.submissionId 再把成功改成 unknown。队列的 acceptedIds 与实际 turn 回执分开；未执行内容显示在队列，不伪造已执行历史。
 
 ### 原生队列宿主入口
 

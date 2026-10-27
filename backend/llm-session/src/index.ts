@@ -110,12 +110,12 @@ import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
     independentCalls?: IndependentCallService;
-    independentTaskCallPolicy?(request: import('./contracts/submission').SubmissionRequest): Promise<import('./session/independent-call-preparation').IndependentTaskCallPolicy | undefined>;
     submitIndependentCall?: import('./contracts/independent-calls').IndependentCallSubmitter;
+    independentTaskCallPolicy?(request: import('./contracts/submission').SubmissionRequest): Promise<import('./session/independent-call-preparation').IndependentTaskCallPolicy | undefined>;
+    validateCallAssets?: import('./contracts/submission').CallAssetValidator;
+    loadArtifact?: import('./contracts/artifacts').ArtifactLoader;
     readContextBindings?: import('./contracts/context-bindings').ContextBindingReader;
     readContextOptions?: import('./contracts/context-options').ContextOptionsReader;
-    loadArtifact?: import('./contracts/artifacts').ArtifactLoader;
-    validateCallAssets?: import('./contracts/submission').CallAssetValidator;
     summarizeContent?: (sessionId: string, text: string) => Promise<string>;
     executionActivity?: import('./session/session-execution-activity').SessionExecutionActivity;
     instructionQueueSessions?: import('./persistence/instruction-queue-sessions').InstructionQueueSessions;
@@ -195,7 +195,8 @@ function createManagedSession(options: ConversationSystemOptions, promptHistory:
         resolveSessionSkills: options.resolveSessionSkills, retrieveMemory: options.retrieveMemory,
         memoryProvider: options.memoryProvider, canWriteSession: options.canWriteSession,
         workspaceManager: options.workspaceManager, loadArtifact: options.loadArtifact,
-        readContextBindings: options.readContextBindings, readContextOptions: options.readContextOptions,
+        readContextBindings: options.readContextBindings,
+        readContextOptions: options.readContextOptions,
         validateCallAssets: options.validateCallAssets,
     });
 }

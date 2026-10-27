@@ -18,6 +18,8 @@
 
 - workbenchView.initialSessionId 只请求目标准备，WorkbenchView.initialSession 的文件/观察租约由调用者释放；activate 仍单独执行。WorkbenchChatControls.configuration 是可选安全配置观察，不接入执行或原始配置写入。
 
+- session/command-policy 将 session.targets.list、session.submission.committed/receipt/inspect 明确分类为只读；RPC 动态命令模式与 HTTP 订阅屏障共用此规则。新查询不能因未知命令的默认写语义而被挂起的提交阻挡；授权和回执身份校验仍归后端。
+
 - SessionPresentationState 位于 ports/session.ts，组合 Task、Flow、Skill 的可选启动读模型；该应用聚合类型不进入 llm-session 或 llm-ui。
 
 - ApplicationBackend.taskAttachment 是显式 Session 的只读恢复查询，使用 durable-kernel/contracts 的 ReadTaskAttachment；不传内部 Task 记录或执行凭据。
@@ -32,6 +34,6 @@ ToolboxInventory 的 capabilityTags 是不含凭据的派生能力列表，confi
 
 - ports/flow-installation 定义工具依赖、可信工具包目录及 Flow 安装报告；FlowToolDependency 指具体工具身份，包版本和可执行位置由宿主管理。ToolboxResources 的 toolPackages/flowInstallations 为可选能力，InitialFiles 的 prepareDependencies 只重试现有定义依赖；导入与恢复报告不能把缺工具或待配置当作就绪。
 
-InputAssetCommand.ImportFile/Inspect 为通用文件上传及只读核对端口，InputFileIdentity 固定 uploadId/name/MIME/bytes/SHA-256；Inspect 不携带正文且归只读传输分类。20 MiB 是宿主上传上限，不能宣称为 Harness 原生附件能力。
-
 session/artifacts 提供已提交执行产物的纯 DTO 和 ArtifactCommand；引用固定 Session/Task、输出选择和摘要。app.artifacts.list/read 与 session.artifact.get 必须分类为只读，不能因在途提交的写屏障而阻塞。契约不导出资产读取器、Kernel 服务或 DOM。
+
+InputAssetCommand.ImportFile/Inspect 为通用文件上传及只读核对端口，InputFileIdentity 固定 uploadId/name/MIME/bytes/SHA-256；Inspect 不携带正文且归只读传输分类。20 MiB 是宿主上传上限，不能宣称为 Harness 原生附件能力。

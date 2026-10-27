@@ -16,7 +16,36 @@ pnpm cli session send <session-id> "Hello" --agent <agent-id> --profile /path/to
 
 数据根解析与 MindOS profile 一致。显式路径的 OAuth 目录默认是同级 `<data-root>.auth`，desktop 使用 release 的私密授权目录，可用 `--auth-dir` 覆盖。主机凭据和日志必须位于 VFS 根之外。应用宿主获取数据锁及授权锁，同一数据根不能与已运行 httpd 同时启动第二个写宿主；锁冲突明确失败，此时显式使用 `--connect`。文件名 `httpd-host-lock.sqlite` 为兼容已有宿主保留。
 
-本地 `session send` 等待本轮完成、失败、终止或等待人工输入，再关闭宿主；执行失败或终止返回退出码 2，等待人工输入返回 3；`--follow` 额外输出会话事件 JSONL。关闭视图不会重发消息，也不会把关闭转换为远程 interrupt。
+本地 `session send/submit` 等待本次 Submission 对应的历史与执行引用完成、失败、终止或等待人工输入，再关闭宿主；执行失败或终止返回退出码 2，等待人工输入返回 3；`--follow` 额外输出会话事件 JSONL。同 Session 其他调用的完成或审批不能提前结束本次等待。Flow 使用 RunGet.controlTaskIds 核对真实持久成员；Kernel rootTaskId 不能代替 Flow 成员归属。队列暂停时返回 execution.waitingForDispatch，不将接纳标成完成。关闭视图不会重发消息，也不会把关闭转换为远程 interrupt。
+
+## Agent 与已发布 Flow 的统一调用
+
+```bash
+pnpm cli session targets --profile /path/to/data
+pnpm cli session contexts <session-id> --profile /path/to/data
+pnpm cli session contexts <session-id> <binding-id> --profile /path/to/data
+pnpm cli session prepare <session-id> "继续检查" --agent <harness-agent-id> \
+  --context selection.json --submission-file context-call.json --profile /path/to/data
+pnpm cli session send <session-id> "检查接口" --agent <agent-id> --profile /path/to/data
+pnpm cli session send <session-id> "检查接口" --flow <flow-id> --params values.json \
+  --submission-file call.json --profile /path/to/data
+pnpm cli session prepare <session-id> --flow <flow-id> --params values.json \
+  --submission-file call.json --profile /path/to/data
+pnpm cli session submit <session-id> call.json --profile /path/to/data
+pnpm cli session receipt <session-id> call.json --profile /path/to/data
+```
+
+`--agent` 与 `--flow` 互斥；省略选择时使用 default Agent。默认 Agent 未持久列入目录时由宿主已有默认策略解析，CLI 不伪造版本或摘要，身份仍在后端接纳时冻结。Flow 不需要包装 Agent。`--params` 是 JSON 对象；有位置文字时使用 composer 来源，按发布定义的 inputSource 确定性绑定；文字看起来像 JSON 也不解析为参数。省略位置文字时使用 arguments 来源，允许纯参数、全部默认值和零参数 Flow。连接覆盖通过 `--connection-bindings` 提供 JSON 对象，目标未声明 Flow 输入时拒绝此覆盖。Flow Agent 的参数签名也随请求保存，后续绑定 Flow 修订变化必须重新准备，不能按新表单解释旧文件。
+
+`prepare` 只读取目标目录与 Session 元数据并保存请求，不激活会话或执行调用；它不表示后端已经接纳或完整校验。`--branch` 在 prepare 中记录预期分支，不切换当前分支。`send --submission-file` 在派发前独占创建权限为 0600 的文件，同步文件及父目录；文件存在或保存失败时不发送。文件冻结显式输入、目标版本/摘要及提交身份，后端仍在接纳时展开默认值和冻结实际执行计划。省略该选项的 send 不提供 CLI 请求文件恢复副本。
+
+`submit` 使用文件中的原身份明确提交；CLI 不自动重放写入。提交丢回复时使用 `receipt`，不能把 unknown 当成未发送或自动换 ID 重试。文件式 submit/receipt 不接受覆盖目标、参数、连接或分支；需要改变输入时准备一个新请求。call.json 含原始输入，应作为调用工件保存，不作为诊断日志。
+
+`receipt` 通过 `session.submission.inspect` 查询原冻结摘要，不打开或激活 Session 视图，不创建 Kernel Session、不唤醒队列，也不改变其他视图绑定。accepted 只证明持久接纳，unknown 只表示证据不足；该查询不证明执行完成。原有绑定内 `session.submission.receipt` 保留严格绑定校验。本地宿主启动时的正常恢复独立发生；需要观察现有运行宿主时使用 --connect。
+
+`session contexts` 经只读 `session.context.bindings` 查询安全绑定摘要；指定 binding-id 时分页读取已确认检查点。将返回的 nextCursor 原样传给 `--cursor '<cursor-json>'`，集合推进后重新查询。`--context` 文件只接收 ConversationSelection，随原调用冻结；后续编辑该选择文件不改变已准备的请求，submit/receipt 禁止该覆盖。普通模型 Agent、Flow 及不支持的原生能力不能因传入文件而获得续接权；严格原 thread 续接仍拒绝。上下文模式及完整实施范围见[绑定协议](design/execution-context-binding.md#84-已确认检查点与只读目录)。
+
+远程使用这些入口需要 httpd 构建包含 session.targets.list、session.submit 与 session.submission.inspect。旧宿主缺少命令时明确失败，不回退到旧 session.send 或本地执行。快速退出时，启动协调器继续允许已接纳恢复工作读取既有就绪 Promise，拒绝新初始化并排空原工作。
 
 ## 显式连接现有 httpd
 
@@ -83,6 +112,8 @@ mindos-node 0.1.5+ 的 Codex/Claude profile 声明 `capabilities.usage`，提供
 `<config>` 遵循 XDG_CONFIG_HOME。httpd 的 `MINDOS_HTTPD_LOG_DIR` 覆盖运行与审计日志目录；系统默认目录需先授权给运行用户，准备命令和运行版本查询见 [HTTP 宿主](http-app.md#启动与认证)。CLI 的 `MINDOS_DIAGNOSTICS_DIR` 只覆盖诊断目录，`--audit-file` 只覆盖当前宿主审计路径。新应用诊断记录操作阶段、错误码、提交结果和请求 ID，不写 prompt、消息正文或凭据。旧日志不删除。
 
 已有 `run/resume/respond` 等 YAML/RunDefinition 离线执行命令继续使用 `createKernelRuntime` 和自己的 RunStore 工件；它们不是应用 Session 命令，不支持 `--connect`，不能将旧 run-id 当作应用 session-id。`twin` 使用本地共享应用 Runtime；旧 memory/fs 辅助入口按原作用域执行。
+
+原生只读诊断使用共享应用端口，不发送 prompt：`pnpm cli conversation query <project-id> <profile-id> <session-id> session:status [query-id] --connect https://host:2000`，认证参数同其他应用命令。报告保存待核对时使用 `conversation reconcile-query <project-id> <profile-id> <session-id> <query-id>`。这两个入口不先读取完整历史；节点需声明 commandQueries 能力，缺失时明确报错。它们核对查询报告，原执行仍通过原 submission/control 身份核对。
 
 ## Flow 调用控制 CLI
 

@@ -46,3 +46,6 @@
 [submodule "tools/fc-server"]
 	path = tools/fc-server
 	url = git@github.com:mushuanli/fc-server.git
+[submodule "tools/firecracker-virtiofs"]
+	path = tools/firecracker-virtiofs
+	url = https://github.com/mushuanli/firecracker-virtiofs.git

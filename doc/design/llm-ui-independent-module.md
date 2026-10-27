@@ -363,6 +363,44 @@ C4Component
     Rel(native, executor, "权威校验后执行")
 ```
 
+### 通用指令队列视图
+
+`InstructionQueueView` 从独立 llm-ui 根入口导出，接收展示投影、标签与 read/edit 端口，提供正文编辑、排序、相邻合并、删除、暂停/继续与失败重试。组件不依赖 Session 或应用类型，不负责持久接纳、续发、回执核对或共享连接。MindOS 的 InstructionQueuePanel 只做本地/远程命令适配；远程输入复用相同可编辑视图。正文编辑保持原 revision，版本冲突刷新投影并保留待处理文本，不重放编辑。
+
+### 正式 Session 工作台的目标选择与提交
+
+默认工作台从 `session.targets.list` 读取发布元数据，使用独立 `TargetRef` 区分 Agent 和 Flow；UI 选项键只用于选择，不作为 Agent ID。选择及切分支只改变下一次输入，保留文字、附件和模型偏好，已入队调用使用原冻结计划。已发布 Flow 的参数表单复用现有 Flow 输入及连接校验，未声明用途的文字、附件明确拒绝；表单确认后 arguments 是唯一可执行实参，presentation 只保留原编辑文字。
+
+```mermaid
+C4Component
+    title 正式 Session 工作台的统一目标提交
+    Component(input, "ChatInput 与目标目录", "llm-ui-adapter", "正式会话与本地首次草稿共用选择和参数确认")
+    Component(recovery, "原提交核对条", "llm-ui-adapter", "独立查询冻结请求，不重填参数或发送")
+    Component(ledger, "OperationLedger", "独立 llm-ui", "保存冻结提交及接纳结果")
+    Component(uiState, "Session UI 记录", "既有持久化", "保存台账、分支目标及参数草稿")
+    Component(commands, "Session 命令端口", "公开契约", "目录、submit、接纳与历史核对")
+    Component(queue, "Session 指令队列", "llm-session", "接纳、冻结计划、CAS 编辑与派发")
+    Component(kernel, "Kernel 与执行事实", "既有运行时", "执行、恢复和清理")
+    Rel(input, commands, "只读列目标")
+    Rel(input, ledger, "派发前登记冻结请求")
+    Rel(ledger, uiState, "保存后才发布状态")
+    Rel(input, commands, "按目标和预期 Session 提交")
+    Rel(commands, queue, "持久接纳")
+    Rel(queue, ledger, "接纳通知结算原操作")
+    Rel(queue, kernel, "按原计划派发")
+    Rel(recovery, commands, "按原请求查询 session.submission.receipt")
+    Rel(commands, ledger, "完整摘要核对后结算；接纳不等于执行完成")
+    Rel(ledger, input, "接纳释放原提交，消费匹配草稿")
+```
+
+工作台通过 `createOperationLedger(initial/save)` 保存到已有 `ConversationUIState.operationRecords`，不建立另一套执行状态。队列通知触发原冻结请求的完整摘要核对；只读核对确认接纳后结算同一操作，即使原发送 Promise 仍悬挂，也释放该提交限制。查询失败保留观察和原操作，迟到响应只核对原身份。未知提交重开后不自动重发；独立核对条无需重新填写参数或仍能选择旧目标。即使队列条目已经移除，仍可从既有接纳回执核对；不能据此伪造历史消息或执行完成。
+
+表单确认后的参数使用同一 `WorkspaceArgumentDraft` 保存 JSON、修订、发布签名和目标，composerText 只记录预填依据，不另存一份参数权威。正文未变化时重新打开表单保留用户确认的参数；正文改变时只重新绑定声明为 composer.text 的字段。分支恢复保存参数草稿；切分支增加输入修订，旧回执不能消费另一分支的同文草稿。当前独立查询仅自动消费明确匹配的无附件草稿；附件身份、接纳后崩溃窗口的完整细粒度消费和表单/JSON 共用实时编辑状态仍在迁移。
+
+本地项目首次草稿已从同一目录选择已发布 Flow，使用同一参数表单和 session.submit，不需要包装 Agent。首次准备与提交沿用草稿 UUID，原地转正复用输入 DOM；Flow 不写入 createdWithAgentId。显式刷新会等待旧目录读取完成后再读取最新目录，避免发布期间复用旧在途结果。历史参数详情使用普通 DOM，更新事实不重建 Markdown 编辑器；参数编辑针对所选历史来源的新调用，保留原结果及发布版本。
+
+正式 Session 与本地项目首次草稿已接通统一选择和发送；CLI Session 根调用也复用目录、SubmissionRequest 和原队列，位置文字与参数文件不引入另一套解析规则。CLI 通过无绑定 session.submission.inspect 读原回执，不为查询激活视图；普通绑定内 receipt 继续保留绑定保护。远程原生草稿、父 Flow、旧 YAML/RunDefinition CLI 根身份和其他兼容组件仍需继续迁移，不代表所有工作台视图都已替换为独立 ChatView。
+
 
 ### 历史 DOM 的身份与查找
 

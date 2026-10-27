@@ -85,6 +85,8 @@ prepareNodeTask 只准备节点输入与变量快照；FlowTaskFactory 只构造
 
 GraphRetryController 在同次消费中对每个 requestId 只执行一次内存图修改，CAS 冲突重读队列时合并新意图；图修改与 appliedGraphRetries 回执先提交同一 checkpoint，再 CAS 确认队列；恢复按回执跳过已应用请求，确认写入仍是独立事务。Scheduler collections 保持 version-1 内存结构；checkpoint-store 以 version-2 envelope 分开保存稳定图组件和运行状态，统一读取旧 v1 与新 v2。历史检查点引用不可变组件，继续保留租约 fencing 与先组件后指针的提交顺序。FlowRunAggregation 使用当前 fenced Session；根创建发生在调度租约建立前，最终投影写入发生在租约建立后，不能缓存初始未 fencing 的 Session。
 
+新的手动节点尝试及图重试只允许非终态根 Run，终态返回 FLOW_RUN_TERMINAL 并要求宿主创建新 Invocation。既有 retries 成员保存 retryRequestId/retryMode；同一请求核对返回原 Task，不同源或模式拒绝复用。根在 deferStart 后终结时取消尚未启动的尝试。DagCommandService.onControlDiagnostic 仅报告控制身份、阶段、模式、分类与耗时，宿主可连接既有日志；回调异常不能改变持久控制结果。
+
 FlowRunLifecycle 接收宿主工作区 manager、已 fencing 的 Session 和租约；清理先确认任务停止及能力释放，detached drain 保持调度所有权。公共 workspace 类型与 workspaceLeaseKey 定义移入 run-lifecycle，其中 workspace 类型继续从原 executor/root 入口导出，lease key 继续仅从源码 executor 入口转发，内部组件不新增根 API。
 
 FlowScheduler 消费显式运行状态与提交、预算、Hook、checkpoint 端口；保留控制组并发、交互等待、生产者校验和补偿顺序。lease 失权或宿主关闭仅解除本地调度，不将 Run 标成失败。外部图效果整批解码后才修改图；重试队列和持久 checkpoint 在恢复前检查结构，未知插件配置仍归插件校验。
@@ -99,8 +101,24 @@ FlowConnection.requirements.responseFormats 可声明连接必须支持的输出
 
 prepareFlowRun 是跨入口共享的定义校验与编译边界，不持有 Session 历史或队列。definition-references 拥有词法调用遍历与按调用节点/children 解析的外部依赖，应用归档不能按 Flow ID 扁平化锁。definition-projection 统一存储与归档正文转换，接管、发布和发布转草稿均保留递归 functions。
 
+exposure 缺省为 global，显式值随定义修订冻结并参与摘要；旧定义不得在投影时补写 global。prepareFlowRun 负责根调用准入，flowToDag 是允许合法 local 依赖的低层编译器，源码检查不能因此拒绝 local 定义。公共 RunStart 必须解析现有发布身份，不能信任客户端覆盖 exposure 的快照；submitPrepared 仅为可信宿主计划端口，不开放 caller=flow 一类绕过参数。
+
 
 Flow 输入来源通过 parameter.inputSource 显式声明，inputGroups.mode=oneOf 才要求互斥；不能按参数名推断业务。contracts/flow-inputs 提供表单与后端共用的输入组/条件连接纯规则；requiredWhen 复用 contracts/flow-expressions 的可序列化表达式，只能读取声明参数。编译先按实际参数物化必选性再进入宿主连接准入；根/子参数组随 DagRunSpec 和作用域冻结。toolDependencies 只含具体工具 ID 与可选版本；静态 builtin.tool 和内联/引用函数提供兼容发现，动态工具须显式声明，不允许执行路径、下载 URL 或按业务工具名补规则。注册与依赖安装留给应用及宿主。
+
+prepareFlowCallInput 统一 composer/arguments 的根对象、来源冲突、Flow→Agent→显式默认顺序、签名和准入校验；输出 FlowResolvedInput 保存来源及交互延后字段。空白编辑面未触及时视为未提供，显式空值通过 values 的 own property 表达；非法 JSON 数据、未绑定正文/附件和歧义来源须拒绝。onMissing=interact 保留现有先接纳后补全语义。prepareFlowRun 复用此边界；无参数声明的旧 parameters 调用保留明确兼容路径，不向 composer 自动开放未声明字段。附件已由宿主准备为声明的标准内容/引用，本包不提供通用上传协议。
+
+已有根 Invocation 的 Flow 在派发前由 invocation-identity 派生节点/轮次及动态 worker 的独立调用身份，Task labels 持久保存 invocationId/parentInvocationId；图代次和 Task attempt 不参与业务身份，内部替代 Task 保留同一调用。DispatchConfig 不能注入宿主 identity。RunGet/RunList 和成员读取公开调用关联，状态仍属于 Kernel Task，不把单次尝试终态冒充新的调用状态库。
+
+invocation-projection 从当前持久成员选择最新 Task，不能用视图缓存的轮次数挡住同轮次或重置轮次的替代 Task。历史尝试按根调用及父调用关联补全，只用于显示；不能因此扩大控制成员或授予权限。无调用身份的旧 Task 不伪造“派发前已冻结”的身份。动态派发嵌套目标的准入、预算和能力限制继续由现有编译机制执行。
+
+invocationIdentityVersion=1 冻结在初始 checkpoint 和不可变图组件；旧运行缺失时保留旧 labels，避免改变已接纳 Task 的幂等摘要。controlTaskIds 只由当前持久成员生成，历史 Task 的 transcript 可按只读归属访问，不能据此扩大 scoped control。
+
+controlTreeVersion=1 随新根 initialScheduler 冻结；受 Run 拥有的普通、动态、detached 及替代 Task 保留 Kernel 父子控制树。detached 只脱离 join，不脱离 Run 持久监督。根恢复仅解除自身 hold；父暂停与节点提交的事务冲突保留原 spec/requestId 等待，不走失败清理。旧 Run 不变更已接纳指纹，也不假装有强暂停屏障；有限恢复只解除历史能证明属于旧批量暂停的成员。RunPauseWithdraw 按独立 requestId/expectedEpoch 撤销未确认 pause，保留原 Effect 与其他屏障。
+
+Harness 节点允许结构化消息和标准 image/file 资产块，图层只保留引用，不物化文件或承诺目标支持格式。messageTemplates 的整值引用可以接参数或 Tool 输出；实际授权读取、内容核验和原生能力限制在宿主适配阶段完成。跨调用产物须显式转交，连接选择本身不授予资产读取权限。
+
+通用文件参数与 builtin.input 共用 widget=files、fileConstraints 和标准 file/asset 值；数量、总字节和 MIME 校验在消费前有效，onMissing=interact 保留先接纳再补参语义。prepareFlowRun 可注入 validateInputAssets，实际存储访问由宿主完成；动态子调用模板在实参解析后验证，不按字段名推断文件。
 
 Flow 根任务提交可能先持久化再丢回执；发起根提交后且未取得 scheduler lease 的宿主，不得失败化根任务或清理已引用工作区。准入前序列化失败仍清理私有工作区，取得租约后的真实执行失败仍正常收尾。FLOW_SCHEDULER_BUSY 区分租约竞争；诊断异常不改变原结果。
 

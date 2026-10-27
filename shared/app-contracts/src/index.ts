@@ -31,8 +31,7 @@ export { FlowLibraryCommand } from './presets/flow-library';
 
 export {InputAssetCommand, INPUT_ASSET_MAX_BYTES} from './presets/input-assets';
 export type {InputFileIdentity, InputFileUpload, InputFileInspection} from './presets/input-assets';
-
-export type * from './ports/flow-installation';
-
 export {ArtifactCommand} from './session/artifacts';
 export type * from './session/artifacts';
+
+export type * from './ports/flow-installation';

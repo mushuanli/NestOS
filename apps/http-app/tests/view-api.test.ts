@@ -1,4 +1,3 @@
-import {createHash} from 'node:crypto';
 import { RPC_VERSION } from '@itookit/app-transport/rpc';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -10,8 +9,9 @@ import { createCertificates } from '@itookit/node-host/http';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { HttpViewClient, SnapshotCache, ViewExpiredError } from '@itookit/app-transport/http';
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
-import {ArtifactCommand, type ExecutionArtifactPage, type ExecutionArtifactChunk, FlowLibraryCommand, InputAssetCommand} from '@itookit/app-contracts';
-import { FlowCommand, type FlowDraft, type FlowRevision, type DurableFlowSnapshot, validFlowImages } from '@itookit/llm-flow/contracts';
+import {ArtifactCommand, FlowLibraryCommand, InputAssetCommand, type ExecutionArtifactPage, type ExecutionArtifactChunk} from '@itookit/app-contracts';
+import {FlowCommand, validFlowImages, type FlowDraft, type FlowRevision, type DurableFlowSnapshot} from '@itookit/llm-flow/contracts';
+import {createHash} from 'node:crypto';
 type SessionInstructionQueue = NonNullable<import('@itookit/app-contracts/services').SessionEditorInitialData['snapshot']['instructionQueue']>;
 
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
@@ -29,6 +29,77 @@ beforeEach(async () => {
 });
 afterEach(async () => { await Promise.all(clients.splice(0).map(client => client.close())); await api.close(); auth.close(); await close(server.server); await backend.close(); await rm(directory, { recursive: true, force: true }); });
 async function client(id: string) { const peer = new HttpViewClient(id, server.origin + '/api/application', auth.fetcher); clients.push(peer); return peer.start(); }
+
+it('queries an explicit Session context catalog through authenticated RPC while preserving another bound queue', async () => {
+    const root = await client('context-catalog'), commands = root.services.commandBus;
+    const source = await root.services.projects.sessions.create('Context source', null);
+    const active = await root.services.projects.sessions.create('Current queue', null);
+    await commands.execute('session.bind', {sessionId: active});
+    await commands.execute('session.instructions.edit', {action: 'pause', expectedRevision: 0});
+    await commands.execute('session.send', {text: 'PRIVATE_CONTEXT_READ_MESSAGE', files: [], agentId: 'default'});
+    const before = await commands.execute<SessionInstructionQueue>('session.instructions.get');
+    expect(before.paused).toBe(true); expect(before.items).toHaveLength(1);
+    expect(await commands.execute('session.context.bindings', {sessionId: source})).toEqual({revision: null, bindings: []});
+    await expect(commands.execute('session.context.bindings', {sessionId: source, branchId: 'missing'}))
+        .rejects.toMatchObject({code: 'CONTEXT_QUERY_BRANCH_INVALID'});
+    expect(await commands.execute('session.get-current-id')).toBe(active);
+    expect(await commands.execute('session.instructions.get')).toEqual(before);
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_CONTEXT_READ_MESSAGE');
+});
+
+it('publishes immutable Agent revisions and reconciles their exact receipt through authenticated RPC', async () => {
+    const root = await client('agent-publication'), agents = root.services.agentService;
+    await agents.saveAgent({id: 'http-published', name: 'HTTP published', type: 'agent', config: {systemPrompt: 'PRIVATE_HTTP_POLICY'}});
+    const state = await agents.getAgentPublicationStatus!('http-published');
+    const request = {agentId: 'http-published', operationId: 'publish-http', expectedSourceDigest: state.sourceDigest,
+        expectedRevisionDigest: state.draftDigest, expectedPublishedVersion: null};
+    expect(await agents.getAgentPublicationReceipt!(request)).toBeNull();
+    const first = await agents.publishAgent!(request); expect(first.target.version).toMatch(/^ap1_[a-f0-9]{64}$/);
+    await agents.saveAgent({...first.definition, name: 'Unpublished HTTP name', config: {systemPrompt: 'NEW_HTTP_POLICY'}});
+    expect(await agents.getAgentPublicationReceipt!(request)).toEqual(first); expect(await agents.publishAgent!(request)).toEqual(first);
+    expect(await agents.getAgentRevision!('http-published', first.target.version)).toEqual(first);
+    expect((await agents.getAgentPublicationStatus!('http-published')).hasDraftChanges).toBe(true);
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_HTTP_POLICY'); expect(JSON.stringify(auditEvents)).not.toContain('NEW_HTTP_POLICY');
+});
+
+it('queries a committed publication receipt while the original authenticated write response is still suspended', async () => {
+    let release!: () => void, held = false;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    const fetcher: typeof fetch = async (url, init) => {
+        const request = init?.method === 'POST' ? JSON.parse(String(init.body)) : undefined;
+        const response = await auth.fetcher(url, init);
+        if (request?.kind === 'call' && request.call?.method === 'publishAgent') {held = true; await gate;}
+        return response;
+    };
+    const peer = new HttpViewClient('held-publication', server.origin + '/api/application', fetcher); clients.push(peer);
+    const root = await peer.start(), agents = root.services.agentService;
+    await agents.saveAgent({id: 'held-agent', name: 'Held Agent', type: 'agent', config: {}});
+    const state = await agents.getAgentPublicationStatus!('held-agent');
+    const request = {agentId: 'held-agent', operationId: 'held-publication', expectedSourceDigest: state.sourceDigest,
+        expectedRevisionDigest: state.draftDigest, expectedPublishedVersion: null};
+    const pending = agents.publishAgent!(request); const finished = vi.fn(); void pending.then(finished);
+    try {
+        await vi.waitFor(() => expect(held).toBe(true)); expect(finished).not.toHaveBeenCalled();
+        const receipt = await agents.getAgentPublicationReceipt!(request);
+        expect(receipt?.target.digest).toBe(state.draftDigest); expect(finished).not.toHaveBeenCalled();
+        release(); expect(await pending).toEqual(receipt);
+    } finally {release(); await pending.catch(() => {});}
+});
+
+it('stages generic binary files through authenticated RPC and inspects the immutable original upload', async () => {
+    const root = await client('generic-files'), data = new TextEncoder().encode('PRIVATE_FILE_BODY').buffer;
+    const identity = {uploadId: '12345678-1234-4123-8123-123456789abc', name: 'private-input.pdf', mimeType: 'application/pdf',
+        bytes: data.byteLength, sha256: createHash('sha256').update(new Uint8Array(data)).digest('hex')};
+    expect(await root.services.commandBus.execute(InputAssetCommand.Inspect, identity)).toEqual({state: 'missing'});
+    const reference = await root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, data});
+    expect(reference).toEqual({kind: 'input', id: identity.uploadId, mimeType: identity.mimeType, bytes: data.byteLength, sha256: identity.sha256});
+    expect(await root.services.commandBus.execute(InputAssetCommand.Inspect, identity)).toEqual({state: 'ready', reference});
+    expect(await root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, data})).toEqual(reference);
+    expect(auditEvents).toContainEqual(expect.objectContaining({rpcCommands: [InputAssetCommand.ImportFile], uploads: [{mimeType: identity.mimeType, bytes: identity.bytes}]}));
+    await expect(root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, name: 'different.pdf', data}))
+        .rejects.toMatchObject({code: 'INPUT_ASSET_CONFLICT'});
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_FILE_BODY'); expect(JSON.stringify(auditEvents)).not.toContain(identity.name);
+});
 it('shares purpose defaults between HTTP settings and toolbox and rejects incompatible models', async () => {
     const root = await client('model-defaults'), service = root.services.agentService;
     await service.saveProvider({ id: 'defaults-test', name: 'Defaults', implementation: 'openai-compatible', apiKey: 'private-key', baseURL: 'https://example.test',
@@ -324,74 +395,33 @@ it('does not replay a command whose response was lost even after reconnecting su
     expect(sessions.filter(session => session.title === 'Create only once')).toHaveLength(1);
 });
 
-it('publishes immutable Agent revisions and reconciles their exact receipt through authenticated RPC', async () => {
-    const root = await client('agent-publication'), agents = root.services.agentService;
-    await agents.saveAgent({id: 'http-published', name: 'HTTP published', type: 'agent', config: {systemPrompt: 'PRIVATE_HTTP_POLICY'}});
-    const state = await agents.getAgentPublicationStatus!('http-published');
-    const request = {agentId: 'http-published', operationId: 'publish-http', expectedSourceDigest: state.sourceDigest,
-        expectedRevisionDigest: state.draftDigest, expectedPublishedVersion: null};
-    expect(await agents.getAgentPublicationReceipt!(request)).toBeNull();
-    const first = await agents.publishAgent!(request); expect(first.target.version).toMatch(/^ap1_[a-f0-9]{64}$/);
-    await agents.saveAgent({...first.definition, name: 'Unpublished HTTP name', config: {systemPrompt: 'NEW_HTTP_POLICY'}});
-    expect(await agents.getAgentPublicationReceipt!(request)).toEqual(first); expect(await agents.publishAgent!(request)).toEqual(first);
-    expect(await agents.getAgentRevision!('http-published', first.target.version)).toEqual(first);
-    expect((await agents.getAgentPublicationStatus!('http-published')).hasDraftChanges).toBe(true);
-    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_HTTP_POLICY'); expect(JSON.stringify(auditEvents)).not.toContain('NEW_HTTP_POLICY');
-});
-
-it('queries a committed publication receipt while the original authenticated write response is still suspended', async () => {
-    let release!: () => void, held = false;
-    const gate = new Promise<void>(resolve => {release = resolve;});
-    const fetcher: typeof fetch = async (url, init) => {
-        const request = init?.method === 'POST' ? JSON.parse(String(init.body)) : undefined;
-        const response = await auth.fetcher(url, init);
-        if (request?.kind === 'call' && request.call?.method === 'publishAgent') {held = true; await gate;}
-        return response;
-    };
-    const peer = new HttpViewClient('held-publication', server.origin + '/api/application', fetcher); clients.push(peer);
-    const root = await peer.start(), agents = root.services.agentService;
-    await agents.saveAgent({id: 'held-agent', name: 'Held Agent', type: 'agent', config: {}});
-    const state = await agents.getAgentPublicationStatus!('held-agent');
-    const request = {agentId: 'held-agent', operationId: 'held-publication', expectedSourceDigest: state.sourceDigest,
-        expectedRevisionDigest: state.draftDigest, expectedPublishedVersion: null};
-    const pending = agents.publishAgent!(request); const finished = vi.fn(); void pending.then(finished);
-    try {
-        await vi.waitFor(() => expect(held).toBe(true)); expect(finished).not.toHaveBeenCalled();
-        const receipt = await agents.getAgentPublicationReceipt!(request);
-        expect(receipt?.target.digest).toBe(state.draftDigest); expect(finished).not.toHaveBeenCalled();
-        release(); expect(await pending).toEqual(receipt);
-    } finally {release(); await pending.catch(() => {});}
-});
-
-it('stages generic binary files through authenticated RPC and inspects the immutable original upload', async () => {
-    const root = await client('generic-files'), data = new TextEncoder().encode('PRIVATE_FILE_BODY').buffer;
-    const identity = {uploadId: '12345678-1234-4123-8123-123456789abc', name: 'private-input.pdf', mimeType: 'application/pdf',
-        bytes: data.byteLength, sha256: createHash('sha256').update(new Uint8Array(data)).digest('hex')};
-    expect(await root.services.commandBus.execute(InputAssetCommand.Inspect, identity)).toEqual({state: 'missing'});
-    const reference = await root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, data});
-    expect(reference).toEqual({kind: 'input', id: identity.uploadId, mimeType: identity.mimeType, bytes: data.byteLength, sha256: identity.sha256});
-    expect(await root.services.commandBus.execute(InputAssetCommand.Inspect, identity)).toEqual({state: 'ready', reference});
-    expect(await root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, data})).toEqual(reference);
-    expect(auditEvents).toContainEqual(expect.objectContaining({rpcCommands: [InputAssetCommand.ImportFile], uploads: [{mimeType: identity.mimeType, bytes: identity.bytes}]}));
-    await expect(root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, name: 'different.pdf', data}))
-        .rejects.toMatchObject({code: 'INPUT_ASSET_CONFLICT'});
-    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_FILE_BODY'); expect(JSON.stringify(auditEvents)).not.toContain(identity.name);
-});
-
-it('atomically rejects an old Session UI revision across authenticated views without losing opaque records', async () => {
-    const a = await client('ui-cas-a'), b = await client('ui-cas-b');
-    const id = await a.services.projects.sessions.create('UI CAS', null), before = await a.services.sessionRepository.getManifest(id);
-    const writes = await Promise.allSettled([
-        a.services.sessionRepository.compareAndSetUIState!(id, before.revision!, {operationRecords: [{id: 'a', input: 'PRIVATE_UI_RECORD'}]}),
-        b.services.sessionRepository.compareAndSetUIState!(id, before.revision!, {operationRecords: [{id: 'b', input: 'PRIVATE_UI_RECORD'}]}),
-    ]);
-    expect(writes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
-    expect(writes.find(result => result.status === 'rejected')).toMatchObject({reason: {code: 'SESSION_UI_STATE_CONFLICT'}});
-    const current = await b.services.sessionRepository.getManifest(id);
-    expect(current.revision).toBe(before.revision! + 1); expect(current.uiState?.operationRecords).toHaveLength(1);
-    await expect(b.services.sessionRepository.compareAndSetUIState!(id, -1, {})).rejects.toMatchObject({code: 'SESSION_UI_STATE_VERSION_INVALID'});
-    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_UI_RECORD');
-});
+it('reads committed Flow artifacts and byte pages through the authenticated application RPC', async () => {
+    const root = await client('execution-artifacts'), commands = root.services.commandBus;
+    const sessionId = await root.services.projects.sessions.create('Artifact RPC', null);
+    await commands.execute('session.bind', {sessionId});
+    const flow: FlowDraft = {id: 'artifact-rpc' as never, name: 'Artifact RPC', draftVersion: 1, updatedAt: 0, layout: {},
+        nodes: [{id: 'value' as never, name: 'Value', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
+            config: {value: 'RPC 产物'}}], edges: []};
+    await commands.execute(FlowLibraryCommand.Restore, {templates: [flow]});
+    const revision = await commands.execute<FlowRevision>(FlowCommand.RevisionGet, {id: flow.id, revision: 1});
+    const run = await commands.execute<{taskId: string}>(FlowCommand.RunStart, {sessionId, flow: revision});
+    let snapshot!: DurableFlowSnapshot;
+    await vi.waitFor(async () => {snapshot = await commands.execute(FlowCommand.RunGet, {sessionId, taskId: run.taskId});
+        expect(snapshot.root.task.status).toBe('succeeded');}, {timeout: 5000});
+    const taskId = snapshot.nodes[0].snapshot.task.id;
+    const page = await commands.execute<ExecutionArtifactPage>(ArtifactCommand.List, {sessionId, taskId});
+    expect(page.items).toHaveLength(1);
+    const bytes: number[] = []; let offset = 0;
+    do {
+        const chunk = await commands.execute<ExecutionArtifactChunk>(ArtifactCommand.Read, {reference: page.items[0].reference, offset, limit: 3});
+        expect(chunk.data).toBeInstanceOf(ArrayBuffer); expect(chunk.offset).toBe(offset);
+        bytes.push(...new Uint8Array(chunk.data)); if (chunk.nextOffset === undefined) break; offset = chunk.nextOffset;
+    } while (true);
+    const text = new TextDecoder().decode(new Uint8Array(bytes));
+    expect(page.items[0].kind === 'json' ? JSON.parse(text) : text).toBe('RPC 产物');
+    expect(auditEvents).toContainEqual(expect.objectContaining({event: 'application.complete', rpcCommands: [ArtifactCommand.Read]}));
+    await expect(commands.execute(ArtifactCommand.Read, {reference: {...page.items[0].reference, sessionId: 'other'}})).rejects.toThrow();
+}, 20000);
 
 it('keeps Flow pause, approval and queue control independent through authenticated RPC', async () => {
     const root = await client('flow-pause'), commands = root.services.commandBus;
@@ -429,34 +459,6 @@ it('keeps Flow pause, approval and queue control independent through authenticat
     for (const privateText of ['PRIVATE_QUEUED_INPUT', 'PRIVATE_APPROVAL_PROMPT', 'PRIVATE_APPROVAL_ANSWER']) expect(JSON.stringify(auditEvents)).not.toContain(privateText);
 }, 20000);
 
-it('reads committed Flow artifacts and byte pages through the authenticated application RPC', async () => {
-    const root = await client('execution-artifacts'), commands = root.services.commandBus;
-    const sessionId = await root.services.projects.sessions.create('Artifact RPC', null);
-    await commands.execute('session.bind', {sessionId});
-    const flow: FlowDraft = {id: 'artifact-rpc' as never, name: 'Artifact RPC', draftVersion: 1, updatedAt: 0, layout: {},
-        nodes: [{id: 'value' as never, name: 'Value', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
-            config: {value: 'RPC 产物'}}], edges: []};
-    await commands.execute(FlowLibraryCommand.Restore, {templates: [flow]});
-    const revision = await commands.execute<FlowRevision>(FlowCommand.RevisionGet, {id: flow.id, revision: 1});
-    const run = await commands.execute<{taskId: string}>(FlowCommand.RunStart, {sessionId, flow: revision});
-    let snapshot!: DurableFlowSnapshot;
-    await vi.waitFor(async () => {snapshot = await commands.execute(FlowCommand.RunGet, {sessionId, taskId: run.taskId});
-        expect(snapshot.root.task.status).toBe('succeeded');}, {timeout: 5000});
-    const taskId = snapshot.nodes[0].snapshot.task.id;
-    const page = await commands.execute<ExecutionArtifactPage>(ArtifactCommand.List, {sessionId, taskId});
-    expect(page.items).toHaveLength(1);
-    const bytes: number[] = []; let offset = 0;
-    do {
-        const chunk = await commands.execute<ExecutionArtifactChunk>(ArtifactCommand.Read, {reference: page.items[0].reference, offset, limit: 3});
-        expect(chunk.data).toBeInstanceOf(ArrayBuffer); expect(chunk.offset).toBe(offset);
-        bytes.push(...new Uint8Array(chunk.data)); if (chunk.nextOffset === undefined) break; offset = chunk.nextOffset;
-    } while (true);
-    const text = new TextDecoder().decode(new Uint8Array(bytes));
-    expect(page.items[0].kind === 'json' ? JSON.parse(text) : text).toBe('RPC 产物');
-    expect(auditEvents).toContainEqual(expect.objectContaining({event: 'application.complete', rpcCommands: [ArtifactCommand.Read]}));
-    await expect(commands.execute(ArtifactCommand.Read, {reference: {...page.items[0].reference, sessionId: 'other'}})).rejects.toThrow();
-}, 20000);
-
 it('reads explicit context options while the original authenticated queue admission reply is suspended', async () => {
     let release!: () => void, held = false;
     const gate = new Promise<void>(resolve => {release = resolve;});
@@ -487,19 +489,17 @@ it('reads explicit context options while the original authenticated queue admiss
     } finally {release(); await pending;}
 }, 20000);
 
-it('queries an explicit Session context catalog through authenticated RPC while preserving another bound queue', async () => {
-    const root = await client('context-catalog'), commands = root.services.commandBus;
-    const source = await root.services.projects.sessions.create('Context source', null);
-    const active = await root.services.projects.sessions.create('Current queue', null);
-    await commands.execute('session.bind', {sessionId: active});
-    await commands.execute('session.instructions.edit', {action: 'pause', expectedRevision: 0});
-    await commands.execute('session.send', {text: 'PRIVATE_CONTEXT_READ_MESSAGE', files: [], agentId: 'default'});
-    const before = await commands.execute<SessionInstructionQueue>('session.instructions.get');
-    expect(before.paused).toBe(true); expect(before.items).toHaveLength(1);
-    expect(await commands.execute('session.context.bindings', {sessionId: source})).toEqual({revision: null, bindings: []});
-    await expect(commands.execute('session.context.bindings', {sessionId: source, branchId: 'missing'}))
-        .rejects.toMatchObject({code: 'CONTEXT_QUERY_BRANCH_INVALID'});
-    expect(await commands.execute('session.get-current-id')).toBe(active);
-    expect(await commands.execute('session.instructions.get')).toEqual(before);
-    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_CONTEXT_READ_MESSAGE');
+it('atomically rejects an old Session UI revision across authenticated views without losing opaque records', async () => {
+    const a = await client('ui-cas-a'), b = await client('ui-cas-b');
+    const id = await a.services.projects.sessions.create('UI CAS', null), before = await a.services.sessionRepository.getManifest(id);
+    const writes = await Promise.allSettled([
+        a.services.sessionRepository.compareAndSetUIState!(id, before.revision!, {operationRecords: [{id: 'a', input: 'PRIVATE_UI_RECORD'}]}),
+        b.services.sessionRepository.compareAndSetUIState!(id, before.revision!, {operationRecords: [{id: 'b', input: 'PRIVATE_UI_RECORD'}]}),
+    ]);
+    expect(writes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(writes.find(result => result.status === 'rejected')).toMatchObject({reason: {code: 'SESSION_UI_STATE_CONFLICT'}});
+    const current = await b.services.sessionRepository.getManifest(id);
+    expect(current.revision).toBe(before.revision! + 1); expect(current.uiState?.operationRecords).toHaveLength(1);
+    await expect(b.services.sessionRepository.compareAndSetUIState!(id, -1, {})).rejects.toMatchObject({code: 'SESSION_UI_STATE_VERSION_INVALID'});
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_UI_RECORD');
 });

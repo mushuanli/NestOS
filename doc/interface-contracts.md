@@ -6,6 +6,11 @@
 
 `SessionChatBindingOptions.hasCommittedSubmission(submission)` 由宿主注入，委托 llm-session 的公开持久提交查询；不再注入仓储或在 UI 解析 Round。Send 入队后的回执与后续 confirmed 投影均依据同一后端证据；unknown 的 edit/retry 锁定目标消息，respond 锁定请求 ID/revision。Flow 的恢复 submitting 操作可显式核对，检查器保存后从新节点快照获取下次编辑版本。
 
+上下文绑定的公开只读端口为 `llm-session/contracts` 的 `ContextBindingReader/ContextBindingQuery/ContextBindingPage`，由 app-core 注入；`session.context.bindings` 先核对显式 Session/分支，再读取 Kernel 既有 shared state。安全摘要与原生控制身份分开，分页游标绑定集合修订及查询范围。`kernel-adapters/contracts` 的 `ContextCheckpoint` 区分真实 terminal Invocation 与未归属 legacy-head；终态检查点发布归原 Effect journal 的 settlement，不由目录查询创建。契约与 C4 见[上下文协议 8.4](design/execution-context-binding.md#84-已确认检查点与只读目录)。
+
+`ContextOptionsReader/ContextOptionsQuery/ContextOptionsPage`（`session.context.options`）补充显式目的分支、已发布目标及来源检查点的被动静态资格；同一查询只读取一次已登记项目 profiles，不装配上下文或获取 writer。basis 只用于观察一致性，最终策略及来源 CAS 仍由派发复验；原生选择进入原 SubmissionRequest，UI 草稿修订作为同一 OperationLedger 的独立恢复证据。契约与 C4 见[上下文协议 8.5–8.6](design/execution-context-binding.md#85-被动资格查询)。
+
+
 ## VFS 体系（@itookit/vfs-core）
 
 | 接口 | 核心方法 | 定义 | 实现 | 消费 |
@@ -97,6 +102,8 @@
 | `DagCommandService` | DAG 控制面命令（run/snapshot/…） |
 | `findCycles` | 环检测（回边 + 环上节点） |
 
+已有根 Invocation 的 Flow 为节点、循环和动态 worker 保存独立 invocationId/parentInvocationId。RunGet/RunList 与成员读取公开关联；当前 Task 与历史尝试分开投影，controlTaskIds 只表达当前持久成员，仍需后端复验写权限和状态。身份版本冻结在 checkpoint，旧运行保留原提交摘要。详见[子调用与尝试投影](design/invocation-presentation.md#7-当前实施覆盖)。
+
 ## 会话层（@itookit/llm-session）
 
 | 接口/类型 | 说明 |
@@ -105,6 +112,11 @@
 | `ConversationManifest` / `ConversationUIState` / `BranchTreeNode` | 会话清单/UI 状态/分支树 |
 | `RoundManifest` / `RoundProjection` / `BranchMeta` | Round 持久化投影 |
 | `SessionManager` / `SessionRegistry` / `SessionState` | 会话生命周期与状态 |
+| `TargetSelection` / `TargetRef` / `SubmissionRequest` | Agent/Flow 目标身份、预期 Session/分支/定义版本、结构化调用输入；正式 Session 与本地项目首次草稿通过 `SessionCommand.Submit` 进入现有队列 |
+| `RootTargetCatalog` / `SessionCommand.ListTargets` | 公开根目标的只读元数据目录；单项问题通过 issues 隔离 |
+| `SessionCommand.HasCommittedSubmission` | 已绑定 Session 内核对提交、执行引用及历史索引，不派发执行 |
+| `SubmissionReceipt` / `SessionCommand.GetSubmissionReceipt` | 按原冻结请求及摘要只读核对队列或历史接纳，返回 accepted/unknown 与证据来源；不证明执行完成，不重新提交 |
+| `SessionCommand.InspectSubmissionReceipt` | 显式 expectedSessionId 的无绑定只读核对，与 receipt 共用现有记录；不激活或创建 Session、不唤醒队列、不改变当前视图绑定 |
 | `IAgentConfigService` | Agent/Connection 配置服务（供 AgentResolver 解析） |
 | `CommandBus` / `ExtensionRegistry` / `ILLMPlugin` | 控制面命令与插件系统 |
 | `ConversationSystem` / `initializeConversationSystem` | 装配入口（session + flow + programs + kernel） |
@@ -188,11 +200,29 @@ mindos-node 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）�
 
 `HarnessExecutionConnection` / `HarnessConnectionSnapshot` / `HarnessExecutionProvider` 从 `kernel-adapters/contracts` 导出。具名配置引用已有节点连接、项目与profile，快照冻结修订和授权；`HarnessConnectionService` 负责CAS配置、发现与准入，`createHarnessExecutionProvider` 负责原生操作journal和终态核对。Kernel adapter只依赖Provider端口，使用 `harness.execute@1`，不直接依赖远程驱动实现。
 
+`IAgentManagementService` 可提供独立 Agent 发布：getAgentPublicationStatus、publishAgent、getAgentRevision、getAgentPublicationReceipt。三个读取端口在应用能力表中登记为 query，发布为 async；核对不等待原发布写响应。AgentPublishRequest 固定来源、修订摘要和预期最新指针，AgentPublishedRevision 固定策略正文及直接依赖快照，服务保持旧未发布配置兼容。UI 只在回执身份核验后解除该操作限制；不是 Kernel 执行状态的第二份副本。详见[Agent 独立发布](design/agent-session-connection-review.md#511-agent-独立发布的当前实施)。
+
+`InputAssetCommand.ImportFile/Inspect` 提供通用文件上传与只读核对，稳定 uploadId 绑定 name/MIME/bytes/SHA-256，正文经 ArrayBuffer 传输；Inspect 只报告 missing/preparing/ready。Flow 与 builtin.input 的 files 控件保存标准 file 资产块，validateCallAssets 注入根调用准备和队列实参编辑；原接纳核对不因文件后来丢失而重发。详见[通用文件输入协议](design/invocation-input-resolution.md#74-通用文件上传与结构化提交)。
+
+`HarnessInputAttachment` 为 `HarnessInlineAttachment | HarnessAssetAttachment`：前者保存可直接发送的文本/图片，后者保存不可变 `BinaryAssetReference`。`prepareHarnessInput` 只规范化消息和引用，实际宿主通过 `readTaskAsset` 使用消费 Effect 的真实身份读取并核验，在原生副作用前转换为内联附件；不把引用本身传给原生 turn。恢复已有 turn 只核对原操作，不要求再次读取资产。详见[Flow 资产准备](design/invocation-input-resolution.md#73-flow-资产引用与-harness-目标准备)。
+
 `IAgentManagementService` 暴露安全连接目录、已授权目标目录及CAS保存/删除，应用RPC按显式方法表开放。Agent的 `execution.kind=harness` 经本地Session、Flow节点和Composite成员共同分派；模型连接保持独立。设置页只从已授权项目/profile候选配置，不接受新的端点或凭据。持久交互、确认停止和epoch未知的边界见[远程执行连接](design/remote-harness-connections.md)。
+
+HarnessExecutionProvider.cancel 返回 ConnectionCancelResult；stopped/cleanup=confirmed 必须携带匹配当前 Session/Task/Effect 的停止证明。HarnessExecutionEffect 检查证明后继续等待本地 in-flight，才正常结束 Kernel 的 void cancel；其他结果保留 cleanupPending。宿主的 stateForCleanup 只访问原 journal；上下文调用另需 settleContextForCleanup，以固定 binding 收尾方法重读原持久凭据、检查归属和 CAS，不开放整个共享集合。两条路径均先验租约，再打开 Kernel Session，并在每次记录读写前复验。旧注入 Provider 的 void 返回需迁移；既有持久执行格式不变。详见[取消结果桥](design/invocation-control-state.md#84-connection-取消结果与-kernel-清理确认)。
+
+HarnessExecutionProvider.reconcile 返回 ConnectionReconcileResult；Effect 桥将 running/unknown 保留为 indeterminate，仅接受同一执行的 not-started 证明后映射 retry。原 journal 的恢复预算结束不能当作原生未执行，旧 Provider 返回 Kernel retry 的实现需迁移。详见[核对结果桥](design/invocation-control-state.md#85-连接核对结果与原执行观察)。
 
 ### 远程项目会话展示端口
 
 `ui-common` 的 `ConversationControls` 由宿主注入，提供 read/refresh/subscribe/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`mindos-node-driver` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。
+
+原生只读命令由 `capabilities.commandQueries` 协商 `HarnessClient.queryCommand` → `harness_query`，携带授权项目修订、原生会话、关联 requestId 和冻结定义；不占原生修改队列或创建执行 receipt。展示端口的 `queryCommand/reconcileQuery` 与 `canQueryCommand/queryReceipts` 将结果保存到既有恢复记录，独立于输入 pending/submission 和队列接纳。查询报告丢回复只核对报告，不拿查询 ID 调用 `harness_operation`；独立 llm-ui 在 CommandSubmission.execution 冻结分类并更新同一 OperationLedger。详细实现、DSH 目录不完整语义及 C4 见[控制协议 §8.6](design/invocation-control-state.md#86-原生只读命令与查询报告)。
+
+`capabilities.commandOutputs` 声明原生命令正文读取。新客户端仅在该能力存在时为 command/operation 回执请求指定 outputMode=reference，接收 64 KiB UTF-8 预览和 HarnessCommandOutputRef；缺省保持完整原结果。此展示选项不改变执行指纹或传入原生驱动。`HarnessClient.readCommandOutput` 与 ConversationControls 的 readCommandOutput/loadCommandOutput 均归只读 RPC，读取固定 epoch/requestId/摘要及范围，不建立接纳 fence、初始化原生执行或消费草稿。UI 按需逐页核验，读取失败只影响该产物；取消后不发后续页。原生命令没有 Kernel Task 时不伪造 TaskArtifact。公开 DTO 由各边界契约提供，详见[正文协议](design/invocation-presentation.md#73-原生命令正文与接纳事实)。
+
+匹配的 committed 回执之后，内容解码失败不再降为提交 unknown。有效执行封套保留接纳/终态并单独标正文不可用；执行身份或终态无效时保存原 operationId/epoch 的 resultError 派发屏障，不能以普通队列 retry 重放。未核对结果及运行中命令不受最近 64 条已结算展示窗口的淘汰影响；原回执修复后再解除。详见[结果校验与控制](design/invocation-control-state.md#89-已提交回执与结果校验)。
+
+原生控制使用 `interrupt({sessionId, turnId, operationId})` 冻结精确执行目标；可选 `reconcileControl(operationId)` 查询同一控制回执。`controls` 分别投影接纳 receipt 与实际停止 effect，不与输入 submission 混用，不消费草稿。原发送悬挂时仍可入队、编辑、读取、回应和取消；控制未知或 accepted 且无精确终态时阻止冲突派发。取消不自动修改队列 paused；复合停止先显式暂停队列。回执复用 HarnessRecovery，事务回复丢失先核对己方写前/写后值，真实并发冲突禁止旧实例覆盖。详细边界与验证见[控制协议](design/invocation-control-state.md#8-当前实施覆盖)。
 
 `ModelConfigurationCommands.inspectMCPDeletion` 返回配置和项目挂载引用的删除预览；`deleteMCPServers` 校验预览并要求有引用时显式 force。`MCPDeletionPort` 由 ProjectRemoteMountService 实现，预览由 ProjectService 提供远程项目与本地会话信息；经 SessionLifecycleService 清理以目标 MCP 为根来源的本地远程项目及其本地会话，再批量移除引用并释放视图。普通本地项目只解除附加挂载，服务器内容和原生会话保留。普通 MCP 删除仍禁止有引用的配置。
 
@@ -286,11 +316,8 @@ ConversationControls 的可选 commands/command 端口承接当前原生会话�
 
 Flow 连接准入错误通过 `code` 和 `field`（槽位名）定位；RPC 只传递经过格式校验的字段标识，不传整个异常。`SessionCommand.CheckFlowConnectionSlots` 独立检查槽位配置，完整图准入继续使用 `SessionCommand.CheckFlowConnections`，二者共用连接选择和能力规则。
 
+## 执行产物读取
 
-### 已提交执行产物读取
+[ExecutionArtifactReference / ArtifactCommand](../shared/app-contracts/src/session/artifacts.ts) 是宿主读取协议。app.artifacts.list 以 Session/Task 读取已提交输出，按 offset/limit 返回目录；app.artifacts.read 按不可变引用及字节范围返回 ArrayBuffer、总大小、SHA-256 和 nextOffset，单页最多 1 MiB。两者均只读，不激活会话或运行任务。
 
-[ArtifactCommand / ExecutionArtifactReference](../shared/app-contracts/src/session/artifacts.ts) 固定 Session、Task、输出选择与摘要。app.artifacts.list 读取终态输出目录，offset/limit 分页；app.artifacts.read 返回 ArrayBuffer、字节范围、总大小、SHA-256 与 nextOffset，单次传输最多 1 MiB。命令按只读分类，经本地与认证 RPC 使用同一宿主实现，不激活 Session 或推进 Task。
-
-[TaskArtifacts](../backend/app-core/src/session/task-artifacts.ts) 从 Kernel.output 派生目录，复用 TaskAssetReader 检查实际执行的资产归属，不接受任意 owner/URI 文件读取。文字与 JSON 通过 [ArtifactLoader](../backend/llm-session/src/contracts/artifacts.ts) 进入已有 Context 装配；二进制须先显式转换。远端文件未导入时明确不可用。
-
-分页限制传输量，不是存储随机读取能力：当前资产接口每页读取完整资产并核验摘要。目录扫描有深度/数量上限，超限明确报错；大文件范围读取与产物 UI 的 F24 验收仍独立推进。
+[TaskArtifacts](../backend/app-core/src/session/task-artifacts.ts) 从既有 Kernel 输出派生引用，复用 TaskAssetReader 验证二进制归属与内容，不保存第二份执行状态。session.artifact.get 及 Context 装配通过 [ArtifactLoader](../backend/llm-session/src/contracts/artifacts.ts) 读取语义值；未导入的远端 file 明确不可读取。UI 的 [TaskArtifactBrowser](../ui/llm-ui-adapter/src/components/dag/TaskArtifactBrowser.ts) 只在用户操作时加载并校验分页，保持执行锚点及视图销毁边界。

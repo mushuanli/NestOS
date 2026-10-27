@@ -1,7 +1,5 @@
 import {createSessionTaskCallAuthority} from '../session/task-call-authority';
 import {renewSessionWriteLease} from '../kernel/session-lease';
-import {createHarnessContextCleanup} from '../projects/harness-context-cleanup';
-import {createAgentPublicationDependencies} from '../configuration/agent-publications';
 import {FlowInstallationService} from '../configuration/flow-installation';
 import {FlowToolPackages} from '../configuration/flow-tool-packages';
 import { createUsageCostEstimator } from '../projects/usage-estimator';
@@ -19,6 +17,7 @@ import { ProjectSyncService, type ProjectSyncProvider } from '../projects/sync/s
 import type { Coordinator } from '@itookit/vfs-sync';
 import { seedDefaultFlows } from '../presets/default-flows';
 import { createAgentFlowAvailability } from '../configuration/agent-flow-availability';
+import {createAgentPublicationDependencies} from '../configuration/agent-publications';
 import { createAgentCompositionPreparation } from '../configuration/agent-composition';
 import { createRemoteExecutionProvider } from '../projects/execution/remote-provider';
 import { ProjectExecutionService } from '../projects/execution/service';
@@ -29,6 +28,7 @@ import { HarnessConnectionService } from '../projects/harness-connections';
 import { createHarnessExecutionProvider } from '../projects/harness-execution';
 import {createTaskAssetReader} from './task-assets';
 import { createHarnessCleanupState } from '../projects/harness-cleanup-state';
+import {createHarnessContextCleanup} from '../projects/harness-context-cleanup';
 import { FSError } from '@itookit/vfs-core';
 import { ModelConfigurationCommands } from '../configuration/model-commands';
 import { resumeSessionDeletions } from './resume-session-deletions';

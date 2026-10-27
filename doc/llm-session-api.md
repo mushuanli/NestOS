@@ -1,10 +1,24 @@
 # @itookit/llm-session — API 参考
 
+`SessionCommand.ListTargets`（`session.targets.list`）只读列出 global Agent 和已发布 Flow 的 `RootTargetCatalog`，同 ID 的不同类型保持独立，坏定义通过 issues 隔离。`SessionCommand.Submit`（`session.submit`）接收 `SubmissionRequest`：`target`、可选 `expectedTarget/expectedSessionId/expectedBranch`、`source`、已准备附件和稳定 `submission`，复用现有 Session 指令队列。宿主核对实际 Session、目标版本及摘要后冻结定义、连接与默认参数；调用者不能注入预编译计划或 Invocation。普通 Agent 只接收其支持的输入，独立 Flow 不解析或伪造 Agent 定义。
+
+参数表单确认后使用 `source: {kind: 'arguments', value}`，可选 `presentation.text` 仅保存原编辑文字用于历史，不参与 Flow 参数解析；composer 来源禁止提供另一份 presentation。`Round.callInput` 保存来源及接纳参数，`Round.target`、根 Task 标签与 SessionGroup 投影保留实际目标。结构化队列编辑使用 `update-input` 和展示时的 revision，按原冻结计划重新校验；未定义合并策略的 arguments 调用不能通过拼接文字合并。
+
+`SessionCommand.GetSubmissionReceipt`（`session.submission.receipt`）接收原冻结的 `SubmissionRequest`，必须带已有 `submission`。它核对 Session 归属与原始摘要，从既有队列接纳记录或真实已提交历史返回 `{operationId, status: 'accepted' | 'unknown', evidence?: 'queue' | 'history'}`。同 ID 不同内容返回 `QUEUE_CONFLICT`；当前目录失效或 Flow 后来改为 local 不影响原接纳事实的只读核对。查不到证据只代表 unknown，不代表未发送；查询不创建身份、不接纳输入、不编译、不恢复或派发执行。accepted 只证明接纳，不证明执行完成；条目被用户删除后仍可能得到 accepted。
+
+`SessionCommand.HasCommittedSubmission`（`session.submission.committed`）继续只核对完整提交身份、执行引用及已提交历史索引，排队接纳不算已提交历史。工作台将接纳回执结算到同一 `OperationLedger`，台账经已有 `ConversationUIState.operationRecords` 持久保存。参数草稿通过分支 `inputArguments` 保存同一 JSON 原文、修订与签名；`inputTarget` 保存目标。核对原请求不要求重新填写参数；迟到回执不能清除新文字、新参数、附件或另一分支草稿。
+
+`SessionCommand.InspectSubmissionReceipt`（`session.submission.inspect`）使用相同 `SubmissionRequest/SubmissionReceipt`，但强制要求 `expectedSessionId`，无需绑定视图。它先确认 Session 存在及提交归属，再通过 Kernel inspect 和历史读取核对，不调用 bind/open/create/recover，不唤醒队列，不改变当前其他 Session 的绑定；未初始化 Kernel 存储返回 unknown，损坏或其他读取错误继续抛出。与绑定内 receipt 共用规范化、摘要及历史验证实现。目录、历史确认、receipt、inspect 均列入应用命令只读分类；未知命令仍按写操作处理。
+
+新提交的 `expectedBranch` 与当前分支不符时返回 `QUEUE_BRANCH_CHANGED`；该检查在原接纳身份核对之后，因此切分支后仍可核对原提交。字段进入原始摘要，但缺省时保留旧摘要算法，不补造历史分支身份。本地项目首次草稿也使用此入口和已分配的 Session UUID；远程原生草稿的完整迁移仍待实施。
+
 Agent 可声明 `execution: {kind: 'flow', flowId, revision?, parameters?, connectionBindings?}`，通过普通发送入口运行内部注册的 Flow；省略修订号时跟随最新已发布版本。`ExecutionOverrides.flowParameters/flowConnectionBindings` 为本次覆盖，提示词通过 `DagRunSpec.input.prompt` 传入。接纳队列时冻结 Agent、所选定义及外部依赖，既有请求不受后续文件删除影响；新请求检查只读 `availability`，被引用文件缺失时拒绝且不回退默认助手。资源可用性由宿主通过 `VFSAgentService.configureFlowAvailability` 注入，具体交互、版本与归档见 [Agent 引用内部 Flow](design/flow-invocation-composition.md#agent-引用内部-flow)。
 
 会话 Flow 与 Flow Agent 的新指令在 `flowBinding.plan` 持久保存预编译图及引用身份快照；派发时补入当前历史并复验连接，不重新选择定义或模型。计划摘要损坏会拒绝恢复，无计划的旧队列保持兼容。可用性检查按 Flow ID/修订缓存，资源事件失效，读取单个 Agent 只等待相关绑定；正式准入独立执行。静态引用的 Skill 初始上下文也使用已接纳版本，工具发现与运行授权仍由现有执行链负责。
 
 `FlowInvocationService` 提供 `session.flow.invoke` / `session.flow.invocations`：以 `sessionId + requestId` 幂等启动固定 revision 的独立 Flow Run，同一 Session 可并行调用，调用意图和根 Task 引用持久化，结果不会推进普通对话的 branch head。`SessionCommand.CreateFromFlow` 的 `invocation: true` 直接创建调用；未指定时保留旧 Flow Session 路径。恢复与 UI 交互边界见 [Flow 调用与组合](design/flow-invocation-composition.md)。启动恢复先用上述标记筛出候选 Session：标记存在且不含该 Session 时完全不做 `listShared` 探测；先按标记写入、后写调用记录的顺序保证标记故障只会多扫一次，不会漏恢复。
+
+新独立 Flow 调用在原记录内持久保存 ULID invocationId，根 DagRunSpec.invocation 携带同一身份。requestId 继续表示提交去重；丢回执、恢复或并发接纳复用原调用和根任务。用户再次运行使用新 requestId、新 Invocation，可携带 retryOfInvocationId/retryOfSessionId；宿主验证原调用已具有真实根任务终态，跨 Session 只接受目标会话的持久 parentSessionId。旧记录使用纯函数 flowInvocationId(record) 得到确定性 legacy 别名，读取不迁移或重新分配身份。调用入口只接收请求字段，不能注入 invocationId、根任务、定义或预编译图；记录与实际根身份冲突时拒绝核对或启动。普通 Agent、Flow Agent 队列及全部子调用的同一身份模型仍在统一执行设计中继续迁移。
 
 
 `session.flow.invoke` 可显式传入 `execution: 'child'`：输入 `sessionId` 表示调用来源，宿主幂等创建并准备子 Session，在子 Session 中接纳一次 Invocation。父级记录返回 `executionSessionId` 指向执行所属 Session；子级记录保存 `callerSessionId`，父级引用与子级执行共用同一个 `invocationId` 和真实 `rootTaskId`。查询根 Task 必须使用 `executionSessionId ?? sessionId`。这些关联是宿主字段，调用者不能通过请求注入。目的地属于请求身份的一部分，同一 requestId 不能从当前 Session 改为子 Session 或反向切换。
@@ -12,6 +26,8 @@ Agent 可声明 `execution: {kind: 'flow', flowId, revision?, parameters?, conne
 父级先固定根发布修订、来源材料和解析实参，保存的是路由意图；子级在实际接纳前固定编译计划。调用接口只有在原根 Task 得到确认后才成功返回，创建子会话的成功不等于执行已接纳。重启与丢回复沿原父意图、子会话创建身份及子调用核对，不新建另一个调用。组织关系不传播控制、队列或完整聊天上下文。普通调用不传 execution 时继续原 Session；工作台默认独立调用及函数卡片尚需迁移，见合入计划 F16。
 
 `ContentTransferService` 提供显式材料传递：`session.content.capture({sessionId})` 固定当前分支的可见文本和已完成 Flow 输出；`session.content.resolve({sessionId,captureId,selection})` 准备消息选择或摘要；`session.content.create-child({sessionId,requestId,title,transfer?})` 幂等创建独立子会话并准备执行存储。`FlowInvocationInput.inputSources` 按参数名引用 `{sessionId,id}`，准入核对实际参数后保存完整 `inputTransfers`。`SessionCreation.initialContext` 与身份同事务创建且不可变；Context 装配将它作为显式材料，父子关系本身不继承聊天历史。摘要由可选 `ConversationSystemOptions.summarizeContent` 宿主端口注入。来源、预算及界面边界见 [显式内容来源与独立子会话](design/flow-invocation-composition.md#显式内容来源与独立子会话)。
+
+宿主可通过 prepareSessionExecution 在子会话元数据已保存后、执行恢复写入门之前准备 Kernel 存储。app-core 复用 createSessionExecutionPreparer，先取得元数据写租约，再打开或创建同一身份的执行存储，随后经过 canWriteSession 的恢复门；避免新子会话尚无 Kernel 记录就尝试恢复。拒租不会触碰执行存储，准备与后续调用各自保留具体阶段诊断。
 
 > 用户可见的会话语义 + 持久化：Session 生命周期、Round/Branch、SessionRepository（会话目录持久化）、RoundLog、SessionEventBus、UI projections、Durable Conversation。同时是上层装配入口：`initializeConversationSystem()` 统一注册 `llm.chat/agent/plan` 与 `flow.*` Programs 并装配 CommandBus/DAG。公共 API 从 `@itookit/llm-session` 根导出；少数内部工具（`RUNTIME_KEY`、`ulid`/`extractTimestamp`、`log`、`ContextProfileStore`、`VFSEntityStore`、`SessionFolder` 类型）仅按源码路径可用。
 
@@ -196,6 +212,8 @@ class SessionRepository implements ISessionRepository {
 
 ---
 
+附件接纳通过 [attachment-integrity.ts](../backend/llm-session/src/session/attachment-integrity.ts) 在现有 Session 附件目录保存不可变内容快照，`ChatAttachment.content` 记录 SHA-256 与字节数。宿主核验客户端预期，队列派发和 Context 消费再次核验；缺失、读失败、内容不符及写入未确认分别报错，不跳过附件。`writeAttachment` 同名同内容幂等，同名不同内容拒绝。原始 `submissionDigest` 与后续快照名分开保存，旧引用没有摘要时保留兼容读取，不宣称已冻结旧内容。Round 持久消息只保存引用、MIME 和内容身份，经宿主物化后才进入模型请求。普通 Agent→Harness 现支持经内容核验的 UTF-8 文本及 PNG/JPEG/WebP 内联附件，实际发送前按目标正向能力与原生限制校验；宿主装配模式发送选定历史，显式检查点 fork 仅发送本轮增量附件。通用文件的授权工作区传输及远端产物导入仍待接通。
+
 ## Round
 
 ### RoundLog
@@ -227,7 +245,7 @@ class RoundLog implements ILog {
 
 **助手占位投影规则（2026-09-11 第六十一/六十二轮）**：chat round 若没有 assistant 输出，`roundToProjection` 仍会按以下规则投影助手占位，否则转写会以用户消息结尾，下一次发送被 `Cannot send consecutive user messages` 拒绝：
 1. 终态（`failed`/`cancelled`）且有用户输入 → 投影 `failed`/`aborted` 占位（含 `error`）；
-2. **已记录 execution 但仍为 `running`/`pending`**（拥有它的宿主已消失）→ 投影 `running` 占位，`SessionRegistry.getSnapshot().interruptedAssistantId` 据此提示「上次执行未完成」并可重新执行；
+2. **已记录 execution 但仍为 `running`/`pending`**（拥有它的宿主已消失）→ 投影 `running` 占位，`SessionRegistry.getSnapshot().interruptedAssistantId` 据此提示「上次执行未完成」；重新执行前必须核对原 Kernel 任务，仍活动或未知时拒绝新调用，不能凭历史占位推断原任务已停止；
 3. `waiting`（等待人工输入）与从未启动过执行的 round 保持仅用户消息。
 回归：`backend/llm-session/__tests__/failed-round-projection.test.ts`（7 通过）与 `ui/app-shell/tests/host-restart-inflight.test.ts`（真实本地存储 + 永不回包模型，宿主在运行途中退出后重开：转写以助手占位结尾、`interruptedAssistantId` 存在、新消息不再被拒）。
 
@@ -251,7 +269,16 @@ class RoundGraphService {
 
 `class RoundOperations` —— round 业务操作（sendMessage 执行、regenerate 判定）。`hasRegenerateAssistant(...)` 辅助。
 
-Chat/Harness 重跑沿用 regenerate：已有回复时创建替代分支和新 Task，保留原 Task；工具重新执行，使用当前文件状态，不自动撤销文件修改。顶部与会话右键入口选择当前分支最后一条用户消息，消息旁入口可选择指定轮次；执行模式由 UI 固定后传入 overrides。`SessionRunCoordinator` 在执行结束后等待 `refreshSession` 同步持久 Round，再发布终态，避免刚完成的临时消息缺少轮次索引而无法立即重新生成。相关真实工具回归见 [harness-default-tools.test.ts](../backend/app-core/tests/harness-default-tools.test.ts)。
+Chat/Harness 重跑沿用 regenerate：已有执行时创建替代分支、新 Round、新 Invocation 和新 Task，保留原历史和 Task；空助手结果同样保留，只有从未执行的草稿可原位填充。重跑从真实 Kernel 根终态验证来源，保存 `retryOfInvocationId/retryOfSessionId`；原任务活动或身份冲突时拒绝。工具重新执行，使用当前文件状态，不自动撤销文件修改。顶部与会话右键入口选择当前分支最后一条用户消息，消息旁入口可选择指定轮次；执行模式由 UI 固定后传入 overrides。`SessionRunCoordinator` 在执行结束后等待 `refreshSession` 同步持久 Round，再发布终态，避免刚完成的临时消息缺少轮次索引而无法立即重新生成。相关真实工具回归见 [harness-default-tools.test.ts](../backend/app-core/tests/harness-default-tools.test.ts)，成功/无正文失败后的新身份与历史不变回归见 [instruction-queue.test.ts](../backend/app-core/tests/instruction-queue.test.ts)。
+
+`InvocationIdentity` 来自 llm-flow 纯契约。Session 队列在领取前持久分配身份，直接根任务 labels、Flow 根快照及 `ExecutionRef.invocation` 使用同一身份；调用方不能通过 `session.send` 注入该身份。`RoundProjection.execution` 与 `SessionGroup.execution/invocation` 为只读关联，不另建调用状态权威。`attachExecution` 在写入后发出含 execution 的 `round:updated`，运行协调器将此关联应用到已有历史投影并发出 `message:updated.execution`；正文与终态仍按既有刷新链投影。老记录缺少身份时可读，重新运行通过确定性的旧 Task 别名保存来源，不在读时迁移存储。
+
+普通 Harness Agent 的直接 Task 输入保存宿主装配 provenance：messages 为实际 canonical 消息，contextSnapshot 为同一快照的其余字段，context.input 引用该 ID/摘要；不依赖未持久化快照 ID 推断实际输入。new 会话创建独立 binding 并返回 contextBinding。可通过 ExecutionOverrides.harnessConversation 显式选择已确认源 binding 的 fork（sourceBindingId、expectedBindingRevision、expectedGeneration、checkpointRef）；队列冻结该选择，派发验证来源与兼容性后按 checkpointFork 能力精确复制，并只发送本次增量 prompt。非直接 Harness 目标拒绝该覆盖，创建后边界验证失败保留引用且不发 turn。严格原 thread 续接、UI 绑定选择与 Flow worker 全部接线仍待实现，不能把 Task ID 或上一轮 native session ID 自动当作续接选择。详见[上下文绑定覆盖](design/execution-context-binding.md#8-当前实施覆盖)。
+
+`SessionCommand.ContextBindings`（`session.context.bindings`）接收 `ContextBindingQuery`，通过可选 `ConversationSystemOptions.readContextBindings: ContextBindingReader` 查询宿主 binding 目录。请求显式 sessionId，可选 branchId、bindingId、limit 和 cursor；不绑定或激活 Session。`ContextBindingPage` 返回集合修订、绑定安全摘要，以及选定绑定的分页检查点。游标同时核对集合修订和查询范围；推进后须重新查询。检查点区分 terminal 的真实 Invocation 与未归属的 legacy-head；目录读取不写迁移、不取得原生控制权。缺失端口报 CONTEXT_QUERY_UNSUPPORTED，存储异常不返回空目录。宿主注入及 CLI 选择见[上下文协议 8.4](design/execution-context-binding.md#84-已确认检查点与只读目录)。
+
+`SessionCommand.ContextOptions`（`session.context.options`）通过可选 `ConversationSystemOptions.readContextOptions` 查询精确已发布目标的静态上下文资格。ContextOptionsQuery 显式指定目的 sessionId/branchId/TargetRef；bindingId 切换为检查点分页，checkpointRef 用于精确重验。Page 的 sources/checkpoints 含具体资格原因，dynamicPolicy 固定为 dispatch-validation-required，basis 仅是观察指纹。fork 来源可跨分支；查询不加载上下文或取得原生 writer。此命令属于只读传输分类，发送回执悬挂也可查询。详见[上下文协议 8.5](design/execution-context-binding.md#85-被动资格查询)。
+
 
 ---
 
@@ -299,6 +326,11 @@ class BranchService {
 ---
 
 ## 服务
+
+
+Agent 独立发布继续使用 `.agent` 草稿和 agents VFS 的 `/.agent-publications.seq`。`getAgentPublicationStatus(id)` 返回 sourceDigest、draftDigest、latest 和 hasDraftChanges；`publishAgent({agentId, operationId, expectedSourceDigest, expectedRevisionDigest, expectedPublishedVersion})` 事务保存不可变正文、最新指针与原操作回执。`getAgentRevision(id, version?)` 读取最新或指定发布，`getAgentPublicationReceipt(request)` 只核对原请求。版本为不透明 `ap1_<SHA-256>`，旧 source.version 和历史不会重写。来源或依赖改变、并发指针冲突、同操作换输入均明确拒绝；丢回复只核对原身份，旧回执不回退最新指针。
+
+首次发布前保持旧配置兼容；发布后 AgentResolver、typed 根调用、目标目录及聊天配置投影使用发布定义。配置编辑仍读取草稿。共享提示词从持久文件冻结，Flow 实现锁定修订及默认参数；后续编辑不混入已接纳调用，Runtime 重建仍派发原快照。发布不运行 Agent、不创建 Task，不替代运行授权检查。完整契约、C4、已验证范围及尚未完成的传递依赖/归档迁移见[统一执行设计 5.1.1](design/agent-session-connection-review.md#511-agent-独立发布的当前实施)。
 
 会话 `ChatSessionSettings.connectionId` 为可选覆盖；未设置时使用 `IConnectionService.getDefaultConnection()`。
 `setDefaultConnection(id | null)` 显式设置或清空全局默认。`session.get-connections` 返回连接列表与 `defaultId`，供 Flow 运行表单使用。
@@ -519,6 +551,20 @@ TTY 首次结束信息保持不变，后续结束通知与输出不覆盖；已�
 
 `ConversationManifest.createdWithAgentId` 记录创建时智能体，由 createSession/ensureSession 的 creation 参数在首次身份事务写入；SessionSummary 和导航索引包含该字段。之后切换轮次智能体不改变它，普通 manifest 更新不能覆盖；旧记录保持缺省。项目草稿由宿主捕获来源，Session bundle 导入导出保留来源。
 
+### Agent 与 Flow 的调用范围
+
+Agent 定义及冻结的 ExecutorConfig 保留 `exposure`。根 `AgentResolver.resolve/resolveForChat` 拒绝 local 与无效值，不能降级为缺失 Agent fallback；宿主提供的 fallback 也须通过相同准入。Flow 内部 `resolveExact` 可解析 local Agent，并保留其身份。Agent 保存拒绝未知范围，管理目录仍包含 local 定义。
+
+独立 Flow Invocation 和 Flow Agent 在输入解析及材料绑定之前拒绝 local 根 Flow。Agent 直接绑定 local Flow 同样不能开放入口；宿主可用性投影将这种绑定标记为 flow-invalid。已接纳调用核对使用已保存的定义、计划与根身份，不用新的目录快照覆盖它们。根选择器与管理目录分开投影，被隐藏的 default 不会由合成选项重新引入。完整的独立 Agent 发布与统一 TargetRef 仍在迁移中。
+
+新接纳的普通 Agent 指令在 `connectionBinding.agent` 保存带版本及摘要的身份快照，包括提示词、Agent 版本与声明策略。派发和重启恢复复用该身份，连接授权仍在执行时复验，实际对话上下文仍在派发时装配；后续把定义改为 local 或修改提示词，不会改变已接纳项。该身份只保留在宿主队列及执行记录，普通队列显示投影不携带它；公开输入不能注入内部 binding。旧队列缺少该字段时继续原兼容路径，不伪造历史准入快照。
+
+## 宿主产物读取
+
+`ConversationSystemOptions.loadArtifact?: ArtifactLoader` 接收实际调用的 `(sessionId, artifactId)`。`SessionManager.getArtifact` / `session.artifact.get` 读取当前绑定 Session 的文字或 JSON 语义值，Context 运行路径传入 ExecutionTask 所属 Session，预览固定其开始时的 Session。宿主使用 Kernel 终态输出核对引用与内容摘要，未注入端口时明确报 `ARTIFACT_READER_UNAVAILABLE`。二进制下载与目录分页通过应用协议 `app.artifacts.list/read` 完成；二进制和未导入的远端文件不能隐式作为文字上下文。
+
+产物服务及协议见 [执行产物读取](./interface-contracts.md#执行产物读取)。此读取能力不表示远程 Harness 文件已导入，也不创建新的 Kernel、History 或资产注册表。
+
 ### Agent 不可变发布与队列身份
 
 Agent 的文件保存只改变草稿。VFSAgentService 的 getAgentPublicationStatus 读取持久源定义、共享提示词和宿主解析的 Flow 修订；publishAgent 以 operationId、源摘要、依赖快照摘要和期望发布版本提交。AgentRevisionStore 在既有 VFS 定义平面的 /.agent-publications.seq 内原子保存不可变修订、当前指针和操作回执，不保存 Task 或控制状态。
@@ -661,20 +707,6 @@ C4Dynamic
 验证覆盖真实两个工作台的旧接纳清空、新正文与同名附件、显式替换及再次冲突、加载中的编辑与隐藏；服务回归覆盖不同分支并发、丢写回执、失败读取、无基线、损坏记录及安全日志。子 Session 路由、调用树、控制/上下文和产物能力按各自交付单元继续实施。
 
 
-### 宿主产物读取端口
-
-`ConversationSystemOptions.loadArtifact?: ArtifactLoader` 接收实际调用的 `(sessionId, artifactId)`，返回文字/JSON 的 Artifact 语义值。`SessionManager.getArtifact` / `session.artifact.get` 使用开始读取时绑定的 Session；Context 执行装配使用实际 ExecutionTask 的 Session，预览固定其开始时的归属。未注入读取器时明确报告 `ARTIFACT_READER_UNAVAILABLE`，不把不可读材料当作空上下文。
-
-宿主从终态 Task 输出派生不可变引用，校验输出选择与摘要。应用协议 `app.artifacts.list/read` 负责目录和二进制下载；Session 包不直接访问应用资产存储，二进制及尚未导入的远端文件不隐式充当文字上下文。
-
-
-### 原生上下文选择与只读目录
-
-`ExecutionOverrides.harnessConversation` 使用显式 new/fork 选择，进入既有 Submission/Instruction 冻结和派发链。普通 Harness Agent 的 Task 保存 ContextSnapshot 依据及实际消息；checkpoint fork 只发送本轮增量，不重复注入历史。模型/Flow 目标不能携带原生选择，严格 continue 在原生条件写能力缺失时明确拒绝。
-
-`session.context.bindings` / `session.context.options` 接收显式 Session、分支及查询范围；前者列出绑定和确认检查点，后者结合发布目标、profile 能力和目的地给出静态条件。两者由宿主注入只读 reader，经 Kernel.inspectSession 读取，不能绑定当前视图或取得 writer。游标包含观察版本/范围，变化后要求重新查询；静态兼容不代替派发时的策略、版本及授权复验。
-
-
 ### 独立根调用路由
 
 `IndependentCallCommand.Submit`（session.call.submit）接收 `IndependentCallInput`：`request` 是带 expectedSessionId、expectedBranch、expectedTarget 与 submission 的原冻结请求，另有 title 和可选 transfer。宿主通过 `submitIndependentCall` 提供独立执行上下文，将子请求送入原 Session 队列，不改变调用方 UI 绑定。
@@ -811,17 +843,14 @@ initializeConversationSystem 在已配置独立调用宿主时返回 independent
 
 准备与普通运行共用只读输入准备函数；只有原普通提交路径写入 executionModeLocked。准备不会绑定视图、入队、创建 Kernel Task 或 Round，也不锁定子 Session 的运行偏好。已持久计划的重放直接返回原计划，不重读新草稿或发布目录。源与目标权限在原服务持久保存前复验，管理器在异步准备后再次检查目标写权。
 
-诊断 session.call.prepare 区分 input/permission/published-target，携带入口捕获的安全 Session/operationId、分类、结果与耗时，不记录用户输入、附件、策略正文或原异常。真正模型执行仍须显式调用 submitPreparedTaskCall；接纳、输出与历史完成分别核对。正式 session.call.submit、历史恢复与前台/后台范围仍按[功能合入计划第 91 节](design/functional-merge-plan.md#91-已发布目标复用普通对话准备进入可信宿主调用)继续。
+诊断 session.call.prepare 区分 input/permission/published-target，携带入口捕获的安全 Session/operationId、分类、结果与耗时，不记录用户输入、附件、策略正文或原异常。单独调用准备接口不会执行模型；正式 session.call.submit 现由宿主对普通已发布 Agent 选择持久准备及 Kernel 提交，接纳、输出与历史完成分别核对。Flow 与已有队列路由继续沿原路径。
 
 
 ### 独立调用的原查询与 Kernel 事实
 
 原 session.call.inspect 识别已冻结 Kernel 路由，仅按原 caller 规格核对接纳；list 与控制另经 Kernel 验证实际目标，不让历史写入影响接纳核对或取消。inspect 的回执返回 evidence=kernel、callerExecution；list 的回执另含已存在的真实 primary execution；列表分别返回 callerState、目标 executionState 和 historyPending；exitStatus 直接区分 Kernel 的成功、失败和取消，phase=done 本身不代表成功。已接纳但未生成目标时仍为 accepted，不伪造目标；失败、取消及源宿主重启后仍可核对同一关联。原队列路由保持原语义。
 
-没有新增 Session 公共执行查询命令或重复执行状态。未提交 Kernel 的计划不能凭子队列回执变成 accepted。Round 的摘要、发布身份、Invocation、实际目标和索引必须匹配后才能用于历史摘要；未索引文件保留 historyPending，不展示为已提交历史。查询不获取 writer、不恢复执行、不因历史失败重跑目标。当前尚未自动写入/恢复 Round，也未接通默认新 UI，后续按[交付验收包](design/functional-merge-plan.md#01-当前交付收敛与复杂度约束2026-10-26)推进。
-
-
-### 普通已发布 Agent 的正式调用与历史恢复
+没有新增 Session 公共执行查询命令或重复执行状态。未提交 Kernel 的计划不能凭子队列回执变成 accepted。Round 的摘要、发布身份、Invocation、实际目标和索引必须匹配后才能用于历史摘要；未索引文件保留 historyPending，不展示为已提交历史。查询不获取 writer、不恢复执行、不因历史失败重跑目标。
 
 正式入口按原路由固定执行方式。新普通已发布 Agent 由 app-core 选择 Kernel 路径（深度 8、允许持久人工等待）；Flow/Flow Agent 和旧队列记录不自动迁移。宿主共享同一 IndependentCallService，视图关闭不关闭后台历史观察。启动 recover 只跟随已有 Kernel 接纳，恢复尚未绑定的原 caller，等待收尾后从真实 target 写终态 Round；没有接纳的准备记录不派发。reconcileTaskCallHistory 是宿主内部恢复方法，不是 RPC，不执行模型或工具。RoundLog.commitExpected 允许完全相同的正文补交缺失索引，内容不同或空分支已变化明确拒绝。失败记录 call.history.recover / call.history.reconcile 的阶段、身份、错误分类和耗时，下次宿主恢复或原请求重试继续处理。父卡片从 Kernel 事实展示运行/失败/取消及待保存历史；正文结果仍以已提交 Round 为准。
 

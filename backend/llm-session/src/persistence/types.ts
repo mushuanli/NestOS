@@ -9,7 +9,8 @@ export interface ConversationUIState {
     operationRecords?: JsonValue[];
     /** Opaque UI interaction drafts; independent from execution and answer receipts. */
     interactionDrafts?: Record<string, JsonValue>;
-    branchDrafts?: Record<string, {inputText?: string; inputAgentId?: string; inputTarget?: import('@itookit/llm-flow/contracts').TargetRef; inputArguments?: JsonValue; inputContext?: unknown; inputFiles?: JsonValue[]; inputToken?: string}>;
+    branchDrafts?: Record<string, {inputText?: string; inputAgentId?: string; inputTarget?: import('@itookit/llm-flow/contracts').TargetRef;
+        inputArguments?: JsonValue; inputContext?: unknown; inputFiles?: JsonValue[]; inputToken?: string}>;
     collapseStates?: Record<string, boolean>;
     scrollPosition?: number;
     historyVisibility?: 'visible' | 'hidden';
@@ -134,6 +135,7 @@ export interface ISessionRepository extends SessionDeletionStore {
     readDocument(sessionId: string, name: string): Promise<string | null>;
     writeDocument(sessionId: string, name: string, content: string): Promise<void>;
     listHistory(sessionId: string): Promise<string[]>;
+    /** Create immutable content; identical replays succeed, conflicting bytes are rejected. */
     writeAttachment(sessionId: string, name: string, content: ArrayBuffer): Promise<void>;
     openAttachments(sessionId: string): Promise<import('@itookit/vfs-core').FileSystemView>;
     readSessionAsset(sessionId: string, name: string): Promise<Blob | null>;

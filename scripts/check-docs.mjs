@@ -81,6 +81,8 @@ function isRepoReference(ref) {
 
 function resolveReference(doc, ref) {
     const candidates = [ref, join(dirname(doc), ref)];
+    const owner = WORKSPACE_DIRS.find(dir => doc.startsWith(`${dir}/`));
+    if (owner) candidates.push(join(owner, ref));
     const head = ref.split('/')[0];
     if (TOP_DIRS.includes(head)) return candidates.some(candidate => existsSync(resolve(ROOT, candidate)));
     if (WORKSPACE_NAMES.includes(head)) {

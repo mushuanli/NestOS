@@ -2,6 +2,8 @@
 
 平台无关的**应用用例与装配层**：封装项目组织、配置关联操作等应用策略，并把 VFS / LLM 设备驱动 / durable-kernel / kernel-adapters / llm-session / llm-flow 装配成运行时，供 Tauri、Web 与 CLI 共用。详见 [运行时架构](../../doc/runtime-architecture.md)、[包结构](../../doc/pkgstructure.md)。
 
+本地项目首次草稿可选择已发布 Flow，materialize 保持原 UUID，通过正式 Session 同一提交队列运行；Flow 目标不写 createdWithAgentId。草稿配置与参数正文由 UI 不透明编解码，宿主不解释参数或伪造 Agent 身份；远程原生草稿继续使用原 journal 和持久接纳转正规则。
+
 ## 定位与铁律
 
 - **平台无关**：`src/` 内不出现 `node:*`、DOM、`window`、`localStorage`；宿主差异一律通过注入传入（`ApplicationKernelPlatform`：`createSessionProcesses` / `skillSourceForSession` / `configureSession` / `configure`）。
@@ -90,6 +92,8 @@ const kernel = await createKernelRuntime({ systemFS, llmDriver, storageResolver,
 - `SessionFilesService.acquireWorkspaceFiles` 为宿主提供独立工作区视图：替换唯一匹配的现有挂载，来源由宿主提供；默认 rw 要求原授权可写，可选 ro 将全部用户挂载同时降权而不改持久授权。原授权配置改变、禁用或服务销毁时撤销全部派生工作区视图。运行时已透传 `scopeForEffect`/`fileContextForScope` 到 kernel-adapters；提供作用域文件工厂时默认按 llm-flow 持久成员及工作区租约选择 Run。Tauri 已连接独立副本文件视图、进程映射及释放，并在成功取得 Session 写租约后的 beforeSessionRecovery 回调核对创建意图。
 - 用户可见文案不写在本包：结构化错误（宿主可分支/本地化，见 `src/vfs/errors.ts`）或 `t()` 键（文案在 `@itookit/common`）。`tests/no-user-copy.test.ts` 守卫本包源码不含 CJK 文案。
 - 长耗时启动步骤应经 `traceBoot`/`logStep` 暴露进度，便于宿主显示启动状态。
+- StartupCoordinator.close 拒绝新初始化并排空已接纳工作；已创建的依赖 Promise 在关闭期间仍可读取，保留原结果或原错误，不重新初始化，也不能改写为 Startup is closed。快速 CLI 查询/准备退出的恢复回调继续使用同一已就绪依赖；回归见 startup-coordinator。
+- 租约恢复关闭后，已在途的准备回调返回时不得再开始 Kernel 恢复；Runtime 先排空恢复及租约释放，再停止 Kernel，分别保留释放与停止错误，不能靠吞掉 DISPOSED 异常掩盖关闭顺序。
 
 ## 运行
 
@@ -167,7 +171,11 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 
 - 项目远程草稿的 `remoteTarget` 和提交身份先在 drafts/store 事务中固定，再创建原生控制器。remote-submission 负责日志键、旧记录迁移与回执读取，恢复不得使用后来编辑的智能体偏好覆盖该目标；结果未知时禁止丢弃。输入保存可吸收同一草稿的准备元数据，但仍拒绝其他视图的正文冲突。Session 执行存储准备在 session/prepare-session-execution，runtime 只接线。
 
+- 会话内容转交创建的本地子会话，经 prepareSessionExecution 端口复用执行存储准备器。先获取 metadata lease、准备同一 Session ID 的 Kernel 存储，再进入 acquireLater 恢复写门；不能先恢复不存在的执行会话。准备器合并同 ID 在途调用，拒租不读写 Kernel，日志只含操作身份、阶段、分类与耗时。
+
 - conversation-composer-store 保存宿主不透明输入与不可变资产，资产读取核对固定会话 owner，草稿写入使用版本 CAS 和有界 operationId 回执。原图与图片参数不进入 harness 协议；closed 绑定拒绝后续访问，已发起的保存继续完成。
+
+- harness-context-bindings 在现有 Effect Session shared 状态保存上下文集合，身份独立于 Invocation/Task，不新增执行状态权威。新上下文先保存 journal 的 bindingId 并持久领取，再调用 create/turn；显式 fork 在 CAS 内验证源修订、代次、head、连接与策略，保存带 nativeRef 的 forkedFrom，按 checkpointFork 能力调用精确 fork 后只发增量。未知结果保持占用，边界不符保留返回身份并标 invalid，不能补发 turn 或把已创建改为未创建。收尾须先准备 binding，再保存 journal 释放凭据，最后释放；旧结果恢复不能解除后来所有者。continue 仍要求原生条件写保障，集合 CAS 和 checkpointFork 均不能替代。
 
 Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.restore 与设置初始文件恢复共用 restoreAndPublishFlow，显式串联恢复草稿和发布 revision；不把发布副作用加入核心 DraftRestore，也不发布已有用户草稿。
 
@@ -178,21 +186,30 @@ Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.
 
 工作区工具的默认文件发现由 vfs/tool-context 排除应用拥有的 `.mindos` 目录，避免会话历史递归进入搜索结果；`includeIgnored` 与授权范围内的显式读取仍可使用。此产品策略不写入独立 VFS 或工具库的通用默认过滤器。
 
-- StartupCoordinator.close 拒绝新初始化并排空已接纳工作；已创建的依赖 Promise 在关闭期间仍可读取，保留原结果或原错误，不重新初始化，也不能改写为 Startup is closed。快速 CLI 查询/准备退出的恢复回调继续使用同一已就绪依赖；回归见 startup-coordinator。
+- 原生 ConversationView 的入队、队列编辑、草稿保存、读取、回应、取消与控制核对不等待原发送 tail；队首派发悬挂时继续观察原生事件，由既有 RPC 失效通知更新动作。ConversationRegistry 在控制 unknown 或 accepted 未确认终态时保留后台观察。RemoteConversationStore 串行写入，事务回执丢失后核对原写前/写后值恢复己方 CAS 游标；真实并发冲突固定拒绝旧实例写入，不因 load 解除。旧 @new 清理须保留后续草稿、队列、回应及未完成控制；控制事实不伪造成消息历史。
 
-- 租约恢复关闭后，已在途的准备回调返回时不得再开始 Kernel 恢复；Runtime 先排空恢复及租约释放，再停止 Kernel，分别保留释放与停止错误，不能靠吞掉 DISPOSED 异常掩盖关闭顺序。
+- NativeHarnessExecutionProvider.cancel 只有完成原 journal 核对、实际停止与绑定清理后，才返回带当前 Session/Task/Effect 和 journal 引用的 ConnectionCancelResult 确认；区分 terminal 与 not-started。未知回执、epoch 变化、收尾写入失败仍保留 journal 并抛出具体原因，不能返回伪确认。
+
+- 生产取消的 stateForCleanup 仍只授权原 journal；settleContextForCleanup 由宿主提供固定 binding 的 get/prepare/release 方法，不向 Effect 开放集合读写或 claim/attach。先核对原租约再打开 Kernel，每次记录读写复验；释放前从实际 journal 重读凭据，检查原所有者、原生身份、代次、终态类型和 head。旧操作不得释放新所有者，日志不得包含输入、原生正文或存储异常详情。
+
+- NativeHarnessExecutionProvider.reconcile 返回连接事实 completed/not-started/unknown；Kernel 枚举的转换归 Effect 桥。活动 journal 继续观察原 turn，恢复预算耗尽保留 unknown，不再派发原生 turn；只有受原先写后执行与恢复 fence 约束的 journal 缺失能产生带归属证明的 not-started。
+
+TaskArtifacts 从 Kernel 终态 Task.output 派生分页目录和稳定 task-output/v1 引用，不新建注册表、调度器或状态库。读取按显式 Session/Task、输出选择和内容摘要核对，再复用 TaskAssetReader 的同 Flow/重试祖先边界；不使用调用方 owner 或 URI 直接读取文件。文本/JSON 可下载及显式加入 Context；二进制按字节分段读取，未导入的远端 file 输出明确不可用。runtime/task-artifact-services 只负责命令及 ArtifactLoader 接线。读取不得 open/recover Session 或推进 Task，错误日志区分 scope、integrity、missing 和 storage 失败，保留安全 storageCode，不记录路径、正文或原始存储异常。
+
+Harness 执行的 input-preparation 在 binding 领取和原生 create/fork/turn 前完成：复用 driver 的纯输入校验，按 profile.capabilities.attachments 正向验证，不按厂商名猜测支持。当前限制为 prompt 128 KiB UTF-8、最多五个内联附件、单文本 64 KiB、单图片 256 KiB、附件编码内容合计 512 KiB；仅 PNG/JPEG/WebP 图片。能力或编码失败报告具体安全错误码与阶段，不创建原生会话；DSH 当前未声明附件能力，不静默丢文件。通用工作区文件运输及远端输出导入仍须独立实现。
+
+Harness 结构化资产准备复用实际消费 Task 的 TaskAssetReader，支持已选择输入与同 Flow/重试祖先产物；接线在 createApplicationRuntime，转换在 projects/harness-execution-assets。原 Task/Effect 请求和 journal 摘要保留不可变引用，实际 turn 才发送经过摘要、格式和能力核验的内联文件。未发送 turn 时禁止绕过准备或丢弃附件；原 turn 已有持久操作记录时不重新读文件，核对及取消不因源文件后来不可读而失败。scope、内容不符、缺失与存储拒绝分别诊断，失败不暴露路径或原始异常。
+
+通用文件通过 input-file-assets 在既有 inputs.seq 事务保留稳定 uploadId/内容身份，正文按摘要保存；Inspect 以实际正文派生就绪，不新增 ready 状态库。call-asset-preflight 仅校验明确标准材料块，新根调用及实际队列参数修改验证就绪；原接纳回执核对不重新验证或重发。上传限制不替代 Harness 目标准备，日志不记录文件名/正文。
+
+createAgentPublicationDependencies 在发布时静态校验 Flow 实现、锁定其修订和摘要，并检查 Agent 部分默认实参而不要求公开必填输入提前具备。聊天安全配置和目标目录投影发布元数据；不把草稿变更当成发布或授权撤销，不为发布读取凭据、调用模型或取得原生 writer。
+
+HarnessContextBindings 在原 settlement journal 持久后才发布终态检查点，保留因果前驱和真实 Invocation；后续拒绝不会覆盖前一 head 的所有者。旧 knownHeadRef 只投影为 legacy-head，不从 lastOperation 猜生产者。显式 fork 可以选择已确认的旧检查点，仍复验当前 binding 修订、策略与原生边界。Context binding 目录复用同一 Session shared state，只读、分页并绑定快照与查询范围，不激活 Session、获取 writer 或读取原生历史；原生严格续接能力仍独立校验。
+
+长活 Harness Effect 内的新审批转发须通过 EffectSessionState.setIfRunning 将 pending 操作写入原 journal，与暂停屏障同事务校验。held 保留回答与请求，不作为 unknown；已有操作只核对原回执，不重新发出。暂停前已准入的工作仍可收尾，普通共享写入保留观察和结算。缺少准入能力时新转发明确拒绝，取消清理端口不能因此获得新执行权限。
 
 RemoteConversationStore 的 load/save/submitted 在同实例串行，避免延迟读取回退 CAS 游标；保存先冻结调用方记录，读取返回副本。未知写入只核对写前/写后值；第三值锁定实例为冲突，load 不能解除。原生执行与控制不共用此存储串行边界。
 
 原生队列的 enqueue/editInstructionQueue 经显式 RPC 暴露，与原发送 tail 独立；ConversationView 在队首派发回执悬挂时继续观察，持久化由 RemoteConversationStore 校验队列修订。ConversationRegistry 由项目宿主持有，跨视图复用同一控制器并在存在可派发队列或未确认回执时保留观察；宿主关闭才统一释放。
 
 configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、公开范围和默认实参；不创建 Task、不获取 Connection、不持有队列。runtime 只接线；发布事务与原操作回执由 Session 配置服务管理。
-
-TaskArtifacts 从 Kernel 终态 Task.output 派生分页目录和稳定 task-output/v1 引用，不新建注册表、调度器或状态库。读取按显式 Session/Task、输出选择和内容摘要核对，再复用 TaskAssetReader 的同 Flow/重试祖先边界；不使用调用方 owner 或 URI 直接读取文件。文本/JSON 可下载及显式加入 Context；二进制按字节分段读取，未导入的远端 file 输出明确不可用。runtime/task-artifact-services 只负责命令及 ArtifactLoader 接线。读取不得 open/recover Session 或推进 Task，错误日志区分 scope、integrity、missing 和 storage 失败，保留安全 storageCode，不记录路径、正文或原始存储异常。
-
-- 生产取消的 stateForCleanup 仍只授权原 journal；settleContextForCleanup 由宿主提供固定 binding 的 get/prepare/release 方法，不向 Effect 开放集合读写或 claim/attach。先核对原租约再打开 Kernel，每次记录读写复验；释放前从实际 journal 重读凭据，检查原所有者、原生身份、代次、终态类型和 head。旧操作不得释放新所有者，日志不得包含输入、原生正文或存储异常详情。
-
-HarnessContextBindings 在原 settlement journal 持久后才发布终态检查点，保留因果前驱和真实 Invocation；后续拒绝不会覆盖前一 head 的所有者。旧 knownHeadRef 只投影为 legacy-head，不从 lastOperation 猜生产者。显式 fork 可以选择已确认的旧检查点，仍复验当前 binding 修订、策略与原生边界。Context binding 目录复用同一 Session shared state，只读、分页并绑定快照与查询范围，不激活 Session、获取 writer 或读取原生历史；原生严格续接能力仍独立校验。
-
-
-ContextOptionsReader 使用显式 Session/分支、发布目标及 HarnessConnectionService.inspect 投影能力与静态兼容性；只读 inspectSession，不领取 writer 或执行原生 turn。观察 basis 固定目标、连接授权、epoch、目的地及目录版本，旧分页游标不能跨范围复用。static-compatible 不宣称完整策略兼容，派发必须按实际装配结果重新核对；输出不包含原生控制身份、策略正文或操作指纹。

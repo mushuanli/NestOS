@@ -31,6 +31,8 @@ createApplicationRuntime
 
 宿主不再各自装配这些服务。
 
+远程 Harness 的取消收尾由同一 Runtime 注入：createHarnessCleanupState 仅授权原 Effect journal；createHarnessContextCleanup 提供固定 binding 的收尾方法，不把集合写入权限交给取消后的 Effect。两者复用原 Session 租约，先检查再打开 Kernel 存储，每次记录读写继续复验。只有原生停止、journal 凭据和绑定释放均确认后，Effect 才向 Kernel 确认清理；队列继续按现有 cleanupPending 和显式暂停状态判断派发。接线和 C4 见[控制协议](design/invocation-control-state.md#841-原执行-binding-的生产清理端口)。
+
 ## 宿主差异封装
 
 宿主只提供差异项：

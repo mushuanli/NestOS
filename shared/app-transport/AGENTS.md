@@ -26,12 +26,14 @@ RPC 身份与能力租约使用包内 randomUUID 兼容工具，不直接调用�
 
 HarnessClient 的能力表显式注册 subscribe/eventSnapshot 与目录订阅/快照，禁止保留已移除的轮询 RPC。变更客户端接口时同时验证真实 RpcPeer 往返和取消订阅释放，不能只用直接对象替身验证 UI。
 
+HarnessClient.readCommandOutput 及 HarnessConversationPort.readCommandOutput/loadCommandOutput 均为 query，不参与执行或草稿写域失效；结果可用性失败不把已确认执行改为未知。前端分段读取在本地取消边界停止后续页，不能假设 RPC 编码后的 AbortSignal 会传播后续 abort。
+
 IConnectionService 的 getPricingConfig 与管理服务一样以 snapshot 暴露，保留 reference_catalog 厂商价格来源、日期、币种及单位；模型选择 UI 不通过传输外的厂商目录补齐。真实 HTTPS 回归覆盖该只读快照。
+
+Agent 发布的 getAgentRevision/getAgentPublicationStatus/getAgentPublicationReceipt 为只读 query，publishAgent 为独立 async 写入。回执查询不能被原发布响应悬挂阻塞；返回既有精确操作事实，不自动重放发布或创建执行。认证 HTTP 回归见 view-api 的 suspended publication 场景。
 
 TaskHandle.withdrawPause 在应用能力表显式注册为 async，保留原 requestId、expectedEpoch 与错误码。公开内核 API 的新增方法必须同时检查远程能力表；通用 RPC 编码器不通过反射自动开放所有方法。
 
 原生 HarnessClient 的 queryCommand/commandCatalog/readCommandOutput 是只读查询；HarnessConversationPort 的 queryCommand/reconcileQuery 需要保存报告，属于独立 async 操作，不等待发送 tail。reconcileControl 与原输入回执分开，输出读取不改变执行接纳或草稿。能力表与真实 RPC 回归一同维护。
-
-Agent 发布的 getAgentRevision/getAgentPublicationStatus/getAgentPublicationReceipt 为只读 query，publishAgent 为独立 async 写入。回执查询不能被原发布响应悬挂阻塞；返回既有精确操作事实，不自动重放发布或创建执行。认证 HTTP 回归见 view-api 的 suspended publication 场景。
 
 FileSystemView 是带独立 dispose 的文件能力，RPC 通过独立类型显式保留其释放方法及 openFile 本地投影；普通 IFileSystem 不自动获得生命周期权限。SessionRepository.openAttachments 的返回值必须可经真实 RPC 释放，释放后仓库和底层 VFS 继续可用。

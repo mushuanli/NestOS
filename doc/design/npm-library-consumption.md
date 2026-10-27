@@ -303,3 +303,19 @@ llm-ui 与 device-tty 已提取各自的目录提交历史并推送独立 main�
 device-tty 拥有独立 /contracts 子入口，tools/contracts 兼容转发类型；它不再依赖 tools。Node 驱动入口和纯接口入口分开，原生模块仅在 PTY spawn 时加载；驱动不承诺跨宿主重启恢复。两份 tarball 在仓库外完成 ESM/CJS 导入、交互进程和 NodeNext 类型消费检查。主项目 tools、kernel-adapters 与 CLI 类型检查、kernel-adapters 的 273 项测试以及架构与文档检查通过。Git 推送、主仓库提交和 npm 发布是分别执行的动作，不能以远端代码存在推断 npm 已发布。
 
 HTTP 构建使用 `release/httpd/.build-cache/` 复用隔离安装环境及前后端编译产物；缓存键包含已准备的不可变库快照 ID，修改 libraries 源码后，`pnpm httpd:build` 会先增量准备新快照，再使用该快照编译 HTTP release；也可单独运行 `pnpm lib:build <库名>` 准备或检查上游制品。构建缓存不修改工作区消费模式，`--no-cache` 可绕过缓存，`--no-activate` 只生成验证后的 release、不改变下次启动选择。
+
+
+### 2026-10-27 文档 AI 与 NestOS HTTP 发行
+
+已推送并合并相关仓库 main，发布 @itookit/vfs-core@5.3.4、@itookit/mdxeditor@0.5.9、
+@itookit/mindos-node-driver@0.4.3；三个版本均已可从公开注册表查询，独立仓库版本标签已推送。
+HTTP 工作台首次以 nestos@0.1.0 分发，产品发行名 NestOS，命令为 `nestos httpd`；
+初始化命令为 `nestos init-certs`，首次交互终端缺少证书目录时也可确认生成，非交互缺少证书时明确退出。
+原 MindOS 用户配置和数据根路径保持兼容，详见 [npm 使用说明](../../apps/http-app/npm/README.md)。
+
+NestOS tarball SHA-256：`13c0612438baab7c17994014e7862fdc093ce004c3c85a708cc4ee2376ec9c5b`。
+构建源提交 `13509742`，HTTP release 为 `20261027T105758-13509742`，对应 Git 标签 `nestos-v0.1.0`。
+npm publish 已退出码 0 接纳发布，注册表提示仍需处理数分钟；不因短暂不可见重复提交相同版本。
+此前 mindos 包名被 npm 以与 minio 过于相似为由拒绝；MindNest 仅作为候选准备过制品，没有发布。
+本次按用户要求不执行测试套件，仅完成发布所需的构建、打包、源输入/原生运行时检查及注册表状态查询。
+没有用新包启动生产服务，也没有重启现有 httpd。GitHub Pages 已部署，站点为 <https://mushuanli.github.io/itookit/>。

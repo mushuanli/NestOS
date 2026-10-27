@@ -35,7 +35,8 @@ async function askHosts(directory: string, defaults: string): Promise<string[]> 
 export async function ensureStartupCertificates(directory: string, defaults: string): Promise<void> {
     try {await lstat(directory); return;}
     catch (error) {if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;}
-    if (!stdin.isTTY || !stdout.isTTY) throw new Error(`HTTPS certificates are missing: ${directory}. Run with --init-certs --cert-host <IP/DNS> --cert-dir "${directory}" first. Non-interactive startup cannot prompt.`);
+    // The repository launcher pipes stdout to its runtime log while retaining interactive stdin.
+    if (!stdin.isTTY) throw new Error(`HTTPS certificates are missing: ${directory}. Run with --init-certs --cert-host <IP/DNS> --cert-dir "${directory}" first. Non-interactive startup cannot prompt.`);
     const hosts = await askHosts(directory, defaults), operationId = randomUUID(), started = Date.now();
     log.info('http.certificates.initialize', {operation: 'http.certificates.initialize', operationId, stage: 'generate', result: 'start', hostCount: hosts.length});
     try {

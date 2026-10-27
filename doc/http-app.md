@@ -401,7 +401,7 @@ HTTP 工作台以 `nestos@0.1.0` 发布，使用 `npm install -g nestos@0.1.0` �
 `pnpm nestos:publish` 按已准备 tarball 的 SHA-256 核对后发布。npm 进程以前台日志运行，
 默认审计仍在用户配置目录的 `logs/http/`，仓库 `pnpm httpd` 的系统日志路径不变。
 
-首次交互终端启动（stdin/stdout 均为 TTY）缺少证书目录时，询问是否初始化，默认否，并收集访问 IP/DNS。
+首次交互终端启动（stdin 为 TTY，允许 stdout 经启动脚本转发到日志）缺少证书目录时，询问是否初始化，默认否，并收集访问 IP/DNS。
 用户确认后复用 createCertificates，完成后显示 CA/浏览器个人证书导入位置并继续启动；不记录密钥、密码或证书正文。
 已有证书目录不覆盖；非交互启动缺少目录时直接报出 --init-certs 命令，不等待输入。
 初始化前解析真实父目录，检查证书目的地不在数据根或静态网页根中，包含符号链接父路径。

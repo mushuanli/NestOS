@@ -1,9 +1,8 @@
-import type {Kernel} from '@itookit/durable-kernel';
+import {bindCapabilities, type Kernel, type TaskHandle} from '@itookit/durable-kernel';
 import type {ToolCommandOption, ToolCommandRequest} from '@itookit/llm-session/contracts';
 import type {SessionCapabilityRegistry} from '@itookit/kernel-adapters/contracts';
 import type {MCPServer} from '@itookit/tools/mcp-contracts';
 import {mcpToolId} from '@itookit/tools/mcp-contracts';
-import {submitRun} from '@itookit/llm-flow';
 import {createModuleLogger} from '@itookit/common';
 
 export interface ToolCommandPorts {
@@ -50,19 +49,23 @@ export async function submitToolCommand(kernel: Pick<Kernel, 'openSession'>, por
         const meta = scope.toolService.getToolMeta(request.toolId);
         if (!meta?.enabled) throw failure('TOOL_COMMAND_UNAVAILABLE');
         if ((meta.version ?? '1') !== request.toolVersion) throw failure('TOOL_COMMAND_VERSION_UNAVAILABLE');
-        const run = await submitRun({kind: 'task', sessionId: request.sessionId, task: {
-            requestId: request.requestId, program: {kind: 'kernel-adapters.tool', version: '1'},
-            input: {toolId: request.toolId, toolVersion: request.toolVersion, args: structuredClone(request.args),
-                allowedToolIds: [request.toolId], approval: 'all'}, labels: {command: 'tool', toolRequestId: request.requestId},
-        }, capabilities: [{kind: 'tool', uri: 'tool://command', rights: ['execute'], signalKey: 'toolHandleId'}]}, {kernel});
+        const task = await prepareToolTask(kernel, request);
+        if ((await task.status()).task.status !== 'created') return task.id;
+        await bindCapabilities(task, [{kind: 'tool', uri: 'tool://command', rights: ['execute'], signalKey: 'toolHandleId'}]);
         logger.info('Tool command admitted', diagnostic(request, started, 'success'));
-        return run.root.id;
+        return task.id;
     } catch (error) {
         const code = (error as {code?: unknown})?.code;
         logger.error('Tool command rejected', {...diagnostic(request, started, 'failure'),
             errorCategory: typeof code === 'string' && /^[A-Z_]+$/.test(code) ? code : 'TOOL_COMMAND_ADMISSION_FAILED'});
         throw error;
     }
+}
+async function prepareToolTask(kernel: Pick<Kernel, 'openSession'>, request: ToolCommandRequest): Promise<TaskHandle> {
+    const session = await kernel.openSession(request.sessionId);
+    return session.submit({requestId: request.requestId, program: {kind: 'kernel-adapters.tool', version: '1'}, deferStart: true,
+        input: {toolId: request.toolId, toolVersion: request.toolVersion, args: structuredClone(request.args),
+            allowedToolIds: [request.toolId], approval: 'all'}, labels: {command: 'tool', toolRequestId: request.requestId}});
 }
 function failure(code: string): Error {return Object.assign(new Error(code), {code});}
 function diagnostic(request: ToolCommandRequest, started: number, result: string) {

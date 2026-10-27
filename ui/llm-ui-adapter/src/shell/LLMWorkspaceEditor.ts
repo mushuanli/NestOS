@@ -14,7 +14,7 @@ import type { EditorTaskControlPlane } from '@itookit/durable-kernel/contracts';
 import type { SessionViewPort } from '@itookit/llm-session/contracts';
 import { acquireConnectionOptions } from './connection-options-cache';
 import { rerunSession } from './rerun-session';
-import { randomUUID, t } from '@itookit/common';
+import { t } from '@itookit/common';
 import { bindWorkspaceInput, type WorkspaceHandoff } from './drafts/workspace-handoff';
 import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
@@ -68,6 +68,7 @@ import { NavigationHelper } from './NavigationHelper';
 import { RunAttachmentController } from './RunAttachmentController';
 import { readDirectCommandOutcome } from '../commands/direct-command';
 import {prepareToolInvocation} from '../flows/invoke-tool';
+import {ToolCommandOperations} from '../flows/tool-operations';
 import { inputInteraction } from './input-interaction';
 import {
     buildExecutorOptions, validateAgentId,
@@ -168,7 +169,6 @@ export class LLMWorkspaceEditor implements IEditor {
     private fileSearchService!: FileSearchService;
     private runAttachment?: RunAttachmentController;
     private viewActive = true;
-    private readonly toolRequests = new Map<string, string>();
     private activationRevision = 0;
     private rerunAbort?: AbortController;
     private rerunPending = false;
@@ -1322,13 +1322,10 @@ export class LLMWorkspaceEditor implements IEditor {
         const service = this.options.privilegedCommands!;
         const value = await prepareToolInvocation(service, sessionId, text, signal, mcpOnly);
         if (!value || signal.aborted || sessionId !== this.currentSessionId) return false;
-        const key = JSON.stringify([sessionId, value]);
-        let requestId = this.toolRequests.get(key);
-        if (!requestId) {requestId = randomUUID(); this.toolRequests.set(key, requestId);}
-        const taskId = await service.tool!({sessionId, requestId, ...value});
+        if (!this.operations) throw new Error('TOOL_COMMAND_JOURNAL_UNAVAILABLE');
+        const taskId = await new ToolCommandOperations(this.operations, service).submit({sessionId, ...value});
         if (signal.aborted || sessionId !== this.currentSessionId) return false;
         await this.attachPrivilegedTask(taskId);
-        this.toolRequests.delete(key);
         return true;
     }
 

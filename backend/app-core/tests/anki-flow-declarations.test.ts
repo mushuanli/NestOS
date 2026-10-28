@@ -15,7 +15,7 @@ it('publishes declared composer sources and connection requirements without repl
     const revision = await runtime.commandBus.execute<FlowRevision>(FlowCommand.RevisionGet, {id: 'anki-generate'});
     expect(revision.parameters?.find(field => field.name === 'words')?.inputSource).toBe('composer.text');
     expect(revision.parameters?.find(field => field.name === 'images')?.inputSource).toBe('composer.attachments');
-    expect(revision.inputGroups).toBeUndefined();
+    expect(revision.inputGroups).toEqual([{name: 'content', label: '输入方式', mode: 'anyOf', parameters: ['words', 'images', 'wordsGroups']}]);
     expect(revision.connections?.map(slot => slot.label)).toEqual(['文本生成连接', '文生图连接', 'tts语音连接', 'OCR图片识别连接']);
     for (const [flowId, nodeId] of [['anki-recognize-group', 'recognize'], ['anki-complete-batch', 'generate']]) {
         const node = revision.functions?.find(flow => flow.id === flowId)?.nodes.find(node => node.id === nodeId);

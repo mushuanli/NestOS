@@ -11,7 +11,7 @@
   "parameters": [
     {
       "name": "words",
-      "label": "单词列表或 WordData JSON",
+      "label": "文本",
       "type": "string",
       "required": false,
       "nonBlank": false,
@@ -23,7 +23,7 @@
     },
     {
       "name": "images",
-      "label": "教材或单词图片",
+      "label": "图片",
       "type": "json",
       "widget": "images",
       "required": false,
@@ -42,7 +42,7 @@
     },
     {
       "name": "wordsGroups",
-      "label": "分组文本内容",
+      "label": "分组文本",
       "type": "json",
       "default": null,
       "widget": "textarea",
@@ -54,7 +54,10 @@
       "type": "string",
       "default": "面向中国青少年英语学习者，例句简洁自然，中文解释清楚，难度适中。",
       "widget": "textarea",
-      "description": "年级、例句难度和记忆技巧偏好。图片及语音默认关闭，可按需开启；需要宿主安装 anki-cli 工具模块。"
+      "description": "年级、例句难度和记忆技巧偏好。图片及语音默认关闭，可按需开启；需要宿主安装 anki-cli 工具模块。",
+      "presentation": {
+        "contentSource": false
+      }
     },
     {
       "name": "deckName",
@@ -62,7 +65,10 @@
       "type": "string",
       "required": true,
       "nonBlank": true,
-      "default": "英语单词"
+      "default": "英语单词",
+      "presentation": {
+        "contentSource": false
+      }
     },
     {
       "name": "outputDirectory",
@@ -71,28 +77,58 @@
       "required": true,
       "nonBlank": true,
       "default": "anki-output",
-      "description": "授权工作区内的相对目录；每次打包保存到独立子目录，保留此前产物。"
+      "description": "授权工作区内的相对目录；每次打包保存到独立子目录，保留此前产物。",
+      "presentation": {
+        "contentSource": false
+      }
     },
     {
       "name": "generateImages",
       "label": "生成配图",
       "type": "boolean",
       "default": false,
-      "widget": "checkbox"
+      "widget": "checkbox",
+      "presentation": {
+        "contentSource": false,
+        "group": "生成选项"
+      }
     },
     {
       "name": "generateAudio",
       "label": "生成单词和例句语音",
       "type": "boolean",
       "default": false,
-      "widget": "checkbox"
+      "widget": "checkbox",
+      "presentation": {
+        "contentSource": false,
+        "group": "生成选项"
+      }
     },
     {
       "name": "voice",
       "label": "语音音色",
       "type": "string",
       "default": "",
-      "description": "填写所选语音模型支持的音色。"
+      "description": "填写所选语音模型支持的音色。",
+      "presentation": {
+        "contentSource": false,
+        "group": "生成选项",
+        "visibleWhen": {
+          "kind": "eq",
+          "args": [
+            {
+              "kind": "param",
+              "path": [
+                "generateAudio"
+              ]
+            },
+            {
+              "kind": "literal",
+              "value": true
+            }
+          ]
+        }
+      }
     },
     {
       "name": "processingMode",
@@ -104,7 +140,47 @@
         "combined",
         "grouped"
       ],
-      "description": "combined 将多张图片或多个文本组一起处理；grouped 按指定分组分别处理。全部结果最终汇总为一个完整 Anki 包。"
+      "description": "combined 将多张图片或多个文本组一起处理；grouped 按指定分组分别处理。全部结果最终汇总为一个完整 Anki 包。",
+      "presentation": {
+        "contentSource": false,
+        "visibleWhen": {
+          "kind": "or",
+          "args": [
+            {
+              "kind": "gt",
+              "args": [
+                {
+                  "kind": "param",
+                  "path": [
+                    "images",
+                    "length"
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "value": 1
+                }
+              ]
+            },
+            {
+              "kind": "gt",
+              "args": [
+                {
+                  "kind": "param",
+                  "path": [
+                    "wordsGroups",
+                    "length"
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "value": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "name": "imageGroups",
@@ -112,7 +188,46 @@
       "type": "json",
       "default": [],
       "widget": "textarea",
-      "description": "分组模式可填 [[0,1],[2]]，索引从0开始，每张图片必须恰好属于一组；留空时每张图片一组。"
+      "description": "分组模式可填 [[0,1],[2]]，索引从0开始，每张图片必须恰好属于一组；留空时每张图片一组。",
+      "presentation": {
+        "contentSource": false,
+        "visibleWhen": {
+          "kind": "and",
+          "args": [
+            {
+              "kind": "eq",
+              "args": [
+                {
+                  "kind": "param",
+                  "path": [
+                    "processingMode"
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "value": "grouped"
+                }
+              ]
+            },
+            {
+              "kind": "gt",
+              "args": [
+                {
+                  "kind": "param",
+                  "path": [
+                    "images",
+                    "length"
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "name": "groupUnits",
@@ -120,7 +235,46 @@
       "type": "json",
       "default": [],
       "widget": "textarea",
-      "description": "可填 [1,3,5]，用于图片页首未写单元标题时的延续单元；每组图片有明确单元标题时以图片为准。"
+      "description": "可填 [1,3,5]，用于图片页首未写单元标题时的延续单元；每组图片有明确单元标题时以图片为准。",
+      "presentation": {
+        "contentSource": false,
+        "visibleWhen": {
+          "kind": "and",
+          "args": [
+            {
+              "kind": "eq",
+              "args": [
+                {
+                  "kind": "param",
+                  "path": [
+                    "processingMode"
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "value": "grouped"
+                }
+              ]
+            },
+            {
+              "kind": "gt",
+              "args": [
+                {
+                  "kind": "param",
+                  "path": [
+                    "images",
+                    "length"
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
     }
   ],
   "connections": [
@@ -169,6 +323,9 @@
             "value": true
           }
         ]
+      },
+      "presentation": {
+        "group": "生成选项"
       }
     },
     {
@@ -200,6 +357,9 @@
             "value": true
           }
         ]
+      },
+      "presentation": {
+        "group": "生成选项"
       }
     },
     {
@@ -1646,6 +1806,18 @@
     {
       "id": "image.process",
       "version": "1"
+    }
+  ],
+  "inputGroups": [
+    {
+      "name": "content",
+      "label": "输入方式",
+      "mode": "anyOf",
+      "parameters": [
+        "words",
+        "images",
+        "wordsGroups"
+      ]
     }
   ]
 }

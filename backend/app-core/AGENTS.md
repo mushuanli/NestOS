@@ -177,7 +177,7 @@ NestOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createNe
 
 - harness-context-bindings 在现有 Effect Session shared 状态保存上下文集合，身份独立于 Invocation/Task，不新增执行状态权威。新上下文先保存 journal 的 bindingId 并持久领取，再调用 create/turn；显式 fork 在 CAS 内验证源修订、代次、head、连接与策略，保存带 nativeRef 的 forkedFrom，按 checkpointFork 能力调用精确 fork 后只发增量。未知结果保持占用，边界不符保留返回身份并标 invalid，不能补发 turn 或把已创建改为未创建。收尾须先准备 binding，再保存 journal 释放凭据，最后释放；旧结果恢复不能解除后来所有者。continue 仍要求原生条件写保障，集合 CAS 和 checkpointFork 均不能替代。
 
-Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.restore 与设置初始文件恢复共用 restoreAndPublishFlow，显式串联恢复草稿和发布 revision；不把发布副作用加入核心 DraftRestore，也不发布已有用户草稿。
+Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.restore 与设置初始文件恢复共用 restoreAndPublishFlow，显式串联恢复草稿和发布 revision；系统初始文件恢复显式覆盖所选内置 Flow 草稿并发布新修订，保留历史修订。普通 Flow 库恢复仍保留已有用户草稿，不把覆盖或发布副作用加入核心 DraftRestore。
 
 连接能力筛选也接收模型目录的 supportedOperations 显式声明，但仍要求受支持的 Provider 媒体端点；这只表示发现能力。runnableModel 及运行准入继续要求完整 operations 约束，不能把任务类型声明误当作可执行请求参数。
 

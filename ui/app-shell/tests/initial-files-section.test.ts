@@ -17,7 +17,7 @@ it('shows a collapsed, unselected file catalog and restores only checked files',
         expect([...container.querySelectorAll<HTMLInputElement>('[data-initial-id], [data-initial-group]')].every(input => !input.checked)).toBe(true);
         expect(container.querySelector<HTMLButtonElement>('[data-initial-restore]')!.disabled).toBe(true);
         expect(container.textContent).toContain('/home/admin/notes/demo.md');
-        expect(container.textContent).toContain(t('initialFiles.exists'));
+        expect(container.textContent).toContain(t('initialFiles.replaceFlow'));
         container.querySelector<HTMLInputElement>('[data-initial-group=flows]')!.click();
         expect(container.querySelector<HTMLInputElement>('[data-initial-id=flow]')!.checked).toBe(true);
         expect(container.querySelector<HTMLInputElement>('[data-initial-id=note]')!.checked).toBe(false);

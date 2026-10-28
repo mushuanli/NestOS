@@ -33,7 +33,7 @@ export class NestosInitialFiles {
             try {
                 const note = noteTemplates.find(note => note.id === id);
                 const restored = note ? await this.restoreNote(note) : Boolean(await restoreAndPublishFlow(
-                    this.commands, this.flows.find(flow => 'flow:' + flow.id === id)!));
+                    this.commands, this.flows.find(flow => 'flow:' + flow.id === id)!, true));
                 const dependencies = id.startsWith('flow:') ? await this.installations?.ensure(id.slice(5)) : undefined;
                 results.push({ id, status: restored ? 'restored' : 'preserved', ...(dependencies ? {dependencies} : {}) });
             } catch (error) { results.push({ id, status: 'failed', error: error instanceof Error ? error.message : String(error) }); }

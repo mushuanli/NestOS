@@ -5,6 +5,7 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'initialFiles.replaceFlow': '已存在，将覆盖并发布',
     'flow.steps.overview': '流程步骤',
     'flow.steps.graph': '展开完整执行图',
     'flow.parameters.options': '业务选项',
@@ -276,7 +277,7 @@ export const zhCN = {
     "recovery.completed": "恢复操作已完成",
     "recovery.partialFailure": "有 {count} 项恢复操作失败，请查看文件结果或重试未完成的配置。",
     "initialFiles.title": "恢复初始文件",
-    "initialFiles.help": "将勾选的内置文件写入当前文件系统。折叠列表默认全选；已存在的文件会保留，不覆盖修改。",
+    "initialFiles.help": "选中的内置工作流将覆盖为当前系统模板并发布新版本；旧发布版本保留。已存在的笔记会保留。",
     "initialFiles.demoHelp": "person-agent-demo.md 是虚构人物林舟的生活笔记，涵盖画像、项目、任务、事件和目标。恢复后可在笔记中右键“数字分析”进行测试。",
     "initialFiles.all": "全选",
     "initialFiles.notes": "笔记",

@@ -19,7 +19,7 @@ async function restore(container: HTMLElement) {
     await vi.waitFor(() => expect(document.querySelector('.settings-modal')).toBeNull());
 }
 
-it('restores the single self-contained Anki Flow from System Recovery and preserves later edits', async () => {
+it('restores the single self-contained Anki Flow from System Recovery and replaces later edits on explicit recovery', async () => {
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', digitalTwinAutoStart: false });
     cleanup.push(() => runtime.dispose());
     const client = createApplicationClient(bindLocalApplicationServices(runtime)); cleanup.push(() => client.close());
@@ -29,7 +29,7 @@ it('restores the single self-contained Anki Flow from System Recovery and preser
     const editor = new RecoverySettingsEditor(container, runtime.agentService, {} as never, undefined, files);
     cleanup.push(() => editor.destroy()); await editor.render();
     expect([...container.querySelectorAll<HTMLElement>('[data-initial-id]')].map(input => input.dataset.initialId)).toEqual([
-        'note:demo', 'flow:essay-review', 'flow:anki-generate',
+        'note:readme', 'note:demo', 'flow:essay-review', 'flow:anki-generate',
     ]);
     expect(container.textContent).toContain('/home/admin/flows/anki-generate.flow');
     expect(container.querySelector<HTMLElement>('[data-initial-id="flow:anki-generate"]')!.parentElement!.textContent).toContain(t('initialFiles.missing'));
@@ -47,9 +47,13 @@ it('restores the single self-contained Anki Flow from System Recovery and preser
     expect(await (await runtime.vfs.openFileSystem('/home/admin/notes')).driver.exists('/demo.md')).toBe(false);
     draft.name = 'My Anki workflow'; draft.functions![0].name = 'My inline function';
     await runtime.commandBus.execute(FlowCommand.DraftSave, { draft, expectedDraftVersion: draft.draftVersion });
-    const saved = await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, { id: draft.id });
     await restore(container);
-    expect(container.querySelector('[role=status]')!.textContent).toContain(t('initialFiles.preserved'));
-    expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, { id: draft.id })).toEqual(saved);
-    expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, { id: draft.id })).toEqual(published);
+    expect(container.querySelector('[role=status]')!.textContent).toContain(t('initialFiles.restored'));
+    const replaced = await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: draft.id});
+    expect(replaced.name).toBe('Anki 制卡（文本或图片）');
+    expect(replaced.layout.steps?.length).toBeGreaterThan(0);
+    expect(replaced.parameters?.find(field => field.name === 'words')?.role).toBe('input');
+    const latest = await runtime.commandBus.execute<FlowRevision>(FlowCommand.RevisionGet, {id: draft.id});
+    expect(latest.revision).toBeGreaterThan(published.revision);
+    expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, {id: draft.id, revision: published.revision})).toEqual(published);
 }, 15_000);

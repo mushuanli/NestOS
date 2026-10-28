@@ -4,6 +4,7 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'initialFiles.replaceFlow': 'Exists; replace and publish',
     'flow.steps.overview': 'Workflow steps',
     'flow.steps.graph': 'Show execution graph',
     'flow.parameters.options': 'Options',
@@ -275,7 +276,7 @@ export const en: LocaleStrings = {
     "recovery.completed": "Restoration completed",
     "recovery.partialFailure": "{count} restoration operations failed. Check file results or retry the remaining configurations.",
     "initialFiles.title": "Restore initial files",
-    "initialFiles.help": "Write selected built-in files to the current filesystem. Collapsed groups are selected by default. Existing files and edits are preserved.",
+    "initialFiles.help": "Selected built-in workflows are replaced with current system templates and published as new revisions. Previous revisions and existing notes are retained.",
     "initialFiles.demoHelp": "person-agent-demo.md is a fictional personal note covering profiles, projects, tasks, events and goals. After restoring, use Twin analysis in Notes to test it.",
     "initialFiles.all": "Select all",
     "initialFiles.notes": "Notes",

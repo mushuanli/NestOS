@@ -36,11 +36,11 @@ it('restores selected Flow templates through real commands and does not create u
     const { runtime, notes, library } = await setup();
     await runtime.flowEngine.engine.driver.delete(['/essay-review.flow']);
     expect(await library.restore(['flow:essay-review', 'flow:anki-generate'])).toEqual([
-        { id: 'flow:essay-review', status: 'restored' }, { id: 'flow:anki-generate', status: 'preserved' },
+        { id: 'flow:essay-review', status: 'restored' }, { id: 'flow:anki-generate', status: 'restored' },
     ]);
     expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, { id: 'essay-review' })).toBeTruthy();
     expect(await notes.driver.exists('/person-agent-demo.md')).toBe(false);
-    expect(await library.restore(['flow:essay-review'])).toEqual([{ id: 'flow:essay-review', status: 'preserved' }]);
+    expect(await library.restore(['flow:essay-review'])).toEqual([{ id: 'flow:essay-review', status: 'restored' }]);
 });
 it('preserves existing external definitions without adding them to initial recovery', async () => {
     const { runtime, notes, library } = await setup();
@@ -92,4 +92,35 @@ it('owns publication in the application recovery command and leaves existing edi
     expect(await runtime.commandBus.execute(FlowLibraryCommand.Restore, { templates: [template] })).toBe(0);
     expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, { id: template.id })).toEqual(before);
     expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, { id: template.id })).toMatchObject({ name: 'Personal changes' });
+});
+
+it('replaces selected built-in drafts with current roles and steps and preserves published history', async () => {
+    const {runtime, library} = await setup();
+    const before = await runtime.commandBus.execute<any>(FlowCommand.RevisionGet, {id: 'essay-review'});
+    const draft = await runtime.commandBus.execute<any>(FlowCommand.DraftLoad, {id: 'essay-review'});
+    await runtime.commandBus.execute(FlowCommand.DraftSave, {draft: {...draft, name: 'Old custom version', layout: {},
+        parameters: draft.parameters.map(({role, inputSource, ...field}: any) => field)}, expectedDraftVersion: draft.draftVersion});
+    expect(await library.restore(['flow:essay-review'])).toEqual([{id: 'flow:essay-review', status: 'restored'}]);
+    const saved = await runtime.commandBus.execute<any>(FlowCommand.DraftLoad, {id: 'essay-review'});
+    expect(saved.layout.steps.length).toBeGreaterThan(0);
+    expect(saved.parameters.find((field: any) => field.name === 'essay')).toMatchObject({role: 'input', inputSource: 'composer.text'});
+    const after = await runtime.commandBus.execute<any>(FlowCommand.RevisionGet, {id: 'essay-review'});
+    expect(after.revision).toBeGreaterThan(before.revision);
+    expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'essay-review', revision: before.revision})).toEqual(before);
+});
+
+it('reports replacement failures without publishing or changing the existing draft', async () => {
+    const {runtime, notes} = await setup();
+    const before = await runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'essay-review'});
+    const draft = await runtime.commandBus.execute(FlowCommand.DraftLoad, {id: 'essay-review'});
+    const commands = {execute: async (command: string, args: unknown) => {
+        if (command === FlowCommand.DraftSave) throw new Error('FLOW_DRAFT_VERSION_CONFLICT');
+        return runtime.commandBus.execute(command, args);
+    }} as typeof runtime.commandBus;
+    const library = new NestosInitialFiles(commands, notes);
+    expect(await library.restore(['flow:essay-review'])).toEqual([
+        {id: 'flow:essay-review', status: 'failed', error: 'FLOW_DRAFT_VERSION_CONFLICT'},
+    ]);
+    expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'essay-review'})).toEqual(before);
+    expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, {id: 'essay-review'})).toEqual(draft);
 });

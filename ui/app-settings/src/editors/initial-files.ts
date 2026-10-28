@@ -90,7 +90,7 @@ export class InitialFilesSection {
         return `<details data-group="${group}" ${this.expanded.has(group) ? 'open' : ''}><summary>${escapeHTML(label(group))} (${count}/${entries.length})
             <label class="initial-files__select-all"><input type="checkbox" data-initial-group="${group}" ${count === entries.length ? 'checked' : ''} ${this.busy || this.disabled ? 'disabled' : ''}>${escapeHTML(label('all'))}</label></summary>
             ${entries.map(entry => `<label class="initial-files__entry"><input type="checkbox" data-initial-id="${escapeAttr(entry.id)}" ${this.selected?.has(entry.id) ? 'checked' : ''} ${this.busy || this.disabled ? 'disabled' : ''}>
-                <span>${escapeHTML(entry.name)} — ${escapeHTML(label(entry.exists ? 'exists' : 'missing'))}<code>${escapeHTML(entry.path)}</code></span></label>`).join('')}</details>`;
+                <span>${escapeHTML(entry.name)} — ${escapeHTML(label(entry.exists ? entry.group === 'flows' ? 'replaceFlow' : 'exists' : 'missing'))}<code>${escapeHTML(entry.path)}</code></span></label>`).join('')}</details>`;
     }
     private change(event: Event): void {
         if (this.busy || this.disabled) return; const input = event.target as HTMLInputElement;

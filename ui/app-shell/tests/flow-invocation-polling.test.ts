@@ -5,6 +5,15 @@ import { FlowCommand, FlowInvocationCommand } from '@itookit/llm-session';
 import { t } from '@itookit/common';
 import { InvocationPanel } from '../../llm-ui-adapter/src/flows/InvocationPanel';
 
+vi.mock('../../llm-ui-adapter/src/components/mdx/MDxController', () => ({
+    MDxController: class {
+        constructor(private root: HTMLElement, private text: string) {}
+        async waitUntilReady() {this.root.textContent = this.text;}
+        setContent(text: string) {this.text = text; this.root.textContent = text;}
+        async destroy() {this.root.replaceChildren();}
+    },
+}));
+
 let panel: InvocationPanel | undefined;
 afterEach(() => { panel?.destroy(); panel = undefined; vi.useRealTimers(); vi.restoreAllMocks(); document.body.replaceChildren(); });
 

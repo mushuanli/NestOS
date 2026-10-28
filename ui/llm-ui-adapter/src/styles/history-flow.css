@@ -49,3 +49,7 @@
 .llm-session-runs[hidden] { display: none; }
 .llm-session-runs p { margin: 0 0 6px; }
 .llm-session-runs button { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 4px 0; }
+
+.flow-document { min-width: 0; margin: 8px 0; }
+.flow-document__body { max-height: 65vh; overflow: auto; overscroll-behavior: contain; padding: 8px; }
+.flow-document > summary { cursor: pointer; }

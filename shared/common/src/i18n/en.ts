@@ -2109,6 +2109,7 @@ export const en: LocaleStrings = {
     'branch.delete': 'Delete branch',
     'branch.deleteCurrentHint': 'Switch to another branch before deleting the current branch',
     'flow.output.unlinked': 'Not linked to a chat branch',
+    'flow.document.failed': 'Unable to display content. Reopen to try again.',
     'flow.output.branch': 'View branch',
     'flow.rerun.title': 'Run again',
     'session.rerun.title': 'Run again',

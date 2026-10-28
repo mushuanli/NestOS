@@ -1,3 +1,4 @@
+import {FlowCallDocument} from './dag/FlowCallDocument';
 import {assertDescendantPage} from '../independent/descendant-page';
 import {IndependentCallDescendants} from './IndependentCallDescendants';
 import type {InteractionDraftStorage} from '../domain/interaction-draft';
@@ -11,7 +12,7 @@ import {IndependentCallCommand, type IndependentCallView, type ICommandBus} from
 import {canonicalJson} from '../utils/canonical-json';
 
 const log = createModuleLogger('independent-calls');
-interface Card {descendants: IndependentCallDescendants; element: HTMLElement; control: IndependentCallControl; answers: IndependentCallInteractions; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
+interface Card {flowDocument?: FlowCallDocument; descendants: IndependentCallDescendants; element: HTMLElement; control: IndependentCallControl; answers: IndependentCallInteractions; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
 interface Options {
     interactionDrafts?: InteractionDraftStorage;
     operations: OperationLedger;
@@ -67,7 +68,7 @@ export class IndependentCallPanel {
     reset(): void {++this.generation; this.refreshing = undefined; this.clearCards(); void this.refresh();}
     setVisible(value: boolean): void {
         this.visible = value; ++this.generation; this.refreshing = undefined; clearTimeout(this.timer);
-        for (const card of this.cards.values()) {card.artifacts.setVisible(value); card.control.setActive(value); card.descendants.setActive(value); card.answers.setActive(value);}
+        for (const card of this.cards.values()) {card.flowDocument?.setVisible(value); card.artifacts.setVisible(value); card.control.setActive(value); card.descendants.setActive(value); card.answers.setActive(value);}
         if (value) void this.refresh();
     }
     destroy(): void {
@@ -139,6 +140,16 @@ export class IndependentCallPanel {
         element.querySelector('[data-execution-state]')!.textContent = executionStateText(call);
         element.querySelector('[data-preview-label]')!.textContent = t('callable.independent.preview');
         element.querySelector('[data-output]')!.textContent = call.summary ?? '';
+        if ((call.input.request.expectedTarget ?? call.input.request.target)?.kind === 'flow') {
+            if (!card.flowDocument) {
+                const host = document.createElement('div'); element.querySelector('[data-output]')!.after(host);
+                card.flowDocument = new FlowCallDocument(host, this.commands);
+            }
+            element.querySelector<HTMLElement>('[data-input]')!.closest('details')!.hidden = true;
+            element.querySelector<HTMLElement>('[data-output]')!.hidden = true;
+            element.querySelector<HTMLElement>('[data-preview-label]')!.hidden = true;
+            card.flowDocument.update(call);
+        }
         const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId || !this.options.openChild;
         button.onclick = () => {void this.open(call.receipt.executionSessionId!);};
         this.renderInteractions(card, call); card.answers.update(call);
@@ -170,7 +181,7 @@ export class IndependentCallPanel {
         card.artifacts.clear(); card.artifactScope = key;
         card.element.querySelector('[data-artifacts]')!.innerHTML = scope ? card.artifacts.render(scope) : '';
     }
-    private disposeCard(card: Card): void {card.control.destroy(); card.descendants.destroy(); card.answers.destroy(); card.artifacts.dispose(); card.release?.(); card.element.remove();}
+    private disposeCard(card: Card): void {card.flowDocument?.destroy();card.control.destroy(); card.descendants.destroy(); card.answers.destroy(); card.artifacts.dispose(); card.release?.(); card.element.remove();}
     private async open(id: string): Promise<void> {
         if (!this.visible || this.abort.signal.aborted) return;
         try {await this.options.openChild?.(id);}

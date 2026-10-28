@@ -1,4 +1,5 @@
 import {TaskArtifactBrowser} from '../components/dag/TaskArtifactBrowser';
+import {FlowDocuments, flowRequestMarkdown} from '../components/dag/FlowDocuments';
 import {InvocationOperations} from './invocation-operations';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import {ControlOperations} from './control-operations';
@@ -21,7 +22,7 @@ import {invocationControl, invocationControlTasks, invocationStatus, type Invoca
 
 const terminal = (status: string) => ['succeeded', 'failed', 'cancelled'].includes(status);
 interface Card {
-    artifacts: TaskArtifactBrowser; element: HTMLElement; interactions: Map<string, InteractionPanel | HTMLElement>; snapshot?: DurableFlowSnapshot; active: boolean; actionsKey?: string; loadError?: boolean; recoveryNotice?: string; unmount?: () => void }
+    documents: FlowDocuments; result?: string; artifacts: TaskArtifactBrowser; element: HTMLElement; interactions: Map<string, InteractionPanel | HTMLElement>; snapshot?: DurableFlowSnapshot; active: boolean; actionsKey?: string; loadError?: boolean; recoveryNotice?: string; unmount?: () => void }
 
 /** Persistent call identities drive cards; Kernel snapshots drive their execution state. */
 export class InvocationPanel {
@@ -97,7 +98,7 @@ export class InvocationPanel {
 
     destroy(): void {
         this.abort.abort(); this.viewAbort.abort(); clearTimeout(this.timer); this.releaseOperations();
-        for (const card of this.cards.values()) { card.artifacts.dispose(); card.unmount?.(); card.element.remove(); }
+        for (const card of this.cards.values()) { card.documents.destroy(); card.artifacts.dispose(); card.unmount?.(); card.element.remove(); }
         for (const card of this.cards.values()) for (const panel of card.interactions.values()) if (panel instanceof InteractionPanel) panel.clear();
         this.cards.clear(); this.element.remove();
     }
@@ -139,11 +140,13 @@ export class InvocationPanel {
         element.dataset.invocationId = flowInvocationId(call);
         element.innerHTML = `<header><strong>${escapeHTML(call.flow.name)} · v${call.revision}</strong><span data-status role="status"></span></header>
             <p>${escapeHTML(t('flow.invoke.origin', {branch: call.branch ?? 'main'}))}</p>
-            <details><summary>${escapeHTML(t('flow.invoke.inputs'))}</summary>${this.inputSources(call)}<pre>${escapeHTML(JSON.stringify(call.inputResolution?.parameters ?? call.parameters, null, 2))}</pre></details>
-            <p data-control-notice role="status"></p><div data-control-recovery></div><div data-child-session></div><div data-actions></div><details><summary>${escapeHTML(t('flow.invoke.result'))}</summary><pre data-result></pre></details><div data-artifacts></div><div data-interactions></div><p data-error role="alert"></p>`;
+            ${this.inputSources(call)}
+            <p data-control-notice role="status"></p><div data-control-recovery></div><div data-child-session></div><div data-actions></div><div data-result></div><div data-artifacts></div><div data-interactions></div><p data-error role="alert"></p>`;
         const unmount = this.options.mountCard?.(element, call);
         if (!this.options.mountCard) this.element.append(element);
-        return { element, artifacts: new TaskArtifactBrowser(element, this.commands), interactions: new Map(), active: !call.error, unmount };
+        const card = { element, documents: new FlowDocuments(), artifacts: new TaskArtifactBrowser(element, this.commands), interactions: new Map(), active: !call.error, unmount };
+        this.renderDocument(card, call, t('flow.output.pending'));
+        return card;
     }
 
     private updateCard(card: Card, call: FlowInvocationRecord, snapshot: DurableFlowSnapshot): void {
@@ -154,12 +157,18 @@ export class InvocationPanel {
         card.element.querySelector('[data-control-notice]')!.textContent = controlNotice(control, card.recoveryNotice);
         const returned = (task.output as { nodes?: Record<string, unknown> } | undefined)?.nodes?.__flow_return;
         const result = formatFlowOutput(returned ?? task.output ?? task.exit?.error ?? task.lastError ?? '');
-        card.element.querySelector('[data-result]')!.textContent = result;
+        card.result = result; this.renderDocument(card, call, result);
         card.element.querySelector('[data-artifacts]')!.innerHTML = terminal(task.status) && task.output !== undefined
             ? card.artifacts.render({sessionId: task.sessionId, taskId: task.id}) : '';
         this.updateActions(card, call, snapshot);
         this.updateControlRecovery(card, call);
         this.updateInteractions(card, call, terminal(task.status) ? [] : invocationControlTasks(snapshot));
+    }
+
+    private renderDocument(card: Card, call: FlowInvocationRecord, result: string): void {
+        const request = flowRequestMarkdown(call.inputResolution?.parameters ?? call.parameters);
+        card.documents.mount(card.element.querySelector('[data-result]')!, flowInvocationId(call), t('flow.invoke.result'),
+            `## ${t('flow.invoke.inputs')}\n\n${request}\n\n## ${t('flow.invoke.result')}\n\n${result}`);
     }
 
     private inputSources(call: FlowInvocationRecord): string {
@@ -207,7 +216,7 @@ export class InvocationPanel {
             else if (canRequestPause(control)) this.button(actions, 'flow.invoke.pause', () => this.setPaused(call, true, task.control?.epoch ?? 0));
         }
         if (task.status === 'succeeded') this.button(actions, 'flow.invoke.use', async () => {
-            const text = card.element.querySelector('[data-result]')!.textContent ?? '';
+            const text = card.result ?? '';
             this.useResult(`${call.flow.name}\n${text}`);
         });
     }

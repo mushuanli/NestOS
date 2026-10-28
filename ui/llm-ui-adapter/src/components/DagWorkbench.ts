@@ -4,7 +4,8 @@ import {FlowRunControl} from '../flows/run-control';
 import {invocationControl, invocationStatus} from '../flows/invocation-control';
 import { renderVariables } from './dag/VariableView';
 import {TaskArtifactBrowser} from './dag/TaskArtifactBrowser';
-import { renderFlowOutput } from './dag/FlowOutput';
+import {FlowDocuments, flowRequestMarkdown} from './dag/FlowDocuments';
+import {formatFlowOutput} from '@itookit/llm-flow/contracts';
 import { enhanceInputFieldsEditor } from './dag/InputFieldsEditor';
 import { enhanceInvocationEditor } from './dag/InvocationEditor';
 import { openRunPicker } from './dag/RunPicker';
@@ -61,6 +62,7 @@ export class DagWorkbench {
     private preparingRun = false;
     private toolDialog?: AbortController;
     private readonly artifacts: TaskArtifactBrowser;
+    private readonly documents = new FlowDocuments();
 
     constructor(
         private readonly root: HTMLElement,
@@ -146,6 +148,7 @@ export class DagWorkbench {
     destroy(): void {
         this.toolDialog?.abort();
         this.artifacts.dispose();
+        this.documents.destroy();
         this.viewRequest++;
         this.parameterPanel?.destroy();
         this.stopRunRefresh();
@@ -153,6 +156,7 @@ export class DagWorkbench {
     }
 
     private renderDesign(): void {
+        this.documents.destroy();
         const draft = this.controller?.value;
         this.root.innerHTML = `<section class="dag-workbench" data-mode="design">
             ${this.renderToolbar(draft)}
@@ -630,6 +634,23 @@ export class DagWorkbench {
         }
     }
 
+    private renderRunDocuments(snapshot: DurableFlowSnapshot): void {
+        const root = snapshot.root.task, keys = new Set([root.id]);
+        this.documents.mount(this.root.querySelector('[data-run-document="final"]')!, root.id, t('flow.output.final'),
+            root.output === undefined ? t('flow.output.pending') : formatFlowOutput(root.output));
+        const tasks = new Map(snapshot.taskTree.map(task => [task.id, task]));
+        for (const target of this.root.querySelectorAll<HTMLElement>('[data-node-document]')) {
+            const task = tasks.get(target.dataset.nodeDocument!)!; keys.add(task.id);
+            const input = task.input as {messages?: unknown; args?: unknown; inputs?: unknown} | undefined;
+            const request = input?.messages ?? input?.args ?? input?.inputs;
+            const output = task.output ?? task.exit?.error ?? task.lastError;
+            const text = `${request === undefined ? '' : `## ${t('flow.invoke.inputs')}\n\n${flowRequestMarkdown(request)}\n\n`}`
+                + `## ${t('flow.output.node')}\n\n${output === undefined ? t('flow.output.pending') : formatFlowOutput(output)}`;
+            this.documents.mount(target, task.id, t('flow.output.node'), text, false);
+        }
+        this.documents.retain(keys);
+    }
+
     private renderRun(): void {
         const snapshot = this.run;
         if (!snapshot) return this.renderDesign();
@@ -639,11 +660,11 @@ export class DagWorkbench {
             <header class="dag-toolbar"><button data-run-action="back">${escapeHTML(this.options.backLabel ?? t('flow.runs.back'))}</button><strong>DAG Run</strong>${snapshot.attachedFromStorage && (!this.controlOperations || invocationControl(snapshot).canReattach) ? `<button data-run-action="resume">${escapeHTML(t(this.controlOperations ? 'flow.invoke.reattach' : 'flow.runs.resume'))}</button>` : ''}<span>${escapeHTML(String(run.id))}</span><span data-status="${escapeHTML(run.status)}">${escapeHTML(state)}</span><small>${snapshot.usage.tokens} tokens · ${(snapshot.usage.elapsedMs / 1000).toFixed(1)}s</small><button data-run-action="goal">Goal</button><button data-run-action="cancel">Cancel run</button></header>
             ${snapshot.workspaceFinalization ? `<section class="dag-run-workspace" data-workspace-status="${escapeHTML(snapshot.workspaceFinalization.status)}">${escapeHTML(t(`flow.workspace.${snapshot.workspaceFinalization.status}`))}${snapshot.workspaceFinalization.message ? `<span role="alert">${escapeHTML(snapshot.workspaceFinalization.message)}</span>` : ''}${snapshot.workspaceFinalization.persistenceError ? `<span role="alert">${escapeHTML(t('flow.workspace.persistenceFailed'))}: ${escapeHTML(snapshot.workspaceFinalization.persistenceError)}</span>` : ''}</section>` : ''}
             ${snapshot.goal ? `<section class="dag-run-goal"><strong>${escapeHTML(snapshot.goal.objective || 'Run goal')}</strong><span>${escapeHTML(snapshot.goal.status ?? 'active')}</span>${snapshot.goal.acceptanceCriteria?.length ? `<small>${snapshot.goal.acceptanceCriteria.map(escapeHTML).join(' · ')}</small>` : ''}</section>` : ''}
-            <section class="dag-output"><h3>${escapeHTML(t('flow.output.final'))}</h3>${renderFlowOutput(run.output, true)}
+            <section class="dag-output"><h3>${escapeHTML(t('flow.output.final'))}</h3><div data-run-document="final"></div>
                 ${run.output !== undefined ? this.artifacts.render({sessionId: run.sessionId, taskId: run.id}) : ''}</section>
             ${isTerminalRun(run.status) ? `<p>${escapeHTML(t('flow.retry.terminalHint'))}</p>` : ''}
             ${renderVariables(snapshot)}
-            <div class="dag-run-nodes">${snapshot.taskTree.map(task => {
+            <div class="dag-run-nodes">${snapshot.taskTree.filter(task => task.id !== run.id).map(task => {
                 const nodeId = task.labels?.dispatchKey ?? task.labels?.flowNodeId ?? (task.id === run.id ? 'Result' : task.program.kind);
                 const iterations = snapshot.iterations[nodeId] ?? 1;
                 const controllable = !snapshot.controlTaskIds || snapshot.controlTaskIds.includes(task.id);
@@ -659,12 +680,14 @@ export class DagWorkbench {
                     ${controllable && task.id !== run.id && !isTerminalRun(task.status) ? `<menu><button data-run-signal="${escapeHTML(task.id)}">Inject</button><button data-run-cancel-task="${escapeHTML(task.id)}">Cancel</button></menu>` : ''}
                     ${controllable && task.id !== run.id && isTerminalRun(task.status) && !isTerminalRun(run.status) ? `<button data-run-retry="${escapeHTML(task.id)}" ${this.retryRequests.get(task.id)?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.title'))}</button><small>${escapeHTML(t('flow.retry.hint'))}</small>` : ''}
                     ${controllable && task.id !== run.id && isTerminalRun(task.status) && !isTerminalRun(run.status) ? `<button data-run-retry-downstream="${escapeHTML(task.id)}" ${this.retryRequests.get(retryKey(task.id, true))?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.downstreamTitle'))}</button><small>${escapeHTML(t('flow.retry.downstreamHint'))}</small>` : ''}
-                    ${task.output !== undefined && task.id !== run.id ? `<details class="dag-output" open><summary>${escapeHTML(t('flow.output.node'))}</summary>${renderFlowOutput(task.output)}${this.artifacts.render({sessionId: task.sessionId, taskId: task.id})}</details>` : ''}
+                    <div data-node-document="${escapeHTML(task.id)}"></div>
+                    ${task.output !== undefined ? this.artifacts.render({sessionId: task.sessionId, taskId: task.id}) : ''}
                     <button data-run-transcript="${escapeHTML(task.id)}">${escapeHTML(t('flow.transcript.title'))}</button>
-                    <details><summary>Runtime details</summary><pre>${escapeHTML(JSON.stringify({ wait: task.wait, output: task.output, effects: Object.keys(task.effects ?? {}) }, null, 2))}</pre></details>
+                    <details><summary>Runtime details</summary><pre>${escapeHTML(JSON.stringify({ wait: task.wait, effects: Object.keys(task.effects ?? {}) }, null, 2))}</pre></details>
                 </article>`;
             }).join('')}</div>
         </section>`;
+        this.renderRunDocuments(snapshot);
         if (this.options.readOnly) this.root.querySelectorAll(
             '[data-run-action]:not([data-run-action="back"]), [data-run-retry], [data-run-retry-downstream], [data-run-signal], [data-run-cancel-task], [data-run-respond]',
         ).forEach(control => control.remove());

@@ -16,14 +16,14 @@ History 展示交互而不展开 DAG：输入节点与补充输入显示为 user
 
 在 llm-ui 运行 `.flow` 后，打开生成的 Session，点击标题栏的「流程输出」。窗口只列出当前 Session 的 Run，默认打开最新一次，也可以切换历史运行。
 
-- 顶部显示最终输出，各节点卡片显示已完成的返回值；运行中每秒刷新一次，终态停止轮询。
-- 字符串直接展示，结构化结果显示 JSON，保留 `0`、`false`、`null` 和空字符串。业务对象中的 `content` 字段不会被当作通用文本封装而丢弃其他字段。
-- 作文评审显示结束原因、已完成轮数、各维度得分、来源轮次，以及是否对应当前输入；达到轮数上限与通过条件分别显示。
+- 直接运行或打开完整详情时，每个节点使用独立的只读 mdxeditor 展示请求和输出；节点默认折叠，展开才初始化编辑器。刷新复用同一 Task 的编辑器和展开状态，长正文在独立区域内滚动。顶部最终输出单独展示，运行中每秒刷新一次，终态停止轮询。
+- 被调用的 Flow 在调用卡片内使用一个 mdxeditor 展示请求与最终结果，保留“查看详情”按钮进入完整节点视图。独立子调用在终态读取真实 Run 输出，不能把截断摘要当作完整结果；声明 `__flow_return` 时只显示声明的返回值。
+- 字符串按 Markdown 展示，结构化结果使用 JSON 代码块，保留 `0`、`false`、`null` 和空字符串。业务对象中的 `content` 字段不会被当作通用文本封装而丢弃其他字段。结果展示不按作文等业务字段生成专用视图。
 - 原有任务记录入口保留，可查看模型和工具事件。「流程输出」窗口按节点结果刷新，History 则显示 LLM 的流式文本。
 - 打开历史输出只读取持久记录，不自动恢复执行；显式恢复仍使用工作台的恢复操作。切换 Session 或关闭窗口会释放轮询。
 - 新完成的 Flow 同时把格式化结果写入会话消息；旧会话中已保存的空消息不会自动重写，但仍可从「流程输出」读取 Run 的持久结果。
 
-源码：[输出投影](../../backend/llm-flow/src/contracts/flow-output.ts)、[会话窗口](../../ui/llm-ui-adapter/src/flows/session-output.ts)、[输出渲染](../../ui/llm-ui-adapter/src/components/dag/FlowOutput.ts)。
+源码：[输出投影](../../backend/llm-flow/src/contracts/flow-output.ts)、[会话窗口](../../ui/llm-ui-adapter/src/flows/session-output.ts)、[独立编辑器生命周期](../../ui/llm-ui-adapter/src/components/dag/FlowDocuments.ts)、[子调用结果](../../ui/llm-ui-adapter/src/components/dag/FlowCallDocument.ts)。
 
 ## 节点工具与 Skill
 

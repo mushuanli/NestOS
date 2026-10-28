@@ -17,6 +17,15 @@ import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputVi
 import { t } from '@itookit/common';
 import {FlowInvocationCommand, type FlowInvocationRecord} from '@itookit/llm-session/contracts';
 
+vi.mock('../../llm-ui-adapter/src/components/mdx/MDxController', () => ({
+    MDxController: class {
+        constructor(private root: HTMLElement, private text: string) {}
+        async waitUntilReady() {this.root.textContent = this.text;}
+        setContent(text: string) {this.text = text; this.root.textContent = text;}
+        async destroy() {this.root.replaceChildren();}
+    },
+}));
+
 let repository: SessionRepository;
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, commands: CommandBus, panel: InvocationPanel;
 beforeEach(async () => {
@@ -57,7 +66,7 @@ it('shows resolved arguments and starts a separate linked Invocation when the us
         flowId: revision.id, revision: revision.revision, parameters: {}, source: {kind: 'composer', text: 'Resolved request', attachments: [], values: {}}});
     expect(call.parameters).toEqual({});
     panel = new InvocationPanel(commands, 's', document.body, vi.fn());
-    await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-invocation="composer"] details pre')?.textContent).toContain('Resolved request');});
+    await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-invocation="composer"] .flow-document__body')?.textContent).toContain('Resolved request');});
     await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-invocation="composer"] [data-interaction-action="reply"]')).not.toBeNull();});
     document.querySelector<HTMLTextAreaElement>('[data-invocation="composer"] textarea')!.value = 'Done';
     document.querySelector<HTMLButtonElement>('[data-invocation="composer"] [data-interaction-action="reply"]')!.click();

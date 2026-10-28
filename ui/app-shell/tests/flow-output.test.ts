@@ -6,6 +6,15 @@ import { DagWorkbench } from '../../llm-ui-adapter/src/components/DagWorkbench';
 import { openSessionFlowOutputs } from '../../llm-ui-adapter/src/flows/session-output';
 import {SessionRunsPanel} from '../../llm-ui-adapter/src/flows/SessionRunsPanel';
 
+vi.mock('../../llm-ui-adapter/src/components/mdx/MDxController', () => ({
+    MDxController: class {
+        constructor(private root: HTMLElement, private text: string) {}
+        async waitUntilReady() {this.root.textContent = this.text;}
+        setContent(text: string) {this.text = text; this.root.textContent = text;}
+        async destroy() {this.root.replaceChildren();}
+    },
+}));
+
 beforeEach(() => {
     HTMLDialogElement.prototype.showModal = function () { this.open = true; };
     HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new Event('close')); };
@@ -23,7 +32,9 @@ it('refreshes final and child outputs, restores persisted results, and stops aft
     const execute = vi.fn(async () => current), root = document.createElement('div'); document.body.append(root);
     const commands = { execute } as unknown as ICommandBus;
     const view = new DagWorkbench(root, { commands }); await view.openRun('root', 's');
-    expect(root.querySelector('.dag-output__value')?.textContent).toBe('0');
+    const nodeDocument = root.querySelector<HTMLDetailsElement>('[data-node-document] details')!;
+    nodeDocument.open = true; nodeDocument.dispatchEvent(new Event('toggle'));
+    await vi.waitFor(() => expect(root.querySelector('[data-node-document] .flow-document__body')?.textContent).toContain('0'));
     current = snapshot('succeeded', { nodes: { report: { outputs: { result: { score: 9, safe: '<img src=x onerror=alert(1)>' } } } } });
     await vi.advanceTimersByTimeAsync(1000);
     expect(root.textContent).toContain('"score": 9'); expect(root.querySelector('img')).toBeNull();
@@ -43,7 +54,7 @@ it('shows only the current Session runs and closes on Session switch', async () 
         return snapshot('succeeded', { nodes: { report: { outputs: { result: false } } } });
     });
     const abort = new AbortController(); openSessionFlowOutputs({ execute } as unknown as ICommandBus, 's', abort.signal);
-    await vi.waitFor(() => expect(document.querySelector('.dag-output__value')?.textContent).toBe('false'));
+    await vi.waitFor(() => expect(document.querySelector('[data-run-document] .flow-document__body')?.textContent).toContain('false'));
     expect(document.querySelector('select')?.textContent).not.toContain('foreign');
     expect(execute.mock.calls.some(([command]) => command === FlowCommand.RunResume)).toBe(false);
     abort.abort(); expect(document.querySelector('dialog')).toBeNull();
@@ -58,18 +69,18 @@ it('switches output branches without changing History and clears output for empt
         return snapshot('succeeded', { nodes: { report: { outputs: { result: args.taskId } } } });
     });
     const abort = new AbortController(); openSessionFlowOutputs({ execute } as unknown as ICommandBus, 's', abort.signal);
-    await vi.waitFor(() => expect(document.querySelector('.dag-output__value')?.textContent).toBe('new'));
+    await vi.waitFor(() => expect(document.querySelector('[data-run-document] .flow-document__body')?.textContent).toContain('new'));
     expect(document.querySelector('[data-run-action="resume"]')).toBeNull();
     expect(document.querySelector('[data-run-action="cancel"]')).toBeNull();
     const branch = document.querySelector<HTMLSelectElement>('[data-branch]')!;
     expect(document.querySelector('[data-run]')?.textContent).not.toContain('old');
     expect(document.querySelector('[data-run]')?.textContent).toContain('essay@v2');
     branch.value = 'main'; branch.dispatchEvent(new Event('change'));
-    await vi.waitFor(() => expect(document.querySelector('.dag-output__value')?.textContent).toBe('old'));
+    await vi.waitFor(() => expect(document.querySelector('[data-run-document] .flow-document__body')?.textContent).toContain('old'));
     expect(document.querySelector('[data-run]')?.textContent).not.toContain('new');
     expect(document.querySelector('[data-run]')?.textContent).toContain('essay@v1');
     branch.value = 'empty'; branch.dispatchEvent(new Event('change'));
-    await vi.waitFor(() => expect(document.querySelector('.dag-output__value')).toBeNull());
+    await vi.waitFor(() => expect(document.querySelector('[data-run-document] .flow-document__body')).toBeNull());
     expect(document.querySelector('[data-run]')?.textContent).toBe('');
     expect(execute.mock.calls.every(([command]) => [SessionCommand.FlowBranchExecutions, FlowCommand.RunList, FlowCommand.RunGet].includes(command as never))).toBe(true);
     abort.abort();
@@ -95,7 +106,7 @@ it('opens a standalone CLI run without assigning it to a branch or resuming it',
         return snapshot('succeeded', {nodes: {report: {outputs: {result: 'persisted CLI result'}}}});
     });
     const abort = new AbortController(); openSessionFlowOutputs({execute} as unknown as ICommandBus, 's', abort.signal, 'root');
-    await vi.waitFor(() => expect(document.querySelector('.dag-output__value')?.textContent).toBe('persisted CLI result'));
+    await vi.waitFor(() => expect(document.querySelector('[data-run-document] .flow-document__body')?.textContent).toContain('persisted CLI result'));
     expect(document.querySelector<HTMLSelectElement>('[data-branch]')?.value).toBe('');
     expect(execute.mock.calls.every(([command]) => [SessionCommand.FlowBranchExecutions, FlowCommand.RunList, FlowCommand.RunGet].includes(command as never))).toBe(true);
     abort.abort();

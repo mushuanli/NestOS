@@ -2110,6 +2110,7 @@ export const zhCN = {
     'branch.delete': '删除分支',
     'branch.deleteCurrentHint': '请先切换到其他分支再删除当前分支',
     'flow.output.unlinked': '未关联聊天分支',
+    'flow.document.failed': '内容显示失败，请重新打开查看。',
     'flow.output.branch': '查看分支',
     'flow.rerun.title': '重新运行',
     'session.rerun.title': '重新运行',

@@ -132,7 +132,8 @@ export interface FlowToolDependency {id: string; version?: string}
 export interface FlowInputGroup {
     name: string;
     label?: string;
-    mode: 'oneOf';
+    /** oneOf is exclusive; anyOf requires at least one member and permits combinations. */
+    mode: 'oneOf' | 'anyOf';
     parameters: string[];
 }
 

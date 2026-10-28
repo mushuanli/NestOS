@@ -16,6 +16,7 @@ export function flowParameterValues(schema: FlowParameter[] | undefined, values?
 function mergeParameterLayer(base: Record<string, JsonValue>, values: Record<string, JsonValue> = {}, groups: FlowInputGroup[] = []): Record<string, JsonValue> {
     const defaults = {...base};
     for (const group of groups ?? []) {
+        if (group.mode !== 'oneOf') continue;
         if (!group.parameters.some(name => Object.hasOwn(values ?? {}, name) && flowInputPresent(values?.[name]))) continue;
         for (const name of group.parameters) if (!Object.hasOwn(values ?? {}, name)) delete defaults[name];
     }
@@ -29,8 +30,9 @@ export function validateFlowInputGroups(schema: FlowParameter[] | undefined, gro
     for (const group of groups ?? []) {
         const count = group.parameters.filter(name => Object.hasOwn(values, name) && flowInputPresent(values[name])).length;
         const interactive = options.allowInteractiveMissing && group.parameters.every(name => schema?.find(field => field.name === name)?.onMissing === 'interact');
-        if (count === 1 || count === 0 && interactive) continue;
-        issues.push({code: count ? 'conflicting-input-group' : 'missing-input-group', message: `Input group ${group.name} requires exactly one value`});
+        if (count === 1 || group.mode === 'anyOf' && count > 1 || count === 0 && interactive) continue;
+        const requirement = group.mode === 'anyOf' ? 'at least one value' : 'exactly one value';
+        issues.push({code: count ? 'conflicting-input-group' : 'missing-input-group', message: `Input group ${group.name} requires ${requirement}`});
     }
     return issues;
 }
@@ -56,7 +58,7 @@ export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; 
 }
 
 function validGroup(group: FlowInputGroup, names: Set<string>, seen: Set<string>): boolean {
-    if (!group || typeof group.name !== 'string' || !group.name.trim() || group.mode !== 'oneOf' || !Array.isArray(group.parameters)
+    if (!group || typeof group.name !== 'string' || !group.name.trim() || !['oneOf', 'anyOf'].includes(group.mode) || !Array.isArray(group.parameters)
         || group.parameters.length < 2 || new Set(group.parameters).size !== group.parameters.length || seen.has('group:' + group.name)) return false;
     seen.add('group:' + group.name);
     for (const name of group.parameters) {

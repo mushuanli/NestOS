@@ -5,6 +5,7 @@ import {flowRevisionToDraft} from '../src/flow/definition-projection';
 import {prepareFlowRun} from '../src/flow/prepare-run';
 import {prepareFlowParameters} from '../src/flow/parameters';
 import {flowToDag} from '../src/flow/to-dag';
+import {isDagRunSpec} from '../src/flow/checkpoint-decoder';
 import {scopedParameters} from '../src/flow/structured/references';
 
 const schema: FlowParameter[] = [{name: 'body', type: 'string', inputSource: 'composer.text'},
@@ -112,4 +113,22 @@ it.each([
     expect(observed).toEqual([required]);
     const frozen = Object.values(graph.functionCalls ?? {})[0].child.nodeConnections!['echo'].connections![0];
     expect(frozen.required).toBe(required); expect(frozen.requiredWhen).toBeUndefined();
+});
+
+
+it('supports inclusive anyOf groups through defaults, scoped values and persisted graph decoding', () => {
+    const any: FlowInputGroup[] = [{...groups[0], mode: 'anyOf'}];
+    const fields: FlowParameter[] = [{name: 'body', type: 'string', default: 'Default text'}, {name: 'pages', type: 'json'}];
+    expect(flowInputDeclarationIssues({parameters: fields, inputGroups: any})).toEqual([]);
+    expect(validateFlowInputGroups(fields, any, {body: 'word', pages: [1]})).toEqual([]);
+    expect(validateFlowInputGroups(fields, any, {body: ' ', pages: []})).toMatchObject([{code: 'missing-input-group', message: expect.stringContaining('at least one')}]);
+    const expected = {body: 'Default text', pages: [1]};
+    expect(prepareFlowParameters(fields, {pages: [1]}, any)).toEqual(expected);
+    const scope = {parent: '', defaults: {body: 'Default text'}, values: {pages: [1]}, schema: fields, groups: any};
+    const spec = {nodes: [], edges: [], parameterSchema: fields, inputGroups: any, parameterScopes: {'child/': scope}};
+    expect(scopedParameters(spec, 'child/echo', {})).toEqual(expected);
+    expect(isDagRunSpec(JSON.parse(JSON.stringify(spec)))).toBe(true);
+    const draft = definition(); draft.inputGroups = any;
+    expect(flowRevisionToDraft(createFlowRevision(draft, 1)).inputGroups).toEqual(any);
+    expect(prepareFlowParameters(schema.map(field => ({...field, onMissing: 'interact' as const})), {}, any)).toEqual({});
 });

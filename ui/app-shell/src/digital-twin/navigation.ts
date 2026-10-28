@@ -5,7 +5,7 @@ import { TWIN_PAGES, label } from './view';
 
 /** Project domain pages into the same resource list used by Settings. */
 export function twinNavigationSource(): BrowserSource {
-    const icons = [ENTITY_ICONS.agent, ENTITY_ICONS.nav, ENTITY_ICONS.history, ENTITY_ICONS.project, ENTITY_ICONS.sync];
+    const icons = [ENTITY_ICONS.agent, ENTITY_ICONS.nav, ENTITY_ICONS.history, ENTITY_ICONS.project, ENTITY_ICONS.sync, ENTITY_ICONS.history];
     const nodes: BrowserNode[] = TWIN_PAGES.map((page, index) => ({
         id: '/' + page, parentId: null, kind: 'file', label: label(page),
         icon: icons[index], readOnly: true, fileDetails: false,

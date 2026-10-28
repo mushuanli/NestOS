@@ -2,7 +2,7 @@ import { twinError } from './error-view';
 import { escapeHTML, escapeAttr } from '@itookit/common';
 import { TWIN_KINDS } from '@itookit/app-contracts';
 import type { TwinScanPlan, TwinDataRecord } from '@itookit/app-contracts/services';
-import { button, label, sources, updateSettings, type TwinSnapshot } from './view';
+import { button, label, select, sources, updateSettings, type TwinSnapshot } from './view';
 import { scanListFilters, scanListPagination } from './scan-list';
 
 export type TwinSourcesTab = 'sources' | 'plans' | 'runs';
@@ -14,7 +14,7 @@ export function scanPage(snapshot: TwinSnapshot, connections: Array<{ id: string
         + `<nav class="twin__scan-tabs" role="tablist" aria-label="${escapeAttr(label('sources'))}">${tabs.map(([id, title, count]) => `<button type="button" role="tab" id="twin-scan-tab-${id}" data-action="scanTab" data-id="${id}" aria-controls="twin-scan-panel-${id}" aria-selected="${tab === id}" tabindex="${tab === id ? 0 : -1}">${escapeHTML(label(title))}<span class="twin__count">${count}</span></button>`).join('')}</nav>`
         + `<section class="twin__scan-panel" id="twin-scan-panel-plans" role="tabpanel" aria-labelledby="twin-scan-tab-plans"${tab !== 'plans' ? ' hidden' : ''}>${plans(snapshot, connections)}</section>`
         + `<section class="twin__scan-panel" id="twin-scan-panel-sources" role="tabpanel" aria-labelledby="twin-scan-tab-sources"${tab !== 'sources' ? ' hidden' : ''}><h3>${escapeHTML(label('scanTargets'))}</h3><p class="twin__help">${escapeHTML(label('scanTargetsHelp'))}</p>${sources(snapshot, connections)}</section>`
-        + `<section class="twin__scan-panel" id="twin-scan-panel-runs" role="tabpanel" aria-labelledby="twin-scan-tab-runs"${tab !== 'runs' ? ' hidden' : ''}>${runs(snapshot)}</section>`;
+        + `<section class="twin__scan-panel" id="twin-scan-panel-runs" role="tabpanel" aria-labelledby="twin-scan-tab-runs"${tab !== 'runs' ? ' hidden' : ''}>${scanRunPage(snapshot)}</section>`;
 }
 
 function scanSummary(snapshot: TwinSnapshot): string {
@@ -40,10 +40,11 @@ function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name:
     const next = snapshot.scans.schedules.find(schedule => schedule.planId === plan.id)?.nextAt ?? 0;
     const query = [plan.data.name, plan.data.focus, ...(plan.data.rules?.include ?? []), ...(plan.data.rules?.exclude ?? []), ...plan.data.kinds].join(' ').toLocaleLowerCase();
     return `<article class="twin__card" data-scan-row="${escapeAttr(plan.id)}" data-scan-text="${escapeAttr(query)}" data-scan-enabled="${plan.data.enabled}"><header class="twin__section-header"><h3>${escapeHTML(plan.data.name)}</h3>
-        <span class="twin__badge">${escapeHTML(label(plan.data.enabled ? 'ruleEnabled' : 'disabled'))} · ${plan.data.intervalMinutes} ${escapeHTML(label('minutes'))}</span></header>
+        <span class="twin__badge">${escapeHTML(label(plan.data.enabled ? 'ruleEnabled' : 'disabled'))} · ${escapeHTML(label('scannerTrigger.' + plan.data.trigger))} · ${plan.data.intervalMinutes} ${escapeHTML(label('minutes'))}</span></header>
         <p>${escapeHTML(plan.data.focus || label('allTopics'))}</p>
         <p>${escapeHTML(label('lastUpdate'))}: ${latest ? date(latest.data.finishedAt || latest.data.startedAt) + ' · ' + escapeHTML(label(`scanState.${latest.data.state}`)) : escapeHTML(label('neverUpdated'))}</p>
         <p>${escapeHTML(label('scanNextAt'))}: ${date(next, plan.data.enabled && plan.data.trigger !== 'manual')}</p>
+        ${plan.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${plan.data.runTokenLimit}</p>` : ''}
         ${latest ? `<p>${escapeHTML(label('updatedSources'))}: ${latest.data.completedSourceIds.length} · ${escapeHTML(label('newMemories'))}: ${snapshot.jobs.filter(job => job.data.scanScope?.runId === latest.id).reduce((sum, job) => sum + (job.data.addedMemories ?? 0), 0)}</p>` : ''}
         ${plan.data.enabled ? button('runScanPlan', 'scanNow', plan.id) + button('pauseScanPlan', 'pauseScanPlan', plan.id) : button('enableScanPlan', 'enableScanPlan', plan.id)}
         ${button('removeScanPlan', 'removeScanPlan', plan.id)}<details><summary>${escapeHTML(label('editScanPlan'))}</summary>${planForm(snapshot, connections, plan)}</details></article>`;
@@ -58,6 +59,10 @@ function planForm(_snapshot: TwinSnapshot, _connections: Array<{ id: string; nam
         ${ruleText('exclude', 'scanExclude', data?.rules?.exclude ?? [])}
         <p>${escapeHTML(label('scanRuleSyntax'))}</p>
         <details><summary>${escapeHTML(label('advanced'))}</summary><fieldset class="twin__selection"><legend>${escapeHTML(label('scanKinds'))}</legend>${TWIN_KINDS.map(kind => check('kinds', kind, label(`kind.${kind}`), data?.kinds.includes(kind) ?? true)).join('')}</fieldset></details>
+        ${select('trigger', ['manual', 'interval', 'changes'].map(id => ({id, name: label('scannerTrigger.' + id)})), data?.trigger ?? 'interval')}
+        ${check('autoConfirm', 'on', label('scannerAutoConfirm'), data?.autoConfirm ?? true)}
+        <label>${escapeHTML(label('scannerRunLimit'))}<input name="runTokenLimit" type="number" min="0" max="10000000" step="1" value="${data?.runTokenLimit ?? ''}"></label>
+        <p>${escapeHTML(label('scannerRunLimitHelp'))}</p>
         ${input('intervalMinutes', 'scanInterval', String(data?.intervalMinutes ?? 30), 'number')}
         ${check('enabled', 'on', label('enabled'), data?.enabled ?? true)}
         ${button('previewRule', 'previewRule')}<pre class="twin__preview" data-preview></pre>
@@ -65,13 +70,14 @@ function planForm(_snapshot: TwinSnapshot, _connections: Array<{ id: string; nam
 }
 const ruleText = (name: string, title: string, lines: string[]) => `<label>${escapeHTML(label(title))}<textarea name="${name}" rows="4" placeholder="${name === 'include' ? 'project:Alpha' : '**/*.log&#10;drafts/'}">${escapeHTML(lines.join('\n'))}</textarea></label>`;
 
-function runs(snapshot: TwinSnapshot): string {
+export function scanRunPage(snapshot: TwinSnapshot): string {
     const worker = snapshot.scans.worker;
     return `<p class="twin__error">${escapeHTML(snapshot.scans.discovery.errors.join(', '))}</p><p>${escapeHTML(label('scanHost'))}: ${escapeHTML(worker.host)} · ${escapeHTML(label(worker.online ? 'scanOnline' : 'scanOffline'))} · ${escapeHTML(worker.error)}</p>
         <p>${escapeHTML(label('scanLeaseHost'))}: ${escapeHTML(worker.ownerHost || label('scanIdle'))}</p>
         <p>${escapeHTML(label('scanHostHelp'))}</p>${snapshot.scans.runs.slice(-50).reverse().map(run => `<article class="twin__card"><h3>${escapeHTML(run.data.name)}</h3>
         <p>${escapeHTML(label(`scanState.${run.data.state}`))} · ${run.data.completedSourceIds.length} / ${run.data.sourceIds.length} · ${escapeHTML(twinError(run.data.error, run.data.errorDetail))}</p>
         <p>${escapeHTML(label('budget'))}: ${run.data.spentTokens} / ${run.data.reservedTokens} / ${run.data.budgetUnlimited ? escapeHTML(label('unlimited')) : run.data.tokenLimit}</p>
+        ${run.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${run.data.runTokenLimit}</p>` : ''}
         <p>${date(run.data.createdAt)} · ${escapeHTML(label('scanFinishedAt'))}: ${date(run.data.finishedAt)}</p>
         ${['queued', 'running'].includes(run.data.state) ? button('cancelScanRun', 'cancel', run.id) : run.data.planId && snapshot.scans.plans.some(plan => plan.id === run.data.planId && plan.data.enabled) ? button('runScanPlan', 'scanContinue', run.data.planId) : ''}
         <details><summary>${escapeHTML(label('scanTaskRefs'))}</summary>${snapshot.jobs.filter(job => job.data.scanScope?.runId === run.id).map(job =>

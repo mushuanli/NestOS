@@ -53,6 +53,7 @@ function validateUsage(data: Data): void {
         || typeof ref.id !== 'string' || typeof ref.revision !== 'string')) invalid();
 }
 function validateScanRun(data: Data): void {
+    if (data.runTokenLimit !== undefined) integers(data, ['runTokenLimit']);
     if (data.budgetUnlimited !== undefined) booleans(data, ['budgetUnlimited']);
     if (data.errorDetail !== undefined) strings(data, ['errorDetail']);
     if (data.rules !== undefined) scanRules(data.rules);

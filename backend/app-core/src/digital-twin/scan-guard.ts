@@ -34,6 +34,7 @@ export function createScanGuard(store: TwinScanStore): TwinScanGuardPort {
         const reservedTokens = run.data.reservedTokens + (charge.reserve ?? 0) - (charge.settle?.reserved ?? 0);
         const spentTokens = run.data.spentTokens + (charge.settle?.spent ?? 0);
         if (!Number.isSafeInteger(reservedTokens) || reservedTokens < 0 || !Number.isSafeInteger(spentTokens) || spentTokens < 0) throw new Error('TWIN_INVALID_BUDGET');
+        if (charge.reserve && run.data.runTokenLimit !== undefined && reservedTokens + spentTokens > run.data.runTokenLimit) throw new Error('TWIN_SCAN_BUDGET_EXHAUSTED');
         if (charge.reserve && !budgetUnlimited && reservedTokens + spentTokens > tokenLimit) throw new Error('TWIN_SCAN_BUDGET_EXHAUSTED');
         return { conditions, writes: [write('scan-run', run.id, { ...run.data, budgetUnlimited, tokenLimit, reservedTokens, spentTokens }, run.revision)] };
     };

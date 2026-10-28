@@ -98,13 +98,13 @@ export class TwinScanPlans {
             connectionId: source.data.connectionId, connectionFingerprint: source.data.connectionFingerprint,
             kinds: [...TWIN_KINDS], mode: 'analyze', tokenLimit: 10000000 }, 'manual', true, '', settings.budgetUnlimited === true));
     }
-    private async insert(planId: string, planRevision: string, data: Pick<TwinScanPlan, 'name' | 'sourceIds' | 'connectionId' | 'connectionFingerprint' | 'kinds' | 'mode' | 'tokenLimit' | 'rules' | 'autoConfirm' | 'focus'>,
+    private async insert(planId: string, planRevision: string, data: Pick<TwinScanPlan, 'name' | 'sourceIds' | 'connectionId' | 'connectionFingerprint' | 'kinds' | 'mode' | 'tokenLimit' | 'rules' | 'autoConfirm' | 'focus' | 'runTokenLimit'>,
         trigger: TwinScanRun['trigger'], singleBatch: boolean, signature = '', budgetUnlimited = false): Promise<string> {
         const queue = await this.store.queue(), active = await this.store.active();
         const existing = active.find(run => planId ? run.data.planId === planId : !run.data.planId && run.data.sourceIds[0] === data.sourceIds[0]);
         if (existing) return existing.id;
         if (queue.runIds.length >= 100) throw new Error('TWIN_SCAN_QUEUE_LIMIT');
-        const id = randomUUID(), run: TwinScanRun = { name: data.name, sourceIds: data.sourceIds, connectionId: data.connectionId,
+        const id = randomUUID(), run: TwinScanRun = { ...(data.runTokenLimit !== undefined ? {runTokenLimit: data.runTokenLimit} : {}), name: data.name, sourceIds: data.sourceIds, connectionId: data.connectionId,
             connectionFingerprint: data.connectionFingerprint, focus: data.focus ?? '', kinds: data.kinds, mode: data.mode, tokenLimit: data.tokenLimit,
             ...(data.rules ? { rules: data.rules, autoConfirm: data.autoConfirm } : {}), planId, planRevision, state: 'queued', trigger, singleBatch,
             budgetUnlimited, completedSourceIds: [], reservedTokens: 0, spentTokens: 0, createdAt: this.store.now(), startedAt: 0, finishedAt: 0, owner: '', fence: 0, error: '' };

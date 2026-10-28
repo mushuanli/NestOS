@@ -4,8 +4,8 @@ import type { DigitalTwinService, TwinDataRecord } from '@itookit/app-contracts/
 import { scanListFilters, scanListPagination } from './scan-list';
 
 export type TwinSnapshot = Awaited<ReturnType<DigitalTwinService['snapshot']>>;
-export type TwinPage = 'overview' | 'profile' | 'memories' | 'goals' | 'sources';
-export const TWIN_PAGES: TwinPage[] = ['overview', 'profile', 'memories', 'goals', 'sources'];
+export type TwinPage = 'overview' | 'profile' | 'memories' | 'goals' | 'sources' | 'runs';
+export const TWIN_PAGES: TwinPage[] = ['overview', 'profile', 'memories', 'goals', 'sources', 'runs'];
 export const label = (key: string) => t(`twin.${key}` as Parameters<typeof t>[0]);
 export const button = (action: string, title: string, id = '') => `<button type="button" data-action="${escapeAttr(action)}" data-id="${escapeAttr(id)}">${escapeHTML(label(title))}</button>`;
 const input = (name: string, title: string, value = '', type = 'text') => `<label>${escapeHTML(label(title))}<input name="${name}" type="${type}" value="${escapeAttr(value)}"></label>`;

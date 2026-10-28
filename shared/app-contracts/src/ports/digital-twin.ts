@@ -5,6 +5,9 @@ import type * as AppContracts from '../index';
 import type { TwinMemoryKind, TwinAnalysisJob, TwinSourceData, TwinMemoryData, TwinSettings, TwinSourceSpec, TwinSelectionTarget, TwinSelectionType } from '../index';
 
 export interface TwinScanRuleInput extends TwinScanRules {
+    trigger?: 'manual' | 'interval' | 'changes';
+    autoConfirm?: boolean;
+    runTokenLimit?: number | null;
     focus?: string;
     name: string;
     intervalMinutes: number;
@@ -25,6 +28,7 @@ export interface TwinScanPlan extends TwinScanPlanInput {
 }
 
 export interface TwinScanPlanInput {
+    runTokenLimit?: number;
     rules?: TwinScanRules;
     autoConfirm?: boolean;
     focus?: string;
@@ -186,6 +190,7 @@ export interface DigitalTwinService {
 }
 
 export interface TwinScanRun {
+    runTokenLimit?: number;
     budgetUnlimited?: boolean;
     errorDetail?: string;
     rules?: TwinScanRules;

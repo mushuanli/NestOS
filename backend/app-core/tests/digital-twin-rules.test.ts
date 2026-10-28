@@ -63,6 +63,25 @@ describe.each(['memory', 'indexeddb'] as const)('automatic rules on %s', kind =>
         await expect(host.run(id)).rejects.toThrow('TWIN_BUDGET_EXHAUSTED');
         expect(host.extractor.run).toHaveBeenCalledTimes(1);
     });
+    it('enforces a per-run ceiling even with unlimited total budget and preserves scanner trigger and review settings', async () => {
+        const host = await setup(kind); host.put('note.md', 'first fact');
+        await host.service.configure({budgetUnlimited: true}, (await host.service.getSettings()).revision);
+        const id = await host.service.saveScanRule(null, null, {name: 'Review scanner', include: [], exclude: [],
+            intervalMinutes: 1, enabled: true, trigger: 'manual', autoConfirm: false, runTokenLimit: 0});
+        const plan = (await host.service.snapshot()).scans.plans.find(plan => plan.id === id)!;
+        expect(plan.data).toMatchObject({trigger: 'manual', autoConfirm: false, runTokenLimit: 0});
+        await expect(host.run(id)).rejects.toThrow('TWIN_SCAN_BUDGET_EXHAUSTED');
+        expect(host.extractor.run).not.toHaveBeenCalled();
+        const current = (await host.service.snapshot()).scans.plans.find(plan => plan.id === id)!;
+        await host.service.saveScanRule(id, current.revision, {...current.data.rules!, name: 'Review scanner',
+            intervalMinutes: 1, enabled: true, runTokenLimit: null});
+        await host.run(id);
+        const snapshot = await host.service.snapshot();
+        expect(snapshot.scans.plans.find(plan => plan.id === id)!.data.trigger).toBe('manual');
+        expect(snapshot.scans.plans.find(plan => plan.id === id)!.data.runTokenLimit).toBeUndefined();
+        expect(snapshot.memories[0].data.state).toBe('candidate');
+        expect(snapshot.settings.data.spentTokens).toBe(10);
+    });
     it('discovers new sources and invalidates modified, deleted, replaced and excluded evidence while preserving manual memories', async () => {
         const host = await setup(kind); host.put('note.md', 'first');
         const id = await host.rule(); await host.run(id);

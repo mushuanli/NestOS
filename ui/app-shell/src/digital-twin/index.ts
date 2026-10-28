@@ -6,7 +6,7 @@ import type { TwinSourceSpec } from '@itookit/app-contracts';
 import type { DigitalTwinService, TwinScanRuleInput } from '@itookit/app-contracts/services';
 import { createWorkspaceModule } from '../workspaces/module';
 import { TWIN_PAGES, label, overview, memories, type TwinSnapshot, type TwinPage } from './view';
-import { scanPage, type TwinSourcesTab } from './scan-view';
+import { scanPage, scanRunPage, type TwinSourcesTab } from './scan-view';
 import { TwinSettingsAutosave } from './settings-autosave';
 import { TwinNavigation } from './navigation';
 import { TwinScanLists } from './scan-list';
@@ -108,7 +108,7 @@ export class TwinWorkbench {
         const previousSettings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         const snapshot = this.snapshot;
         const body = !snapshot ? '' : this.page === 'overview' ? overview(snapshot)
-            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab) : memories(snapshot, this.page);
+            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab) : memories(snapshot, this.page);
         this.options.editor.innerHTML = `<div class="twin__body"><h2>${escapeHTML(label(this.page))}</h2>
             <p class="twin__status" role="status">${escapeHTML(this.loading ? t('status.loading') : this.busy ? label('busy') : this.message)}</p>
             <p class="twin__error" role="alert">${escapeHTML(this.error)}</p>${this.error ? `<button type="button" data-action="refresh">${escapeHTML(label('refresh'))}</button>` : ''}${body}</div>`;
@@ -285,6 +285,8 @@ export class TwinWorkbench {
         const plan = this.snapshot!.scans.plans.find(item => item.id === form.dataset.id);
         const input: TwinScanRuleInput = { name: field(data, 'name'), focus: field(data, 'focus'), include: lines(data, 'include'), exclude: lines(data, 'exclude'),
             kinds: data.getAll('kinds').map(String) as TwinScanRuleInput['kinds'],
+            trigger: field(data, 'trigger') as TwinScanRuleInput['trigger'], autoConfirm: data.get('autoConfirm') === 'on',
+            runTokenLimit: field(data, 'runTokenLimit').trim() ? Number(data.get('runTokenLimit')) : null,
             intervalMinutes: Number(data.get('intervalMinutes')), enabled: data.get('enabled') === 'on' };
         return this.options.service.saveScanRule(plan?.id ?? null, plan?.revision ?? null, input);
     }

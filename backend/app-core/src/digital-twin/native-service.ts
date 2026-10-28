@@ -5,14 +5,14 @@ import type { SessionRepository } from '@itookit/llm-session';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import { sha256HexSync } from '@itookit/llm-context';
 import { SessionLifecycleService } from '../session/session-lifecycle';
-import { DigitalTwinService } from './service';
+import { DigitalTwinService, type TwinWorkspaceBinding } from './service';
 import { NestosTwinSourceReader } from './source-reader';
 import { KernelTwinExtractor } from './extraction';
 
 interface Models { getConnection(id: string): Promise<ConnectionMeta | undefined>; getProvider(id: string): LLMProvider | undefined; getDefaultConnection?(): Promise<ConnectionMeta | null>; }
 /** The model destination binding excludes mutable accounting and all credentials. */
-export function createNativeDigitalTwin(fs: IFileSystem, repository: SessionRepository, kernel: Kernel, models: Models, hostKind = 'local', projects?: ProjectService): DigitalTwinService {
-    return new DigitalTwinService({ fs, scanHost: { kind: hostKind }, defaultConnection: async () => (await models.getDefaultConnection?.())?.id ?? '', reader: new NestosTwinSourceReader(fs, repository, projects), extractor: new KernelTwinExtractor(kernel),
+export function createNativeDigitalTwin(fs: IFileSystem, repository: SessionRepository, kernel: Kernel, models: Models, hostKind = 'local', projects?: ProjectService, workspace?: TwinWorkspaceBinding): DigitalTwinService {
+    return new DigitalTwinService({ fs, workspace, scanHost: { kind: hostKind }, defaultConnection: async () => (await models.getDefaultConnection?.())?.id ?? '', reader: new NestosTwinSourceReader(fs, repository, projects), extractor: new KernelTwinExtractor(kernel),
         executionExists: async (sessionId, taskId) => {
             const task = await kernel.task(sessionId, taskId);
             return task.id === taskId && task.sessionId === sessionId;

@@ -102,7 +102,7 @@ it('persists unlimited mode after HTTP conflicts in both reading and saving sett
 it('uses the shared VFS list for navigation, deep links and mobile activation', async () => {
     const host = await setup();
     const rows = () => [...host.sidebar.querySelectorAll<HTMLElement>('[data-item-type="file"]')];
-    expect(rows().map(row => row.dataset.itemId)).toEqual(['/overview', '/profile', '/memories', '/goals', '/sources']);
+    expect(rows().map(row => row.dataset.itemId)).toEqual(['/overview', '/profile', '/memories', '/goals', '/sources', '/runs']);
     expect(host.sidebar.querySelector('[data-page]')).toBeNull();
     expect(host.sidebar.querySelector('[data-action="item-menu"]')).toBeNull();
     expect(rows().every(row => !row.draggable)).toBe(true);

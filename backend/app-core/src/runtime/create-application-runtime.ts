@@ -55,7 +55,7 @@ import { recoverSessionsWithLeases } from './session-recovery';
 import { createConversationSystem } from './conversation-system';
 import { createInfrastructure } from './infrastructure';
 import { syncSkillsToKernel } from '../kernel/sync-skills';
-import { DigitalTwinService } from '../digital-twin/service';
+import { DigitalTwinService, type TwinWorkspaceBinding } from '../digital-twin/service';
 import { createNativeDigitalTwin } from '../digital-twin/native-service';
 
 export interface ApplicationPlatformServices {
@@ -143,6 +143,8 @@ export interface ApplicationRuntimeOptions {
     providerAuthorization?: import('@itookit/kernel-adapters/llm/core').ProviderAuthorizationHost;
     ownerKind?: SessionOwnerKind;
     digitalTwinAutoStart?: boolean;
+    /** Server-owned workspace binding with a membership/authority check on each access. */
+    digitalTwinWorkspace?: TwinWorkspaceBinding;
     /**
      * Stable token identifying this host window/tab for Session write leases. A reload of the
      * same window reuses it and may take over the leases its predecessor still holds, while a
@@ -347,7 +349,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const skillsReady = traceBoot(policy.skills === 'before-ready' ? 'syncSkillsToKernel' : 'syncSkillsToKernel (background)', () => syncSkillsToKernel(llmDriver, kernel));
         void skillsReady.catch(error => console.warn('[Boot] Skill initialization failed', error));
 
-        digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, kernelCore, agentService, options.ownerKind ?? 'tauri', projects);
+        digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, kernelCore, agentService, options.ownerKind ?? 'tauri', projects, options.digitalTwinWorkspace);
         const leaseStore = new SessionLeaseStore(systemFS, {
             ...(options.sessionLeaseSkewMs ? { skewMs: options.sessionLeaseSkewMs } : {}),
         });

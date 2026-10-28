@@ -62,10 +62,14 @@ it('edits automatic rules, previews matches, preserves drafts and shows kernel r
         expect(form.querySelector<HTMLTextAreaElement>('[name="include"]')!.value).toBe('file:**/*.md');
         expect([...form.querySelectorAll<HTMLInputElement>('[name="kinds"]')].filter(input => input.checked).map(input => input.value)).toEqual(['fact']);
         form.querySelector<HTMLTextAreaElement>('[name="exclude"]')!.value = '';
+        form.querySelector<HTMLSelectElement>('[name="trigger"]')!.value = 'manual';
+        form.querySelector<HTMLInputElement>('[name="runTokenLimit"]')!.value = '50000';
+        form.querySelector<HTMLInputElement>('[name="autoConfirm"]')!.checked = false;
         form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         await vi.waitFor(async () => expect((await service.snapshot()).scans.plans).toHaveLength(1));
         await workbench.openResource('/sources'); expect(editor.querySelector('img')).toBeNull();
         const first = (await service.snapshot()).scans.plans[0];
+        expect(first.data).toMatchObject({trigger: 'manual', runTokenLimit: 50000, autoConfirm: false});
         await service.saveScanRule(null, null, { name: 'Second rule', include: ['project:Alpha'], exclude: [], intervalMinutes: 30, enabled: true });
         await workbench.openResource('/sources/plans');
         editor.querySelector<HTMLButtonElement>(`[data-action="runScanPlan"][data-id="${first.id}"]`)!.click();
@@ -78,10 +82,10 @@ it('edits automatic rules, previews matches, preserves drafts and shows kernel r
         vi.spyOn(window, 'confirm').mockReturnValue(true); await workbench.openResource('/sources/plans');
         editor.querySelector<HTMLButtonElement>(`[data-action="removeScanPlan"][data-id="${first.id}"]`)!.click();
         await vi.waitFor(async () => expect((await service.snapshot()).scans.plans).toHaveLength(1));
-        expect((await service.snapshot()).memories[0].data.state).toBe('active');
+        expect((await service.snapshot()).memories[0].data.state).toBe('candidate');
     } finally { await workbench.destroy(); await service.dispose(); await manager.dispose(); }
 });
-it('renders five pages and allows review, correction and forgetting with honest copy status', async () => {
+it('renders scanner and run navigation and allows review, correction and forgetting with honest copy status', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
     const service = new DigitalTwinService({ fs: await manager.openFileSystem('/'),
         reader: { sessions: async () => [{ id: 'session', title: 'Consumer' }], read: async () => ({ text: '<script>Alpha TypeScript</script>', hash: sha256HexSync('source'), nativeIdentity: 'source' }) },
@@ -93,7 +97,7 @@ it('renders five pages and allows review, correction and forgetting with honest 
     const submit = async (form: HTMLFormElement) => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await idle(); };
     const click = async (action: string) => { editor.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!.click(); await idle(); };
     try {
-        await workbench.start(); expect(await twinNavigationSource().children(null)).toHaveLength(5);
+        await workbench.start(); expect(await twinNavigationSource().children(null)).toHaveLength(6);
         expect(editor.querySelector('[data-form=grant]')).toBeNull();
         expect(editor.textContent).toContain(t('twin.defaultKnowledgeUse'));
         const sourceId = await service.addSource({ kind: 'file', target: '/home/admin/notes/source.md', label: 'Source' }, 'model');

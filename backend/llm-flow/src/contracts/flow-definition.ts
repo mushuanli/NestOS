@@ -139,7 +139,7 @@ export interface FlowInputGroup {
 
 export interface FlowParameter {
     /** UI hints only; hidden fields retain their values and execution constraints. */
-    presentation?: {group?: string; visibleWhen?: SerializableExpression; contentSource?: boolean};
+    presentation?: {group?: string; visibleWhen?: SerializableExpression; contentSource?: boolean; connectionToggle?: string; connectionVoices?: string};
     /** Explicit composer binding; parameter names never imply an input source. */
     inputSource?: 'composer.text' | 'composer.attachments';
     imageConstraints?: FlowImageConstraints;

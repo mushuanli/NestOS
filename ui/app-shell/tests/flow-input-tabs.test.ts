@@ -64,3 +64,24 @@ it('groups configuration with its connection and reveals dependent options witho
     checkbox.checked = false; checkbox.dispatchEvent(new Event('change', {bubbles: true}));
     expect(readFlowParameterForm(root, parameters)).toEqual({enabled: false, count: 3});
 });
+
+it('binds connection enablement and refreshes voice choices without retaining another model voice', async () => {
+    const {syncConnectionParameters} = await import('../../llm-ui-adapter/src/components/FlowConnectionParameters');
+    const parameters: FlowParameter[] = [
+        {name: 'enabled', type: 'boolean', default: false, presentation: {connectionToggle: 'audio'}},
+        {name: 'voice', type: 'string', presentation: {connectionVoices: 'audio'}},
+    ];
+    const connection = {connections: [{id: 'a', name: 'A', providerId: 'p', voices: ['first']}, {id: 'b', name: 'B', providerId: 'p', voices: ['second']}],
+        slots: [{name: 'audio', required: false}], bindings: {audio: 'a'}, onChange() {}};
+    const root = document.createElement('div'); root.innerHTML = flowParameterFields(parameters, connection);
+    syncConnectionParameters(root, parameters, connection, true);
+    const slot = root.querySelector<HTMLSelectElement>('[data-slot-connection]')!;
+    expect(slot.value).toBe(''); expect(root.querySelector<HTMLElement>('[data-parameter-row="0"]')!.hidden).toBe(true);
+    slot.value = 'a'; syncConnectionParameters(root, parameters, connection);
+    const voice = root.querySelector<HTMLSelectElement>('[data-parameter="1"]')!; voice.value = 'first';
+    expect(readFlowParameterForm(root, parameters, connection)).toEqual({enabled: true, voice: 'first'});
+    slot.value = 'b'; syncConnectionParameters(root, parameters, connection);
+    expect(root.querySelector<HTMLSelectElement>('[data-parameter="1"]')!.value).toBe('');
+    slot.value = ''; syncConnectionParameters(root, parameters, connection);
+    expect(readFlowParameterForm(root, parameters, connection)).toEqual({enabled: false});
+});

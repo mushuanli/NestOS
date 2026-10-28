@@ -5,6 +5,7 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'connection.slotOff': '关闭',
     'flow.tool.title': '选择工具与参数',
     'flow.tool.command': '选择并执行工具，结果可用于流程输入',
     'flow.tool.mcpCommand': '选择并执行已配置的 MCP 工具',

@@ -5,7 +5,7 @@ export {prepareDirectRun, type DirectRunPreparation} from './session/direct-run-
 export type {DirectConversationInput} from './session/direct-conversation';
 import {IndependentCallService} from './session/independent-calls';
 import { prepareFlowConnections } from './session/flow-connections';
-import { operationModelNames } from '@itookit/kernel-adapters/contracts';
+import { operationModelNames, modelForOperation } from '@itookit/kernel-adapters/contracts';
 import { checkFlowConnectionSlots, checkFlowConnections, type FlowConnectionCheckInput } from './session/flow-connection-check';
 import { skillContextResolver } from './session/direct-conversation';
 import { createSessionHost, type SessionHostPorts } from './utils/host-ports';
@@ -265,6 +265,7 @@ function createControlPlane(
     const commandBus = new CommandBus();
     commandBus.register(SessionCommand.GetConnections, async () => ({ connections: (await options.agentService.getConnections()).map(connection => ({ ...connection,
         operationModels: operationModelNames(connection, options.agentService.getProvider(connection.providerId)),
+        voices: modelForOperation(connection, options.agentService.getProvider(connection.providerId), 'speech.synthesize')?.operations?.['speech.synthesize']?.voices ?? [],
         enabled: connection.enabled !== false && options.agentService.getProvider(connection.providerId)?.enabled !== false })),
         defaultId: (await options.agentService.getDefaultConnection())?.id,
         modelDefaults: await options.agentService.getModelDefaults?.() ?? {} }));

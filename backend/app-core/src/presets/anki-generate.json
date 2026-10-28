@@ -19,7 +19,10 @@
       "widget": "textarea",
       "description": "填写英文单词、Unit N 分组或 WordData JSON；也可仅选择图片。图片和文字可从同一入口提交。",
       "default": "",
-      "inputSource": "composer.text"
+      "inputSource": "composer.text",
+      "presentation": {
+        "contentSource": true
+      }
     },
     {
       "name": "images",
@@ -38,15 +41,21 @@
           "image/webp"
         ]
       },
-      "inputSource": "composer.attachments"
+      "inputSource": "composer.attachments",
+      "presentation": {
+        "contentSource": false
+      }
     },
     {
       "name": "wordsGroups",
-      "label": "分组文本",
+      "label": "分组",
       "type": "json",
       "default": null,
       "widget": "textarea",
-      "description": "可填 [\"Unit 1\\napple\",\"Unit 2\\npear\"]；grouped 模式按每组分别补全。支持与单词文本、图片同时输入。"
+      "description": "输入 JSON 数组，例如 [\"Unit 1\\napple\", \"Unit 2\\npear\"]。",
+      "presentation": {
+        "contentSource": false
+      }
     },
     {
       "name": "requirements",
@@ -90,7 +99,8 @@
       "widget": "checkbox",
       "presentation": {
         "contentSource": false,
-        "group": "生成选项"
+        "group": "生成选项",
+        "connectionToggle": "image"
       }
     },
     {
@@ -101,7 +111,8 @@
       "widget": "checkbox",
       "presentation": {
         "contentSource": false,
-        "group": "生成选项"
+        "group": "生成选项",
+        "connectionToggle": "speech"
       }
     },
     {
@@ -109,7 +120,7 @@
       "label": "语音音色",
       "type": "string",
       "default": "",
-      "description": "填写所选语音模型支持的音色。",
+      "description": "选择语音模型支持的音色。",
       "presentation": {
         "contentSource": false,
         "group": "生成选项",
@@ -127,7 +138,8 @@
               "value": true
             }
           ]
-        }
+        },
+        "connectionVoices": "speech"
       }
     },
     {
@@ -147,34 +159,68 @@
           "kind": "or",
           "args": [
             {
-              "kind": "gt",
+              "kind": "and",
               "args": [
                 {
-                  "kind": "param",
-                  "path": [
-                    "images",
-                    "length"
+                  "kind": "exists",
+                  "args": [
+                    {
+                      "kind": "param",
+                      "path": [
+                        "images",
+                        "length"
+                      ]
+                    }
                   ]
                 },
                 {
-                  "kind": "literal",
-                  "value": 1
+                  "kind": "gt",
+                  "args": [
+                    {
+                      "kind": "param",
+                      "path": [
+                        "images",
+                        "length"
+                      ]
+                    },
+                    {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  ]
                 }
               ]
             },
             {
-              "kind": "gt",
+              "kind": "and",
               "args": [
                 {
-                  "kind": "param",
-                  "path": [
-                    "wordsGroups",
-                    "length"
+                  "kind": "exists",
+                  "args": [
+                    {
+                      "kind": "param",
+                      "path": [
+                        "wordsGroups",
+                        "length"
+                      ]
+                    }
                   ]
                 },
                 {
-                  "kind": "literal",
-                  "value": 1
+                  "kind": "gt",
+                  "args": [
+                    {
+                      "kind": "param",
+                      "path": [
+                        "wordsGroups",
+                        "length"
+                      ]
+                    },
+                    {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  ]
                 }
               ]
             }
@@ -307,7 +353,7 @@
           "image"
         ]
       },
-      "description": "开启生成配图时必选；关闭时可不绑定。",
+      "description": "选择连接以启用，选择关闭则不生成。",
       "label": "文生图连接",
       "requiredWhen": {
         "kind": "eq",
@@ -341,7 +387,7 @@
           "audio"
         ]
       },
-      "description": "开启生成单词和例句语音时必选；关闭时可不绑定。",
+      "description": "选择连接以启用，选择关闭则不生成。",
       "label": "tts语音连接",
       "requiredWhen": {
         "kind": "eq",

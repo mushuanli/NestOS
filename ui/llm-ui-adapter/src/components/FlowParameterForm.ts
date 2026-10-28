@@ -1,3 +1,4 @@
+import {syncConnectionParameters} from './FlowConnectionParameters';
 import {groupFlowParameterFields} from './FlowParameterPresentation';
 import { escapeHTML, t } from '@itookit/common';
 import { type FlowInputGroup, type FlowParameter, type JsonValue, validFlowImages, validFlowFiles, validateFlowInputGroups } from '@itookit/llm-flow/contracts';
@@ -12,7 +13,7 @@ export {bindFlowParameterState, showFlowFieldError, validateFlowConnectionForm};
 
 export interface FlowConnectionSelection {
     assets?: import('./FlowImageFields').FlowImageAssetPort;
-    connections: Array<ConnectionMeta & { operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>> }>;
+    connections: Array<ConnectionMeta & { voices?: string[]; operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>> }>;
     slots?: import('@itookit/llm-flow/contracts').FlowConnection[];
     bindings?: Record<string, string>;
     selected?: string;
@@ -58,9 +59,18 @@ function mountParameterDialog(parameters: FlowParameter[], title: string | undef
     const dialog = document.createElement('dialog'); dialog.className = 'dag-dialog flow-parameter-dialog';
     dialog.setAttribute('aria-labelledby', 'flow-parameter-dialog-title');
     dialog.innerHTML = parameterDialogTemplate(parameters, title, submitting, connection, description, extension?.inputGroups);
+    syncConnectionParameters(dialog, parameters, connection, true);
+    const events = new AbortController();
+    const sync = () => syncConnectionParameters(dialog, parameters, connection);
+    dialog.addEventListener('input', sync, {capture: true, signal: events.signal});
+    dialog.addEventListener('change', sync, {capture: true, signal: events.signal});
     const unbind = bindFlowParameterState(dialog, parameters, extension?.inputGroups ?? [], values => {
         if (connection) updateFlowConnectionRequirements(dialog, connection, values);
+        syncConnectionParameters(dialog, parameters, connection);
     });
+    const initialName = Object.keys(extension?.initialFiles ?? {}).find(name => extension?.initialFiles?.[name]?.length);
+    if (initialName && !parameters.some(field => field.inputSource === 'composer.text' && field.default))
+        [...dialog.querySelectorAll<HTMLButtonElement>('[data-flow-tab]')].find(tab => tab.dataset.flowTab === initialName)?.click();
     const images = bindFlowImageFields(dialog, parameters, assets, extension?.initialFiles);
     const files = bindFlowFileFields(dialog, parameters, assets, extension?.initialFiles), unmount = extension?.mount?.(dialog);
     const imagesReady = () => {
@@ -68,7 +78,7 @@ function mountParameterDialog(parameters: FlowParameter[], title: string | undef
         return pending.length ? Promise.all(pending).then(() => {}) : undefined;
     };
     if (extension?.submitLabel) dialog.querySelector('button[type="submit"]')!.textContent = t(extension.submitLabel);
-    return {dialog, imagesReady, unmount: () => {unmount?.(); unbind();}};
+    return {dialog, imagesReady, unmount: () => {events.abort(); unmount?.(); unbind();}};
 }
 
 function bindParameterSubmission(dialog: HTMLElement, read: () => Record<string, JsonValue> | Promise<Record<string, JsonValue>>,

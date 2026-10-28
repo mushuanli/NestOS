@@ -14,6 +14,7 @@ export class FlowInputSources implements FlowParameterExtension {
         const events = new AbortController();
         this.fields.forEach((field, index) => {
             if (this.names && !this.names.includes(field.name)) return;
+            if (field.presentation?.contentSource === false) return;
             if (field.widget === 'images' || field.widget === 'files') return;
             const input = root.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[data-parameter="${index}"]`);
             if (!input) return;
@@ -46,5 +47,6 @@ export class FlowInputSources implements FlowParameterExtension {
             input.value = value;
         }
         this.transfers.set(field.name, transfer);
+        input.dispatchEvent(new Event('change', {bubbles: true}));
     }
 }

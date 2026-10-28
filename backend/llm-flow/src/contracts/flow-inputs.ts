@@ -41,6 +41,11 @@ export function validateFlowInputGroups(schema: FlowParameter[] | undefined, gro
 export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; inputGroups?: FlowInputGroup[]; connections?: FlowConnection[]}): FlowInputIssue[] {
     const issues: FlowInputIssue[] = [], names = new Set((flow.parameters ?? []).map(field => field.name)), seen = new Set<string>();
     for (const parameter of flow.parameters ?? []) {
+        for (const key of ['connectionToggle', 'connectionVoices'] as const) {
+            const slot = parameter.presentation?.[key];
+            if (slot !== undefined && (parameter.type !== (key === 'connectionToggle' ? 'boolean' : 'string') || !flow.connections?.some(item => item.name === slot)))
+                issues.push({code: 'invalid-parameter-presentation', message: `Invalid connection presentation: ${parameter.name}`});
+        }
         if (parameter.presentation !== undefined && !validPresentation(parameter.presentation, names, true))
             issues.push({code: 'invalid-parameter-presentation', message: `Invalid parameter presentation: ${parameter.name}`});
         if (parameter.inputSource !== undefined && (parameter.inputSource !== 'composer.text' && parameter.inputSource !== 'composer.attachments'
@@ -64,7 +69,7 @@ export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; 
 
 function validPresentation(value: unknown, names: Set<string>, parameter: boolean): boolean {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const hints = value as Record<string, unknown>, keys = parameter ? ['group', 'visibleWhen', 'contentSource'] : ['group'];
+    const hints = value as Record<string, unknown>, keys = parameter ? ['group', 'visibleWhen', 'contentSource', 'connectionToggle', 'connectionVoices'] : ['group'];
     if (Object.keys(hints).some(key => !keys.includes(key))) return false;
     return (hints.group === undefined || typeof hints.group === 'string' && !!hints.group.trim())
         && (hints.contentSource === undefined || typeof hints.contentSource === 'boolean')

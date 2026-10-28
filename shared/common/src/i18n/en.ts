@@ -4,6 +4,7 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'connection.slotOff': 'Off',
     'flow.tool.title': 'Choose a tool and arguments',
     'flow.tool.command': 'Choose and execute a tool for workflow input',
     'flow.tool.mcpCommand': 'Choose and execute a configured MCP tool',

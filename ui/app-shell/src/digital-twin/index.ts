@@ -1,7 +1,9 @@
+import {scannerFieldChange, updateExecutorMode, updateInputMode, readScannerExecutor, readScannerFile} from './scanner-fields';
+import type {RootCallTarget} from '@itookit/llm-session/contracts';
 import { memoryInput } from './memory-input';
 import { loadOverview } from './load-overview';
 import { graphView } from './graph-view';
-import { escapeHTML, t } from '@itookit/common';
+import { escapeHTML, escapeAttr, t } from '@itookit/common';
 import type { TwinSourceSpec } from '@itookit/app-contracts';
 import type { DigitalTwinService, TwinScanRuleInput } from '@itookit/app-contracts/services';
 import { createWorkspaceModule } from '../workspaces/module';
@@ -17,6 +19,8 @@ export interface TwinWorkbenchOptions {
     selected(path: string): void;
 }
 export class TwinWorkbench {
+    private workspaces: import('@itookit/app-contracts').TwinWorkspaceView[] = [];
+    private targets: RootCallTarget[] = [];
     private page: TwinPage = 'overview';
     private selectedSession = '';
     private sourcesTab: TwinSourcesTab = 'plans';
@@ -31,7 +35,7 @@ export class TwinWorkbench {
     private dirty = false;
     private error = '';
     private message = '';
-    private readonly autosave: TwinSettingsAutosave;
+    private autosave: TwinSettingsAutosave;
     private readonly navigation: TwinNavigation;
     private readonly scanLists = new TwinScanLists();
     constructor(private readonly options: TwinWorkbenchOptions) {
@@ -49,7 +53,7 @@ export class TwinWorkbench {
         editor.addEventListener('keydown', event => this.scanTabKey(event), { signal });
         editor.addEventListener('submit', event => { event.preventDefault(); void this.submit(event); }, { signal });
         editor.addEventListener('input', event => this.search(event), { signal });
-        editor.addEventListener('change', event => { if (!this.scanLists.handle(event)) this.settingsChanged(event, true); }, { signal });
+        editor.addEventListener('change', event => { if (event.target instanceof HTMLSelectElement && event.target.hasAttribute('data-twin-workspace')) {void this.switchWorkspace(event.target); return;} if (event.target instanceof HTMLInputElement && event.target.name === 'inputUpload') {void this.loadScannerUpload(event.target); return;} if (scannerFieldChange(event, this.targets)) {this.dirty = true; return;} if (!this.scanLists.handle(event)) this.settingsChanged(event, true); }, { signal });
         this.unsubscribe = this.options.service.onChange(() => this.serviceChanged());
         await Promise.all([this.navigation.start(), this.refresh()]);
         await this.navigation.sync('/' + this.page);
@@ -92,9 +96,9 @@ export class TwinWorkbench {
         this.loading = true; this.refreshQueued = false;
         if (!this.snapshot) this.render();
         try {
-            const [snapshot, connections] = await loadOverview(this.options, this.abort.signal);
+            const [snapshot, connections, targets, workspaces] = await loadOverview(this.options, this.abort.signal);
             if (generation !== this.generation || this.abort.signal.aborted) return;
-            this.snapshot = snapshot; this.connections = connections; this.error = ''; this.loading = false; this.render();
+            this.snapshot = snapshot; this.connections = connections; this.targets = targets; this.workspaces = workspaces; this.error = ''; this.loading = false; this.render();
             if (this.refreshQueued && !this.dirty) void this.refreshDraft();
         } catch (error) {
             if (generation !== this.generation || this.abort.signal.aborted) return;
@@ -108,20 +112,51 @@ export class TwinWorkbench {
         const previousSettings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         const snapshot = this.snapshot;
         const body = !snapshot ? '' : this.page === 'overview' ? overview(snapshot)
-            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab) : memories(snapshot, this.page);
-        this.options.editor.innerHTML = `<div class="twin__body"><h2>${escapeHTML(label(this.page))}</h2>
+            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab, this.targets) : memories(snapshot, this.page, this.selectedSession.startsWith('scan:') ? this.selectedSession.slice(5) : undefined);
+        this.options.editor.innerHTML = `<div class="twin__body">${this.workspaces.length ? `<label>${escapeHTML(label('workspace'))}<select data-twin-workspace ${this.busy ? 'disabled' : ''}>${this.workspaces.map(space => `<option value="${escapeAttr(space.id)}" ${space.id === snapshot?.workspace?.id ? 'selected' : ''}>${escapeHTML(space.name)} · ${escapeHTML(label('workspaceKind.' + space.kind))}</option>`).join('')}</select></label>` : ''}${snapshot?.workspace?.readOnly ? `<p>${escapeHTML(label('workspaceReadOnly'))}</p>` : ''}<h2>${escapeHTML(label(this.page))}</h2>
             <p class="twin__status" role="status">${escapeHTML(this.loading ? t('status.loading') : this.busy ? label('busy') : this.message)}</p>
             <p class="twin__error" role="alert">${escapeHTML(this.error)}</p>${this.error ? `<button type="button" data-action="refresh">${escapeHTML(label('refresh'))}</button>` : ''}${body}</div>`;
         this.options.editor.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = this.busy; });
         const settings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         if (settings && previousSettings && previousSettings.dataset.configured === settings.dataset.configured) settings.open = previousSettings.open;
+        this.options.editor.querySelectorAll<HTMLFormElement>('[data-form=scanPlan]').forEach(form => {updateInputMode(form); updateExecutorMode(form);});
         this.scanLists.restore(this.options.editor);
         this.renderSaveState();
+        this.applyReadOnly();
         if (this.page === 'memories' && this.selectedSession) {
             const card = [...this.options.editor.querySelectorAll<HTMLElement>('[data-memory]')].find(item => item.dataset.memory === this.selectedSession);
             card?.scrollIntoView?.({ block: 'center' });
             card?.querySelector<HTMLFormElement>('form[data-form=correct]')?.closest('details')?.setAttribute('open', '');
         }
+    }
+    private applyReadOnly(): void {
+        if (!this.snapshot?.workspace?.readOnly) return;
+        this.options.editor.querySelectorAll<HTMLInputElement>('form input, form textarea, form select, form button')
+            .forEach(control => {control.disabled = true;});
+        const readActions = new Set(['refresh', 'scanTab', 'openEntity', 'openMemories', 'openProfile', 'openUpdates', 'openScanResults']);
+        this.options.editor.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach(button => {
+            if (!readActions.has(button.dataset.action!)) button.disabled = true;
+        });
+    }
+    private async switchWorkspace(control: HTMLSelectElement): Promise<void> {
+        if (this.busy) return;
+        await this.autosave.flush();
+        if (this.autosave.pending || this.dirty) {
+            control.value = this.snapshot?.workspace.id ?? '';
+            this.options.editor.querySelector('[role=alert]')!.textContent = label('workspaceUnsaved'); return;
+        }
+        const generation = ++this.generation;
+        this.busy = true; control.disabled = true;
+        try {
+            const next = await this.options.service.openWorkspace(control.value);
+            const [snapshot, targets, spaces] = await Promise.all([next.snapshot(), next.scannerTargets(), next.workspaces()]);
+            if (this.abort.signal.aborted || generation !== this.generation) return;
+            this.unsubscribe?.(); this.options.service = next;
+            this.autosave = new TwinSettingsAutosave(next, () => this.renderSaveState());
+            this.unsubscribe = next.onChange(() => this.serviceChanged());
+            this.snapshot = snapshot; this.targets = targets; this.workspaces = spaces; this.error = ''; this.selectedSession = '';
+        } catch (error) {this.error = errorText(error);}
+        finally {this.busy = false; if (!this.abort.signal.aborted) this.render();}
     }
     private async act(action: () => Promise<unknown>, refreshFailure = false): Promise<void> {
         if (this.busy) return;
@@ -129,16 +164,22 @@ export class TwinWorkbench {
         if (this.autosave.pending) return;
         this.generation++;
         this.busy = true; this.error = ''; this.message = '';
+        const frozen = [...this.options.editor.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-form=scanPlan] input, [data-form=scanPlan] select, [data-form=scanPlan] textarea')]
+            .map(control => ({control, disabled: control.disabled}));
+        frozen.forEach(({control}) => {control.disabled = true;});
         this.options.editor.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
         try { await action(); this.busy = false; this.dirty = false; await this.refresh(); }
         catch (error) {
             this.busy = false; this.error = errorText(error);
+            frozen.forEach(({control, disabled}) => {control.disabled = disabled;});
             if (this.abort.signal.aborted) return;
             if (refreshFailure) await this.refreshDraft();
             this.options.editor.querySelector<HTMLElement>('[role=alert]')!.textContent = this.error;
             this.options.editor.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = false; });
+            this.options.editor.querySelectorAll<HTMLFormElement>('[data-form=scanPlan]').forEach(form => {updateInputMode(form); updateExecutorMode(form);});
             this.scanLists.restore(this.options.editor);
             const retry = document.createElement('button'); retry.type = 'button'; retry.dataset.action = 'refresh'; retry.textContent = label('refresh');
+            this.applyReadOnly();
             if (!this.options.editor.querySelector('[data-action=refresh]')) this.options.editor.querySelector('[role=alert]')!.after(retry);
         }
     }
@@ -152,6 +193,7 @@ export class TwinWorkbench {
         if (!this.snapshot) return;
         if (action === 'openEntity') { event.preventDefault(); return this.openResource('/profile/' + id); }
         if (action === 'openMemories') return this.openResource('/memories/' + id);
+        if (action === 'openScanResults') return this.openResource('/memories/' + encodeURIComponent('scan:' + id));
         if (action === 'openUpdates') return this.openResource('/sources');
         if (action === 'openProfile') return this.openResource('/profile');
         if (action === 'scanTab') return this.switchScanTab(id as TwinSourcesTab);
@@ -226,10 +268,15 @@ export class TwinWorkbench {
             if (draft.open && form.dataset.form !== 'settings') form.closest('details')?.setAttribute('open', '');
             for (const control of form.elements) {
                 if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) continue;
+                if (control instanceof HTMLInputElement && control.type === 'file') continue;
                 const values = draft.values.filter(([name]) => name === control.name).map(([, value]) => String(value));
                 if (control instanceof HTMLInputElement && control.type === 'checkbox') control.checked = values.includes(control.value);
-                else if (values.length) control.value = values[0];
+                else if (values.length) {
+                    control.value = values[0];
+                    if (control.name === 'executor') scannerFieldChange({target: control} as unknown as Event, this.targets);
+                }
             }
+            if (form.dataset.form === 'scanPlan') updateInputMode(form);
         }
     }
     private async analyze(id: string): Promise<void> {
@@ -281,13 +328,41 @@ export class TwinWorkbench {
             await handlers[kind]?.();
         });
     }
-    private saveScanPlan(form: HTMLFormElement, data: FormData) {
+    private async loadScannerUpload(control: HTMLInputElement): Promise<void> {
+        const file = control.files?.[0], form = control.closest<HTMLFormElement>('[data-form=scanPlan]');
+        if (!file || !form) return;
+        this.dirty = true;
+        try {
+            if (file.size > 128 * 1024) throw new Error(label('scannerUploadInvalid'));
+            const text = await readScannerFile(file);
+            if (!control.isConnected || control.files?.[0] !== file || this.abort.signal.aborted) return;
+            form.querySelector<HTMLTextAreaElement>('[name=inputText]')!.value = text;
+            form.querySelector<HTMLSelectElement>('[name=inputMode]')!.value = 'text'; updateInputMode(form);
+        } catch (error) {
+            if (control.isConnected && !this.abort.signal.aborted) {
+                this.error = errorText(error);
+                this.options.editor.querySelector('[role=alert]')!.textContent = this.error;
+            }
+        }
+    }
+    private async saveScanPlan(form: HTMLFormElement, data: FormData) {
         const plan = this.snapshot!.scans.plans.find(item => item.id === form.dataset.id);
-        const input: TwinScanRuleInput = { name: field(data, 'name'), focus: field(data, 'focus'), include: lines(data, 'include'), exclude: lines(data, 'exclude'),
+        const input: TwinScanRuleInput = { executor: readScannerExecutor(form, this.targets), name: field(data, 'name'), focus: field(data, 'focus'), include: lines(data, 'include'), exclude: lines(data, 'exclude'),
             kinds: data.getAll('kinds').map(String) as TwinScanRuleInput['kinds'],
             trigger: field(data, 'trigger') as TwinScanRuleInput['trigger'], autoConfirm: data.get('autoConfirm') === 'on',
             runTokenLimit: field(data, 'runTokenLimit').trim() ? Number(data.get('runTokenLimit')) : null,
             intervalMinutes: Number(data.get('intervalMinutes')), enabled: data.get('enabled') === 'on' };
+        const mode = field(data, 'inputMode');
+        if (mode === 'existing' && plan) return this.options.service.saveScanPlan(plan.id, plan.revision,
+            {...plan.data, name: input.name, focus: input.focus, executor: input.executor, trigger: input.trigger ?? plan.data.trigger,
+                enabled: input.enabled, autoConfirm: input.autoConfirm, runTokenLimit: input.runTokenLimit ?? undefined, intervalMinutes: input.intervalMinutes});
+        if (mode === 'text') input.input = {kind: 'text', text: field(data, 'inputText')};
+        if (mode === 'file') input.input = {kind: 'file', path: field(data, 'inputFilePath')};
+        if (mode === 'upload') {
+            const file = form.querySelector<HTMLInputElement>('[name=inputUpload]')!.files?.[0];
+            if (!file || file.size > 128 * 1024) throw new Error(label('scannerUploadInvalid'));
+            input.input = {kind: 'text', text: await readScannerFile(file)};
+        }
         return this.options.service.saveScanRule(plan?.id ?? null, plan?.revision ?? null, input);
     }
     private async previewRule(form: HTMLFormElement): Promise<void> {

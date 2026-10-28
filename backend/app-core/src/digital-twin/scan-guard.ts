@@ -12,6 +12,7 @@ export function createScanGuard(store: TwinScanStore): TwinScanGuardPort {
         if (!run || run.data.state !== 'running' || run.data.owner !== store.owner || run.data.fence !== scope.fence
             || run.data.planId !== scope.planId || run.data.planRevision !== scope.planRevision
             || !run.data.sourceIds.includes(scope.sourceId) || JSON.stringify(run.data.kinds) !== JSON.stringify(scope.kinds)
+            || JSON.stringify(run.data.executor) !== JSON.stringify(scope.executor)
             || (run.data.focus ?? '') !== (scope.focus ?? '')) throw new Error('TWIN_SCAN_PERMISSION_DENIED');
         const conditions = [await store.fence(scope.fence), { family: 'scan-run' as const, id: run.id, expectedRevision: run.revision }];
         let budgetUnlimited = run.data.budgetUnlimited === true, tokenLimit = run.data.tokenLimit;

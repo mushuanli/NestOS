@@ -68,8 +68,8 @@ export function sources(snapshot: TwinSnapshot, _connections: Array<{ id: string
         <p>${source.data.offset} / ${source.data.characters} · ${escapeHTML(label('checkedAt'))}: ${escapeHTML(new Date(source.observedAt).toLocaleString())}</p></article>`).join('') || `<p>${escapeHTML(label('targetsEmpty'))}</p>`}${scanListPagination()}</section>`;
 }
 
-export function memories(snapshot: TwinSnapshot, page: 'memories' | 'goals'): string {
-    const visible = snapshot.memories.filter(memory => page !== 'goals' || ['goal', 'commitment'].includes(memory.data.kind));
+export function memories(snapshot: TwinSnapshot, page: 'memories' | 'goals', scanRunId?: string): string {
+    const visible = snapshot.memories.filter(memory => (!scanRunId || memory.data.scanRunId === scanRunId) && (page !== 'goals' || ['goal', 'commitment'].includes(memory.data.kind)));
     const sorted = [...visible].sort((a, b) => b.data.recordedAt - a.data.recordedAt);
     return `<p>${escapeHTML(label(page === 'goals' ? 'goalHelp' : 'memoryHelp'))}</p>
         <details><summary>${escapeHTML(label('addMemory'))}</summary><form class="twin__form" data-form="memory">${memoryFields(undefined, page === 'goals' ? 'goal' : 'fact')}${submit('addMemory')}</form></details>

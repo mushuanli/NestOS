@@ -5,7 +5,7 @@ export class TwinDiagnosticError extends Error {
     constructor(code: string, cause: unknown, tokens?: number) {
         super(code);
         this.detail = diagnosticDetail(cause);
-        if (Number.isSafeInteger(tokens) && tokens! > 0) this.tokens = tokens;
+        if (Number.isSafeInteger(tokens) && tokens! >= 0) this.tokens = tokens;
     }
 }
 export function diagnosticDetail(error: unknown): string {

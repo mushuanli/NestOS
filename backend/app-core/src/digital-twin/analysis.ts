@@ -10,7 +10,7 @@ import { memoryData, TWIN_KINDS, type TwinAnalysisJob, type TwinSettings, type T
 import type { TwinExtractionPort } from './extraction';
 import { TwinRecords, write, type TwinDataRecord } from './records';
 import { TwinSources } from './sources';
-import type { TwinScanCheckpoint, TwinScanGuardPort, TwinScanScope, TwinScanPlan } from './scan-domain';
+import type { TwinScanCheckpoint, TwinScanGuardPort, TwinScanScope, TwinScanPlan, TwinScanRun } from './scan-domain';
 import { retry } from './scan-store';
 import { readProgress } from './read-progress';
 
@@ -84,8 +84,8 @@ export class TwinAnalysis {
 
     async progress(source: TwinDataRecord<TwinSourceData>, scope?: TwinScanScope) {
         const identity = userIdentity((await this.records.get<TwinSettings>('settings', 'pot'))!.data);
-        const checkpointId = scope && (identity.userName || identity.userAliases?.length || scope.focus || scope.kinds.length !== TWIN_KINDS.length) ? sha256HexSync(JSON.stringify([
-            source.id, source.data.incarnation, source.data.hash, source.data.connectionFingerprint, scope.kinds, ...(identity.userName || identity.userAliases?.length ? [identityKey(identity)] : []), ...(scope.focus ? [scope.focus] : [])])) : '';
+        const checkpointId = scope && (identity.userName || identity.userAliases?.length || scope.focus || scope.executor || scope.kinds.length !== TWIN_KINDS.length) ? sha256HexSync(JSON.stringify([
+            source.id, source.data.incarnation, source.data.hash, source.data.connectionFingerprint, scope.kinds, ...(scope.executor ? [scope.executor] : []), ...(identity.userName || identity.userAliases?.length ? [identityKey(identity)] : []), ...(scope.focus ? [scope.focus] : [])])) : '';
         const checkpoint = checkpointId ? await this.records.get<TwinScanCheckpoint>('scan-checkpoint', checkpointId) : null;
         return { checkpointId, checkpointRevision: checkpoint?.revision ?? null,
             offset: checkpointId ? checkpoint?.data.offset ?? 0 : source.data.offset,
@@ -129,11 +129,14 @@ export class TwinAnalysis {
         const settings = await this.records.get<TwinSettings>('settings', 'pot');
         if (!settings || settings.data.paused) throw new Error('TWIN_ANALYSIS_PAUSED');
         const offset = progress.offset, end = extractionEnd(text, offset);
-        const reservedTokens = new TextEncoder().encode(text.slice(offset, end) + (scope?.focus ?? '') + identityKey(settings.data)).length + TWIN_EXTRACTION_OUTPUT_ESTIMATE + TWIN_EXTRACTION_PROMPT_RESERVE;
+        const estimatedTokens = new TextEncoder().encode(text.slice(offset, end) + (scope?.focus ?? '') + identityKey(settings.data)).length + TWIN_EXTRACTION_OUTPUT_ESTIMATE + TWIN_EXTRACTION_PROMPT_RESERVE;
+        const run = scope?.executor ? (await this.records.get<TwinScanRun>('scan-run', scope.runId))!.data : null;
+        const remaining = run?.runTokenLimit === undefined ? 50000 : Math.max(0, run.runTokenLimit - run.spentTokens - run.reservedTokens);
+        const reservedTokens = scope?.executor ? Math.min(50000, remaining) : estimatedTokens;
         if (!settings.data.budgetUnlimited && settings.data.spentTokens + settings.data.reservedTokens + reservedTokens > settings.data.tokenLimit) throw new Error('TWIN_BUDGET_EXHAUSTED');
         const id = randomUUID(), epoch = (await this.records.store.inspect()).forgetEpoch;
         const guard = await this.guard(scope, { reserve: reservedTokens });
-        const data: TwinAnalysisJob = { meterPeriod: meterPeriod(), sourceId: source.id, sourceRevision: source.revision, sourceHash: source.data.hash,
+        const data: TwinAnalysisJob = { meterPeriod: meterPeriod(), ...(scope?.executor ? {executor: scope.executor} : {}), sourceId: source.id, sourceRevision: source.revision, sourceHash: source.data.hash,
             ...userIdentity(settings.data), offset, start: offset, end, connectionId: source.data.connectionId, sessionId: `twin-analysis-${id}`, taskId: '', epoch,
             reservedTokens, createdAt: Date.now(), state: 'queued', error: '', ...(scope ? { scanScope: scope } : {}),
             checkpointId: progress.checkpointId, checkpointRevision: progress.checkpointRevision };
@@ -177,7 +180,7 @@ export class TwinAnalysis {
 
     private async candidateWrites(job: TwinAnalysisJob, source: TwinDataRecord<TwinSourceData>, candidates: Awaited<ReturnType<TwinExtractionPort['run']>>['candidates']) {
         const plan = job.scanScope?.planId ? await this.records.get<TwinScanPlan>('scan-plan', job.scanScope.planId) : null;
-        const autoConfirm = Boolean(plan?.data.rules && plan.data.autoConfirm);
+        const autoConfirm = Boolean(plan?.data.autoConfirm);
         const rules = new Set((await this.records.list('suppression')).map(rule => rule.id));
         const existing = new Set((await this.records.list('memory')).map(memory => memory.id));
         return candidates.filter(candidate => (!job.scanScope || job.scanScope.kinds.includes(candidate.kind)) && !suppressionKeys(source, candidate).some(key => rules.has(key))).flatMap(candidate => {
@@ -185,7 +188,7 @@ export class TwinAnalysis {
             if (existing.has(id)) return [];
             existing.add(id);
             const evidenceId = `${id}-evidence`;
-            return [write('memory', id, memoryData({ ...candidate, state: autoConfirm && candidate.subject !== 'unknown' ? 'active' : 'candidate', independent: false,
+            return [write('memory', id, memoryData({ ...candidate, scanRunId: job.scanScope?.runId, state: autoConfirm && candidate.subject !== 'unknown' ? 'active' : 'candidate', independent: false,
                 subjectId: subjectId(source, candidate.subject), entityScope: entityScope(source),
                 projectId: source.data.resource && [source.data.resource.projectId, source.data.resource.projectName].includes(candidate.project) ? source.data.resource.projectId : undefined,
                 sourceId: source.id, sourceHash: source.data.hash, sourceIncarnation: source.data.incarnation,

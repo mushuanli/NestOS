@@ -19,6 +19,8 @@ export function loadOverview(options: TwinWorkbenchOptions, signal: AbortSignal)
     return bounded(() => Promise.all([
         read('snapshot', () => options.service.snapshot(name => stage('snapshot', name))),
         read('connections.list', () => options.connections()),
+        read('scanner.targets', () => options.service.scannerTargets?.() ?? Promise.resolve([])),
+        read('twin.workspaces', () => options.service.workspaces?.() ?? Promise.resolve([])),
     ]), signal, diagnostic);
 }
 

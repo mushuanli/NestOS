@@ -4,6 +4,7 @@ export const TWIN_KINDS = ['fact', 'preference', 'role', 'relationship', 'projec
 export type TwinMemoryKind = typeof TWIN_KINDS[number];
 export interface TwinRelation { predicate: string; target: string; targetKind: 'person' | 'organization' | 'project'; }
 export interface TwinMemoryData {
+    scanRunId?: string;
     originSourceId?: string;
     relation?: TwinRelation; entityScope?: string; projectId?: string;
     content: string; kind: TwinMemoryKind; subject: string; subjectId: string; project: string;
@@ -44,6 +45,7 @@ export interface TwinSettings extends TwinUserIdentity {
 }
 export interface TwinGrantData { sessionId: string; agentId: string; connectionId: string; enabled: boolean; project: string; connectionFingerprint?: string; }
 export interface TwinAnalysisJob extends TwinUserIdentity {
+    executor?: import('./scanner').TwinScannerExecutor;
     meterPeriod?: string;
     errorDetail?: string; actualTokens?: number;
     createdAt?: number; startedAt?: number; finishedAt?: number;
@@ -66,7 +68,7 @@ export function memoryData(input: Partial<TwinMemoryData>): TwinMemoryData {
     if (input.goalStatus && !['draft', 'active', 'paused', 'completed', 'cancelled'].includes(input.goalStatus)) throw new Error('TWIN_INVALID_GOAL_STATUS');
     const subject = input.subject?.trim() || 'self';
     const relation = validateRelation(input.relation);
-    return { originSourceId: input.originSourceId, ...(relation ? { relation } : {}), entityScope: input.entityScope, projectId: input.projectId, content: input.content.trim(), kind: input.kind ?? 'fact', subject, subjectId: input.subjectId ?? (subject === 'self' ? 'self' : `user:${subject}`),
+    return { scanRunId: input.scanRunId, originSourceId: input.originSourceId, ...(relation ? { relation } : {}), entityScope: input.entityScope, projectId: input.projectId, content: input.content.trim(), kind: input.kind ?? 'fact', subject, subjectId: input.subjectId ?? (subject === 'self' ? 'self' : `user:${subject}`),
         project: input.project?.trim() || '', state: input.state ?? 'active', eventTime: input.eventTime ?? '', recordedAt: input.recordedAt ?? Date.now(),
         evidenceIds: input.evidenceIds ?? [], sourceId: input.sourceId ?? '', sourceHash: input.sourceHash ?? '',
         sourceIncarnation: input.sourceIncarnation ?? '', quote: input.quote ?? '', independent: input.independent ?? true,
@@ -82,4 +84,4 @@ export function validateRelation(value: unknown): TwinRelation | undefined {
     return { predicate: relation.predicate.trim(), target: relation.target.trim(), targetKind: relation.targetKind };
 }
 
-export interface TwinScanScope { runId: string; planId: string; planRevision: string; sourceId: string; fence: number; kinds: TwinMemoryKind[]; focus?: string; }
+export interface TwinScanScope { runId: string; planId: string; planRevision: string; sourceId: string; fence: number; kinds: TwinMemoryKind[]; focus?: string; executor?: import('./scanner').TwinScannerExecutor; }

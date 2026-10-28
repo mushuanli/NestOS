@@ -1,8 +1,10 @@
+import {scannerExecutor} from '@itookit/app-contracts';
 import { scanRules, type TwinScanRules } from './scan-rules';
 import { TWIN_KINDS, type TwinMemoryKind } from './domain';
 import type { TwinRecordFamily, TwinRecordWrite } from './contracts';
 
 export interface TwinScanPlanInput {
+    executor?: import('@itookit/app-contracts').TwinScannerExecutor;
     runTokenLimit?: number;
     rules?: TwinScanRules; autoConfirm?: boolean; focus?: string;
     name: string; sourceIds: string[]; connectionId: string; kinds: TwinMemoryKind[];
@@ -12,6 +14,7 @@ export interface TwinScanPlanInput {
 export interface TwinScanPlan extends TwinScanPlanInput { connectionFingerprint: string; createdAt: number; updatedAt: number; }
 export type TwinScanState = 'queued' | 'running' | 'succeeded' | 'paused' | 'failed' | 'cancelled' | 'interrupted';
 export interface TwinScanRun {
+    executor?: import('@itookit/app-contracts').TwinScannerExecutor;
     runTokenLimit?: number;
     budgetUnlimited?: boolean;
     errorDetail?: string;
@@ -42,12 +45,11 @@ export function scanInput(input: TwinScanPlanInput): TwinScanPlanInput {
     identifiers(input.sourceIds, 10000, Boolean(input.rules));
     const rules = input.rules ? scanRules(input.rules) : undefined;
     if (input.focus !== undefined && (typeof input.focus !== 'string' || input.focus.length > 2000)) invalid();
-    if (input.autoConfirm !== undefined && typeof input.autoConfirm !== 'boolean') invalid();
     if (!Array.isArray(input.kinds) || !input.kinds.length || input.kinds.some(kind => !TWIN_KINDS.includes(kind))) invalid();
     if (!['analyze', 'reconcile'].includes(input.mode) || !['manual', 'interval', 'changes'].includes(input.trigger)) invalid();
     if (!Number.isSafeInteger(input.intervalMinutes) || input.intervalMinutes < 1 || input.intervalMinutes > 10080
         || !Number.isSafeInteger(input.tokenLimit) || input.tokenLimit < 0 || input.tokenLimit > 10000000) invalid();
-    return { ...(input.runTokenLimit !== undefined ? {runTokenLimit: input.runTokenLimit} : {}), ...(rules ? { rules, autoConfirm: input.autoConfirm ?? true } : {}), focus: input.focus?.trim() ?? '', name: input.name.trim(), sourceIds: [...new Set(input.sourceIds)], connectionId: input.connectionId.trim(),
+    return { ...(input.executor ? {executor: scannerExecutor(input.executor)} : {}), ...(input.runTokenLimit !== undefined ? {runTokenLimit: input.runTokenLimit} : {}), autoConfirm: input.autoConfirm ?? !!rules, ...(rules ? { rules } : {}), focus: input.focus?.trim() ?? '', name: input.name.trim(), sourceIds: [...new Set(input.sourceIds)], connectionId: input.connectionId.trim(),
         kinds: TWIN_KINDS.filter(kind => input.kinds.includes(kind)), mode: input.mode, trigger: input.trigger,
         intervalMinutes: input.intervalMinutes, tokenLimit: input.tokenLimit, enabled: input.enabled };
 }

@@ -239,6 +239,8 @@ HarnessExecutionProvider.reconcile 返回 ConnectionReconcileResult；Effect 桥
 
 ## 数字分身宿主接口
 
+`DigitalTwinService.scannerTargets()` 列出可选发布目标；`TwinScanRuleInput` 支持文本 / 文件 input 与固定版本的 executor，普通参数仍由原目标契约校验。`workspaces()` 返回宿主授权空间描述，`openWorkspace(id)` 返回独立服务句柄；snapshot.workspace 显示归属与只读能力，界面切换不改变全局服务。内部会话绑定与执行装配方法不经 RPC 暴露。详见 [扫描器与共享空间](design/digital-twin-scanners.md)。
+
 扫描公开契约为 app-core 的 `TwinScanPlanInput`、`TwinScanPlan`、`TwinScanRun`、`TwinScanState`；命令由 `DigitalTwinService.saveScanPlan`、`setScanPlanEnabled`、`removeScanPlan`、`runScanPlan`、`cancelScanRun`、`waitScanRun`、`scanOnce` 提供。`snapshot().scans` 返回计划、运行、下次检查和宿主信息。UI 只调用服务，工具箱资源仍按原协议管理；扫描不注册绕过来源授权的通用工具。扫描守卫在预算预留、模型发送和结果提交核对计划版本、来源范围、提取类型、运行状态与宿主 fence，预算和检查点与结果原子提交。
 
 `DigitalTwinService.getSettings()` 仅读取设置及其 revision，供 UI 自动保存使用，不枚举来源、会话或运行记录。`configure(patch, revision)` 保持版本条件更新，UI 串行提交变更字段并在预算等后台写入冲突时重新读取版本。

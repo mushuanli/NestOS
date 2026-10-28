@@ -35,7 +35,7 @@ export function decodeIdentity(raw: string | null): TwinIdentity {
     if (!raw) throw new Error('Twin is not initialized');
     const value = JSON.parse(raw) as TwinIdentity;
     if (value.schemaVersion !== 1) throw new Error('Unsupported Twin schema');
-    if (value.layoutVersion !== 5) throw new Error('Unsupported Twin layout');
+    if (value.layoutVersion !== 6) throw new Error('Unsupported Twin layout');
     identity(value.twinId); identity(value.ownerId); identity(value.incarnation); epoch(value.forgetEpoch);
     return value;
 }

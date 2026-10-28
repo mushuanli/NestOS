@@ -5,6 +5,8 @@ import type * as AppContracts from '../index';
 import type { TwinMemoryKind, TwinAnalysisJob, TwinSourceData, TwinMemoryData, TwinSettings, TwinSourceSpec, TwinSelectionTarget, TwinSelectionType } from '../index';
 
 export interface TwinScanRuleInput extends TwinScanRules {
+    input?: AppContracts.TwinScannerInput;
+    executor?: AppContracts.TwinScannerExecutor;
     trigger?: 'manual' | 'interval' | 'changes';
     autoConfirm?: boolean;
     runTokenLimit?: number | null;
@@ -28,6 +30,7 @@ export interface TwinScanPlan extends TwinScanPlanInput {
 }
 
 export interface TwinScanPlanInput {
+    executor?: AppContracts.TwinScannerExecutor;
     runTokenLimit?: number;
     rules?: TwinScanRules;
     autoConfirm?: boolean;
@@ -60,12 +63,16 @@ export interface TwinDataRecord<T> {
 }
 
 export interface DigitalTwinService {
+    workspaces(): Promise<AppContracts.TwinWorkspaceView[]>;
+    openWorkspace(id: string): Promise<DigitalTwinService>;
+    scannerTargets(): Promise<import('@itookit/llm-session/contracts').RootCallTarget[]>;
     diagnostics(): {
         initialization: string;
     };
     onChange(listener: () => void): () => void;
     scanOnce(): Promise<void>;
     snapshot(progress?: (stage: string) => void): Promise<{
+        workspace: AppContracts.TwinWorkspaceView;
         metering: {
             period: {id: string; spentTokens: number; reservedTokens: number};
             entries: Array<{id: string; period: string; sessionId: string; planId: string; state: 'reserved' | 'pending' | 'settled'; reservedTokens: number; tokens: number; usageKind: 'reported' | 'estimated' | 'unknown'; createdAt: number}>;
@@ -194,6 +201,7 @@ export interface DigitalTwinService {
 }
 
 export interface TwinScanRun {
+    executor?: AppContracts.TwinScannerExecutor;
     runTokenLimit?: number;
     budgetUnlimited?: boolean;
     errorDetail?: string;

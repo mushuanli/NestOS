@@ -29,3 +29,19 @@ it('isolates private workspaces and shares an organization store only through a 
         expect(reads).toBe(0);
     } finally {await Promise.all(services.map(service => service.dispose())); await manager.dispose();}
 });
+
+it('allows an authorized viewer to read an initialized organization but rejects writes in the backend', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const fs = await manager.openFileSystem('/');
+    const dependencies = {fs, reader: {sessions: async () => [], read: async () => ({text: '', hash: '', nativeIdentity: ''})},
+        extractor: {run: async () => ({candidates: [], tokens: 0}), cancel: async () => {}, cleanup: async () => {}}, deleteSession: async () => {}};
+    const owner = new DigitalTwinService({...dependencies, workspace: {twinId: 'team', ownerId: 'org:team', authorize: async () => {}}});
+    const viewer = new DigitalTwinService({...dependencies, workspace: {twinId: 'team', ownerId: 'org:team', readOnly: true, authorize: async () => {}}});
+    try {
+        await owner.addMemory({content: 'Shared'});
+        expect((await viewer.snapshot()).memories).toHaveLength(1);
+        expect((await viewer.snapshot()).workspace.readOnly).toBe(true);
+        await expect(viewer.addMemory({content: 'Denied'})).rejects.toThrow('TWIN_WORKSPACE_READ_ONLY');
+        await expect(viewer.configure({tokenLimit: 0}, (await viewer.getSettings()).revision)).rejects.toThrow('TWIN_WORKSPACE_READ_ONLY');
+    } finally {await viewer.dispose(); await owner.dispose(); await manager.dispose();}
+});

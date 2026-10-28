@@ -1,3 +1,4 @@
+import {scannerExecutor} from '@itookit/app-contracts';
 import { userIdentity } from './identity';
 import { ruleLines, scanRules } from './scan-rules';
 import type { TwinRecordFamily } from './contracts';
@@ -24,6 +25,7 @@ const validators: Partial<Record<TwinRecordFamily, (data: Data) => void>> = {
 /** Reject malformed persisted authority and content rather than granting through truthy defaults. */
 export function validateData(family: TwinRecordFamily, data: Data): void { validators[family]?.(data); }
 function validateMemory(data: Data): void {
+    if (data.scanRunId !== undefined) strings(data, ['scanRunId']);
     if (data.originSourceId !== undefined) strings(data, ['originSourceId']);
     strings(data, ['content', 'subject', 'subjectId', 'project', 'eventTime', 'sourceId', 'sourceHash', 'sourceIncarnation', 'quote', 'successCondition', 'deadline']);
     oneOf(data.kind, TWIN_KINDS); oneOf(data.state, ['candidate', 'active', 'rejected', 'disputed']);
@@ -47,6 +49,7 @@ function validateSettings(data: Data): void {
     booleans(data, ['paused', 'useEnabled']); integers(data, ['tokenLimit', 'reservedTokens', 'spentTokens']);
 }
 function validateJob(data: Data): void {
+    scannerExecutor(data.executor as import('@itookit/app-contracts').TwinScannerExecutor | undefined);
     if (data.meterPeriod !== undefined && (typeof data.meterPeriod !== 'string' || !/^\d{4}-\d{2}$/.test(data.meterPeriod))) invalid();
     for (const key of ['createdAt', 'startedAt', 'finishedAt', 'actualTokens', 'requestStartedAt', 'responseReceivedAt', 'responseCompletedAt']) if (data[key] !== undefined) integers(data, [key]);
     if (data.errorDetail !== undefined) strings(data, ['errorDetail']);
@@ -62,6 +65,7 @@ function validateUsage(data: Data): void {
         || typeof ref.id !== 'string' || typeof ref.revision !== 'string')) invalid();
 }
 function validateScanRun(data: Data): void {
+    scannerExecutor(data.executor as import('@itookit/app-contracts').TwinScannerExecutor | undefined);
     if (data.runTokenLimit !== undefined) integers(data, ['runTokenLimit']);
     if (data.budgetUnlimited !== undefined) booleans(data, ['budgetUnlimited']);
     if (data.errorDetail !== undefined) strings(data, ['errorDetail']);

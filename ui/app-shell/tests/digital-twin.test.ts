@@ -208,3 +208,39 @@ it('does not restart a stalled load on background notifications or hide its time
         expect(snapshot).toHaveBeenCalledTimes(1);
     } finally { vi.useRealTimers(); await workbench.destroy(); await service.dispose(); await manager.dispose(); }
 });
+
+it('saves a text scanner with independent Flow arguments and preserves its sources when editing', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const service = new DigitalTwinService({fs: await manager.openFileSystem('/'), reader: {sessions: async () => [], read: vi.fn()},
+        extractor: {run: vi.fn(), cancel: vi.fn(), cleanup: vi.fn()}, deleteSession: vi.fn()});
+    const target = {kind: 'flow' as const, id: 'reader', version: '1', digest: 'digest'};
+    service.setScannerExecution({catalog: async () => ({entries: [{target, name: 'Reader', input: {flowId: 'reader', revision: 1, digest: 'digest',
+        parameters: [{name: 'body', type: 'string', inputSource: 'composer.text'}, {name: 'name', type: 'string', required: true}]}}], issues: []}),
+        validate: async () => {}, run: vi.fn(), cancel: vi.fn(), cleanup: vi.fn()});
+    await service.configure({connectionId: 'model'}, (await service.getSettings()).revision);
+    const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
+    const view = new TwinWorkbench({service, sidebar, editor, connections: async () => [{id: 'model', name: 'Model'}], selected() {}});
+    try {
+        await view.start(); await view.openResource('/sources');
+        const form = editor.querySelector<HTMLFormElement>('[data-form=scanPlan]')!;
+        const executor = form.querySelector<HTMLSelectElement>('[name=executor]')!; executor.selectedIndex = 1;
+        executor.dispatchEvent(new Event('change', {bubbles: true}));
+        const mode = form.querySelector<HTMLSelectElement>('[name=inputMode]')!; mode.value = 'text'; mode.dispatchEvent(new Event('change', {bubbles: true}));
+        form.querySelector<HTMLInputElement>('[name=name]')!.value = 'My scanner';
+        form.querySelector<HTMLInputElement>('[data-parameter]')!.value = 'argument name';
+        form.querySelector<HTMLTextAreaElement>('[name=inputText]')!.value = 'Source snapshot';
+        expect(form.querySelector<HTMLElement>('[data-scanner-builtin]')!.hidden).toBe(true);
+        form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+        await vi.waitFor(async () => expect((await service.snapshot()).scans.plans).toHaveLength(1));
+        const saved = (await service.snapshot()).scans.plans[0];
+        expect(saved.data).toMatchObject({name: 'My scanner', executor: {target, values: {name: 'argument name'}}, autoConfirm: false});
+        await vi.waitFor(() => expect(editor.querySelector<HTMLFormElement>(`[data-form=scanPlan][data-id="${saved.id}"]`)).not.toBeNull());
+        const edit = editor.querySelector<HTMLFormElement>(`[data-form=scanPlan][data-id="${saved.id}"]`)!;
+        expect(edit.querySelector<HTMLSelectElement>('[name=inputMode]')!.value).toBe('existing');
+        edit.querySelector<HTMLInputElement>('[name=name]')!.value = 'Renamed scanner';
+        edit.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+        await vi.waitFor(async () => expect((await service.snapshot()).scans.plans[0].data.name).toBe('Renamed scanner'));
+        const updated = (await service.snapshot()).scans.plans[0];
+        expect(updated.data.sourceIds).toEqual(saved.data.sourceIds); expect(updated.data.executor).toEqual(saved.data.executor);
+    } finally {await view.destroy(); await service.dispose(); await manager.dispose();}
+});

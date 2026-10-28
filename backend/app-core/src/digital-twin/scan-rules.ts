@@ -2,6 +2,8 @@ import type { TwinDiscoveredSource, TwinSourceSpec } from './domain';
 
 export interface TwinScanRules { include: string[]; exclude: string[]; selection?: boolean; }
 export interface TwinScanRuleInput extends TwinScanRules {
+    input?: import('@itookit/app-contracts').TwinScannerInput;
+    executor?: import('@itookit/app-contracts').TwinScannerExecutor;
     trigger?: 'manual' | 'interval' | 'changes';
     autoConfirm?: boolean;
     runTokenLimit?: number | null;

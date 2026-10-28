@@ -43,3 +43,6 @@ export {InputSourceCommand} from './vfs/resource-reference';
 export type {ExecutableInputSource, InputSourceExecution, InputSourceReceipt} from './vfs/resource-reference';
 
 export {flowArgumentTokens, resolveFlowArguments, parameterSourceValue} from './vfs/flow-arguments';
+
+export {scannerExecutor} from './digital-twin/scanner';
+export type {TwinScannerExecutor, TwinScannerInput, TwinWorkspaceView} from './digital-twin/scanner';

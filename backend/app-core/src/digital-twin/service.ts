@@ -1,3 +1,6 @@
+import {saveScannerText, scannerInputReader} from './scanner-input';
+import {bindScannerSession, scannerJob, authorizeScannerExchange} from './scanner-authority';
+import {assertScannerPlan, type TwinScannerExecutionPort} from './scanner-executor';
 import {meterSnapshot} from './metering';
 import { userIdentity } from './identity';
 import { extractionPrompt } from './extraction';
@@ -21,14 +24,18 @@ import { TwinSources } from './sources';
 import { TwinScans } from './scans';
 import { TwinScanStore, retry } from './scan-store';
 import { createScanGuard } from './scan-guard';
-import type { TwinScanPlanInput, TwinScanPlan } from './scan-domain';
+import {scanInput, type TwinScanPlanInput, type TwinScanPlan } from './scan-domain';
 
 interface TwinServices { records: TwinRecords; sources: TwinSources; knowledge: TwinKnowledge; context: TwinContext; analysis: TwinAnalysis; scans: TwinScans; index: TwinSourceIndex; }
 export interface TwinWorkspaceBinding {
     twinId: string;
+    name?: string;
+    kind?: 'personal' | 'organization';
+    readOnly?: boolean;
+    fs?: IFileSystem;
     ownerId: string;
     /** Trusted host checks membership and authority; never supplied by model output or RPC payloads. */
-    authorize(): Promise<void>;
+    authorize(access?: 'read' | 'write'): Promise<void>;
 }
 export interface DigitalTwinDependencies {
     workspace?: TwinWorkspaceBinding;
@@ -42,6 +49,51 @@ export interface DigitalTwinDependencies {
 
 /** Application-owned, host-bound workspace service. No authority is inferred from source text or model output. */
 export class DigitalTwinService {
+    private workspaceCatalog?: {list(): Promise<import('@itookit/app-contracts').TwinWorkspaceView[]>; open(id: string): Promise<DigitalTwinService>};
+    setWorkspaceCatalog(catalog: NonNullable<DigitalTwinService['workspaceCatalog']>): void {this.workspaceCatalog = catalog;}
+    async workspaceView() {
+        await this.authorizeWorkspace('read');
+        return {id: this.workspace?.twinId ?? 'personal', name: this.workspace?.name ?? this.workspace?.twinId ?? 'Personal',
+            kind: this.workspace?.kind ?? 'personal', readOnly: this.workspace?.readOnly === true};
+    }
+    async workspaces() {return this.workspaceCatalog ? this.workspaceCatalog.list() : [await this.workspaceView()];}
+    async openWorkspace(id: string): Promise<DigitalTwinService> {
+        if (this.workspaceCatalog) return this.workspaceCatalog.open(id);
+        if (id !== (this.workspace?.twinId ?? 'personal')) throw new Error('TWIN_WORKSPACE_ACCESS_DENIED');
+        await this.authorizeWorkspace('read'); return this;
+    }
+    async ownsExecution(sessionId: string): Promise<boolean> {
+        if (!await this.initialized()) return false;
+        const records = this.opening ? (await this.opening).records : new TwinRecords(await SeqTwinStore.open(this.deps.fs,
+            this.workspace?.twinId ?? 'personal', this.workspace?.ownerId ?? 'admin'));
+        if (sessionId.startsWith('twin-analysis-')) return !!await records.get('job', sessionId.slice('twin-analysis-'.length));
+        return !!await scannerJob(records, sessionId);
+    }
+    private scannerExecution?: TwinScannerExecutionPort;
+    setScannerExecution(port: TwinScannerExecutionPort): void { this.scannerExecution = port; }
+    async scannerTargets() {
+        await this.authorizeWorkspace('read');
+        return this.scannerExecution ? (await this.scannerExecution.catalog()).entries : [];
+    }
+    async scannerExchangeCount(job: TwinAnalysisJob): Promise<number> {
+        const records = (await this.services()).records;
+        return (await records.get<{attempts: string[]}>('checkpoint', 'scanner-envelope:' + job.sessionId))?.data.attempts.length ?? 0;
+    }
+    async bindScanner(job: TwinAnalysisJob, sessionId: string): Promise<void> {
+        const services = await this.services();
+        await services.analysis.authorize(job.sessionId, job.connectionId);
+        await bindScannerSession(services.records, job, sessionId);
+    }
+    async authorizeScannerCall(plan: import('@itookit/durable-kernel').TaskCallPlan, owner: {sessionId: string}, phase: string): Promise<void> {
+        if (phase !== 'execute' || !await this.initialized()) return;
+        const services = await this.services('read'), job = await scannerJob(services.records, owner.sessionId);
+        if (!job) return;
+        await this.authorizeWorkspace();
+        if (owner.sessionId !== job.data.sessionId) throw new Error('TWIN_SCANNER_NESTED_CALL_UNSUPPORTED');
+        assertScannerPlan(plan.task);
+        await services.analysis.authorize(job.data.sessionId, job.data.connectionId);
+        await bindScannerSession(services.records, job.data, plan.targetSessionId);
+    }
     private opening?: Promise<TwinServices>;
     private initializationStage = 'idle';
     diagnostics() { return { initialization: this.initializationStage }; }
@@ -76,7 +128,7 @@ export class DigitalTwinService {
 
     async snapshot(progress: (stage: string) => void = () => {}) {
         const read = <T>(stage: string, action: () => Promise<T>) => { progress(stage); return action(); };
-        const services = await read('services.initialize', () => this.services());
+        const services = await read('services.initialize', () => this.services('read'));
         const sources = await read('records.source', () => services.records.list<TwinSourceData>('source'));
         const byId = new Map(sources.map(source => [source.id, source]));
         const memories = (await read('records.memory', () => services.records.list<TwinMemoryData>('memory'))).map(memory => ({ ...memory,
@@ -84,7 +136,7 @@ export class DigitalTwinService {
         const aliases = new Map((await read('records.entity', () => services.records.list<TwinEntityAlias>('entity'))).map(alias => [alias.id, alias.data]));
         const jobs = await read('records.job', () => services.records.list<TwinAnalysisJob>('job'));
         const identity = (await services.records.get<TwinSettings>('settings', 'pot'))!.data;
-        return { metering: await meterSnapshot(services.records), prompt: extractionPrompt(identity), graph: knowledgeGraph(memories, aliases), cleanupError: jobs.find(job => job.data.cleanupError)?.data.cleanupError ?? '',
+        return { workspace: await this.workspaceView(), metering: await meterSnapshot(services.records), prompt: extractionPrompt(identity), graph: knowledgeGraph(memories, aliases), cleanupError: jobs.find(job => job.data.cleanupError)?.data.cleanupError ?? '',
             pendingCleanup: await read('records.pendingCleanup', () => services.records.store.pendingCleanup()),
             sources: sources.map(source => ({ ...source, observedAt: services.sources.observedAt(source.id) ?? source.data.checkedAt })), memories,
             settings: (await read('records.settings', () => services.records.get<TwinSettings>('settings', 'pot')))!,
@@ -106,7 +158,7 @@ export class DigitalTwinService {
         ] }); this.notify();
     }
 
-    async previewSource(spec: TwinSourceSpec) { await this.authorizeWorkspace(); return this.deps.reader.read(spec); }
+    async previewSource(spec: TwinSourceSpec) { return (await this.services('read')).sources.preview(spec); }
     async addSource(spec: TwinSourceSpec, connectionId: string) {
         const id = await (await this.services()).sources.add(spec, connectionId); this.notify(); return id;
     }
@@ -178,15 +230,39 @@ export class DigitalTwinService {
                 globalExclude: ruleLines(ignored ? [...excludes, pattern] : excludes) }, settings.revision);
         });
     }
-    async previewScanRule(rules: TwinScanRules) { return (await this.services()).index.preview(scanRules(rules)); }
+    async previewScanRule(rules: TwinScanRules) { return (await this.services('read')).index.preview(scanRules(rules)); }
     async saveScanRule(id: string | null, revision: string | null, input: TwinScanRuleInput) {
-        const rules = scanRules(input);
-        const previous = id ? await (await this.services()).records.get<TwinScanPlan>('scan-plan', id) : null;
+        const rules = input.input ? {include: [], exclude: []} : scanRules(input);
+        if (input.executor) {
+            if (!this.scannerExecution) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');
+            await this.scannerExecution.validate(input.executor);
+        }
+        const services = await this.services();
+        const previous = id ? await services.records.get<TwinScanPlan>('scan-plan', id) : null;
+        if (input.input) return this.saveInputScanner(id, revision, input);
         if (previous?.data.rules?.selection && JSON.stringify(previous.data.rules.include) === JSON.stringify(rules.include)) rules.selection = true;
-        return this.saveScanPlan(id, revision, { name: input.name, focus: input.focus, rules, sourceIds: [], connectionId: '',
+        return this.saveScanPlan(id, revision, { name: input.name, focus: input.focus, executor: input.executor, rules, sourceIds: [], connectionId: '',
             kinds: input.kinds ?? [...TWIN_KINDS], mode: 'analyze', trigger: input.trigger ?? previous?.data.trigger ?? 'interval', intervalMinutes: input.intervalMinutes,
             runTokenLimit: input.runTokenLimit === null ? undefined : input.runTokenLimit ?? previous?.data.runTokenLimit,
             tokenLimit: 0, enabled: input.enabled, autoConfirm: input.autoConfirm ?? previous?.data.autoConfirm ?? true });
+    }
+    private async saveInputScanner(id: string | null, revision: string | null, input: TwinScanRuleInput): Promise<string> {
+        const services = await this.services(), settings = (await services.records.get<TwinSettings>('settings', 'pot'))!.data;
+        if (!settings.connectionId) throw new Error('TWIN_CONNECTION_REQUIRED');
+        const previous = id ? await services.records.get<TwinScanPlan>('scan-plan', id) : null;
+        if ((id && !previous) || (previous?.revision ?? null) !== revision) throw new Error('TWIN_REVIEW_CONFLICT');
+        const normalized = scanInput({name: input.name, focus: input.focus, sourceIds: ['pending'], connectionId: settings.connectionId,
+            kinds: input.kinds ?? [...TWIN_KINDS], mode: 'analyze', trigger: input.trigger ?? 'manual', intervalMinutes: input.intervalMinutes,
+            tokenLimit: settings.tokenLimit, enabled: input.enabled, autoConfirm: input.autoConfirm ?? false,
+            runTokenLimit: input.runTokenLimit ?? undefined, executor: input.executor});
+        const material = input.input!;
+        const target = material.kind === 'text' ? await saveScannerText(services.records, material.text)
+            : material.kind === 'file' && typeof material.path === 'string' && material.path.trim() ? material.path : '';
+        if (!target) throw new Error('TWIN_SCANNER_INPUT_INVALID');
+        const existing = (await services.records.list<TwinSourceData>('source')).find(source => source.data.target === target
+            && source.data.connectionId === settings.connectionId && source.data.enabled);
+        const sourceId = existing?.id ?? await services.sources.add({kind: 'file', target, label: input.name}, settings.connectionId);
+        return this.saveScanPlan(id, revision, {...normalized, sourceIds: [sourceId]});
     }
     async saveScanPlan(id: string | null, revision: string | null, input: TwinScanPlanInput) {
         const result = await (await this.services()).scans.save(id, revision, input);
@@ -256,7 +332,7 @@ export class DigitalTwinService {
         return { retainedSessions: await this.forgetPreview(id) };
     }
     async getSettings(): Promise<TwinDataRecord<TwinSettings>> {
-        return (await (await this.services()).records.get<TwinSettings>('settings', 'pot'))!;
+        return (await (await this.services('read')).records.get<TwinSettings>('settings', 'pot'))!;
     }
     async configure(patch: Partial<Pick<TwinSettings, 'tokenLimit' | 'monthlyTokenLimit' | 'budgetUnlimited' | 'paused' | 'useEnabled' | 'connectionId' | 'globalExclude' | 'userName' | 'userAliases'>>, revision: string) {
         const records = (await this.services()).records, settings = (await records.get<TwinSettings>('settings', 'pot'))!;
@@ -283,7 +359,15 @@ export class DigitalTwinService {
     }
     readonly authorizeLlm: NonNullable<KernelAdaptersRuntimeOptions['authorizeLlm']> = async (request, context) => {
         if (!await this.initialized()) return;
-        const services = await this.services();
+        const services = await this.services('read');
+        const scanner = await scannerJob(services.records, context.sessionId);
+        if (scanner) {
+            await this.authorizeWorkspace();
+            request.request._label = `twin-private-${sha256HexSync(context.sessionId + ':' + context.effectId).slice(0, 40)}`;
+            await services.analysis.authorize(scanner.data.sessionId, scanner.data.connectionId);
+            await authorizeScannerExchange(services.records, scanner.data, request, context);
+            return;
+        }
         if (context.sessionId.startsWith('twin-analysis-')) {
             request.request._label = `twin-private-${sha256HexSync(context.sessionId + ':' + context.effectId).slice(0, 40)}`;
             await services.analysis.authorize(context.sessionId, request.connectionId);
@@ -291,12 +375,14 @@ export class DigitalTwinService {
         else await services.context.authorize(request, context);
     };
 
-    readonly authorizeMedia: NonNullable<KernelAdaptersRuntimeOptions['authorizeMedia']> = (request, context) =>
-        this.authorizeLlm({ ...request, request: { model: request.request.model,
+    readonly authorizeMedia: NonNullable<KernelAdaptersRuntimeOptions['authorizeMedia']> = async (request, context) => {
+        if (await this.initialized() && await scannerJob((await this.services()).records, context.sessionId)) throw new Error('TWIN_SCANNER_EXECUTION_UNSUPPORTED');
+        return this.authorizeLlm({ ...request, request: { model: request.request.model,
             messages: (request.request.operation === 'image.generate' ? [request.request.prompt]
                 : [request.request.input, ...(request.request.instructions ? [request.request.instructions] : [])])
                 .map(content => ({ role: 'user' as const, content })),
         } }, context);
+    };
 
     private async resolveDefaultModel(services: TwinServices): Promise<void> {
         const settings = (await services.records.get<TwinSettings>('settings', 'pot'))!;
@@ -305,10 +391,16 @@ export class DigitalTwinService {
         if (connectionId) await this.configure({ connectionId }, settings.revision);
     }
 
-    private async authorizeWorkspace(): Promise<void> {
+    private requireScanner(): TwinScannerExecutionPort {
+        if (!this.scannerExecution) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');
+        return this.scannerExecution;
+    }
+
+    private async authorizeWorkspace(access: 'read' | 'write' = 'write'): Promise<void> {
         if (!this.workspace) return;
+        if (access === 'write' && this.workspace.readOnly) throw new Error('TWIN_WORKSPACE_READ_ONLY');
         const started = Date.now();
-        try { await this.workspace.authorize(); }
+        try { await this.workspace.authorize(access); }
         catch (error) {
             createModuleLogger('twin-workspace').warn('twin.workspace.authorize', {operationId: randomUUID(),
                 stage: 'authorization', result: 'failure', code: 'TWIN_WORKSPACE_ACCESS_DENIED', durationMs: Date.now() - started});
@@ -319,8 +411,8 @@ export class DigitalTwinService {
     private async initialized(): Promise<boolean> {
         return Boolean(this.opening) || this.deps.fs.driver.exists(`/var/lib/digital-twin/${this.workspace?.twinId ?? 'personal'}/authority.seq`);
     }
-    private async services(): Promise<TwinServices> {
-        await this.authorizeWorkspace();
+    private async services(access: 'read' | 'write' = 'write'): Promise<TwinServices> {
+        await this.authorizeWorkspace(access);
         if (!this.opening) {
             const opening = this.open().catch(error => {
                 // A transient initialization failure must not poison later retries.
@@ -333,9 +425,15 @@ export class DigitalTwinService {
     }
     private async open(): Promise<TwinServices> {
         this.initializationStage = 'storage.open';
+        if (this.workspace?.readOnly) {
+            const path = `/var/lib/digital-twin/${this.workspace.twinId}/authority.seq`;
+            const raw = await this.deps.fs.meta.seq?.getEntry(path, 'twin');
+            if (!raw || JSON.parse(raw).layoutVersion !== 6) throw new Error('TWIN_WORKSPACE_NOT_INITIALIZED');
+        }
         const records = new TwinRecords(await SeqTwinStore.open(this.deps.fs, this.workspace?.twinId ?? 'personal', this.workspace?.ownerId ?? 'admin', stage => { this.initializationStage = stage; }));
         this.initializationStage = 'settings.initialize';
         if (!await records.get('settings', 'pot')) {
+            if (this.workspace?.readOnly) throw new Error('TWIN_WORKSPACE_NOT_INITIALIZED');
             await records.save('settings', 'pot', { tokenLimit: 100000, reservedTokens: 0,
                 spentTokens: 0, paused: false, useEnabled: true, connectionId: await this.deps.defaultConnection?.().catch(() => '') ?? '', globalExclude: [] } satisfies TwinSettings, null).catch(async error => {
                 if (!await records.get('settings', 'pot')) throw error;
@@ -344,11 +442,17 @@ export class DigitalTwinService {
         const settings = (await records.get<TwinSettings>('settings', 'pot'))!;
         if (settings.data.connectionId === undefined) await records.save('settings', 'pot', { ...settings.data,
             connectionId: await this.deps.defaultConnection?.().catch(() => '') ?? '', globalExclude: settings.data.globalExclude ?? [] }, settings.revision);
-        const sources = new TwinSources(records, this.deps.reader, this.deps.connectionFingerprint ?? (async id => id));
+        const sources = new TwinSources(records, scannerInputReader(records, this.deps.reader), this.deps.connectionFingerprint ?? (async id => id));
         const index = new TwinSourceIndex(records, sources);
         const scanStore = new TwinScanStore(records, this.deps.scanHost?.kind ?? 'local', this.deps.scanHost?.now, this.deps.scanHost?.leaseMs);
         const guard = createScanGuard(scanStore);
-        const analysis = new TwinAnalysis(records, sources, this.deps.extractor, () => this.notify(), async (scope, charge) => {
+        const extraction: TwinExtractionPort = {
+            run: (job, text, attached, progress) => job.executor
+                ? this.requireScanner().run(job, text, attached, progress) : this.deps.extractor.run(job, text, attached, progress),
+            cancel: job => job.executor ? this.requireScanner().cancel(job) : this.deps.extractor.cancel(job),
+            cleanup: job => job.executor ? this.requireScanner().cleanup(job) : this.deps.extractor.cleanup(job),
+        };
+        const analysis = new TwinAnalysis(records, sources, extraction, () => this.notify(), async (scope, charge) => {
             await this.authorizeWorkspace();
             return guard(scope, charge);
         });
@@ -363,6 +467,6 @@ export class DigitalTwinService {
             analysis, scans };
     }
     private async initializeRules(scans: TwinScans): Promise<void> {
-        if (this.deps.reader.discover && this.deps.defaultConnection) await scans.plans.initializeDefault();
+        if (!this.workspace?.readOnly && this.workspace?.kind !== 'organization' && this.deps.reader.discover && this.deps.defaultConnection) await scans.plans.initializeDefault();
     }
 }

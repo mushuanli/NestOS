@@ -108,7 +108,7 @@ export class TwinScanWorker {
                 fence, startedAt: this.store.now() }, record.revision, [await this.store.fence(fence)]);
             this.changed();
             await this.scanSources(record.id, { runId: record.id, planId: record.data.planId,
-                planRevision: record.data.planRevision, sourceId: '', fence, kinds: record.data.kinds, focus: record.data.focus });
+                planRevision: record.data.planRevision, sourceId: '', fence, kinds: record.data.kinds, focus: record.data.focus, executor: record.data.executor });
             await this.store.finish(record.id, this.stopped ? 'interrupted' : 'succeeded', this.stopped ? 'TWIN_SCAN_INTERRUPTED' : '', fence);
         } catch (error) {
             if (scanError(error) === 'TWIN_SCAN_LEASE_LOST') throw error;

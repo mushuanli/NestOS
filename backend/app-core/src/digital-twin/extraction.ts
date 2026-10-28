@@ -26,7 +26,7 @@ export class KernelTwinExtractor implements TwinExtractionPort {
             state.stage = 'waiting';
             traceAnalysis(job, state.stage, { taskId: task.id });
             const output = await this.observedOutput(task, job, progress);
-            tokens = output.usage?.total_tokens;
+            tokens = output.usage?.total_tokens || undefined;
             state.stage = 'parsing';
             traceAnalysis(job, state.stage, { taskId: task.id, finishReason: output.finishReason ?? '', outputCharacters: typeof output.message?.content === 'string' ? output.message.content.length : 0 });
             const result = extractionResult(output, text, job.reservedTokens);
@@ -111,7 +111,7 @@ export class KernelTwinExtractor implements TwinExtractionPort {
 
 function extractionResult(output: DurableChatOutput, text: string, reservedTokens: number) {
     if (output.finishReason === 'length' || output.finishReason === 'max_tokens') {
-        throw new TwinDiagnosticError('TWIN_EXTRACTION_TRUNCATED', { message: 'Model output exceeded the output token limit' }, output.usage?.total_tokens);
+        throw new TwinDiagnosticError('TWIN_EXTRACTION_TRUNCATED', { message: 'Model output exceeded the output token limit' }, output.usage?.total_tokens || undefined);
     }
     const content = output.message.content;
     if (typeof content !== 'string') throw new TwinDiagnosticError('TWIN_INVALID_EXTRACTION', { message: 'Expected text content from the model' });

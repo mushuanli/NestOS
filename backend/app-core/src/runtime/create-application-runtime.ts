@@ -1,3 +1,5 @@
+import {bindTwinWorkspaces} from '../digital-twin/workspaces';
+import {PublishedScannerExecutor} from '../digital-twin/scanner-executor';
 import {migrateNotes} from './migrate-notes';
 import {createSessionTaskCallAuthority} from '../session/task-call-authority';
 import {renewSessionWriteLease} from '../kernel/session-lease';
@@ -145,6 +147,8 @@ export interface ApplicationRuntimeOptions {
     digitalTwinAutoStart?: boolean;
     /** Server-owned workspace binding with a membership/authority check on each access. */
     digitalTwinWorkspace?: TwinWorkspaceBinding;
+    /** Additional server-authorized workspace handles; organization fs may be shared across user runtimes. */
+    digitalTwinWorkspaces?: TwinWorkspaceBinding[];
     /**
      * Stable token identifying this host window/tab for Session write leases. A reload of the
      * same window reuses it and may take over the leases its predecessor still holds, while a
@@ -283,6 +287,11 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         let ensureExecutionWrite = async (_id: string): Promise<void> => { throw new FSError('ECONFLICT', 'Session ownership is not ready'); };
         let mayCollectContext = (_id: string): boolean => false;
         let digitalTwin: DigitalTwinService | undefined;
+        const twinServices: DigitalTwinService[] = [];
+        const executionTwin = async (sessionId: string) => {
+            for (const twin of twinServices) if (await twin.ownsExecution(sessionId)) return twin;
+            return digitalTwin;
+        };
         const kernel: HeadlessKernelRuntime = await traceBoot('createKernelRuntime', () => createKernelRuntime({
             harnessExecution: createHarnessExecutionProvider(executionConnections, {
                 readTaskAsset: createTaskAssetReader(() => harnessKernel!.kernel, systemFS),
@@ -290,16 +299,19 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 settleContextForCleanup: createHarnessContextCleanup(() => harnessKernel!.kernel, id => ensureExecutionWrite(id)),
             }),
             systemFS,
-            authorizeTaskCall: createSessionTaskCallAuthority({
-                assertOwned: id => ensureExecutionWrite(id),
-                isDeleting: id => sessionRepository.isSessionDeletionPending(id),
-                isMoving: async id => !await projects.sessionMoves.ready(id),
-            }),
+            authorizeTaskCall: async (plan, owner, phase) => {
+                await (await executionTwin(owner.sessionId))?.authorizeScannerCall(plan, owner, phase);
+                await createSessionTaskCallAuthority({
+                    assertOwned: id => ensureExecutionWrite(id),
+                    isDeleting: id => sessionRepository.isSessionDeletionPending(id),
+                    isMoving: async id => !await projects.sessionMoves.ready(id),
+                })(plan, owner, phase);
+            },
             contextEngineOptions: options.contextEngineOptions,
             contextGc: { canCollectSession: id => mayCollectContext(id) },
             llmDriver,
-            authorizeLlm: (request, context) => digitalTwin?.authorizeLlm(request, context) ?? Promise.resolve(),
-            authorizeMedia: (request, context) => digitalTwin?.authorizeMedia(request, context) ?? Promise.resolve(),
+            authorizeLlm: async (request, context) => (await executionTwin(context.sessionId))?.authorizeLlm(request, context),
+            authorizeMedia: async (request, context) => (await executionTwin(context.sessionId))?.authorizeMedia(request, context),
             storageResolver: new SessionDirectoryStorageResolver(systemFS),
             maxConcurrent: 20,
             fileContextForSession: async id => {
@@ -349,7 +361,16 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const skillsReady = traceBoot(policy.skills === 'before-ready' ? 'syncSkillsToKernel' : 'syncSkillsToKernel (background)', () => syncSkillsToKernel(llmDriver, kernel));
         void skillsReady.catch(error => console.warn('[Boot] Skill initialization failed', error));
 
-        digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, kernelCore, agentService, options.ownerKind ?? 'tauri', projects, options.digitalTwinWorkspace);
+        digitalTwin = createNativeDigitalTwin(options.digitalTwinWorkspace?.fs ?? systemFS, sessionRepository, kernelCore, agentService, options.ownerKind ?? 'tauri', projects, options.digitalTwinWorkspace);
+        twinServices.push(digitalTwin);
+        const twinIds = new Set([options.digitalTwinWorkspace?.twinId ?? 'personal']);
+        for (const workspace of options.digitalTwinWorkspaces ?? []) {
+            if (twinIds.has(workspace.twinId)) throw new Error('TWIN_WORKSPACE_DUPLICATE');
+            twinIds.add(workspace.twinId);
+            twinServices.push(createNativeDigitalTwin(workspace.fs ?? systemFS, sessionRepository, kernelCore, agentService,
+                options.ownerKind ?? 'tauri', projects, workspace));
+        }
+        bindTwinWorkspaces(twinServices);
         const leaseStore = new SessionLeaseStore(systemFS, {
             ...(options.sessionLeaseSkewMs ? { skewMs: options.sessionLeaseSkewMs } : {}),
         });
@@ -396,7 +417,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             if (errors.length) throw new AggregateError(errors, 'Session recovery and Kernel shutdown failed');
         });
         cleanupFns.push(() => skillsReady.catch(() => {}));
-        cleanupFns.push(() => digitalTwin!.dispose());
+        cleanupFns.push(async () => {await Promise.all(twinServices.map(twin => twin.dispose()));});
         if (policy.skills === 'before-ready') await skillsReady;
         await traceBoot('projects.resumeSessionMoves', () => projects.sessionMoves.recoverPending(id => recovery.acquireMetadataLease(id)));
         if (Object.keys(observed).length) console.log(`[Boot]   ↳ beforeRecover totals: ${formatTimings(observed)}`);
@@ -446,6 +467,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager } satisfies import('./conversation-system').ConversationSystemOptions;
         const { sessionManager, commandBus, independentCalls, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
             () => createConversationSystem(conversationOptions));
+        if (independentCalls) for (const twin of twinServices) twin.setScannerExecution(new PublishedScannerExecutor({kernel: kernelCore, repository: sessionRepository,
+            ready: () => ({commands: commandBus, calls: independentCalls}), exchanges: job => twin.scannerExchangeCount(job), bind: (job, sessionId) => twin.bindScanner(job, sessionId)}));
         flowInstallations = new FlowInstallationService(commandBus, new FlowToolPackages(kernel.toolCatalog, options.toolDependencies));
         const installations = flowInstallations;
         cleanupFns.push(() => installations.close());
@@ -504,7 +527,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             await initializeProjects();
             if (!startup.active) return;
             recovery.startBackground();
-            if (options.digitalTwinAutoStart !== false) digitalTwin!.start();
+            if (options.digitalTwinAutoStart !== false) for (const twin of twinServices) {
+                const view = await twin.workspaceView().catch(() => null); if (view && !view.readOnly) twin.start();
+            }
         });
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();

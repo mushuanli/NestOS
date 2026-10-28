@@ -1,0 +1,71 @@
+import {createModuleLogger, randomUUID, t} from '@itookit/common';
+import {SessionCommand, type ICommandBus} from '@itookit/llm-session/contracts';
+import {FlowCommand} from '@itookit/llm-flow/contracts';
+import {openSessionFlowOutputs, unlinkedSessionRuns, type Branches, type Run} from './session-output';
+
+const statuses: Record<string, Parameters<typeof t>[0]> = {
+    created: 'flow.invoke.created', ready: 'flow.invoke.ready', blocked: 'flow.invoke.blocked',
+    running: 'flow.invoke.running', waiting: 'flow.invoke.waiting', succeeded: 'flow.invoke.succeeded',
+    failed: 'flow.invoke.failed', cancelled: 'flow.invoke.cancelled',
+};
+
+/** Observe standalone runs without inventing chat history or resuming execution. */
+export class SessionRunsPanel {
+    private readonly root = document.createElement('aside');
+    private lifetime = new AbortController();
+    private rendered = '';
+    private timer?: ReturnType<typeof setTimeout>;
+    private revision = 0;
+    private active = true;
+    private closed = false;
+    constructor(private commands: ICommandBus, private sessionId: string, container: HTMLElement,
+        private onRuns?: () => void) {
+        this.root.className = 'llm-session-runs'; this.root.hidden = true; container.append(this.root);
+        void this.refresh();
+    }
+    async refresh(): Promise<void> {
+        if (!this.active || this.closed) return;
+        clearTimeout(this.timer);
+        const revision = ++this.revision, operationId = randomUUID(), started = Date.now();
+        try {
+            const [runs, branches] = await Promise.all([
+                this.commands.execute<Run[]>(FlowCommand.RunList, {sessionId: this.sessionId}),
+                this.commands.execute<Branches>(SessionCommand.FlowBranchExecutions, {sessionId: this.sessionId}),
+            ]);
+            if (revision !== this.revision || !this.active || this.closed) return;
+            this.render(unlinkedSessionRuns(runs, branches, this.sessionId));
+        } catch (error) {
+            if (revision !== this.revision || !this.active || this.closed) return;
+            this.rendered = ''; this.root.hidden = false; this.root.textContent = `${t('flow.runs.title')}: ${error instanceof Error ? error.message : String(error)}`;
+            createModuleLogger('session-runs').warn('session.runs.read', {operationId, sessionId: this.sessionId,
+                stage: 'catalog', result: 'failure', code: 'SESSION_RUNS_READ_FAILED', durationMs: Date.now() - started});
+        } finally {
+            if (revision === this.revision && this.active && !this.closed) this.timer = setTimeout(() => {void this.refresh();}, 5000);
+        }
+    }
+    private render(runs: Run[]): void {
+        if (runs.length) this.onRuns?.();
+        const signature = JSON.stringify(runs);
+        if (signature === this.rendered) return;
+        this.rendered = signature;
+        this.root.replaceChildren(); this.root.hidden = !runs.length;
+        if (!runs.length) return;
+        const title = document.createElement('p'); title.textContent = `${t('flow.runs.title')} · ${t('flow.output.unlinked')}`;
+        this.root.append(title);
+        for (const run of runs) {
+            const button = document.createElement('button'); button.type = 'button';
+            button.textContent = `${run.name} · ${statuses[run.status] ? t(statuses[run.status]) : run.status}`;
+            button.onclick = () => openSessionFlowOutputs(this.commands, this.sessionId, this.lifetime.signal, run.taskId);
+            this.root.append(button);
+        }
+    }
+    setVisible(active: boolean): void {
+        this.active = active; this.revision++; clearTimeout(this.timer);
+        if (!active) this.lifetime.abort();
+        else if (this.lifetime.signal.aborted) this.lifetime = new AbortController();
+        if (active) void this.refresh();
+    }
+    destroy(): void {
+        this.closed = true; this.revision++; clearTimeout(this.timer); this.lifetime.abort(); this.root.remove();
+    }
+}

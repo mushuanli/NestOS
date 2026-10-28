@@ -1,3 +1,4 @@
+import {SessionRunsPanel} from '../flows/SessionRunsPanel';
 import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
 import {ACTION_ICONS, CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
@@ -20,6 +21,7 @@ type Binding = ReturnType<typeof createSessionChatBinding>;
 export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOptions['sessionRepository']> {
     private readonly sessions: SessionService;
     private view?: ChatView;
+    private sessionRunsPanel?: SessionRunsPanel;
     private binding?: Binding;
     private store?: SessionChatStore;
     private branch = 'main';
@@ -117,6 +119,8 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     }
     private toolbar(root: HTMLElement) {
         const releases: (() => void)[] = [];
+        const runs = new SessionRunsPanel(this.config.commandBus!, this.config.sessionId, root);
+        this.sessionRunsPanel = runs; if (!this.active) runs.setVisible(false); releases.push(() => runs.destroy());
         for (const [mount, className] of [[this.config.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
             if (!mount) continue; const slot = document.createElement('div'); slot.className = className;
             if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); releases.push(mount(slot), () => slot.remove());
@@ -156,14 +160,14 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     focus(): void {this.view?.focus();}
     isDirty(): boolean {return !!this.view && !!this.store?.dirty(this.view.getDraft());}
     async flushPendingSave(): Promise<void> {if (!this.suspended) await this.view?.flushDraft();}
-    cancelPendingRender(): void {this.active = false; this.view?.setActive(false);}
+    cancelPendingRender(): void {this.active = false; this.sessionRunsPanel?.setVisible(false); this.view?.setActive(false);}
     async activate(): Promise<void> {
         if (this.closed) return;
         const snapshot = await this.config.commandBus!.execute<import('@itookit/llm-session/contracts').SessionSnapshot>(SessionCommand.Bind, {sessionId: this.config.sessionId});
         if (snapshot.view?.manifest.currentBranch && snapshot.view.manifest.currentBranch !== this.branch) {
             await this.view?.destroy(); this.binding?.dispose(); await this.mount(snapshot.view.manifest.currentBranch);
         }
-        this.active = true; this.view?.setActive(true); await this.binding?.refreshTargets();
+        this.active = true; this.sessionRunsPanel?.setVisible(true); this.view?.setActive(true); await this.binding?.refreshTargets();
     }
     setReadOnly(value: boolean): void {this.config.readOnly = value; void this.binding?.refreshTargets();}
     captureRecovery(): unknown {return this.view?.getDraft();}

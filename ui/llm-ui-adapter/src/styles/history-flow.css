@@ -43,3 +43,9 @@
 .llm-ui-flow-window:focus-within > .llm-ui-node__header .llm-ui-actions {
     opacity: 1;
 }
+
+/* Standalone executions remain visible without a synthetic chat round. */
+.llm-session-runs { max-height: 180px; overflow: auto; padding: 8px 12px; }
+.llm-session-runs[hidden] { display: none; }
+.llm-session-runs p { margin: 0 0 6px; }
+.llm-session-runs button { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 4px 0; }

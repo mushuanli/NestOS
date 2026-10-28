@@ -4,9 +4,14 @@ import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import { DagWorkbench } from '../components/DagWorkbench';
 
-interface Branches { currentBranch: string; branches: Array<{ name: string; taskIds: string[]; runs?: Array<{ taskId: string; flowId: string; revision: number }> }> }
+export interface Branches { currentBranch: string; branches: Array<{ name: string; taskIds: string[]; runs?: Array<{ taskId: string; flowId: string; revision: number }> }> }
 
-interface Run { taskId: string; sessionId: string; name: string; status: string }
+export interface Run { taskId: string; sessionId: string; name: string; status: string }
+
+export function unlinkedSessionRuns(runs: Run[], memberships: Branches, sessionId: string): Run[] {
+    const linked = new Set(memberships.branches.flatMap(branch => branch.taskIds));
+    return runs.filter(run => run.sessionId === sessionId && !linked.has(run.taskId));
+}
 
 /** A read-only attachment: opening outputs must never resume a stopped scheduler. */
 export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string, signal: AbortSignal, initialTaskId?: string): void {
@@ -39,7 +44,7 @@ export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string,
     const showBranch = async () => {
         workbench.destroy();
         const selected = memberships.branches.find(item => item.name === branch.value);
-        const allowed = new Set(selected?.taskIds ?? []);
+        const allowed = new Set(branch.value === '' ? unlinkedSessionRuns(runs, memberships, sessionId).map(run => run.taskId) : selected?.taskIds ?? []);
         const ownRuns = runs.filter(run => run.sessionId === sessionId && allowed.has(run.taskId)), previous = select.value || initialTaskId || '';
         select.innerHTML = ownRuns.map(run => `<option value="${escapeHTML(run.taskId)}">${escapeHTML(run.name)}${escapeHTML(flowVersion(selected?.runs?.find(item => item.taskId === run.taskId)))} · ${escapeHTML(run.status)}</option>`).join('');
         if (ownRuns.some(run => run.taskId === previous)) select.value = previous;
@@ -55,9 +60,13 @@ export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string,
             ]);
             if (current !== revision || signal.aborted || !dialog.isConnected) return;
             runs = nextRuns; memberships = nextBranches;
-            const previous = branch.value || memberships.branches.find(item => initialTaskId && item.taskIds.includes(initialTaskId))?.name || memberships.currentBranch;
+            const unlinked = unlinkedSessionRuns(runs, memberships, sessionId);
+            const previous = branch.selectedIndex >= 0 ? branch.value : initialTaskId && unlinked.some(run => run.taskId === initialTaskId)
+                ? '' : memberships.branches.find(item => initialTaskId && item.taskIds.includes(initialTaskId))?.name
+                    ?? (unlinked.length && !memberships.branches.some(item => item.taskIds.length) ? '' : memberships.currentBranch);
             branch.innerHTML = memberships.branches.map(item => `<option value="${escapeHTML(item.name)}">${escapeHTML(item.name)}${escapeHTML([...new Set((item.runs ?? []).map(flowVersion))].join(''))}</option>`).join('');
-            if (memberships.branches.some(item => item.name === previous)) branch.value = previous;
+            if (unlinked.length) branch.append(new Option(t('flow.output.unlinked'), ''));
+            if (memberships.branches.some(item => item.name === previous) || previous === '' && unlinked.length) branch.value = previous;
             await showBranch();
             if (current === revision && !select.value) timer = setTimeout(() => { void refresh(); }, 1000);
         } catch (error) { if (current === revision && dialog.isConnected) message.textContent = String(error); }

@@ -2108,6 +2108,7 @@ export const en: LocaleStrings = {
     'branch.namePrompt': 'Optional branch name. Preserve the selected turn and its reply without starting a run.',
     'branch.delete': 'Delete branch',
     'branch.deleteCurrentHint': 'Switch to another branch before deleting the current branch',
+    'flow.output.unlinked': 'Not linked to a chat branch',
     'flow.output.branch': 'View branch',
     'flow.rerun.title': 'Run again',
     'session.rerun.title': 'Run again',

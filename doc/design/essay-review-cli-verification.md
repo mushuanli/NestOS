@@ -1,5 +1,19 @@
 # 作文 Flow CLI 验证
 
+## 2026-10-28：提示词 JSON 与工具输入
+
+通过现有 HTTP 应用端口验证运行版本 `20261028T032921-58ec8d87-dirty`，未重启或部署宿主。将已安装的 `essay-review` 草稿保存并发布为 revision 2：五个模型节点使用 `responseFormat.type=text`，prompt 附完整 JSON Schema，保留 `outputValidation.schema`、`onInvalid=repair` 和 `retries=3`。产品预设同步更新；NestOS 核心机制与模型能力标记均未修改。
+
+- 输入为用户指定的 minds `/essay/require.md`（200 字符）与 `/essay/article.md`（713 字符）。测试 Session 只读挂载该目录，两个 `builtin.tool` 节点调用 `Read@1`；移除工具展示用的标题、分隔线和行号后，与 VFS 原文逐字核对一致，再作为 `requirements`、`essay` 启动评审。没有将正文写入诊断记录。
+- 读取 Run：`task_cabe7807-ce82-46f1-9bd8-78fe3f3131f9`，状态 `succeeded`。初次验证图漏配 `capabilities: [Read]` 被正常拒绝为 `Flow tool is not authorized`；补齐显式授权后成功，没有放宽平台授权。
+- Session：`node-01M6099K4TN64HVZNGSTF3B6Q8`；评审 Run：`task_15de54a2-d3c9-41fd-8da4-f2614bd1d99a`，状态 `succeeded`，约 18.5 秒。
+- 模型 `deepseek-v4-flash`，连接 `default`。设置 `maxRounds=2`、`maxConcurrency=4`、`passScore=9`、`maxExchanges=4`；八次检查和一次改写全部成功，持久任务记录确认均为 text 请求并配置本地 Schema。最终四项均 8.5 分，`completedRounds=2`、`stopReason=max_rounds`。执行成功不等于作文达到 9 分。
+- 当前宿主工具目录有 `Read`，未暴露 Bash 或独立 `cat`。本次证明的是确定性读取工具结果可作为 Flow 输入；字面 `cat` 命令未验证。两阶段验证由客户端显式传参串接，不代表作文 Flow 会自动识别路径或执行 Shell。
+
+已有文件的恢复操作仍然保留用户内容，不自动迁移其他用户的作文 Flow；本次仅显式更新上述已安装实例与源码预设。
+
+首次验证通过底层 `dag.run.start`，没有生成聊天 Round，因此当时打开 Session 仍显示初始页。随后在同一 Session 使用正式 CLI `session send --flow essay-review --params ... --follow` 重跑，执行 `task_6d5d5b52-2dda-43da-a2a2-0a6917877a44` 完成，持久历史核对得到 user/assistant 两个投影组，助手状态 success。正式入口与底层执行入口不可混称；未关联分支的既有 Run 通过会话运行面板只读查看，不伪造 Round。
+
 ## 结论
 
 2026-09-16 使用本机配置的 DeepSeek 真实接口执行成功。运行的是内置「作文四维评审」的九节点定义；编译后由输入节点、持久路由作用域、报告节点调度，检查节点分别创建独立 Kernel Task。

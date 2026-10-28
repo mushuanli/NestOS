@@ -4,6 +4,7 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand, SessionCommand } from '@itookit/llm-session';
 import { DagWorkbench } from '../../llm-ui-adapter/src/components/DagWorkbench';
 import { openSessionFlowOutputs } from '../../llm-ui-adapter/src/flows/session-output';
+import {SessionRunsPanel} from '../../llm-ui-adapter/src/flows/SessionRunsPanel';
 
 beforeEach(() => {
     HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -85,4 +86,47 @@ it('shows persisted variable values and task sources with escaped user content',
     expect(root.textContent).toContain('task-rewrite');
     expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(root.querySelector('img')).toBeNull();
+});
+
+it('opens a standalone CLI run without assigning it to a branch or resuming it', async () => {
+    const execute = vi.fn(async (command: string) => {
+        if (command === SessionCommand.FlowBranchExecutions) return {currentBranch: 'main', branches: [{name: 'main', taskIds: []}]};
+        if (command === FlowCommand.RunList) return [{taskId: 'root', sessionId: 's', name: 'CLI', status: 'succeeded'}];
+        return snapshot('succeeded', {nodes: {report: {outputs: {result: 'persisted CLI result'}}}});
+    });
+    const abort = new AbortController(); openSessionFlowOutputs({execute} as unknown as ICommandBus, 's', abort.signal, 'root');
+    await vi.waitFor(() => expect(document.querySelector('.dag-output__value')?.textContent).toBe('persisted CLI result'));
+    expect(document.querySelector<HTMLSelectElement>('[data-branch]')?.value).toBe('');
+    expect(execute.mock.calls.every(([command]) => [SessionCommand.FlowBranchExecutions, FlowCommand.RunList, FlowCommand.RunGet].includes(command as never))).toBe(true);
+    abort.abort();
+});
+
+it('shows unlinked runs in empty sessions, excludes other sessions, and drops late hidden responses', async () => {
+    vi.useFakeTimers(); const root = document.createElement('div'); document.body.append(root);
+    let finish: (runs: unknown[]) => void = () => {};
+    const execute = vi.fn((command: string) => command === SessionCommand.FlowBranchExecutions
+        ? Promise.resolve({currentBranch: 'main', branches: [{name: 'main', taskIds: ['linked']}]})
+        : new Promise(resolve => {finish = resolve;}));
+    const onRuns = vi.fn(), panel = new SessionRunsPanel({execute} as unknown as ICommandBus, 's', root, onRuns);
+    panel.setVisible(false); finish([{taskId: 'late', sessionId: 's', name: 'late', status: 'succeeded'}]);
+    await vi.advanceTimersByTimeAsync(1); expect(root.textContent).toBe('');
+    panel.setVisible(true); finish([
+        {taskId: 'cli', sessionId: 's', name: '<img src=x>', status: 'failed'},
+        {taskId: 'linked', sessionId: 's', name: 'linked', status: 'succeeded'},
+        {taskId: 'foreign', sessionId: 'other', name: 'foreign', status: 'succeeded'},
+    ]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(root.querySelectorAll('button')).toHaveLength(1); expect(root.textContent).toContain('<img src=x>');
+    expect(root.querySelector('img')).toBeNull(); expect(onRuns).toHaveBeenCalledTimes(1);
+    panel.destroy(); const count = execute.mock.calls.length; await vi.advanceTimersByTimeAsync(10000);
+    expect(execute).toHaveBeenCalledTimes(count); expect(root.children).toHaveLength(0);
+});
+
+it('keeps a run catalog failure visible instead of showing an empty session', async () => {
+    const root = document.createElement('div'); document.body.append(root);
+    const execute = vi.fn(async () => {throw Object.assign(new Error('Run catalog unavailable'), {code: 'ECAPABILITY'});});
+    const panel = new SessionRunsPanel({execute} as unknown as ICommandBus, 's', root);
+    await vi.waitFor(() => expect(root.textContent).toContain('Run catalog unavailable'));
+    expect(root.querySelector<HTMLElement>('aside')?.hidden).toBe(false);
+    panel.destroy();
 });

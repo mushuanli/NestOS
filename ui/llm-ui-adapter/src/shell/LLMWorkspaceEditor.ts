@@ -1,3 +1,4 @@
+import {SessionRunsPanel} from '../flows/SessionRunsPanel';
 import {workspaceMessagePlugins} from '../independent/message-markdown';
 import {InteractionDraftPersistence} from '../services/InteractionDraftPersistence';
 import {IndependentCallPanel} from '../components/IndependentCallPanel';
@@ -174,6 +175,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private rerunPending = false;
     private flowOutputAbort?: AbortController;
     private invocationPanel?: InvocationPanel;
+    private sessionRunsPanel?: SessionRunsPanel;
     private independentCallPanel?: IndependentCallPanel;
     private instructionQueuePanel?: InstructionQueuePanel;
     private invocationAbort = new AbortController();
@@ -395,6 +397,8 @@ export class LLMWorkspaceEditor implements IEditor {
         });
         this.historyView = historyView;
         const calls = document.createElement('div'); inputEl.before(calls);
+        this.sessionRunsPanel = new SessionRunsPanel(this.commandBus, session.sessionId, calls,
+            () => historyEl.querySelector('.llm-ui-welcome')?.remove());
         this.invocationPanel = new InvocationPanel(this.commandBus, this.options.sessionId, calls,
             text => this.chatInput.restoreInput([this.chatInput.getConfig().text, text].filter(Boolean).join('\n\n')), {
                 operations: this.operations,
@@ -1113,7 +1117,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.chatInput?.cancelPendingSend?.();
         this.chatInput?.hideNativeModelPicker?.();
         ++this.activationRevision;
-        this.viewActive = false; this.invocationPanel?.setVisible(false); this.independentCallPanel?.setVisible(false);
+        this.viewActive = false; this.sessionRunsPanel?.setVisible(false); this.invocationPanel?.setVisible(false); this.independentCallPanel?.setVisible(false);
         this.submissionRecovery?.setActive(false);
         this.historyView?.setActive?.(false);
         if (this.refreshAgentsTimer) clearTimeout(this.refreshAgentsTimer);
@@ -1139,6 +1143,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.historyView.renderFull(loaded.snapshot.sessions);
         this.navigation.updatePrompts(loaded.snapshot.sessions);
         this.statusIndicator.updateFromSnapshot(loaded.snapshot);
+        this.sessionRunsPanel?.setVisible(true);
         this.invocationPanel?.setVisible(true); this.independentCallPanel?.setVisible(true);
         await this.chatInput.refreshConnections();
         if (!isCurrent()) return;
@@ -1432,7 +1437,7 @@ export class LLMWorkspaceEditor implements IEditor {
             () => this.eventBinder?.cleanup(), () => this.directoryMenu?.destroy(),
             () => this.commandRegistry?.destroy(), () => this.navigation?.destroy(),
             () => this.timers.destroy(), () => this.historyPlugin?.deactivate(),
-            () => this.slashPlugin?.deactivate(), () => this.invocationPanel?.destroy(), () => this.independentCallPanel?.destroy(),
+            () => this.slashPlugin?.deactivate(), () => this.sessionRunsPanel?.destroy(), () => this.invocationPanel?.destroy(), () => this.independentCallPanel?.destroy(),
             () => this.instructionQueuePanel?.destroy(),
             () => this.submissionRecovery?.dispose(), () => this.draftRecovery?.dispose(),
             () => this.branchIndicator?.destroy(), () => this.statusIndicator?.destroy(),

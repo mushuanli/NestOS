@@ -95,6 +95,8 @@ Skill 列表通过 bindSkillRefresh 返回的 refresh/dispose 与 SessionSkillCo
 
 Flow Session 标题栏「流程输出」挂接当前 Session 的持久 Run，显示最终结果、各节点返回及作文评分；打开不自动恢复执行。输出契约、工具/Skill 装配及验证入口见 [Flow 能力与输出](../../doc/design/flow-capabilities-and-output.md)。
 
+SessionRunsPanel 为工作台及独立 ChatView 显示同 Session 未关联聊天分支的 Flow 执行；既有分支引用决定归属，不能把 CLI/底层运行猜测归入 main 或伪造 Round。流程输出为这类运行提供独立分组，打开只读、不恢复执行。隐藏/销毁停止轮询并关闭所属输出窗口，迟到读取不能恢复面板。正式 CLI session send 与 UI 提交仍共用 Session 历史入口；不同用户或数据根的 Session 不自动合并。
+
 「重新运行」预填当前分支参数，经 SessionCommand.FlowRerun 创建新分支；History 直接展示 user/assistant 交互及独立流式输出，内部逻辑节点不展开。`message:updated.content` 表示替换最终内容，EventBatchProcessor 必须先刷新已缓存的 delta，再应用替换，避免旧增量回填。Flow 交互子卡片不提供普通消息的编辑/重新生成操作。
 
 - `src/flows/library.ts` 只提供显式恢复机制，模板数组由宿主显式传入；不携带业务模板。NestOS 通过 app-core 的 `createNestosFlowLibrary` 提供模板，Web/Tauri 在装配时向恢复菜单注入；普通安装由 app-core 完成，保留安装记录和用户草稿。

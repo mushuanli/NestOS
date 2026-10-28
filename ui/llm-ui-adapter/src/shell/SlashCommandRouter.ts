@@ -15,7 +15,7 @@ import { Toast } from '@itookit/ui-common';
 import type { IAgentConfigService } from '@itookit/kernel-adapters/contracts';
 import type { IBranchStore } from '../domain/ports/IBranchStore';
 import type { BranchService } from '../services/BranchService';
-import type { DOMCache } from '../components/common/DOMCache';
+import type {DOMCache} from '@itookit/llm-ui';
 import type { Command } from '../commands/Command';
 import type { SendMessageCommand } from '../commands/SendMessageCommand';
 import type { SwitchBranchByOffsetCommand } from '../commands/BranchCommands';

@@ -1,3 +1,4 @@
+import {CHAT_SLOT_CLASSES} from '@itookit/llm-ui';
 import {SessionRunsPanel} from '../flows/SessionRunsPanel';
 import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
@@ -18,7 +19,7 @@ import {buildConnectionOptions} from './AgentProvider';
 import {openSessionFlowOutputs} from '../flows/session-output';
 import type {LLMEditorOptions} from './LLMWorkspaceEditor';
 import type {RetainedWorkspaceHandoff} from './drafts/workspace-handoff';
-import {adoptSessionChatView} from '../independent/session-view';
+import {adoptSessionChatView, replaceSessionChatBinding} from '../independent/session-view';
 import type {SessionSubmission} from '@itookit/llm-flow/contracts';
 
 const log = createModuleLogger('session-chat-editor');
@@ -73,7 +74,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
                 await this.retainHandoffFiles(store, lifetime.signal);
                 this.view = await adoptSessionChatView(this.handoff.view, binding, {...options, initialDraft: undefined});
                 await this.view.flushDraft();
-            } else if (this.view) await this.view.replaceSessionBinding(binding, options);
+            } else if (this.view) await replaceSessionChatBinding(this.view, binding, options);
             else this.view = await createSessionChatView(this.container, binding, options);
             previous.lifetime.abort(); previous.binding?.dispose();
             if (!this.active) this.view.setActive(false);
@@ -198,7 +199,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         void refresh().catch(error => this.fail(error));
         branches.onchange = () => {void this.switchBranch(branches.value).catch(error => {branches.value = this.branch; this.fail(error);});};
         const menu = document.createElement('details'), label = document.createElement('summary'), body = document.createElement('div');
-        menu.className = 'llm-chat__host-menu'; presentHostControl(label, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(label, body); root.append(menu);
+        menu.className = CHAT_SLOT_CLASSES.menu; presentHostControl(label, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(label, body); root.append(menu);
         for (const mount of [this.config.mountWindowList, this.config.mountConversationNavigation, this.config.mountMoreMenu]) {
             if (mount) releases.push(mount(body));
         }

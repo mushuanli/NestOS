@@ -133,6 +133,7 @@ export class DagWorkbench {
     }
 
     render(): void {
+        this.canvas?.destroy();
         this.mode === 'design' ? this.renderDesign() : this.renderRun();
     }
 
@@ -142,12 +143,13 @@ export class DagWorkbench {
     }
 
     setVisible(visible: boolean): void {
-        this.visible = visible; this.artifacts.setVisible(visible);
+        this.visible = visible; this.canvas?.setActive(visible); this.artifacts.setVisible(visible);
         if (!visible) {this.viewRequest++; this.stopRunRefresh(); this.toolDialog?.abort();}
         else if (this.mode === 'run' && this.run) void this.refreshRun(this.run.root.task.id);
     }
 
     destroy(): void {
+        this.canvas?.destroy();
         this.toolDialog?.abort();
         this.artifacts.dispose();
         this.documents.destroy();
@@ -203,7 +205,9 @@ export class DagWorkbench {
     }
 
     private renderCanvas(draft: FlowDraft): void {
+        this.canvas?.destroy();
         const root = this.root.querySelector<HTMLElement>('.dag-canvas')!;
+        root.replaceChildren();
         const manifests = new Map(this.catalogue.map(item => [`${item.manifest.id}@${item.manifest.version}`, item.manifest]));
         for (const node of draft.nodes) { const descriptor = this.findDescriptor(node); if (descriptor) manifests.set(String(node.id), descriptor); }
         this.canvas = new DagCanvas(root, {
@@ -215,6 +219,7 @@ export class DagWorkbench {
             onEditNode: id => void this.openNodeEditor(id),
         });
         this.canvas.render(draft, this.selectedNodeId, manifests, this.selectedEdgeId);
+        this.canvas.setActive(this.visible);
         mountFlowSteps(root, draft, id => {this.inspectorMode = 'edit'; this.selectNode(id as FlowNodeId);}, !!this.selectedNodeId || !!this.selectedEdgeId);
     }
 

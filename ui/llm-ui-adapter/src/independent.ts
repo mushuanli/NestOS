@@ -1,7 +1,7 @@
 export { createSessionChatBinding, createSessionChatView } from './independent/session';
 export type {SessionChatView} from './independent/session';
 export type { SessionChatBindingOptions } from './independent/session';
-export { createNativeChatBinding, createNativeChatView } from './independent/native';
+export { createNativeChatBinding, createNativeChatView, replaceNativeChatBinding } from './independent/native';
 export type {NativeChatView} from './independent/native';
 export type { NativeChatBindingOptions } from './independent/native';
 
@@ -15,3 +15,5 @@ export type {InteractionDraftStorage, InteractionDraftScope, InteractionDraftCon
 export {InteractionDraftPersistence} from './services/InteractionDraftPersistence';
 
 export {prepareSessionChatRequest} from './independent/session-submission';
+
+export {replaceSessionChatBinding} from './independent/session-view';

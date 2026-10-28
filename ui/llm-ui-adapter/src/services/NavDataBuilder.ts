@@ -5,7 +5,7 @@ import { SessionCommand, SessionGroup, type BranchTreeNode } from '@itookit/llm-
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { ChatNavItem, NavPanelData } from '../domain/ports/INavigationPresenter';
 import { BranchItem, CollapseStateMap } from '../domain/types';
-import { getPreviewText } from '../utils/textUtils';
+import {getPreviewText} from '@itookit/llm-ui';
 
 /**
  * 导航面板数据构建器

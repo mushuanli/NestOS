@@ -1,22 +1,23 @@
+import {getLocale} from '@itookit/common';
 import type { PromptHistoryPort } from '@itookit/llm-session/contracts';
 // @file: llm-ui/components/input/plugins/HistoryPlugin.ts
 
 import type { InputPlugin, InputPluginContext } from './InputPlugin';
-import { PopupPanel, PopupItem } from './PopupPanel';
+import { PopupPanel, PopupItem } from '@itookit/llm-ui';
 import type { PromptHistoryEntry } from '@itookit/llm-session/contracts';
 import { truncateText } from '../../../utils/textUtils';
 import { formatTimeAgo } from '../../../utils/timeUtils';
 
 /**
  * Prompt History 插件
- * 
+ *
  * 交互设计（参考 bash/zsh/Warp）：
  * - 输入框为空时按 ↑：打开历史面板
  * - Ctrl+R / Cmd+R：打开历史搜索
  * - 面板内 ↑/↓ 导航，Enter 选中填入
  * - Esc 关闭
  * - 发送后自动记录到历史
- * 
+ *
  * 不修改 ChatInput 核心代码，完全通过 Plugin 接口交互。
  */
 export class HistoryPlugin implements InputPlugin {
@@ -32,7 +33,7 @@ export class HistoryPlugin implements InputPlugin {
     activate(ctx: InputPluginContext): void {
         this.ctx = ctx;
 
-        this.panel = new PopupPanel(ctx.textarea, {
+        this.panel = new PopupPanel(ctx.textarea, {locale: getLocale(), positionAnchor: ctx.textarea.closest<HTMLElement>('.llm-input') ?? undefined,
             maxVisible: 15,
             showSearch: true,
             searchPlaceholder: 'Search prompt history...',

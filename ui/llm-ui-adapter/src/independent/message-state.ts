@@ -10,7 +10,8 @@ export function messageState(status?: string): ChatMessage['state'] {
 }
 
 export function toolState(status?: string): Extract<MessagePart, {kind: 'tool'}>['state'] {
+    if (['success', 'succeeded', 'complete', 'completed'].includes(status ?? '')) return 'succeeded';
+    if (!status || !['failed', 'error', 'cancelled', 'aborted', 'running', 'streaming', 'pending', 'queued', 'paused', 'waiting', 'waiting-input', 'waiting-approval', 'waiting_input'].includes(status)) return 'unknown';
     const state = messageState(status);
-    if (state === 'pending' || state === 'streaming') return 'running';
-    return state === 'failed' || state === 'cancelled' ? 'failed' : 'succeeded';
+    return state === 'streaming' ? 'running' : state === 'complete' ? 'unknown' : state;
 }

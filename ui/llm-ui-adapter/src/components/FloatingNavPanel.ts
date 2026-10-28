@@ -5,7 +5,7 @@ import { formatTime } from '../utils/timeUtils';
 import { IconTemplates } from './templates/IconTemplates';
 import type { IEditorEventBus } from '../domain/events';
 import type { BranchItem } from '../domain/types';
-import { EventCleanup, TimerManager } from './common';
+import {EventCleanup, TimerManager} from '@itookit/llm-ui';
 import { FloatingNavPanelTemplates } from './templates/FloatingNavPanelTemplates';
 import { Toast } from '@itookit/ui-common';
 import { showConfirmDialog } from '@itookit/ui-common';
@@ -17,7 +17,7 @@ export interface FloatingNavWorkspaceActions {
 
 /**
  * 实现 INavigationPresenter
- * 
+ *
  * Shell 只调用 toggle(), update(), destroy()
  * 内部 700+ 行的交互逻辑完全封装。
  */

@@ -6,7 +6,7 @@ import { ChatInput } from '../components/input/ChatInputView';
 import { LayoutTemplates } from '../components/templates/LayoutTemplates';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { EventBinder } from './EventBinder';
-import { DOMCache } from '../components/common';
+import {DOMCache} from '@itookit/llm-ui';
 import { StatusIndicatorView } from '../components/indicators/StatusIndicatorView';
 import { RemoteHistory } from './remote-history';
 import {NativeSlashCommandPlugin} from '../components/input/plugins/NativeSlashCommandPlugin';

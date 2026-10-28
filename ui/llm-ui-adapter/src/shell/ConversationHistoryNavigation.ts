@@ -3,7 +3,7 @@ import type { SessionGroup } from '@itookit/llm-session/contracts';
 import { FloatingNavPanel } from '../components/FloatingNavPanel';
 import type { HistoryView } from '../components/HistoryView';
 import { visibleSessionId } from '../components/history/visible-session';
-import { getPreviewText } from '../utils/textUtils';
+import {getPreviewText} from '@itookit/llm-ui';
 import { EditorEventBus } from './EditorEventBus';
 import { PromptNavigator, type PromptNavigationItem, type PromptNavigationOptions } from '../components/PromptNavigator';
 

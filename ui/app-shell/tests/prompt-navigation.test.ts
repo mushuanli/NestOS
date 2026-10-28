@@ -4,8 +4,8 @@ import { PromptNavigator } from '../../llm-ui-adapter/src/components/PromptNavig
 import { LayoutTemplates } from '../../llm-ui-adapter/src/components/templates/LayoutTemplates';
 import { remotePrompts, remoteRounds } from '../../llm-ui-adapter/src/shell/remote-rounds';
 import { NavigationHelper } from '../../llm-ui-adapter/src/shell/NavigationHelper';
-import { DOMCache, TimerManager } from '../../llm-ui-adapter/src/components/common';
-import { ScrollController } from '../../llm-ui-adapter/src/components/common/ScrollController';
+import {DOMCache, TimerManager} from '@itookit/llm-ui';
+import {ScrollController} from '@itookit/llm-ui';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { t } from '@itookit/common';
 

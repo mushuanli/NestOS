@@ -1,7 +1,8 @@
+import {getLocale} from '@itookit/common';
 import {t} from '@itookit/common';
 import type {ConversationSlashCommand} from '@itookit/ui-common';
 import type {InputPlugin, InputPluginContext} from './InputPlugin';
-import {PopupPanel} from './PopupPanel';
+import {PopupPanel} from '@itookit/llm-ui';
 
 type CommandSuggestion = Pick<ConversationSlashCommand, 'name' | 'description' | 'argumentHint' | 'disabled'>;
 
@@ -17,7 +18,7 @@ export class SlashSuggestionsPlugin implements InputPlugin {
     constructor(private readonly load: () => Promise<CommandSuggestion[]>, private readonly enabled: () => boolean = () => true) {}
     activate(context: InputPluginContext): void {
         this.context = context;
-        this.panel = new PopupPanel(context.textarea, {variant: 'slash', maxVisible: 12, showSearch: false,
+        this.panel = new PopupPanel(context.textarea, {locale: getLocale(), positionAnchor: context.textarea.closest<HTMLElement>('.llm-input') ?? undefined, variant: 'slash', maxVisible: 12, showSearch: false,
             emptyText: t('slash.panel.empty'), footerHint: t('slash.panel.footer')});
     }
     onInput(text: string): void {

@@ -1,3 +1,4 @@
+import {getLocale} from '@itookit/common';
 // @file: llm-ui/components/input/plugins/MentionPlugin.ts
 //
 // MentionPlugin — `@` 触发的文件引用选择器。
@@ -20,7 +21,7 @@
 //   - ↑/↓/Enter/Tab → 委托给 PopupPanel.handleKeyDown
 
 import type { InputPlugin, InputPluginContext } from './InputPlugin';
-import { PopupPanel } from './PopupPanel';
+import { PopupPanel } from '@itookit/llm-ui';
 import { t, createModuleLogger, randomUUID } from '@itookit/common';
 import type { FileSuggestion } from '../../../domain/types';
 
@@ -57,7 +58,7 @@ export class MentionPlugin implements InputPlugin {
     activate(ctx: InputPluginContext): void {
         this.ctx = ctx;
         // PopupPanel(anchor, options) — anchor is the textarea for positioning
-        this.popup = new PopupPanel(ctx.textarea, {
+        this.popup = new PopupPanel(ctx.textarea, {locale: getLocale(), positionAnchor: ctx.textarea.closest<HTMLElement>('.llm-input') ?? undefined,
             variant: 'slash',
             maxVisible: 10,
             emptyText: t('chatInput.filesEmpty'),

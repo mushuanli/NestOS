@@ -2,7 +2,7 @@
 import {expect, it, vi} from 'vitest';
 import {createOperationLedger} from '@itookit/llm-ui';
 import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
-import {createNativeChatBinding, createNativeChatView} from '../../llm-ui-adapter/src/independent/native';
+import {createNativeChatBinding, createNativeChatView, replaceNativeChatBinding} from '../../llm-ui-adapter/src/independent/native';
 
 function fixture(title: string) {
     const listeners = new Set<() => void>();
@@ -26,7 +26,7 @@ it('rebinds native presentation and preserves the composer without closing eithe
     try {
         const input = host.querySelector<HTMLTextAreaElement>('.llm-chat__input')!;
         view.setText('Retained input'); input.focus(); input.setSelectionRange(3, 7);
-        await view.replaceNativeBinding(next, {mountHeader: root => {
+        await replaceNativeChatBinding(view, next, {mountHeader: root => {
             const label = document.createElement('span'); label.textContent = 'New host menu'; root.append(label);
             return {destroy: () => {newRelease(); label.remove();}};
         }});

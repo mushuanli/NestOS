@@ -11,8 +11,8 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 
 import type { IBranchStore } from '../domain/ports/IBranchStore';
 import type { NavDataBuilder } from '../services/NavDataBuilder';
-import type { DOMCache } from '../components/common/DOMCache';
-import type { TimerManager } from '../components/common/TimerManager';
+import type {DOMCache} from '@itookit/llm-ui';
+import type {TimerManager} from '@itookit/llm-ui';
 import { FloatingNavPanel } from '../components/FloatingNavPanel';
 import { Toast } from '@itookit/ui-common';
 import { visibleSessionId } from '../components/history/visible-session';

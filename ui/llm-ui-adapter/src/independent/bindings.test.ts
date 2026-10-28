@@ -392,9 +392,8 @@ it('assembles image preprocessing and metadata persistence when creating a nativ
     const original = new File(['original'], 'image.png', {type: 'image/png'}), prepared = await options.imageEditing!.prepare!(original, {signal});
     const ref = await options.upload!(prepared, {signal}); await options.imageEditing!.uploaded!(prepared, ref, {signal});
     expect(upload).toHaveBeenCalledTimes(2); expect(saveMetadata).toHaveBeenCalledWith(ref, expect.objectContaining({original: expect.objectContaining({id: 'image.png2'})}));
-    view.setActive(false); expect(setActive).toHaveBeenCalledWith(false);
-    const closing = view.destroy(); view.setActive(true); expect(setActive).toHaveBeenCalledTimes(1);
-    expect(view.destroy()).toBe(closing); await closing;
+    expect(view.setActive).toBe(setActive); expect(view.destroy).toBe(close);
+    expect(options.release).toBeTypeOf('function'); options.setActive?.(false); await options.release?.(); await view.destroy();
     expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();
 });
 

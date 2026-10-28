@@ -81,7 +81,7 @@ import { measureSessionLoad, type SessionLoadMetrics } from './load-metrics';
 import { buildSlashCallbacks } from './SlashCommandRouter';
 
 // Infrastructure
-import { TimerManager, DOMCache } from '../components/common';
+import {TimerManager, DOMCache} from '@itookit/llm-ui';
 import { ErrorHandler } from '../utils/errorHandler';
 
 // Components — 仅在 init 中用于构造，之后通过接口引用

@@ -1,3 +1,5 @@
+import {getLocale} from '@itookit/common';
+import {InputPluginRegistry} from '@itookit/llm-ui';
 import {isCommandInput, resizeMessageInput, shouldSubmitMessage} from '@itookit/llm-ui';
 import { OcrSettingsForm, Modal, Toast } from '@itookit/ui-common';
 // @file: llm-ui/components/input/ChatInputView.ts
@@ -24,8 +26,8 @@ import type { InputPlugin, InputPluginContext } from './plugins/InputPlugin';
 import { SlashSuggestionsPlugin } from './plugins/NativeSlashCommandPlugin';
 import { MentionPlugin } from './plugins/MentionPlugin';
 import { TokenMeterPlugin } from './plugins/TokenMeterPlugin';
-import { PopupPanel } from './plugins/PopupPanel';
-import type { PopupItem } from './plugins/PopupPanel';
+import { PopupPanel } from '@itookit/llm-ui';
+import type { PopupItem } from '@itookit/llm-ui';
 import { AttachmentManager } from './AttachmentManager';
 import {knownImageFileState} from './image-file-state';
 import {ImageResizeSettings} from './ImageResizeSettings';
@@ -192,7 +194,7 @@ export class ChatInput implements IChatInputPresenter {
     // ── Agent Picker (custom combobox, popup via PopupPanel) ─────────────────
     private agents: ExecutorOption[] = [];
     private readonly nativeModels: NativeModelControl;
-    hideNativeModelPicker(): void {this.nativeModels.hide(); for (const plugin of this.plugins) plugin.onBlur?.();}
+    hideNativeModelPicker(): void {this.nativeModels.hide(); this.pluginRegistry.blur();}
     private textRevision = 0;
     private draftToken = randomUUID();
     private draftBasis?: string;
@@ -254,7 +256,8 @@ export class ChatInput implements IChatInputPresenter {
     private systemPromptAppendInput!: HTMLTextAreaElement;
 
     // ── Plugin system ────────────────────────────────────────────────────────
-    private plugins: InputPlugin[] = [];
+    private readonly pluginRegistry = new InputPluginRegistry<InputPluginContext, string>();
+    private get plugins(): readonly InputPlugin[] {return this.pluginRegistry.plugins;}
     private pluginCtx: InputPluginContext | null = null;
     private tokenMeterPlugin: TokenMeterPlugin | null = null;
 
@@ -364,16 +367,11 @@ export class ChatInput implements IChatInputPresenter {
      */
     registerPlugin(plugin: InputPlugin): void {
 
-        this.plugins.push(plugin);
-        this.plugins.sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100));
+        this.pluginRegistry.register(plugin);
 
         // Track known plugins for typed access
         if (plugin.id === 'token-meter') {
             this.tokenMeterPlugin = plugin as TokenMeterPlugin;
-        }
-
-        if (this.pluginCtx) {
-            plugin.activate(this.pluginCtx);
         }
     }
 
@@ -410,9 +408,7 @@ export class ChatInput implements IChatInputPresenter {
             getAgentId: () => this.config.agentId,
         };
 
-        for (const plugin of this.plugins) {
-            plugin.activate(this.pluginCtx);
-        }
+        this.pluginRegistry.setContext(this.pluginCtx);
     }
 
     // ================================================================
@@ -620,8 +616,7 @@ export class ChatInput implements IChatInputPresenter {
     checkpoint(): () => void {
         const options = this.options, plugins = [...this.plugins];
         return () => {
-            for (const plugin of this.plugins) if (!plugins.includes(plugin)) plugin.deactivate?.();
-            this.plugins = plugins; this.adopt(options);
+            this.pluginRegistry.replace(plugins, true); this.adopt(options);
         };
     }
     adopt(options: ChatInputOptions): void {
@@ -648,9 +643,7 @@ export class ChatInput implements IChatInputPresenter {
         this.callTargets?.dispose();
         this.flowPreparation?.abort();
         this.nativeModels.destroy();
-        for (const plugin of this.plugins.splice(0)) {
-            try {plugin.deactivate();} catch (error) {console.error('Input plugin cleanup failed', error);}
-        }
+        try {this.pluginRegistry.destroy();} catch {console.error('Input plugin cleanup failed', {code: 'INPUT_PLUGIN_DISPOSAL_FAILED'});}
         window.removeEventListener('resize', this.resizeInput);
         window.visualViewport?.removeEventListener('resize', this.resizeInput);
         delete this.container.dataset.editorComposing;
@@ -802,14 +795,12 @@ export class ChatInput implements IChatInputPresenter {
             if (this.helpPanel.isVisible && this.textarea.value.length > 0) this.hideHelp();
 
             const cursorPos = this.textarea.selectionStart;
-            for (const plugin of this.plugins) {
-                plugin.onInput?.(this.textarea.value, cursorPos);
-            }
+            this.pluginRegistry.input(this.textarea.value, cursorPos);
         });
-        this.textarea.addEventListener('focus', () => { this.container.dataset.editorComposing = 'true'; });
+        this.textarea.addEventListener('focus', () => { this.container.dataset.editorComposing = 'true'; this.pluginRegistry.focus(); });
         this.textarea.addEventListener('blur', () => {
             delete this.container.dataset.editorComposing;
-            for (const plugin of this.plugins) plugin.onBlur?.();
+            this.pluginRegistry.blur();
         });
 
         this.textarea.addEventListener('keydown', (e) => {
@@ -821,11 +812,7 @@ export class ChatInput implements IChatInputPresenter {
                 return;
             }
 
-            for (const plugin of this.plugins) {
-                if (plugin.onKeyDown?.(e)) {
-                    return;
-                }
-            }
+            if (this.pluginRegistry.key(e)) return;
 
             if (shouldSubmitMessage(e)) {
                 e.preventDefault();
@@ -1064,9 +1051,7 @@ export class ChatInput implements IChatInputPresenter {
         if (this.config.agentId.startsWith('remote:')) { await this.submitDraft(text, independent); return; }
 
         // ✨ before 钩子
-        for (const plugin of this.plugins) {
-            if (!/^\/run(?:\s|$)/.test(text) && plugin.onBeforeSend?.(text) === false) return;
-        }
+        if (!/^\/run(?:\s|$)/.test(text) && !this.pluginRegistry.beforeSend(text)) return;
         if (unavailable && !isDirectCommandInput(text)) {Toast.error(unavailable); return;}
 
         if (this.requiresConnection() && !isDirectCommandInput(text) && !await this.checkConnectionBeforeSend(text)) return;
@@ -1117,7 +1102,7 @@ export class ChatInput implements IChatInputPresenter {
         this.consumeSubmission(send);
         if (send.remote) return;
         this.notifyConfigChange(); this.clearToolOutput();
-        for (const plugin of this.plugins) plugin.onAfterSend?.(send.text, send.executor);
+        this.pluginRegistry.afterSend(send.text, send.executor);
     }
 
     private consumeSubmission(send: ComposerSubmission): void {
@@ -1637,7 +1622,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private getOrCreateAgentPopup(): PopupPanel {
         if (!this.agentPopup) {
-            this.agentPopup = new PopupPanel(this.agentPickerBtn, {
+            this.agentPopup = new PopupPanel(this.agentPickerBtn, {locale: getLocale(), positionAnchor: this.agentPickerBtn.closest<HTMLElement>('.llm-input') ?? undefined,
                 showSearch: true,
                 maxVisible: Number.POSITIVE_INFINITY,
                 groupFilterLabel: this.callTargets ? t('chatInput.allTargets') : undefined,
@@ -1747,7 +1732,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private getOrCreatePromptPopup(): PopupPanel {
         if (!this.promptPopup) {
-            this.promptPopup = new PopupPanel(this.container.querySelector('.llm-input__options > summary')!, {
+            this.promptPopup = new PopupPanel(this.container.querySelector('.llm-input__options > summary')!, {locale: getLocale(), positionAnchor: this.container.querySelector('.llm-input__options > summary')!.closest<HTMLElement>('.llm-input') ?? undefined,
                 maxVisible: 12,
                 showSearch: true,
                 searchPlaceholder: 'Search prompts...',

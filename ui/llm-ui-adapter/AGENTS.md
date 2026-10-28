@@ -10,9 +10,9 @@ NativeCommandOutput 在原命令消息锚点展示截断预览和按需完整读
 
 本包承接 NestOS 的 Session、Task、原生会话、配置和权限接线，保留原业务编辑器兼容入口。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
 
-提问目录的视图、交互和 CSS 统一由独立 llm-ui 的 PromptNavigator 提供；本包 components/PromptNavigator 只投影产品文案、图标、历史身份及 reveal 回调。components/common 的滚动、尺寸追踪、定时器和事件清理仅保留公开入口转导出。ChatInput 的回车与高度规则复用 shouldSubmitMessage/resizeMessageInput；不要在适配层复制通用规则。独立 ChatView 的默认外观归 llm-ui，styles/independent-chat.css 仅补宿主自行创建的控件。
+提问目录的视图、交互和 CSS 统一由独立 llm-ui 的 PromptNavigator 提供；本包 components/PromptNavigator 只投影产品文案、图标、历史身份及 reveal 回调。滚动、尺寸追踪、定时器、事件清理和 DOMCache 直接从独立库公开入口导入；components/common 只保留业务 EventBatchProcessor。ChatInput 的回车与高度规则复用 shouldSubmitMessage/resizeMessageInput；不要在适配层复制通用规则。独立 ChatView 的默认外观归 llm-ui，styles/independent-chat.css 仅补宿主自行创建的控件。
 
-独立 Session/native 视图通过 replaceSessionBinding/replaceNativeBinding 复用 ChatView 的 replaceBinding，业务绑定与图片/队列/上下文展示钩子随之替换；不关闭宿主 Session/native 连接。IndependentSessionEditor 切分支及恢复外部选中分支时保留输入和历史容器，旧草稿写入捕获原 store，不能因当前 branch 改变而写入目标分支。SessionChatStore 以 inputToken/scopeId 区分持久草稿，并核对结构化草稿与兼容字段，兼容编辑器改动后不能恢复陈旧 inputView。显式核对旧 operationId 读取完整宿主台账的原冻结请求；自动观察和当前展示仍按分支过滤。
+独立 Session/native 视图通过 replaceSessionChatBinding/replaceNativeChatBinding 复用 ChatView 的 replaceBinding，业务绑定与图片/队列/上下文展示钩子随之替换；不关闭宿主 Session/native 连接。IndependentSessionEditor 切分支及恢复外部选中分支时保留输入和历史容器，旧草稿写入捕获原 store，不能因当前 branch 改变而写入目标分支。SessionChatStore 以 inputToken/scopeId 区分持久草稿，并核对结构化草稿与兼容字段，兼容编辑器改动后不能恢复陈旧 inputView。显式核对旧 operationId 读取完整宿主台账的原冻结请求；自动观察和当前展示仍按分支过滤。
 
 原生会话的斜杠候选由 ConversationControls.commands 按当前绑定提供，NativeSlashCommandPlugin 只负责候选和插入，不注册本地 Kernel 命令。RemoteConversationEditor 在发送时重新校验目录并委托 command；命令接纳与普通消息分别呈现，未知结果保留输入并走原 reconcile。ChatInput 拥有 registerPlugin 激活的插件，销毁须逐一 deactivate；关闭后迟到目录不能恢复弹层。
 
@@ -225,3 +225,5 @@ OperationPersistence 只在 UI 适配层按 llm-ui 的纯规则合并 operationR
 Flow 参数表单按 inputGroups 声明展示关系：oneOf 仅提交单选来源并预选唯一有值成员；anyOf 用页签切换显示，保留并提交所有已填来源，至少提供一种。隐藏来源的校验错误自动切回对应页签。非来源的可选参数收起到“更多设置”，字段索引与默认值保持不变。
 
 Flow 参数 presentation.group 与连接 presentation.group 按声明合并显示；visibleWhen 只控制可见性，不清除参数值。条件连接依据 requiredWhen 隐藏，打开相关开关后显现；隐藏字段/连接的错误仍展开所属设置组。presentation.contentSource=false 的配置字段不显示文件/工具/Flow 内容来源入口。展示规则不按预设名称或业务字段分支。
+
+输入插件注册与候选使用库 InputPluginRegistry/PopupPanel，适配层只扩展业务上下文。折叠、TTY、SchemaForm 与 GraphCanvas 均复用独立库；Flow 表达式、repeat 路由、Agent 徽标和执行授权保留在本包。绑定的 setActive/release 交由 ChatView 管理，禁止覆写实例方法包装生命周期。

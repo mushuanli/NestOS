@@ -13,13 +13,13 @@ const labels: Record<string, Parameters<typeof t>[0]> = {
     promptPreview: 'chat.promptNav.preview', promptMore: 'chat.promptNav.showMore', promptLoadedOnly: 'chat.promptNav.loadedOnly',
     promptAttachment: 'chat.promptNav.attachment', promptEmpty: 'chat.promptNav.empty', promptNoLoaded: 'chat.promptNav.noLoadedPrompts',
     promptLoading: 'harness.loadingEarlier', earlier: 'harness.earlierHistory',
+    promptCount: 'chat.promptNav.count',
 };
 /** Project only host identities and labels into the shared navigation component. */
 export class PromptNavigator extends SharedPromptNavigator {
     constructor(workspace: HTMLElement, history: HTMLElement, options: PromptNavigationOptions) {
         super({...options, root: workspace, history, trigger: workspace.querySelectorAll<HTMLButtonElement>('#llm-btn-prompt-nav')[0]!,
-            locale: getLocale(), translate: key => key === 'promptCount'
-                ? t('chat.promptNav.count', {count: '{count}', total: '{total}'}) : labels[key] ? t(labels[key]) : key,
+            locale: getLocale(), translate: (key, parameters) => labels[key] ? t(labels[key], parameters) : undefined,
             presentButton: (button, action) => {
                 if (action === 'close') button.innerHTML = ACTION_ICONS.close;
                 if (action === 'preview') button.insertAdjacentHTML('afterbegin', ACTION_ICONS.wordWrap);

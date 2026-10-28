@@ -1,8 +1,8 @@
 // @file: llm-ui/components/history/StreamController.ts
 
 import type { SessionRenderer } from './SessionRenderer';
-import type { ScrollController } from '../common/ScrollController';
-import { getPreviewText } from '../../utils/textUtils';
+import type {ScrollController} from '@itookit/llm-ui';
+import {getPreviewText} from '@itookit/llm-ui';
 import type { Citation } from '@itookit/driver-llm/contracts';
 import { NodeTemplates } from '../templates/NodeTemplates';
 

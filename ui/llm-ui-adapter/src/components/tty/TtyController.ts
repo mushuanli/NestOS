@@ -6,7 +6,8 @@
 // Receives metaInfo dispatches from handleBatchedEvents() and creates / updates /
 // finalizes TtyPanel widgets accordingly.
 
-import { TtyPanel } from './TtyPanel';
+import {TtyPanel} from '@itookit/llm-ui';
+import {getLocale} from '@itookit/common';
 
 type TtyOpenMeta  = { sessionId: string; command: string; pid?: number };
 type TtyDataMeta  = { sessionId: string; chunk: string };
@@ -45,7 +46,7 @@ export class TtyController {
         const container = nodeEl?.querySelector('.llm-ui-node__tty-panels') as HTMLElement | null;
         if (!container) return;
 
-        const panel = new TtyPanel(container, sessionId, command, pid);
+        const panel = new TtyPanel(container, sessionId, command, pid, {locale: getLocale()});
         this.panels.set(sessionId, panel);
     }
 

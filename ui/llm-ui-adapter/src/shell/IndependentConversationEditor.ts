@@ -1,3 +1,4 @@
+import {CHAT_SLOT_CLASSES} from '@itookit/llm-ui';
 import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
 import {ACTION_ICONS, CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
@@ -50,7 +51,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         }
         {
             const menu = document.createElement('details'), summary = document.createElement('summary'), body = document.createElement('div');
-            menu.className = 'llm-chat__host-menu'; presentHostControl(summary, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(summary, body); root.append(menu);
+            menu.className = CHAT_SLOT_CLASSES.menu; presentHostControl(summary, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(summary, body); root.append(menu);
             for (const mount of [this.options.mountWindowList, this.options.mountConversationNavigation, this.options.mountMoreMenu]) {
                 if (mount) cleanups.push(mount(body));
             }

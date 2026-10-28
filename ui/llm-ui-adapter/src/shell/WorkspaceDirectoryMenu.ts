@@ -1,6 +1,6 @@
 import { t } from '@itookit/common';
 import { Toast, type EditorHostContext } from '@itookit/ui-common';
-import { EventCleanup } from '../components/common/EventCleanup';
+import {EventCleanup} from '@itookit/llm-ui';
 
 /** Configuration crosses only the host port, with the current Session captured by the host. */
 export class WorkspaceDirectoryMenu {

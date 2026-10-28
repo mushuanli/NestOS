@@ -1,7 +1,6 @@
-// @file: llm-ui/utils/textUtils.ts
+// @file: llm-ui-adapter/utils/textUtils.ts
 
 import type { ExecutionNode } from '@itookit/llm-session/contracts';
-export {getPreviewText} from '@itookit/llm-ui';
 
 /**
  * 纯函数文本工具集

@@ -86,97 +86,7 @@
     background-size: 20px 20px;
 }
 
-.dag-canvas__surface {
-    position: relative;
-    width: 1200px;
-    height: 760px;
-    transform-origin: top left;
-}
-
-.dag-canvas__edges {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    overflow: visible;
-    pointer-events: none;
-}
-
-.dag-canvas__edges path {
-    fill: none;
-    stroke: var(--dag-focus);
-    stroke-width: 2;
-    pointer-events: stroke;
-    cursor: pointer;
-    transition: stroke-width .15s ease, filter .15s ease;
-}
-
-.dag-canvas__edges path:hover,
-.dag-canvas__edges path.is-selected {
-    stroke-width: 4;
-    filter: drop-shadow(0 0 4px currentColor);
-}
-
-.dag-canvas__edges .dag-edge-hit,
-.dag-canvas__edges .dag-edge-hit:hover {
-    stroke: transparent;
-    stroke-width: 14;
-    filter: none;
-}
-
-.dag-canvas__edges .dag-edge-hit:hover + path { stroke-width: 4; }
-
-.dag-canvas__edges path.is-control {
-    stroke: #a78bfa;
-    stroke-dasharray: 6 4;
-}
-
-.dag-node {
-    position: absolute;
-    box-sizing: border-box;
-    width: 180px;
-    min-height: 84px;
-    padding: 11px 18px;
-    border: 1px solid var(--dag-border);
-    border-radius: 8px;
-    color: var(--dag-text-primary);
-    background: var(--dag-bg-secondary);
-    cursor: grab;
-    user-select: none;
-}
-
-.dag-node.is-selected {
-    outline: 2px solid var(--dag-focus);
-}
-
-.dag-node.is-dragging {
-    cursor: grabbing;
-    z-index: 2;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, .28);
-}
-
-.dag-node strong,
-.dag-node small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dag-node small {
-    margin-top: 5px;
-    color: var(--dag-text-secondary);
-}
-
-.dag-node .dag-node__kind {
-    font-size: 0.8em;
-}
-
-.dag-node .dag-node__ports {
-    font-size: 0.72em;
-    color: var(--dag-text-muted);
-}
-
-.dag-node .dag-node__badges {
+.dag-node__badges {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
@@ -227,30 +137,6 @@
     background: color-mix(in srgb, #8b5cf6 12%, var(--dag-bg-primary));
     border-color: color-mix(in srgb, #8b5cf6 55%, var(--dag-border));
 }
-
-.dag-port {
-    position: absolute;
-    top: 36px;
-    width: 12px;
-    height: 12px;
-    padding: 0;
-    border: 2px solid var(--dag-bg-primary);
-    border-radius: 50%;
-    background: var(--dag-focus);
-}
-
-.dag-port--input { left: -6px; }
-.dag-port--output { right: -6px; }
-
-.dag-canvas.is-connecting .dag-port--input {
-    width: 16px;
-    height: 16px;
-    left: -8px;
-    background: #22c55e;
-    box-shadow: 0 0 0 4px rgba(34, 197, 94, .18);
-}
-
-.dag-canvas.is-connecting { cursor: crosshair; }
 
 .dag-inspector {
     display: flex;
@@ -370,39 +256,7 @@
     border-radius: 7px;
 }
 
-.dag-schema-object {
-    margin: 10px 0;
-    padding: 9px 10px;
-    border: 1px solid var(--dag-border);
-    border-radius: 7px;
-    background: var(--dag-bg-tertiary);
-}
 
-.dag-schema-advanced {
-    margin: 10px 0 2px;
-    padding: 0 10px 10px;
-    border: 1px dashed var(--dag-border);
-    border-radius: 8px;
-}
-
-.dag-schema-advanced > summary {
-    padding: 9px 0;
-    cursor: pointer;
-    color: var(--dag-text-secondary);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.dag-schema-object > summary {
-    cursor: pointer;
-    font-weight: 600;
-    color: var(--dag-text-primary);
-}
-
-.dag-schema-object > small {
-    display: block;
-    margin: 8px 0;
-}
 
 .dag-spawn-actions {
     display: flex;
@@ -482,8 +336,7 @@
     font-size: .72rem;
 }
 
-.dag-dialog form,
-.dag-schema-field {
+.dag-dialog form {
     display: grid;
     gap: 8px;
 }
@@ -733,7 +586,7 @@
 .dag-setting-row > .dag-settings__disclosure { background: var(--dag-bg-primary); }
 .dag-settings__group-title { margin: 4px 0 0; color: var(--dag-text-primary); font-size: .85rem; font-weight: 600; }
 .dag-settings select[multiple] { min-height: 112px; }
-.dag-settings label small, .dag-schema-field small { color: var(--dag-text-secondary); font-size: .75rem; line-height: 1.5; }
+.dag-settings label small { color: var(--dag-text-secondary); font-size: .75rem; line-height: 1.5; }
 
 .dag-settings__footer { flex-shrink: 0; padding: 14px 28px; border-top: 1px solid var(--dag-border); background: var(--dag-bg-primary); }
 .dag-settings__footer .dag-dialog__error { margin: 0 0 12px; font-size: .82rem; line-height: 1.5; }

@@ -1,7 +1,7 @@
 // @file: llm-ui/shell/EventBinder.ts
 
 import { installResponsiveActions, type EditorOptions } from '@itookit/ui-common';
-import { EventCleanup } from '../components/common/EventCleanup';
+import {EventCleanup} from '@itookit/llm-ui';
 
 export interface EventBinderCallbacks {
     mountCompactNavigation: NonNullable<EditorOptions['mountCompactNavigation']>;

@@ -1,7 +1,8 @@
+import {getLocale} from '@itookit/common';
 import { TOOLBOX_ICONS, t } from '@itookit/common';
 import type { ModelTier } from '@itookit/driver-llm/contracts';
 import { ChatInputTemplates } from '../templates/ChatInputTemplates';
-import { PopupPanel, type PopupItem } from './plugins/PopupPanel';
+import { PopupPanel, type PopupItem } from '@itookit/llm-ui';
 import type { ConnectionOption } from '../../domain/types';
 
 interface ConnectionTierDeps {
@@ -120,7 +121,7 @@ export class ConnectionTierController {
     openConnPicker(): void {
         if (this.trigger.disabled || this.trigger.hidden) return;
         void this.deps.onRefreshConnections?.();
-        this.popup ??= new PopupPanel(this.trigger, {showSearch: true, animated: true, maxVisible: 50,
+        this.popup ??= new PopupPanel(this.trigger, {locale: getLocale(), positionAnchor: this.trigger.closest<HTMLElement>('.llm-input') ?? undefined, showSearch: true, animated: true, maxVisible: 50,
             searchPlaceholder: t('chatInput.searchModels'), emptyText: t('chatInput.noModels')});
         this.trigger.setAttribute('aria-expanded', 'true');
         this.popup.show(this.buildItems(), {onSelect: item => this.select(item.id), onClose: () => {

@@ -5,12 +5,10 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import type { IHistoryPresenter } from '../domain/ports/IHistoryPresenter';
 import type { CollapseStateMap, NodeActionCallback } from '../domain/types';
 import type { IEditorEventBus } from '../domain/events';
-import {
-    ScrollController, ContentResizeTracker, EventBatchProcessor,
-    TimerManager, BatchedEvents,
-} from './common';
+import {ScrollController, ContentResizeTracker, TimerManager} from '@itookit/llm-ui';
+import {EventBatchProcessor, BatchedEvents} from './common';
 import { ErrorTemplates } from './templates/ErrorTemplates';
-import { getPreviewText } from '../utils/textUtils';
+import {getPreviewText} from '@itookit/llm-ui';
 
 import { SessionRenderer, RendererContext } from './history/SessionRenderer';
 import { SubmissionFeedback } from './history/SubmissionFeedback';

@@ -1,8 +1,9 @@
+import {getLocale} from '@itookit/common';
 import { createSlashCommandCatalog } from './slash-command-catalog';
 // @file: llm-ui/components/input/plugins/SlashCommandPlugin.ts
 
 import type { InputPlugin, InputPluginContext } from './InputPlugin';
-import { PopupPanel, PopupItem } from './PopupPanel';
+import { PopupPanel, PopupItem } from '@itookit/llm-ui';
 import type { SkillInfo, SkillInvocation } from '../../../domain/types';
 import { parseSkillArgs } from '../SkillInvocationParser';
 import { injectStyle } from '../../../utils/styleInjector';
@@ -74,7 +75,7 @@ export function suggestCommands(commands: SlashCommandDef[], name: string, limit
 
 /**
  * Slash Command 回调接口
- * 
+ *
  * 将命令的实际执行委托给外部（Shell 层），
  * 插件本身不依赖 SessionManager 等业务对象。
  */
@@ -205,14 +206,14 @@ export interface SlashCommandCallbacks {
 
 /**
  * Slash Command 插件
- * 
+ *
  * 交互设计（参考 Notion/Discord）：
  * - 输入框开头输入 `/`：触发命令面板
  * - 实时模糊搜索
  * - Enter/Tab 执行选中命令
  * - Esc 关闭并保留输入
  * - 带参数命令：选中后填入命令+占位符
- * 
+ *
  * 设计要点：
  * - 命令注册是声明式的
  * - 执行逻辑通过回调委托给 Shell
@@ -235,7 +236,7 @@ export class SlashCommandPlugin implements InputPlugin {
     activate(ctx: InputPluginContext): void {
         this.ctx = ctx;
 
-        this.panel = new PopupPanel(ctx.textarea, {
+        this.panel = new PopupPanel(ctx.textarea, {locale: getLocale(), positionAnchor: ctx.textarea.closest<HTMLElement>('.llm-input') ?? undefined,
             maxVisible: 12,
             showSearch: false,
             emptyText: t('slash.panel.empty'),
@@ -415,11 +416,11 @@ export class SlashCommandPlugin implements InputPlugin {
 
     /**
      * 执行命令
-     * 
+     *
      * 关键修改：先清空输入，再执行命令。
      * 命令（如 /reedit）可能在执行过程中通过 restoreInput 写入新内容，
      * 如果在执行后清空会覆盖掉命令写入的内容。
-     * 
+     *
      * 对于声明了 preserveInput 的命令，不做预清空。
      */
     private async executeCommand(command: SlashCommandDef, args: string): Promise<void> {

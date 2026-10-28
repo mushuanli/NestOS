@@ -2,14 +2,14 @@
 
 import type { IBranchPresenter } from '../../domain/ports/IBranchPresenter';
 import type { IEditorEventBus } from '../../domain/events';
-import type { DOMCache } from '../common';
-import { EventCleanup, TimerManager } from '../common';
+import type {DOMCache} from '@itookit/llm-ui';
+import {EventCleanup, TimerManager} from '@itookit/llm-ui';
 import { BranchIndicatorTemplates } from '../templates/BranchIndicatorTemplates';
 import type { IBranchStore } from '../../domain/ports/IBranchStore';
 
 /**
  * 实现 IBranchPresenter
- * 
+ *
  * Shell 只调用 refresh() 和 flash()，
  * 内部的下拉菜单、事件委托完全封装。
  */

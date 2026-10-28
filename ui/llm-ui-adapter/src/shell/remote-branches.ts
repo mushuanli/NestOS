@@ -1,7 +1,7 @@
 import { t } from '@itookit/common';
 import { showConfirmDialog, type ConversationControls, type ConversationSnapshot, type EditorOptions } from '@itookit/ui-common';
 import { BranchIndicatorTemplates } from '../components/templates/BranchIndicatorTemplates';
-import { EventCleanup } from '../components/common';
+import {EventCleanup} from '@itookit/llm-ui';
 import type { BranchItem } from '../domain/types';
 
 /** Native identities use the shared branch presentation, without local VCS commands. */

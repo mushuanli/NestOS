@@ -1,6 +1,7 @@
+import {getLocale} from '@itookit/common';
 import {t, FEEDBACK_ICONS} from '@itookit/common';
 import type {ConversationModelCatalog, ConversationModelSelection} from '@itookit/ui-common';
-import {PopupPanel, type PopupItem} from './plugins/PopupPanel';
+import {PopupPanel, type PopupItem} from '@itookit/llm-ui';
 
 /** A native selection belongs to the next submission, independent of local connections. */
 export class NativeModelControl {
@@ -15,7 +16,7 @@ export class NativeModelControl {
         this.trigger.type = 'button'; this.trigger.className = 'llm-input__native-model';
         this.trigger.hidden = true; this.trigger.textContent = t('chatInput.nativeModels');
         container.querySelector('.llm-input__execution-source')!.before(this.trigger);
-        this.popup = new PopupPanel(this.trigger, {showSearch: true, searchPlaceholder: t('chatInput.model'), emptyText: t('chatInput.noModels')});
+        this.popup = new PopupPanel(this.trigger, {locale: getLocale(), positionAnchor: this.trigger.closest<HTMLElement>('.llm-input') ?? undefined, showSearch: true, searchPlaceholder: t('chatInput.model'), emptyText: t('chatInput.noModels')});
         this.trigger.onclick = () => {if (this.popup.isVisible) this.popup.hide(); else void this.open();};
         this.trigger.onkeydown = event => {if (this.popup.isVisible) this.popup.handleKeyDown(event);};
     }

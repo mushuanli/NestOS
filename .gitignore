@@ -73,3 +73,7 @@ localhost-recording*.json
 .mindos-websearch/
 # Local mindos-node executable and pre-upgrade backup
 .gh-pages-deploy-*/
+
+# Local host profiles; committed examples remain available under their own names.
+/nestos.json
+/nestos.multiuser.json

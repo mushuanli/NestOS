@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-vi.mock('../components/input/plugins/PopupPanel', () => ({ PopupPanel: class { destroy() {} } }));
+vi.mock('@itookit/llm-ui', async () => ({...await vi.importActual('@itookit/llm-ui'), PopupPanel: class { destroy() {} }}));
 vi.mock('@itookit/ui-common', () => ({ Toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() }, showConfirmDialog: vi.fn() }));
 import { SlashCommandPlugin } from '../components/input/plugins/SlashCommandPlugin';
 import { buildSlashCallbacks, type SlashCommandRouterDeps } from './SlashCommandRouter';
@@ -8,7 +8,7 @@ it('handles mounting as explicit UI commands without sending them to the model',
     const addDirectory = vi.fn(async () => 'mounted'), setHome = vi.fn(async () => 'saved');
     const callbacks = buildSlashCallbacks({ hostContext: { directoryCommands: { addDirectory, setHome } } } as unknown as SlashCommandRouterDeps);
     const plugin = new SlashCommandPlugin(callbacks);
-    const input = { setText: vi.fn(), focus: vi.fn() };
+    const input = {textarea: {closest: () => null}, setText: vi.fn(), focus: vi.fn()};
     plugin.activate(input as unknown as InputPluginContext);
     expect(plugin.onBeforeSend('/add-dir "~/my project"')).toBe(false);
     await vi.waitFor(() => expect(addDirectory).toHaveBeenCalledWith('~/my project', 'rw'));

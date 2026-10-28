@@ -8,7 +8,7 @@ import { t } from '@itookit/common';
 import { OcrReviewPanel } from './OcrReviewPanel';
 import {ImageAttachments} from './ImageAttachments';
 import type {ImageResizePolicy} from '@itookit/image-parser';
-import type { PopupPanel, PopupItem } from './plugins/PopupPanel';
+import type { PopupPanel, PopupItem } from '@itookit/llm-ui';
 
 let CAMERA_GUARD = false;      // prevent double-open on some mobile browsers
 let PHOTO_ALBUM_GUARD = false;

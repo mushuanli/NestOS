@@ -1,7 +1,6 @@
 import {messageState, toolState} from './message-state';
 import {prepareImageChatOptions, type ImageChatOptions} from './image-chat-view';
 import {createChatView, type ChatOptions, type ChatView} from '@itookit/llm-ui';
-import {retainViewBindings, type ViewBinding} from './retained-view';
 import type {ImageEditingHost} from './image-editing';
 import {prepareRemoteAttachments} from '../shell/remote-attachments';
 import { type ChatMessage, type ConversationActions,
@@ -231,10 +230,11 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         dispose() { if (closed) return; closed = true; lifetime.abort(); ++generation; capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
 }
 type NativeBinding = Awaited<ReturnType<typeof createNativeChatBinding>>;
-export interface NativeChatView extends ChatView {
-    replaceNativeBinding(binding: NativeBinding, options?: ImageChatOptions): Promise<void>;
+export type NativeChatView = ChatView;
+export function replaceNativeChatBinding(view: ChatView, binding: NativeBinding, options: ImageChatOptions = {}): Promise<void> {
+    return view.replaceBinding(prepareNativeView(binding, options), {draft: options.initialDraft});
 }
-function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): ViewBinding & {options: ChatOptions} {
+function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): ChatOptions {
     const outputs = new Set<NativeCommandOutput>(), repairs = new Set<NativeResultRepair>();
     const queue = nativeQueueToolbar(binding.instructionQueue, options);
     const renderer: ExtensionRenderer = (root, part) => {
@@ -245,17 +245,12 @@ function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): V
     const images = prepareImageChatOptions({...options, source: binding.source, actions: binding.actions, operations: binding.operations,
         renderers: {...options.renderers, 'native-command-output': renderer},
         mountToolbar: nativeToolbar(binding, {...options, mountToolbar: queue.mount}, repairs)}, options.images ?? binding.images);
-    return {options: images.options, setActive: value => {
-        queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value);
-    }, release: () => images.release()};
+    return {...images, setActive: value => {
+        queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value); options.setActive?.(value);
+    }};
 }
 export async function createNativeChatView(container: HTMLElement, binding: NativeBinding, options: ImageChatOptions = {}): Promise<NativeChatView> {
-    const initial = prepareNativeView(binding, options);
-    try {
-        const retained = retainViewBindings(await createChatView(container, initial.options), initial);
-        return Object.assign(retained.view, {replaceNativeBinding: (next: NativeBinding, nextOptions: ImageChatOptions = {}) =>
-            retained.replace(prepareNativeView(next, nextOptions), nextOptions.initialDraft)});
-    } catch (error) {await initial.release?.(); throw error;}
+    return createChatView(container, prepareNativeView(binding, options));
 }
 
 function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger, state: NativeSnapshot, conversationId: string): ChatMessage {

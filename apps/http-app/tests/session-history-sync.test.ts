@@ -68,3 +68,16 @@ it('bounds retained histories and safely reloads an evicted Session', async () =
     const encoded = [...descriptors.values()][0].snapshots.getSnapshot as {$object: {histories: {$object: Record<string, WireValue>}}};
     expect(Object.keys(encoded.$object.histories.$object)).toHaveLength(8);
 });
+
+it('sends a small streaming patch with eight large cached scopes', async () => {
+    const cached = Array.from({length: 8}, (_, index) => state(`scope-${index}`, String(index).repeat(350000)));
+    const f = await fixture(cached[0]);
+    for (const scope of cached.slice(1)) await f.update(scope);
+    const measured: number[] = [];
+    for (let index = 0; index < cached.length; index++) {
+        const next = structuredClone(cached[index]); next.messages[0].content += ' delta';
+        measured.push(Buffer.byteLength(JSON.stringify(await f.update(next))));
+    }
+    expect(Math.max(...measured)).toBeLessThan(4096);
+    expect(measured.reduce((sum, bytes) => sum + bytes, 0)).toBeLessThan(32768);
+});

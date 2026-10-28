@@ -40,13 +40,13 @@ C4Component
 
 原生会话的诊断展示也归适配层：ConversationInformation 将已有快照中的被动状态、累计 token 和宿主估价收进「更多 → 会话信息」，说明外部运行观察范围及估价与实际账单的区别；不读取定价目录、不发探测请求。基础字段与本地 SessionFamilyActions 统一为创建时间、最后活动，复用相同文案与 ui-common.setTimePresentation 时间展示；缺失值显示「暂无记录」，不以页面刷新时间替代远端活动。运行和等待保留标题栏指标，离线、错误、缺口与未知回执保留直接提示。详情更新只修改自身文本，不替换历史或输入 DOM；销毁释放弹层。
 
-独立源码、JavaScript 和声明均不得引用其他内部包，不通过内联构建掩盖依赖，也不把聊天或 Flow 执行职责迁入 mdxeditor。独立仓库、子模块与发布操作未在本次实施中进行。
+独立源码、JavaScript 和声明均不得引用其他内部包，不通过内联构建掩盖依赖，也不把聊天或 Flow 执行职责迁入 mdxeditor。本次不发布 npm 包，也不部署或重启运行中的服务。
 
 ### 1.1 通用机制与默认外观的收敛状态
 
 提问目录由独立库 `PromptNavigator` 提供一套视图和交互；独立 ChatView 与兼容产品编辑器都消费它。adapter 的同名类只接入产品文案、图标、历史身份与目标展开。目录 CSS、最近优先排序、过滤、键盘操作、按需分页状态及生命周期归独立库，不依赖 Session 类型。原先独立 ChatView 的简易提问按钮列表已删除。
 
-历史滚动共用独立库 `ScrollController`；输入共用 `shouldSubmitMessage` 与 `resizeMessageInput`。原生和 Session 产品编辑器通过既有 HistoryView/ChatInput 消费这些规则，独立 ChatView 也直接消费。旧 common 路径仅保留转导出，避免破坏兼容导入。输入、气泡、标题栏与目录的默认外观归独立库，adapter 只保留宿主控件样式及主题/图标注入。
+历史滚动共用独立库 `ScrollController`；输入共用 `shouldSubmitMessage` 与 `resizeMessageInput`。原生和 Session 产品编辑器通过既有 HistoryView/ChatInput 消费这些规则，独立 ChatView 也直接消费。原 common 转导出已删除，消费者直接从独立库公开入口导入。输入、气泡、标题栏与目录的默认外观归独立库，adapter 只保留宿主控件样式及主题/图标注入。
 
 这不表示产品已全部迁入 ChatView：默认工厂仍使用兼容编辑器，项目草稿仍通过 WorkspaceHandoff 原位转正。切换默认入口前必须接齐草稿转正、历史编辑/分支、配置通知及恢复能力，并验证首次提交期间输入 DOM、焦点、Session UUID 和 operationId 稳定；不能通过重建输入框或静默回退到另一套视图绕过这些要求。独立库可操作预览见 [chat-preview.html](../../libraries/llm-ui/examples/chat-preview.html)。
 
@@ -56,9 +56,29 @@ ChatView 通过 `replaceBinding` 更换宿主 source/actions/operations、草稿
 
 替换先保存旧输入，包括等待期间的新编辑，再安装新源。保存或订阅失败保留旧绑定，错误以 bindingCommitted 标识是否已完成安装。旧操作在登记前冻结原动作和台账；登记完成前视图已更换时不再派发，已派发操作的迟到结果只结算原台账。旧分页被中止，不得改变新历史的滚动和错误。操作诊断不记录正文；onBindingDiagnostic 单独记录 flush/subscribe/commit/cleanup 阶段、关联身份、结果、耗时及安全错误码。
 
-Session/native 适配分别提供 `replaceSessionBinding` / `replaceNativeBinding`，将队列、上下文、命令输出与图片端口等展示钩子换入同一 ChatView，不关闭宿主共享连接。IndependentSessionEditor 切分支和重新激活时已消费此能力，旧草稿保存捕获原分支 store，目标草稿以 inputToken/scopeId 隔离。兼容字段变化时优先恢复兼容编辑器的新输入，不能用陈旧 inputView 覆盖。显式核对旧 operationId 可读取原分支冻结请求，自动观察仍按当前分支过滤。
+Session/native 适配分别提供 `replaceSessionChatBinding(view, ...)` / `replaceNativeChatBinding(view, ...)`，将队列、上下文、命令输出与图片端口等展示钩子换入同一 ChatView，不关闭宿主共享连接。IndependentSessionEditor 切分支和重新激活时已消费此能力，旧草稿保存捕获原分支 store，目标草稿以 inputToken/scopeId 隔离。兼容字段变化时优先恢复兼容编辑器的新输入，不能用陈旧 inputView 覆盖。显式核对旧 operationId 可读取原分支冻结请求，自动观察仍按当前分支过滤。
+
+绑定的 `setActive` 与 `release` 是独立库正式契约。库在安装、隐藏、替换失败及退役时管理生命周期，旧订阅和展示插槽清理完成后恰好释放一次。适配层仅提供绑定工厂及替换函数，不覆写 ChatView 的公共方法；共享连接仍归宿主。
 
 此阶段尚未更换默认 Chat 工厂，也未将项目 SessionDraftEditor 的 WorkspaceHandoff 切换到独立 ChatView；草稿转正、完整历史操作和配置接线仍需后续迁移与验收。
+
+### 1.3 机制迁移与剩余工作
+
+判定标准是双方消费同一个实现及契约，而不是目录中是否仍有同名业务封装。独立库不得知道 Session、Agent 字段、Flow 插件名或 VFS；宿主负责事实投影、权限、表达式策略与副作用。
+
+| 能力 | 共享实现 | 适配层保留职责 |
+| --- | --- | --- |
+| 输入插件与候选 | InputPluginRegistry、PopupPanel；ChatView 和兼容输入均使用 | Agent 上下文、命令目录、提及和 TokenMeter |
+| 折叠 | DisclosureController；ChatView details 与兼容历史共用状态和视口导航 | 历史角色策略、Markdown 懒激活、事件桥接 |
+| TTY | TtyPanel；有界文本、未知退出码及销毁 | 进程事件订阅和 Session 定位 |
+| 工具状态 | ToolState 展示 pending/running/succeeded/failed/cancelled/unknown | 将执行协议映射为展示状态；MessageState 是另一对象的生命周期 |
+| Flow 画布 | /flow 的 GraphCanvas；两侧共享渲染、拖拽、连线及清理 | FlowDraft 投影、Agent 徽标、repeat 路径策略、发布和运行 |
+| SchemaForm | /forms 的递归布局；叶字段和 ParameterForm 共用渲染/读取 | Flow 表达式接受策略与业务文案 |
+| DOM 缓存与基础设施 | DOMCache、滚动、尺寸、事件和定时器 | EventBatchProcessor 的 Session 事件接线 |
+
+仍未完成的是默认产品工厂切到 ChatView：完整历史编辑/分支、配置与权限控件、项目草稿 WorkspaceHandoff 需要逐项对齐后再切换。ChatInputView、SessionRenderer、DagWorkbench 仍承载这些产品职责，不能仅因行数多就整体删除。当前没有 appendDelta 公共事实通道。
+
+传输缓存不等于每次全量发送：SessionHistory 保留最多 8 个 scope，RpcPeer 按缓存基线产生差分。八个 scope 各 350,000 字符的回归覆盖轮换与追加，每次增量要求小于 4 KiB；这验证传输量，不代表进程堆峰值压测。4 Mi 单位是缓存淘汰预算，单个当前历史可能超过它；大型准备包转 HTTP 读取。ViewUpdateReads 的条数上限为 32，但所有条目合计受 MAX_BODY_BYTES（32 MiB）限制，并非 32 × 32 MiB；TTL 为 60 秒。初始读取和大量内容变化仍需传输实际内容，不保证小包。
 
 ## 2 协作方式
 

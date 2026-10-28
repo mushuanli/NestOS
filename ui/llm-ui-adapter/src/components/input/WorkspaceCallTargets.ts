@@ -1,7 +1,7 @@
 import {isTargetRef, sameTargetRef, type TargetRef} from '@itookit/llm-flow/contracts';
 import type {RootCallTarget, RootTargetCatalog} from '@itookit/llm-session/contracts';
 import {ENTITY_ICONS, createModuleLogger, randomUUID, t} from '@itookit/common';
-import type {PopupItem} from './plugins/PopupPanel';
+import type {PopupItem} from '@itookit/llm-ui';
 
 const log = createModuleLogger('workspace-call-targets');
 

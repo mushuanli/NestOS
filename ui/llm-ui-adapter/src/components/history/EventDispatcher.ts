@@ -1,6 +1,6 @@
 // @file: llm-ui/components/history/EventDispatcher.ts
 
-import { EventCleanup, TimerManager } from '../common';
+import {EventCleanup, TimerManager} from '@itookit/llm-ui';
 import { copyText, showConfirmDialog } from '@itookit/ui-common';
 import type { SessionRenderer } from './SessionRenderer';
 import type { StreamController } from './StreamController';
@@ -200,7 +200,7 @@ export class EventDispatcher {
 
     /**
      * 处理 agent 图标点击，通过全局导航事件跳转到 Agent 工作区
-     * 
+     *
      * 使用 NavigationRequest 协议，不直接依赖 hostContext。
      * 通过 DOM CustomEvent 冒泡到顶层，由 main.ts 的全局监听器处理。
      */

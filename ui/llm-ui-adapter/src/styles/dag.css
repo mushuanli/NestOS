@@ -299,6 +299,9 @@
 .flow-input-group__choices [role="tab"][aria-selected="true"] { border-color: var(--dag-focus); background: var(--dag-bg-tertiary); }
 .flow-input-group__choices [data-flow-filled][hidden] { display: none; }
 .flow-input-group__choices [data-flow-filled] { display: block; margin-top: 3px; color: var(--dag-text-secondary); font-size: .7rem; }
+.flow-parameter-group { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--dag-border); border-radius: 7px; }
+.flow-parameter-group > legend { color: var(--dag-text-secondary); padding-inline: 5px; font-size: .85rem; }
+.flow-parameter-group[hidden], .flow-parameter-more[hidden], [data-slot-row][hidden] { display: none; }
 .flow-parameter-more { grid-column: 1 / -1; min-width: 0; }
 .flow-parameter-more > summary { cursor: pointer; padding-block: 10px; color: var(--dag-text-secondary); }
 .flow-parameter-more[open] > summary { margin-bottom: 12px; }

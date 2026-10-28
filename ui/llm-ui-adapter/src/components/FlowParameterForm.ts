@@ -1,3 +1,4 @@
+import {groupFlowParameterFields} from './FlowParameterPresentation';
 import { escapeHTML, t } from '@itookit/common';
 import { type FlowInputGroup, type FlowParameter, type JsonValue, validFlowImages, validFlowFiles, validateFlowInputGroups } from '@itookit/llm-flow/contracts';
 import { type ConnectionMeta } from '@itookit/driver-llm/contracts';
@@ -105,7 +106,7 @@ function freezeParameterControls(dialog: HTMLElement): () => void {
 export function flowParameterFields(parameters: FlowParameter[], connection?: FlowConnectionSelection, groups: readonly FlowInputGroup[] = []): string {
     const inputs = parameters.length ? parameterSection('flow.parameters.inputs', renderFlowInputGroups(parameters, groups)
         + compactParameterFields(parameters, groups)) : '';
-    return inputs + (connection ? parameterSection('flow.parameters.connections', flowConnectionFields(connection)) : '');
+    return groupFlowParameterFields(inputs + (connection ? parameterSection('flow.parameters.connections', flowConnectionFields(connection)) : ''), parameters, connection?.slots);
 }
 
 function compactParameterFields(parameters: FlowParameter[], groups: readonly FlowInputGroup[]): string {

@@ -1,3 +1,4 @@
+import {updateFlowPresentationGroups} from './FlowParameterPresentation';
 import {escapeHTML, t} from '@itookit/common';
 import {flowConnectionRequired, type JsonValue} from '@itookit/llm-flow/contracts';
 import type {ConnectionMeta} from '@itookit/driver-llm/contracts';
@@ -41,10 +42,12 @@ function slotFields(selection: FlowConnectionSelection): string {
 export function updateFlowConnectionRequirements(root: HTMLElement, selection: FlowConnectionSelection, values: Record<string, JsonValue>): void {
     (selection.slots ?? []).forEach((slot, index) => {
         const required = flowConnectionRequired(slot, values), row = root.querySelector<HTMLElement>(`[data-slot-row="${index}"]`);
+        if (row) row.hidden = !!slot.requiredWhen && !required;
         row?.querySelector('[data-slot-requirement]')?.replaceChildren(t(required ? 'flow.connections.required' : 'flow.connections.optional'));
         row?.querySelector('select')?.setAttribute('aria-required', String(required));
         row?.querySelector('option[value=""]')?.replaceChildren(t(required ? 'connection.flowInherit' : 'connection.slotUnbound'));
     });
+    updateFlowPresentationGroups(root);
 }
 
 export function collectFlowConnections(root: HTMLElement, selection: FlowConnectionSelection, values: Record<string, JsonValue>): void {

@@ -40,3 +40,27 @@ it('keeps oneOf exclusive and preselects its single populated member', () => {
     expect(root.querySelector('[data-flow-tab]')).toBeNull();
     expect(readFlowParameterForm(root, parameters)).toEqual({text: 'hello'});
 });
+
+it('groups configuration with its connection and reveals dependent options without clearing hidden values', async () => {
+    const {updateFlowConnectionRequirements} = await import('../../llm-ui-adapter/src/components/FlowConnectionFields');
+    const {ParameterSources} = await import('../../llm-ui-adapter/src/flows/parameter-sources');
+    const condition = {kind: 'param' as const, path: ['enabled']};
+    const parameters: FlowParameter[] = [
+        {name: 'enabled', type: 'boolean', default: false, presentation: {group: 'Generation', contentSource: false}},
+        {name: 'count', type: 'number', default: 3, presentation: {group: 'Generation', contentSource: false, visibleWhen: condition}},
+    ];
+    const connection = {connections: [], onChange() {}, slots: [{name: 'media', requiredWhen: condition, presentation: {group: 'Generation'}}]};
+    const root = document.createElement('div'); root.innerHTML = flowParameterFields(parameters, connection); document.body.append(root);
+    cleanups.push(bindFlowParameterState(root, parameters, [], values => updateFlowConnectionRequirements(root, connection, values)));
+    cleanups.push(new ParameterSources({} as never, {navigation: 'projects'}, parameters).mount(root));
+    const group = root.querySelector('.flow-parameter-group')!;
+    expect(group.querySelector('[data-parameter-row="0"]')).not.toBeNull(); expect(group.querySelector('[data-slot-row="0"]')).not.toBeNull();
+    expect(root.querySelector<HTMLElement>('[data-parameter-row="1"]')!.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>('[data-slot-row="0"]')!.hidden).toBe(true);
+    expect(root.querySelector('.flow-content-source')).toBeNull();
+    const checkbox = root.querySelector<HTMLInputElement>('[data-parameter="0"]')!; checkbox.checked = true; checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(root.querySelector<HTMLElement>('[data-parameter-row="1"]')!.hidden).toBe(false);
+    expect(root.querySelector<HTMLElement>('[data-slot-row="0"]')!.hidden).toBe(false);
+    checkbox.checked = false; checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(readFlowParameterForm(root, parameters)).toEqual({enabled: false, count: 3});
+});

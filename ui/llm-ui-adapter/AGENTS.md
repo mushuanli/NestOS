@@ -219,3 +219,5 @@ OperationPersistence 只在 UI 适配层按 llm-ui 的纯规则合并 operationR
 显式 `/run` 携带参数且没有待上传附件时，复用参数表单解析、字段约束、输入组选项及后端连接准入检查；完整有效输入直接提交，不重复弹启动确认。空 `/run`、缺参数或待配置连接保留原表单入口，网络/权限错误不能退化成确认弹窗。oneOf 显式输入先清理其他成员的默认值，运行中 builtin.input 仍由 Flow 自身决定。
 
 Flow 参数表单按 inputGroups 声明展示关系：oneOf 仅提交单选来源并预选唯一有值成员；anyOf 用页签切换显示，保留并提交所有已填来源，至少提供一种。隐藏来源的校验错误自动切回对应页签。非来源的可选参数收起到“更多设置”，字段索引与默认值保持不变。
+
+Flow 参数 presentation.group 与连接 presentation.group 按声明合并显示；visibleWhen 只控制可见性，不清除参数值。条件连接依据 requiredWhen 隐藏，打开相关开关后显现；隐藏字段/连接的错误仍展开所属设置组。presentation.contentSource=false 的配置字段不显示文件/工具/Flow 内容来源入口。展示规则不按预设名称或业务字段分支。

@@ -1,5 +1,9 @@
 /** Read-only application commands; unknown commands retain write semantics. */
 const reads = new Set<string>([
+    "app.input-source.catalog",
+    "app.input-source.inspect",
+    "app.resource.read",
+    "app.resource.search",
     "app.assets.read",
     "app.assets.inspect",
     "app.artifacts.list",

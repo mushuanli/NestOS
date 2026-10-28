@@ -1,3 +1,6 @@
+import {configuredToolCatalog} from '../kernel/tool-commands';
+import {registerInputSourceExecution} from '../host/input-source-execution';
+import {registerResourceReferences} from '../host/resource-references';
 import {createTaskAssetReader} from './task-assets';
 import {createTaskArtifactServices} from './task-artifact-services';
 import {createContextBindingReader} from '../projects/harness-context-catalog';
@@ -19,6 +22,7 @@ import { registerFlowLibraryRecovery } from '../presets/restore-flows';
 export interface OwnedConversationView { sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }
 
 export interface ConversationSystemOptions {
+    projects?: import('@itookit/app-contracts/services').ProjectService;
     independentCalls?: import('@itookit/llm-session').IndependentCallService;
     submitIndependentCall?: import('@itookit/llm-session/contracts').IndependentCallSubmitter;
     ensureFlowDependencies?(flowId: string): Promise<void>;
@@ -105,8 +109,11 @@ export async function createConversationSystem(
         resolveHarnessToolIds: capabilities.resolveHarnessToolIds,
         resolveMCPToolIds: capabilities.resolveMCPToolIds,
     });
+    const sourceExecutions = registerInputSourceExecution({commands: system.commandBus, fs: systemFS, kernel: kernel.kernel, repository: options.sessionRepository, projects: options.projects,
+        prepare: options.prepareSessionExecution, writable: options.ensureWritable, tools: async () => configuredToolCatalog(kernel.toolCatalog, await options.agentService.getMCPServers())});
+    const references = registerResourceReferences(system.commandBus, {vfs: options.vfs, projects: options.projects, repository: options.sessionRepository});
     const inputs = registerInputAssets(system.commandBus, systemFS, reference => createTaskAssetReader(() => kernel.kernel, systemFS)(reference, {...reference, operationId: 'preview', effectId: 'preview'}));
     const artifactCommands = artifacts.register(system.commandBus);
     const recovery = registerFlowLibraryRecovery(system.commandBus, options.ensureFlowDependencies);
-    return { ...system, async dispose() { inputs.dispose(); artifactCommands.dispose(); recovery.dispose(); await system.dispose(); } };
+    return { ...system, async dispose() { sourceExecutions.dispose(); references.dispose(); inputs.dispose(); artifactCommands.dispose(); recovery.dispose(); await system.dispose(); } };
 }

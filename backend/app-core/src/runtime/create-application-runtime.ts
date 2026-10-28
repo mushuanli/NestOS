@@ -426,6 +426,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         let flowInstallations: FlowInstallationService | undefined;
         let independentContexts: ConversationContexts | undefined;
         const conversationOptions = {
+                projects,
                 submitIndependentCall: async request => {
                     if (!independentContexts || !request.expectedSessionId) throw new Error('Independent call host is not ready');
                     const context = await independentContexts.open(request.expectedSessionId);

@@ -359,3 +359,4 @@ export { createSessionHost, type SessionHostPorts, type SessionHost, type Sessio
 export { moveSessionDataDirectory } from "./persistence/session-storage-locations";
 
 export { prepareFlowConnections } from './session/flow-connections';
+export {createSessionId} from './persistence/session-identity';

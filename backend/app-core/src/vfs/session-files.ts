@@ -238,7 +238,8 @@ export class SessionFilesService {
         try {
             const owner = !context.replacement && at === '/workspace' ? await this.workspaceProvider?.(id, mount) : undefined;
             if (owner) context.owners.push(owner);
-            const root = normalizeVirtualPath(context.replacement || owner ? '/' : mount.root ?? '/');
+            const storedRoot = mount.sourceId === 'admin-home' ? (mount.root ?? '/').replace(/^\/minds(?=\/|$)/, '/notes') : mount.root;
+            const root = normalizeVirtualPath(context.replacement || owner ? '/' : storedRoot ?? '/');
             const fs = context.replacement ?? owner?.fs ?? this.sources.get(mount.sourceId) ?? await this.resolveSource?.(mount.sourceId);
             if (!fs) throw new FSError('EACCES', 'Namespace source is unavailable');
             const readonly = (await fs.capabilitiesAt(root)).readonly;

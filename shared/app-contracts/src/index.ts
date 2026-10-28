@@ -37,3 +37,7 @@ export type * from './session/artifacts';
 export type * from './ports/flow-installation';
 
 export {DOCUMENT_CHAT_META_KEY} from './ports/document-chat';
+export {ResourceCommand, parseResourceReference, formatResourceReference} from './vfs/resource-reference';
+export type {ResourceScope, ResourceReference, ResourceContent} from './vfs/resource-reference';
+export {InputSourceCommand} from './vfs/resource-reference';
+export type {ExecutableInputSource, InputSourceExecution, InputSourceReceipt} from './vfs/resource-reference';

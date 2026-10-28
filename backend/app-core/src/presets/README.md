@@ -13,7 +13,7 @@ UI 不附带业务模板。NestOS 产品 Flow 以本目录的 JSON 定义保存�
 
 内置模板安装通过 `flow.draft.install` 保存独立安装记录；删除 `.flow` 后记录仍在，重启不再恢复该模板。聊天侧栏将同一 FlowEngine 挂到 `/@flows`，支持展开、打开和右键运行/删除。新增作文文件统一名为 `essay-review.flow`。
 
-主动恢复：设置 → 文件系统（或系统恢复）→ 恢复初始文件。笔记和工作流按组折叠、默认不选，逐项展示名称、目标路径和存在状态，勾选后恢复。清单包含 `readme.md`、`person-agent-demo.md`、`essay-review.flow` 和 `anki-generate.flow`。聊天侧栏 Flow 目录的恢复操作共用产品 Flow 库。`restoreFlowLibrary` 经 `app.flow-library.restore` 调用 `flow.draft.restore` 和 `flow.revision.create`，显式恢复缺失文件，保留已有修改和安装记录；之后再次删除也不会被普通启动补装。旧用户的 `essay-review.flow` 及其发布版本、历史不会自动删除或改写，源码和恢复清单不再维护旧模板副本。
+主动恢复：设置 → 文件系统（或系统恢复）→ 恢复初始文件。笔记和工作流按组折叠、默认不选，逐项展示名称、目标路径和存在状态，勾选后恢复。清单包含 `readme.md`、`person-agent-demo.md`、`flow文件格式说明.md`、`essay-review.flow` 和 `anki-generate.flow`。聊天侧栏 Flow 目录的恢复操作共用产品 Flow 库。`restoreFlowLibrary` 经 `app.flow-library.restore` 调用 `flow.draft.restore` 和 `flow.revision.create`，显式恢复缺失文件，保留已有修改和安装记录；之后再次删除也不会被普通启动补装。旧用户的 `essay-review.flow` 及其发布版本、历史不会自动删除或改写，源码和恢复清单不再维护旧模板副本。
 
 通用恢复命令接受调用方显式传入的定义数组，按顺序恢复并发布新恢复的定义。单文件可以通过 `functions: FlowDraft[]` 携带内联函数；恢复与发布只安装主资源，内联函数随主版本递归冻结，不进入全局工作流库。跨文件组合仍需先提供被调用的公共 Flow，再提供入口，入口发布时锁定依赖 revision/digest。核心恢复命令本身不自动发布，也不按业务 ID 分支；已有用户定义不会被覆盖。CLI 优先使用内联函数，外部依赖可从入口所在目录加载同名子 `.flow`；运行快照保存展开后的图，恢复无需重新读取最新定义。
 
@@ -28,3 +28,5 @@ UI 不附带业务模板。NestOS 产品 Flow 以本目录的 JSON 定义保存�
 图片限制由各外部定义的 `imageConstraints` 声明。图片值复用标准 `image_url` 消息内容块；`messageTemplates` 渲染声明的多模态消息，`messages` 保持已有消息快照。
 
 `notes-readme.json` 是笔记 `readme.md` 的正文源，包含编辑器/AI Chat、HTML Live 可运行示例、nestos-node 接入、权限与功能说明，以及 httpd 可选 swap 配置。与人物样本分开存放；已有文件不自动覆盖，使用恢复初始文件入口按需创建。
+
+`flow-format-guide.json` 是笔记 `flow文件格式说明.md` 的唯一内容源，通过系统恢复 `note:flow-format` 写入 `/home/admin/notes/`，包含供用户与 AI 使用的完整示例与参数说明。恢复保留已有笔记；测试以实际 Flow 校验器验证文档首个完整示例。系统恢复内置 Flow 则覆盖当前草稿并发布新修订，保留历史版本。

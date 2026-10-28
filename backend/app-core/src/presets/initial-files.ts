@@ -4,11 +4,12 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import demo from './digital-twin-demo.json';
 import readme from './notes-readme.json';
+import flowGuide from './flow-format-guide.json';
 import { createNestosFlowLibrary } from './flow-library';
 import { restoreAndPublishFlow } from './restore-flows';
 
 const noteWrites = new WeakMap<IFileSystem, Promise<boolean>>();
-const noteTemplates = [{id: 'note:readme', ...readme}, {id: 'note:demo', ...demo}];
+const noteTemplates = [{id: 'note:readme', ...readme}, {id: 'note:demo', ...demo}, {id: 'note:flow-format', ...flowGuide}];
 
 export interface InitialFileEntry { id: string; group: 'notes' | 'flows'; name: string; path: string; exists: boolean; }
 export interface InitialFileResult { id: string; status: 'restored' | 'preserved' | 'failed'; error?: string; dependencies?: FlowInstallationReport; }

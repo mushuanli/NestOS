@@ -20,7 +20,7 @@ it('lists exact files, restores only selected notes and preserves edits', async 
     const { runtime, notes, library } = await setup();
     await runtime.flowEngine.engine.driver.delete(['/essay-review.flow']);
     const entries = await library.list();
-    expect(entries.map(entry => entry.name)).toEqual(['readme.md', 'person-agent-demo.md', 'essay-review.flow', 'anki-generate.flow']);
+    expect(entries.map(entry => entry.name)).toEqual(['readme.md', 'person-agent-demo.md', 'flow文件格式说明.md', 'essay-review.flow', 'anki-generate.flow']);
     expect(entries[1]).toMatchObject({ path: '/home/admin/notes/person-agent-demo.md', exists: false });
     expect(await library.restore(['note:demo'])).toEqual([{ id: 'note:demo', status: 'restored' }]);
     expect(await notes.driver.readContent('/person-agent-demo.md', { encoding: 'utf-8' })).toBe(demo.content);
@@ -123,4 +123,16 @@ it('reports replacement failures without publishing or changing the existing dra
     ]);
     expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'essay-review'})).toEqual(before);
     expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, {id: 'essay-review'})).toEqual(draft);
+});
+
+it('restores the Flow authoring guide as a note and validates its complete example', async () => {
+    const {runtime, notes, library} = await setup();
+    expect(await library.restore(['note:flow-format'])).toEqual([{id: 'note:flow-format', status: 'restored'}]);
+    const content = await notes.driver.readContent('/flow文件格式说明.md', {encoding: 'utf-8'});
+    expect(content).toContain('请依据这份 Flow 文件格式说明');
+    const example = JSON.parse(String(content).match(/```json\n([\s\S]*?)\n```/)![1]);
+    expect(await runtime.commandBus.execute(FlowCommand.DraftValidate, example)).toMatchObject({valid: true});
+    await notes.driver.writeContent('/flow文件格式说明.md', 'My additions');
+    expect(await library.restore(['note:flow-format'])).toEqual([{id: 'note:flow-format', status: 'preserved'}]);
+    expect(await notes.driver.readContent('/flow文件格式说明.md', {encoding: 'utf-8'})).toBe('My additions');
 });

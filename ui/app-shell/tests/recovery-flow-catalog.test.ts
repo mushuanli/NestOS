@@ -29,7 +29,7 @@ it('restores the single self-contained Anki Flow from System Recovery and replac
     const editor = new RecoverySettingsEditor(container, runtime.agentService, {} as never, undefined, files);
     cleanup.push(() => editor.destroy()); await editor.render();
     expect([...container.querySelectorAll<HTMLElement>('[data-initial-id]')].map(input => input.dataset.initialId)).toEqual([
-        'note:readme', 'note:demo', 'flow:essay-review', 'flow:anki-generate',
+        'note:readme', 'note:demo', 'note:flow-format', 'flow:essay-review', 'flow:anki-generate',
     ]);
     expect(container.textContent).toContain('/home/admin/flows/anki-generate.flow');
     expect(container.querySelector<HTMLElement>('[data-initial-id="flow:anki-generate"]')!.parentElement!.textContent).toContain(t('initialFiles.missing'));

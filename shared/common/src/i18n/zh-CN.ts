@@ -5,6 +5,16 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'twin.monthlyTokenLimit': '每月 token 额度',
+    'twin.monthlyBudgetHelp': '按 UTC 自然月计算；留空不另设限制，0 禁止新调用。累计预算不限额时仍检查月额度。旧用量不重置。',
+    'twin.monthlyBudgetExhausted': '本月额度不足，新的模型调用已暂停。',
+    'twin.meterEntries': '调用用量明细（最近100条）',
+    'twin.meterState.reserved': '已预留',
+    'twin.meterState.pending': '待结算',
+    'twin.meterState.settled': '已结算',
+    'twin.meterKind.reported': '实际报告',
+    'twin.meterKind.estimated': '保守估算',
+    'twin.meterKind.unknown': '用量未知',
     'twin.runs': '运行记录',
     'twin.scannerTrigger.manual': '手动运行',
     'twin.scannerTrigger.interval': '定时检查',

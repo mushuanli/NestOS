@@ -1,3 +1,4 @@
+import {meterPeriod, reserveMeter, settleMeter} from './metering';
 import { TWIN_EXTRACTION_OUTPUT_ESTIMATE, TWIN_EXTRACTION_PROMPT_RESERVE } from './extraction-estimates';
 import { settleFailedJob } from './failure-accounting';
 import { diagnosticDetail, traceAnalysis } from './diagnostics';
@@ -132,12 +133,13 @@ export class TwinAnalysis {
         if (!settings.data.budgetUnlimited && settings.data.spentTokens + settings.data.reservedTokens + reservedTokens > settings.data.tokenLimit) throw new Error('TWIN_BUDGET_EXHAUSTED');
         const id = randomUUID(), epoch = (await this.records.store.inspect()).forgetEpoch;
         const guard = await this.guard(scope, { reserve: reservedTokens });
-        const data: TwinAnalysisJob = { sourceId: source.id, sourceRevision: source.revision, sourceHash: source.data.hash,
+        const data: TwinAnalysisJob = { meterPeriod: meterPeriod(), sourceId: source.id, sourceRevision: source.revision, sourceHash: source.data.hash,
             ...userIdentity(settings.data), offset, start: offset, end, connectionId: source.data.connectionId, sessionId: `twin-analysis-${id}`, taskId: '', epoch,
             reservedTokens, createdAt: Date.now(), state: 'queued', error: '', ...(scope ? { scanScope: scope } : {}),
             checkpointId: progress.checkpointId, checkpointRevision: progress.checkpointRevision };
         await this.records.store.commit({ operationId: id, expectedForgetEpoch: epoch,
             conditions: [{ family: 'source', id: source.id, expectedRevision: source.revision }, ...guard.conditions], writes: [
+                ...await reserveMeter(this.records, id, data, settings.data.monthlyTokenLimit),
                 write('job', id, data, null), write('settings', 'pot', { ...settings.data,
                 reservedTokens: settings.data.reservedTokens + reservedTokens }, settings.revision), ...guard.writes] });
         traceAnalysis(data, 'queued', { jobId: id, sourceId: source.id, start: offset, end, reservedTokens });
@@ -165,9 +167,10 @@ export class TwinAnalysis {
             { sourceId: source.id, sourceHash: source.data.hash, incarnation: source.data.incarnation, offset: job.data.end, complete } satisfies TwinScanCheckpoint,
             job.data.checkpointRevision ?? null) : write('source', source.id, { ...source.data, offset: job.data.end,
             analyzedHash: complete ? source.data.hash : '' }, source.revision), write('job', jobId,
-            { ...job.data, state: 'committed', finishedAt: Date.now(), addedMemories: writes.filter(item => item.family === 'memory').length }, job.revision), write('settings', 'pot', { ...settings.data,
+            { ...job.data, reservedTokens: 0, actualTokens: result.tokens, state: 'committed', finishedAt: Date.now(), addedMemories: writes.filter(item => item.family === 'memory').length }, job.revision), write('settings', 'pot', { ...settings.data,
                 reservedTokens: settings.data.reservedTokens - job.data.reservedTokens,
-                spentTokens: settings.data.spentTokens + result.tokens }, settings.revision), ...guard.writes);
+                spentTokens: settings.data.spentTokens + result.tokens }, settings.revision), ...guard.writes,
+            ...await settleMeter(this.records, jobId, job.data, result.tokens, result.usageKind));
         await this.records.store.commit({ operationId: `result-${jobId}`, expectedForgetEpoch: job.data.epoch, writes,
             conditions: [...guard.conditions, { family: 'source', id: source.id, expectedRevision: source.revision }] });
     }

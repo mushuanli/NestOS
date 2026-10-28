@@ -82,6 +82,21 @@ describe.each(['memory', 'indexeddb'] as const)('automatic rules on %s', kind =>
         expect(snapshot.memories[0].data.state).toBe('candidate');
         expect(snapshot.settings.data.spentTokens).toBe(10);
     });
+    it('enforces the workspace monthly quota independently of unlimited cumulative usage and exposes settled entries', async () => {
+        const host = await setup(kind); host.put('note.md', 'first fact');
+        await host.service.configure({budgetUnlimited: true, monthlyTokenLimit: 0}, (await host.service.getSettings()).revision);
+        const id = await host.rule();
+        await expect(host.run(id)).rejects.toThrow('TWIN_MONTHLY_BUDGET_EXHAUSTED');
+        expect(host.extractor.run).not.toHaveBeenCalled();
+        expect((await host.service.snapshot()).metering.entries).toHaveLength(0);
+        await host.service.configure({monthlyTokenLimit: 100000}, (await host.service.getSettings()).revision);
+        await host.run(id);
+        const snapshot = await host.service.snapshot();
+        expect(snapshot.metering.period).toMatchObject({spentTokens: 10, reservedTokens: 0});
+        expect(snapshot.metering.entries).toHaveLength(1);
+        expect(snapshot.metering.entries[0]).toMatchObject({state: 'settled', tokens: 10, usageKind: 'reported', planId: id});
+        expect(snapshot.settings.data.spentTokens).toBe(10);
+    });
     it('discovers new sources and invalidates modified, deleted, replaced and excluded evidence while preserving manual memories', async () => {
         const host = await setup(kind); host.put('note.md', 'first');
         const id = await host.rule(); await host.run(id);

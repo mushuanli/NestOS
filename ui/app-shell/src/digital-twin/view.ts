@@ -33,7 +33,7 @@ export function updateSettings(snapshot: TwinSnapshot, connections: Array<{ id: 
         <form class="twin__form twin__settings-form" data-form="settings">
         <div class="twin__settings-grid"><section class="twin__settings-group"><h4>${escapeHTML(label('modelUsage'))}</h4>
         <label>${escapeHTML(label('connectionId'))}${select('connectionId', [{ id: '', name: label('connectionRequired') }, ...connections], settings.data.connectionId)}</label>
-        <p class="twin__help">${escapeHTML(label('modelAutoSaveHelp'))}</p>${budgetSettings(settings.data)}</section>
+        <p class="twin__help">${escapeHTML(label('modelAutoSaveHelp'))}</p>${budgetSettings(snapshot)}</section>
         <section class="twin__settings-group"><h4>${escapeHTML(label('personalInfo'))}</h4>
         ${input('userName', 'userName', settings.data.userName ?? '')}
         <label>${escapeHTML(label('userAliases'))}<textarea name="userAliases" rows="2">${escapeHTML((settings.data.userAliases ?? []).join('\n'))}</textarea></label>
@@ -47,12 +47,17 @@ export function updateSettings(snapshot: TwinSnapshot, connections: Array<{ id: 
         </form></section>`;
 }
 
-function budgetSettings(settings: TwinSnapshot['settings']['data']): string {
+function budgetSettings(snapshot: TwinSnapshot): string {
+    const settings = snapshot.settings.data, meter = snapshot.metering;
     return `<div class="twin__usage"><div><span>${escapeHTML(label('spentTokens'))}</span><strong data-spent-tokens>${settings.spentTokens.toLocaleString()}</strong></div>
         <div><span>${escapeHTML(label('reservedTokens'))}</span><strong data-reserved-tokens>${settings.reservedTokens.toLocaleString()}</strong></div></div>
         <div class="twin__budget">${checkbox('budgetUnlimited', 'budgetUnlimited', settings.budgetUnlimited === true)}
         <label data-budget-limit${settings.budgetUnlimited ? ' hidden' : ''}>${escapeHTML(label('tokenLimit'))}<input name="tokenLimit" type="number" min="0" step="1" value="${settings.tokenLimit}"${settings.budgetUnlimited ? ' disabled' : ''}></label>
         <p class="twin__help">${escapeHTML(label('budgetLimitHelp'))}</p>
+        <label>${escapeHTML(label('monthlyTokenLimit'))}<input name="monthlyTokenLimit" type="number" min="0" step="1" value="${settings.monthlyTokenLimit ?? ''}"></label>
+        <p>${escapeHTML(label('monthlyBudgetHelp'))}</p>
+        ${meter ? `<p>${escapeHTML(meter.period.id)} UTC · ${escapeHTML(label('spentTokens'))}: ${meter.period.spentTokens} · ${escapeHTML(label('reservedTokens'))}: ${meter.period.reservedTokens}</p>
+        <details><summary>${escapeHTML(label('meterEntries'))}</summary>${meter.entries.slice(0, 100).map(entry => `<p>${escapeHTML(entry.period)} · ${escapeHTML(label('meterState.' + entry.state))} · ${entry.tokens} / ${entry.reservedTokens} · ${escapeHTML(label('meterKind.' + entry.usageKind))} · ${escapeHTML(entry.sessionId)}</p>`).join('')}</details>` : ''}
         <details><summary>${escapeHTML(label('usageAccounting'))}</summary><p class="twin__help">${escapeHTML(label('unknownBudget'))}</p></details></div>`;
 }
 

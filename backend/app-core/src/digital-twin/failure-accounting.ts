@@ -1,3 +1,4 @@
+import {settleMeter} from './metering';
 import { randomUUID } from '@itookit/common';
 import { diagnosticDetail, TwinDiagnosticError } from './diagnostics';
 import type { TwinAnalysisJob, TwinSettings } from './domain';
@@ -12,7 +13,7 @@ export async function settleFailedJob(records: TwinRecords, id: string, error: u
     const data: TwinAnalysisJob = { ...job.data, state: job.data.state === 'cancelled' ? 'cancelled' : 'failed',
         finishedAt: job.data.finishedAt ?? Date.now(), error: code, errorDetail: diagnosticDetail(error),
         ...(tokens !== undefined ? { reservedTokens: 0, actualTokens: tokens } : {}) };
-    const writes = [write('job', id, data, job.revision)];
+    const writes = [write('job', id, data, job.revision), ...await settleMeter(records, id, job.data, tokens)];
     if (tokens !== undefined && job.data.reservedTokens > 0) writes.push(...await accountingWrites(records, job, tokens));
     await records.store.commit({ operationId: randomUUID(), expectedForgetEpoch: (await records.store.inspect()).forgetEpoch, writes });
 }

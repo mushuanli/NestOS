@@ -3,7 +3,7 @@ import type { TwinCleanup, TwinIdentity, TwinRecord, TwinRecordFamily, TwinRecor
 const FAMILIES: ReadonlySet<string> = new Set<TwinRecordFamily>([
     'memory', 'evidence', 'support', 'derivation', 'review', 'entity', 'relation', 'goal',
     'work-item', 'binding', 'source', 'checkpoint', 'grant', 'suppression', 'projection', 'settings', 'job', 'usage',
-    'scan-plan', 'scan-run', 'scan-checkpoint',
+    'scan-plan', 'scan-run', 'scan-checkpoint', 'meter-entry', 'meter-period',
 ]);
 // One scope may include all 500 memories plus 10000 evidence and 10000 review rows.
 export const MAX_FORGET_RECORDS = 25000;
@@ -35,7 +35,7 @@ export function decodeIdentity(raw: string | null): TwinIdentity {
     if (!raw) throw new Error('Twin is not initialized');
     const value = JSON.parse(raw) as TwinIdentity;
     if (value.schemaVersion !== 1) throw new Error('Unsupported Twin schema');
-    if (value.layoutVersion !== 4) throw new Error('Unsupported Twin layout');
+    if (value.layoutVersion !== 5) throw new Error('Unsupported Twin layout');
     identity(value.twinId); identity(value.ownerId); identity(value.incarnation); epoch(value.forgetEpoch);
     return value;
 }

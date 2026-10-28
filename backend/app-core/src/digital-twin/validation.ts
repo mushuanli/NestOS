@@ -13,6 +13,13 @@ const validators: Partial<Record<TwinRecordFamily, (data: Data) => void>> = {
     'scan-run': validateScanRun,
     'scan-checkpoint': data => { strings(data, ['sourceId', 'sourceHash', 'incarnation']); integers(data, ['offset']); booleans(data, ['complete']); },
     usage: validateUsage,
+    'meter-period': data => integers(data, ['spentTokens', 'reservedTokens']),
+    'meter-entry': data => {
+        strings(data, ['period', 'sessionId', 'planId']);
+        integers(data, ['tokens', 'reservedTokens', 'createdAt']);
+        oneOf(data.state, ['reserved', 'pending', 'settled']);
+        oneOf(data.usageKind, ['reported', 'estimated', 'unknown']);
+    },
 };
 /** Reject malformed persisted authority and content rather than granting through truthy defaults. */
 export function validateData(family: TwinRecordFamily, data: Data): void { validators[family]?.(data); }
@@ -32,6 +39,7 @@ function validateSource(data: Data): void {
     if (data.managed !== undefined) validateManagedSource(data);
 }
 function validateSettings(data: Data): void {
+    if (data.monthlyTokenLimit !== undefined && data.monthlyTokenLimit !== null) integers(data, ['monthlyTokenLimit']);
     if (data.budgetUnlimited !== undefined) booleans(data, ['budgetUnlimited']);
     userIdentity(data);
     if (data.connectionId !== undefined && typeof data.connectionId !== 'string') invalid();
@@ -39,6 +47,7 @@ function validateSettings(data: Data): void {
     booleans(data, ['paused', 'useEnabled']); integers(data, ['tokenLimit', 'reservedTokens', 'spentTokens']);
 }
 function validateJob(data: Data): void {
+    if (data.meterPeriod !== undefined && (typeof data.meterPeriod !== 'string' || !/^\d{4}-\d{2}$/.test(data.meterPeriod))) invalid();
     for (const key of ['createdAt', 'startedAt', 'finishedAt', 'actualTokens', 'requestStartedAt', 'responseReceivedAt', 'responseCompletedAt']) if (data[key] !== undefined) integers(data, [key]);
     if (data.errorDetail !== undefined) strings(data, ['errorDetail']);
     userIdentity(data);

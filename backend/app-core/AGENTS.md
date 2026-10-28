@@ -137,7 +137,7 @@ NestOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createNe
 
 - `projects/project-directory-recovery.ts` 恢复有数据的工作台直属旧目录：条件补建 info.seq、沿用旧项目身份与会话归属；不移动正文，读取故障或根重叠不能当作不存在。
 
-- 分身扫描规则通过 `scan-rules` / `source-index` 维护自动来源；`project-catalog` / `harness-reader` 复用项目与会话公开接口。文件的到期检查核对正文 hash，失败范围不推断删除。新规则全局模型/预算，明确主体信息自动生效；layout 4 原子迁移 2/3，旧指定来源计划保留兼容。
+- 分身扫描规则通过 `scan-rules` / `source-index` 维护自动来源；`project-catalog` / `harness-reader` 复用项目与会话公开接口。文件的到期检查核对正文 hash，失败范围不推断删除。新规则全局模型/预算，明确主体信息自动生效；layout 5 原子迁移 2/3/4，旧指定来源计划保留兼容。
 
 - 扫描 `focus` 随 run/scope 固化并参与检查点身份；无关注点的旧检查点保持兼容。规则停用或删除保留知识快照，`retained` 不代表继续读取源文件；全局排除仍使其失效。`graph.ts` 从可用记忆派生图，人物合并通过 entity 映射与版本检查点完成，不能按同名自动合并。
 
@@ -213,3 +213,5 @@ RemoteConversationStore 的 load/save/submitted 在同实例串行，避免延�
 原生队列的 enqueue/editInstructionQueue 经显式 RPC 暴露，与原发送 tail 独立；ConversationView 在队首派发回执悬挂时继续观察，持久化由 RemoteConversationStore 校验队列修订。ConversationRegistry 由项目宿主持有，跨视图复用同一控制器并在存在可派发队列或未确认回执时保留观察；宿主关闭才统一释放。
 
 configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、公开范围和默认实参；不创建 Task、不获取 Connection、不持有队列。runtime 只接线；发布事务与原操作回执由 Session 配置服务管理。
+
+数字分身的月度 token 额度按 UTC 自然月独立于累计预算检查；metering 与 job/累计预留在同一 SeqFile 事务提交。结算回原预留月份，未知用量保留 pending，不将估算 token 表示为供应商费用。旧账不回填、不重置。

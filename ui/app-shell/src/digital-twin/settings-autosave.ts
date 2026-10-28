@@ -16,6 +16,7 @@ export class TwinSettingsAutosave {
     edit(control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, immediate: boolean): void {
         const name = control.name as keyof Patch;
         const value = control instanceof HTMLInputElement && control.type === 'checkbox' ? control.checked
+            : name === 'monthlyTokenLimit' ? (control.value.trim() ? Number(control.value) : null)
             : name === 'tokenLimit' ? (control.value.trim() ? Number(control.value) : NaN)
             : ['userAliases', 'globalExclude'].includes(name) ? control.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean) : control.value.trim();
         Object.assign(this.edits, { [name]: value });

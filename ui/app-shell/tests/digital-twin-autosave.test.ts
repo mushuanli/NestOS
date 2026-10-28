@@ -128,3 +128,19 @@ it('restores the previous VFS navigation selection when settings cannot be saved
     ignore.value = ''; ignore.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.waitFor(() => expect(host.state()).toBe('saved'));
 });
+
+it('saves and clears monthly allowance independently of unlimited cumulative budget without resetting usage', async () => {
+    const host = await setup(), amount = host.control<HTMLInputElement>('monthlyTokenLimit');
+    const before = (await host.service.getSettings()).data.spentTokens;
+    amount.value = '0'; amount.dispatchEvent(new Event('change', {bubbles: true}));
+    await vi.waitFor(() => expect(host.state()).toBe('saved'));
+    expect((await host.service.getSettings()).data.monthlyTokenLimit).toBe(0);
+    const toggle = host.control<HTMLInputElement>('budgetUnlimited'); toggle.checked = true;
+    toggle.dispatchEvent(new Event('change', {bubbles: true}));
+    await vi.waitFor(() => expect(host.state()).toBe('saved'));
+    expect(amount.disabled).toBe(false);
+    expect((await host.service.getSettings()).data).toMatchObject({monthlyTokenLimit: 0, spentTokens: before});
+    amount.value = ''; amount.dispatchEvent(new Event('change', {bubbles: true}));
+    await vi.waitFor(async () => expect((await host.service.getSettings()).data.monthlyTokenLimit).toBeNull());
+    expect((await host.service.getSettings()).data.spentTokens).toBe(before);
+});

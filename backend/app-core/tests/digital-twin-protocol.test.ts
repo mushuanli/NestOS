@@ -10,7 +10,7 @@ it('sends bounded extraction with thinking disabled through the kernel input', a
         wait: async () => ({ status: 'succeeded', output: { finishReason: 'stop', usage: { total_tokens: 100 },
             message: { content: '{"candidates":[]}' } } }) }));
     const kernel = { openSession: async () => ({ submit }) } as unknown as Kernel;
-    await expect(new KernelTwinExtractor(kernel).run(job, 'source', async () => {})).resolves.toEqual({ candidates: [], tokens: 100 });
+    await expect(new KernelTwinExtractor(kernel).run(job, 'source', async () => {})).resolves.toEqual({ candidates: [], tokens: 100, usageKind: 'reported' });
     expect(submit.mock.calls[0]?.[0]).toMatchObject({ input: { thinking: false, maxTokens: 8192, stream: false } });
     expect((submit.mock.calls[0]?.[0] as any).input.responseFormat).toBeUndefined();
 });

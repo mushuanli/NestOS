@@ -1,3 +1,4 @@
+import {meterSnapshot} from './metering';
 import { userIdentity } from './identity';
 import { extractionPrompt } from './extraction';
 import { selectionPattern, selectionKinds, type TwinSelectionTarget, type TwinSelectionType } from './selection';
@@ -83,7 +84,7 @@ export class DigitalTwinService {
         const aliases = new Map((await read('records.entity', () => services.records.list<TwinEntityAlias>('entity'))).map(alias => [alias.id, alias.data]));
         const jobs = await read('records.job', () => services.records.list<TwinAnalysisJob>('job'));
         const identity = (await services.records.get<TwinSettings>('settings', 'pot'))!.data;
-        return { prompt: extractionPrompt(identity), graph: knowledgeGraph(memories, aliases), cleanupError: jobs.find(job => job.data.cleanupError)?.data.cleanupError ?? '',
+        return { metering: await meterSnapshot(services.records), prompt: extractionPrompt(identity), graph: knowledgeGraph(memories, aliases), cleanupError: jobs.find(job => job.data.cleanupError)?.data.cleanupError ?? '',
             pendingCleanup: await read('records.pendingCleanup', () => services.records.store.pendingCleanup()),
             sources: sources.map(source => ({ ...source, observedAt: services.sources.observedAt(source.id) ?? source.data.checkedAt })), memories,
             settings: (await read('records.settings', () => services.records.get<TwinSettings>('settings', 'pot')))!,
@@ -257,13 +258,14 @@ export class DigitalTwinService {
     async getSettings(): Promise<TwinDataRecord<TwinSettings>> {
         return (await (await this.services()).records.get<TwinSettings>('settings', 'pot'))!;
     }
-    async configure(patch: Partial<Pick<TwinSettings, 'tokenLimit' | 'budgetUnlimited' | 'paused' | 'useEnabled' | 'connectionId' | 'globalExclude' | 'userName' | 'userAliases'>>, revision: string) {
+    async configure(patch: Partial<Pick<TwinSettings, 'tokenLimit' | 'monthlyTokenLimit' | 'budgetUnlimited' | 'paused' | 'useEnabled' | 'connectionId' | 'globalExclude' | 'userName' | 'userAliases'>>, revision: string) {
         const records = (await this.services()).records, settings = (await records.get<TwinSettings>('settings', 'pot'))!;
         const data = { ...settings.data, ...Object.fromEntries(Object.entries(patch).filter(([key]) =>
-            ['tokenLimit', 'budgetUnlimited', 'paused', 'useEnabled', 'connectionId', 'globalExclude', 'userName', 'userAliases'].includes(key))) };
+            ['tokenLimit', 'monthlyTokenLimit', 'budgetUnlimited', 'paused', 'useEnabled', 'connectionId', 'globalExclude', 'userName', 'userAliases'].includes(key))) };
         Object.assign(data, userIdentity(data));
         if (typeof data.paused !== 'boolean' || typeof data.useEnabled !== 'boolean') throw new Error('TWIN_INVALID_SETTINGS');
         if (!Number.isSafeInteger(data.tokenLimit) || data.tokenLimit < 0) throw new Error('TWIN_INVALID_BUDGET');
+        if (data.monthlyTokenLimit !== undefined && data.monthlyTokenLimit !== null && (!Number.isSafeInteger(data.monthlyTokenLimit) || data.monthlyTokenLimit < 0)) throw new Error('TWIN_INVALID_BUDGET');
         if (data.budgetUnlimited !== undefined && typeof data.budgetUnlimited !== 'boolean') throw new Error('TWIN_INVALID_BUDGET');
         if (patch.connectionId !== undefined && (typeof patch.connectionId !== 'string' || !patch.connectionId.trim())) throw new Error('TWIN_CONNECTION_REQUIRED');
         if (data.globalExclude !== undefined) data.globalExclude = ruleLines(data.globalExclude);

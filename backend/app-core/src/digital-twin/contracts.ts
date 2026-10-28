@@ -2,14 +2,14 @@
 export type TwinRecordFamily = 'memory' | 'evidence' | 'support' | 'derivation' | 'review'
     | 'entity' | 'relation' | 'goal' | 'work-item' | 'binding' | 'source' | 'checkpoint'
     | 'grant' | 'suppression' | 'projection' | 'settings' | 'job' | 'usage'
-    | 'scan-plan' | 'scan-run' | 'scan-checkpoint';
+    | 'scan-plan' | 'scan-run' | 'scan-checkpoint' | 'meter-entry' | 'meter-period';
 
 export interface TwinIdentity {
     twinId: string;
     ownerId: string;
     incarnation: string;
     schemaVersion: 1;
-    layoutVersion: 4;
+    layoutVersion: 5;
     forgetEpoch: number;
 }
 

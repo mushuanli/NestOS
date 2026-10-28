@@ -8,7 +8,7 @@ import type { DurableChatOutput } from '@itookit/llm-tasks';
 import { validateRelation, TWIN_KINDS, type TwinAnalysisJob, type TwinCandidate } from './domain';
 
 export interface TwinExtractionPort {
-    run(job: TwinAnalysisJob, text: string, attached: (taskId: string) => Promise<void>, progress?: (progress: TwinRequestProgress) => Promise<void>): Promise<{ candidates: TwinCandidate[]; tokens: number }>;
+    run(job: TwinAnalysisJob, text: string, attached: (taskId: string) => Promise<void>, progress?: (progress: TwinRequestProgress) => Promise<void>): Promise<{ candidates: TwinCandidate[]; tokens: number; usageKind?: 'reported' | 'estimated' }>;
     cancel(job: TwinAnalysisJob): Promise<void>;
     cleanup(job: TwinAnalysisJob): Promise<void>;
 }
@@ -115,7 +115,7 @@ function extractionResult(output: DurableChatOutput, text: string, reservedToken
     }
     const content = output.message.content;
     if (typeof content !== 'string') throw new TwinDiagnosticError('TWIN_INVALID_EXTRACTION', { message: 'Expected text content from the model' });
-    return { candidates: parseCandidates(content, text), tokens: Number.isSafeInteger(output.usage.total_tokens) && (output.usage.total_tokens ?? 0) > 0
+    return { candidates: parseCandidates(content, text), usageKind: (Number.isSafeInteger(output.usage?.total_tokens) && (output.usage?.total_tokens ?? 0) > 0 ? 'reported' : 'estimated') as 'reported' | 'estimated', tokens: Number.isSafeInteger(output.usage?.total_tokens) && (output.usage?.total_tokens ?? 0) > 0
         ? output.usage.total_tokens! : reservedTokens };
 }
 

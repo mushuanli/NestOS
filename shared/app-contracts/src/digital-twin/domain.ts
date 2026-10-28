@@ -37,12 +37,14 @@ export interface TwinSourceReader {
     sessions(): Promise<Array<{ id: string; title: string }>>;
 }
 export interface TwinSettings extends TwinUserIdentity {
+    monthlyTokenLimit?: number | null;
     budgetUnlimited?: boolean;
     tokenLimit: number; reservedTokens: number; spentTokens: number; paused: boolean;
     useEnabled: boolean; connectionId?: string; globalExclude?: string[];
 }
 export interface TwinGrantData { sessionId: string; agentId: string; connectionId: string; enabled: boolean; project: string; connectionFingerprint?: string; }
 export interface TwinAnalysisJob extends TwinUserIdentity {
+    meterPeriod?: string;
     errorDetail?: string; actualTokens?: number;
     createdAt?: number; startedAt?: number; finishedAt?: number;
     requestStartedAt?: number; responseReceivedAt?: number; responseCompletedAt?: number;

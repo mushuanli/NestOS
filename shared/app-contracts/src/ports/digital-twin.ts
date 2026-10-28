@@ -66,6 +66,10 @@ export interface DigitalTwinService {
     onChange(listener: () => void): () => void;
     scanOnce(): Promise<void>;
     snapshot(progress?: (stage: string) => void): Promise<{
+        metering: {
+            period: {id: string; spentTokens: number; reservedTokens: number};
+            entries: Array<{id: string; period: string; sessionId: string; planId: string; state: 'reserved' | 'pending' | 'settled'; reservedTokens: number; tokens: number; usageKind: 'reported' | 'estimated' | 'unknown'; createdAt: number}>;
+        };
         prompt: string;
         graph: TwinGraph;
         cleanupError: string;
@@ -185,7 +189,7 @@ export interface DigitalTwinService {
         retainedSessions: string[];
     }>;
     getSettings(): Promise<TwinDataRecord<TwinSettings>>;
-    configure(patch: Partial<Pick<TwinSettings, 'tokenLimit' | 'budgetUnlimited' | 'paused' | 'useEnabled' | 'connectionId' | 'globalExclude' | 'userName' | 'userAliases'>>, revision: string): Promise<void>;
+    configure(patch: Partial<Pick<TwinSettings, 'tokenLimit' | 'monthlyTokenLimit' | 'budgetUnlimited' | 'paused' | 'useEnabled' | 'connectionId' | 'globalExclude' | 'userName' | 'userAliases'>>, revision: string): Promise<void>;
     retrieve(plan: ContextPlan, agentId: string, sessionId: string): Promise<ContextContracts.RetrievedMemoryEntry[]>;
 }
 
@@ -248,7 +252,7 @@ export interface TwinRecordRef {
     id: string;
 }
 
-export type TwinRecordFamily = 'memory' | 'evidence' | 'support' | 'derivation' | 'review' | 'entity' | 'relation' | 'goal' | 'work-item' | 'binding' | 'source' | 'checkpoint' | 'grant' | 'suppression' | 'projection' | 'settings' | 'job' | 'usage' | 'scan-plan' | 'scan-run' | 'scan-checkpoint';
+export type TwinRecordFamily = 'memory' | 'evidence' | 'support' | 'derivation' | 'review' | 'entity' | 'relation' | 'goal' | 'work-item' | 'binding' | 'source' | 'checkpoint' | 'grant' | 'suppression' | 'projection' | 'settings' | 'job' | 'usage' | 'scan-plan' | 'scan-run' | 'scan-checkpoint' | 'meter-entry' | 'meter-period';
 
 export interface TwinGraph {
     nodes: TwinGraphNode[];

@@ -4,6 +4,16 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'twin.monthlyTokenLimit': 'Monthly token allowance',
+    'twin.monthlyBudgetHelp': 'UTC calendar months. Blank adds no limit; zero blocks new calls. Applies even when the cumulative budget is unlimited. Historical totals remain unchanged.',
+    'twin.monthlyBudgetExhausted': 'Monthly allowance exhausted; new model calls are paused.',
+    'twin.meterEntries': 'Call usage (latest 100 entries)',
+    'twin.meterState.reserved': 'Reserved',
+    'twin.meterState.pending': 'Pending settlement',
+    'twin.meterState.settled': 'Settled',
+    'twin.meterKind.reported': 'Reported',
+    'twin.meterKind.estimated': 'Conservative estimate',
+    'twin.meterKind.unknown': 'Unknown usage',
     'twin.runs': 'Run history',
     'twin.scannerTrigger.manual': 'Manual',
     'twin.scannerTrigger.interval': 'Scheduled checks',

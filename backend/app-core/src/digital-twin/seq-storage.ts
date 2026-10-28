@@ -19,13 +19,13 @@ export class TwinSeqStorage {
         }
         const root = `/var/lib/digital-twin/${twinId}`;
         for (const file of FILES) { progress(`storage.prepare.${file}`); await prepare(fs, root, file); }
-        const seed: TwinIdentity = { twinId, ownerId, incarnation: randomUUID(), schemaVersion: 1, layoutVersion: 4, forgetEpoch: 0 };
+        const seed: TwinIdentity = { twinId, ownerId, incarnation: randomUUID(), schemaVersion: 1, layoutVersion: 5, forgetEpoch: 0 };
         progress('storage.bind-transaction');
         const bound = await fs.meta.seq.transaction(async tx => {
             const raw = await tx.getEntry(`${root}/authority.seq`, 'twin');
             const previous = raw ? JSON.parse(raw) : null;
-            const upgrade = previous?.schemaVersion === 1 && [2, 3].includes(previous?.layoutVersion);
-            const current = raw ? decodeIdentity(upgrade ? JSON.stringify({ ...previous, layoutVersion: 4 }) : raw) : seed;
+            const upgrade = previous?.schemaVersion === 1 && [2, 3, 4].includes(previous?.layoutVersion);
+            const current = raw ? decodeIdentity(upgrade ? JSON.stringify({ ...previous, layoutVersion: 5 }) : raw) : seed;
             if (current.twinId !== twinId || current.ownerId !== ownerId) throw new Error('Twin owner denied');
             if (!raw) {
                 await assertEmpty(tx, root);

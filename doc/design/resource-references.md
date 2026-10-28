@@ -37,3 +37,18 @@
 已实现目录迁移、授权文本读取、新会话与已存在会话的参数表单、`/run` 位置参数和 `/flow` 调用。来源选择器可读取已有成功 Run 的值，也可显式执行工具、MCP 工具或已发布 Flow，再选择其输出。来源执行保留 requestId 并通过只读 Inspect 核对丢失回执，不自动重发；来源运行的审批和进度在 DAG 面板处理。
 
 普通文本参数保留文字语义，不会因为其内容像路径就自动读文件。来源为 UTF-8 文本（最多 2 MiB）；图片与二进制文件继续使用既有 files/images 控件。执行来源会创建独立 Session/Run，在运行列表中可查；关闭来源窗口不取消任务。
+
+## CLI
+
+应用 CLI 与 UI 共用引用解析和用户隔离。例：
+
+```sh
+pnpm cli session prepare <session-id> --flow <flow-id> --flow-args '@notes:/essay/require.md @notes:/essay/article.md' --submission-file /tmp/review-call.json
+pnpm cli session submit <session-id> --submission-file /tmp/review-call.json
+```
+
+`--flow-args` 仅用于应用 Session Flow 调用，与位置正文及 `--params` 互斥；确认/恢复文件保存已读取的参数值。submit/receipt 不重新读来源。离线 YAML/RunDefinition 不隐式访问当前用户导航；工具/MCP 编排继续使用既有显式 Tool 节点，文件引用命名空间需要应用宿主上下文。
+
+## 手工启动与嵌套调用
+
+参数确认、文件选择和来源预览仅属于用户手工启动入口。Agent 调用 Flow、Flow 通过 `builtin.flow` 调用子 Flow 直接传递已准备的实参，不依赖 DOM 或参数弹窗；参数缺失或类型错误返回调用错误。显式声明的人工输入节点、`onMissing: interact` 和工具审批继续遵循既有交互契约，不因新增启动表单而改变。

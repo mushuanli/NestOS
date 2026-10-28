@@ -1,3 +1,5 @@
+import {resolveFlowArguments} from '@itookit/app-contracts';
+import {FlowCommand, type FlowRevision} from '@itookit/llm-flow/contracts';
 import {open} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 import {randomUUID} from '@itookit/common';
@@ -25,7 +27,8 @@ export async function prepareSessionSubmission(client: ApplicationClient, sessio
 async function buildSessionSubmission(client: ApplicationClient, sessionId: string, text: string | undefined,
     branch: string, options: CommandOptions, operationId: string): Promise<SubmissionRequest> {
     const {kind, id, selected} = await selectTarget(client, options);
-    const source = await callSource(text, options);
+    const source = options.flowArgs === undefined ? await callSource(text, options)
+        : await flowArgumentSource(client, sessionId, selected, text, options);
     const target = selected?.target;
     const overrides = await callOverrides(kind, selected, options);
     const request: SubmissionRequest = {expectedSessionId: sessionId, expectedBranch: branch, target: {kind, id, ...(target ? {version: target.version} : {})},
@@ -43,6 +46,17 @@ async function selectTarget(client: ApplicationClient, options: CommandOptions) 
     if (!selected && (kind !== 'agent' || id !== 'default'))
         throw failure('CALL_TARGET_UNAVAILABLE', 'The selected published call target is unavailable; inspect session targets');
     return {kind, id, selected} as const;
+}
+
+async function flowArgumentSource(client: ApplicationClient, sessionId: string, selected: RootCallTarget | undefined,
+    text: string | undefined, options: CommandOptions) {
+    if (!selected || selected.target.kind !== 'flow' || text !== undefined || options.paramsFile)
+        throw failure('CLI_FLOW_ARGUMENTS_INVALID', '--flow-args requires --flow and cannot be combined with text or --params');
+    const bus = client.services.commandBus;
+    const flow = await bus.execute<FlowRevision>(FlowCommand.RevisionGet, {id: selected.target.id, revision: Number(selected.target.version)});
+    if (!flow || flow.digest !== selected.target.digest) throw failure('CALL_TARGET_CHANGED', 'Published Flow changed');
+    const value = await resolveFlowArguments(options.flowArgs!, flow.parameters ?? [], bus, {navigation: 'projects', sessionId});
+    return {kind: 'arguments' as const, value};
 }
 
 async function callSource(text: string | undefined, options: CommandOptions) {
@@ -116,7 +130,7 @@ export async function inspectSessionSubmission(client: ApplicationClient, reques
 }
 
 export function assertFrozenCallOptions(options: CommandOptions): void {
-    if (options.agent || options.flow || options.paramsFile || options.connectionBindingsFile || options.branch || options.submissionFile || options.contextFile)
+    if (options.agent || options.flow || options.flowArgs !== undefined || options.paramsFile || options.connectionBindingsFile || options.branch || options.submissionFile || options.contextFile)
         throw failure('CLI_CALL_OPTIONS_CONFLICT', 'A frozen submission cannot be overridden; edit input before preparing a new call');
 }
 

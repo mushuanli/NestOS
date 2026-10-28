@@ -39,6 +39,7 @@ export interface CommandOptions {
     branch?: string;
     file?: string;
     paramsFile?: string;
+    flowArgs?: string;
     contextFile?: string;
     callTitle?: string;
     transferFile?: string;

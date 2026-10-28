@@ -226,3 +226,15 @@ it('rejects native selection for a Flow before reading the selection file or wri
         .rejects.toMatchObject({code: 'CONTEXT_TARGET_UNSUPPORTED'});
     await expect(stat(submissionFile)).rejects.toMatchObject({code: 'ENOENT'});
 });
+
+it('freezes scoped file references in CLI Flow arguments before saving the submission', async () => {
+    const f = await setup(true), file = path.join(f.directory, 'references.json');
+    const notes = await f.runtime.vfs.openFileSystem('/home/admin/notes');
+    await notes.driver.createFile({parentPath: '/', name: 'input.md', content: '${literal.data}'});
+    await f.call('prepare', undefined, {flow: 'worker', flowArgs: '@notes:/input.md 2 false', submissionFile: file});
+    const saved = await readSubmissionFile(file, f.sessionId);
+    expect(saved.source).toEqual({kind: 'arguments', value: {request: '${literal.data}', count: 2, enabled: false}});
+    await notes.driver.writeContent('/input.md', 'changed');
+    expect((await readSubmissionFile(file, f.sessionId)).source).toEqual(saved.source);
+    expect(() => assertFrozenCallOptions({flowArgs: 'changed'})).toThrow('cannot be overridden');
+});

@@ -47,6 +47,7 @@ async function main(argv: string[]): Promise<number> {
         const {applicationCommand} = await import('./application-command');
         return applicationCommand(parsed.command!, parsed.positional, parsed.options);
     }
+    if (parsed.options.flowArgs !== undefined) throw new Error('--flow-args requires a session prepare/send/call-prepare command');
     if (parsed.options.connect) throw new Error('--connect is supported by project/session/conversation/connection/mcp/task/flow-run commands');
     switch (parsed.command) {
         case 'fs': return remoteFilesCommand(parsed.positional, parsed.options);
@@ -94,6 +95,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         const arg = rest[index];
         if (arg === '-f' || arg === '--file') options.file = required(rest[++index], 'config path');
         else if (arg === '--connection-bindings') options.connectionBindingsFile = required(rest[++index], 'connection bindings JSON file');
+        else if (arg === '--flow-args') options.flowArgs = required(rest[++index], 'Flow argument string');
         else if (arg === '--params') options.paramsFile = required(rest[++index], 'parameters JSON file');
         else if (arg === '-p' || arg === '--prompt') options.prompt = (options.prompt ? `${options.prompt} ` : '') + required(rest[++index], 'prompt');
         else if (arg === '--connect') options.connect = required(rest[++index], 'HTTPS endpoint');
@@ -208,6 +210,7 @@ function help(): string {
         `  --grant-memory <id> 显式授权本次 Session 使用该共享记忆的配置范围；可重复\n` +
         `  --headless          无交互模式，事件作为 JSONL 写到 stdout（适合 CI）\n` +
         `  --connection-bindings <file>  .flow connection slot bindings (JSON)\n` +
+        `  --flow-args <text> Session Flow 的位置／具名参数，支持 @notes:/file.md 引用\n` +
         `  --params <file>     .flow 或 Session 调用实参（JSON 对象）\n` +
         `  --flow <id>         Session 调用已发布 Flow，与 --agent 互斥\n` +
         `  --submission-file <file>  派发前独占保存冻结请求，供 submit/receipt 复用\n` +

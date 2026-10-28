@@ -41,3 +41,5 @@ export {ResourceCommand, parseResourceReference, formatResourceReference} from '
 export type {ResourceScope, ResourceReference, ResourceContent} from './vfs/resource-reference';
 export {InputSourceCommand} from './vfs/resource-reference';
 export type {ExecutableInputSource, InputSourceExecution, InputSourceReceipt} from './vfs/resource-reference';
+
+export {flowArgumentTokens, resolveFlowArguments, parameterSourceValue} from './vfs/flow-arguments';

@@ -29,17 +29,6 @@ export class SessionFamilyActions {
         this.bindMetadataRefresh(section, metadata, manifest.id, events.signal);
         return () => { this.release(section); section.remove(); };
     }
-    mountNavigation(container: HTMLElement, manifest: ConversationManifest): () => void {
-        const events = new AbortController(), button = document.createElement('button');
-        button.type = 'button'; button.className = 'session-family__switcher';
-        button.textContent = t('project.family'); button.title = t('project.currentConversation', {name: manifest.title});
-        button.setAttribute('aria-haspopup', 'dialog'); container.append(button);
-        button.addEventListener('click', () => {
-            if (!this.signal.aborted) void this.showFamily(manifest.id).catch(error => this.actions.report(error));
-        }, {signal: events.signal});
-        return () => { events.abort(); button.remove(); };
-    }
-
     private bindMetadataRefresh(section: HTMLElement, metadata: HTMLDetailsElement, id: string, signal: AbortSignal): void {
         const status = document.createElement('p'); status.className = 'session-family__metadata-status';
         status.setAttribute('role', 'alert'); status.hidden = true; metadata.append(status);

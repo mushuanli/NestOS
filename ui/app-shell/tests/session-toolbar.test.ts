@@ -1,9 +1,9 @@
+import {EventBinder} from '../../llm-ui-adapter/src/shell/EventBinder';
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { installResponsiveActions } from '@itookit/ui-common';
 import {t} from '@itookit/common';
 import {LayoutTemplates} from '../../llm-ui-adapter/src/components/templates/LayoutTemplates';
-import {EventBinder} from '../../llm-ui-adapter/src/shell/EventBinder';
 import { SessionFamilyActions } from '../src/projects/SessionFamilyActions';
 import { mountHistorySearch } from '../../llm-ui-adapter/src/components/history/content-search';
 
@@ -130,7 +130,7 @@ it('deduplicates in-flight metadata reads and discards their results after clean
     expect(time.dateTime).toBe(new Date(2000).toISOString()); expect(host.children).toHaveLength(0); abort.abort();
 });
 
-it('opens a related conversation from the title bar without merging conversation histories', async () => {
+it('opens related conversations from the more menu without a duplicate title bar button', async () => {
     HTMLDialogElement.prototype.showModal = function () { this.open = true; };
     const parent = {id: 'parent', title: 'Parent', createdAt: 1, updatedAt: 1};
     const child = {id: 'child', title: 'Independent', parentSessionId: 'parent', createdAt: 2, updatedAt: 2};
@@ -138,15 +138,15 @@ it('opens a related conversation from the title bar without merging conversation
     const actions = {open: vi.fn(async () => {}), child: vi.fn(async () => {}), remove: vi.fn(async () => {}), changed: vi.fn(async () => {}), report: vi.fn()};
     const abort = new AbortController(), family = new SessionFamilyActions(sessions as never, abort.signal, actions);
     const host = document.createElement('div'); host.innerHTML = LayoutTemplates.renderWorkspace('Parent'); document.body.append(host);
-    const binder = new EventBinder(host, {mountConversationNavigation: container => family.mountNavigation(container, parent as never)});
-    binder.bindTitleBarEvents();
+    const dispose = family.mount(host, parent as never);
+    expect(host.querySelector('.session-family__switcher')).toBeNull();
     try {
-        host.querySelector<HTMLButtonElement>('.session-family__switcher')!.click();
+        [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === t('project.family'))!.click();
         await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
         expect(document.querySelector('[aria-current="true"]')?.textContent).toBe('Parent');
         [...document.querySelectorAll<HTMLButtonElement>('dialog button')].find(button => button.textContent?.startsWith('Independent'))!.click();
         await vi.waitFor(() => expect(actions.open).toHaveBeenCalledExactlyOnceWith('child'));
         expect(actions.child).not.toHaveBeenCalled();
-    } finally { binder.cleanup(); abort.abort(); }
+    } finally { dispose(); abort.abort(); }
     expect(host.querySelector('.session-family__switcher')).toBeNull();
 });

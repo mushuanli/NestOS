@@ -589,8 +589,6 @@
 .workbench-window-list > svg { width: 18px; height: 18px; flex-shrink: 0; }
 .workbench-window-list:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
 
-.session-family__switcher { min-height: 36px; border: 1px solid var(--mm-border-color, #8885); border-radius: 5px; padding: 6px 10px; color: inherit; background: transparent; cursor: pointer; white-space: nowrap; }
-@media (max-width: 768px) { .session-family__switcher { min-height: 44px; } }
 
 /* Shared workspace navigation and filter surface. */
 .workbench-navigation-header, .workbench-project-navigation { display: flex; align-items: center; width: 100%; min-width: 0; gap: 4px; padding: 0; box-sizing: border-box; }

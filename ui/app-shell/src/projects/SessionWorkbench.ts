@@ -1767,7 +1767,7 @@ export class SessionWorkbench implements WorkspaceController {
     private async localEditorOptions(prepared: SessionOpenView, context: FileSystemContextOwner, assets: FileSystemView,
         branch?: string, initialInputState?: EditorOptions['initialInputState'], signal?: AbortSignal): Promise<EditorOptions> {
         const manifest = prepared.manifest, id = manifest.id, project = prepared.project;
-        return {signal, mountConversationNavigation: this.familyActions ? container => this.familyActions!.mountNavigation(container, manifest) : undefined,
+        return {signal,
             mountMoreMenu: this.familyActions ? container => this.familyActions!.mount(container, manifest) : undefined,
             mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project?.displayName ?? project?.name ?? '', () => this.toggleSidebar()),
             onStartConversationDraft: manifest.folder ? input => this.startSessionDraft(folderBrowserPath(manifest.folder), input) : undefined,

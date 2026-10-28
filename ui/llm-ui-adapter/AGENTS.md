@@ -10,6 +10,10 @@ NativeCommandOutput 在原命令消息锚点展示截断预览和按需完整读
 
 本包承接 NestOS 的 Session、Task、原生会话、配置和权限接线，保留原业务编辑器兼容入口。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
 
+提问目录的视图、交互和 CSS 统一由独立 llm-ui 的 PromptNavigator 提供；本包 components/PromptNavigator 只投影产品文案、图标、历史身份及 reveal 回调。components/common 的滚动、尺寸追踪、定时器和事件清理仅保留公开入口转导出。ChatInput 的回车与高度规则复用 shouldSubmitMessage/resizeMessageInput；不要在适配层复制通用规则。独立 ChatView 的默认外观归 llm-ui，styles/independent-chat.css 仅补宿主自行创建的控件。
+
+独立 Session/native 视图通过 replaceSessionBinding/replaceNativeBinding 复用 ChatView 的 replaceBinding，业务绑定与图片/队列/上下文展示钩子随之替换；不关闭宿主 Session/native 连接。IndependentSessionEditor 切分支及恢复外部选中分支时保留输入和历史容器，旧草稿写入捕获原 store，不能因当前 branch 改变而写入目标分支。SessionChatStore 以 inputToken/scopeId 区分持久草稿，并核对结构化草稿与兼容字段，兼容编辑器改动后不能恢复陈旧 inputView。显式核对旧 operationId 读取完整宿主台账的原冻结请求；自动观察和当前展示仍按分支过滤。
+
 原生会话的斜杠候选由 ConversationControls.commands 按当前绑定提供，NativeSlashCommandPlugin 只负责候选和插入，不注册本地 Kernel 命令。RemoteConversationEditor 在发送时重新校验目录并委托 command；命令接纳与普通消息分别呈现，未知结果保留输入并走原 reconcile。ChatInput 拥有 registerPlugin 激活的插件，销毁须逐一 deactivate；关闭后迟到目录不能恢复弹层。
 
 用户提问下方分别提供编辑和分支图标：编辑替换提问并运行，手动分支保留完整所选轮次后继续，不自动发送。原生历史仍只读，RemoteHistoryBranches 单独挂接分支动作，使用原生 messageId/turnId，不能发送渲染 ID。forkSupport 表达 none/latest/turn，canFork 表达当前可用性；历史位置不支持时明确确认是否改从末尾分叉，不能自动退化。原生宿主 /branch [name] 与 /branches 由编辑器处理，不透传为模型提示词或原生命令；分支命令失败保留输入。隐藏、销毁或绑定变化后不得执行待确认的分支动作。小屏分支切换器移入顶部更多菜单。

@@ -1,4 +1,4 @@
-import {isCommandInput} from '@itookit/llm-ui';
+import {isCommandInput, resizeMessageInput, shouldSubmitMessage} from '@itookit/llm-ui';
 import { OcrSettingsForm, Modal, Toast } from '@itookit/ui-common';
 // @file: llm-ui/components/input/ChatInputView.ts
 
@@ -827,8 +827,7 @@ export class ChatInput implements IChatInputPresenter {
                 }
             }
 
-            const mobile = window.matchMedia?.('(max-width: 768px) and (pointer: coarse)').matches;
-            if (e.key === 'Enter' && !e.shiftKey && (!mobile || e.ctrlKey || e.metaKey)) {
+            if (shouldSubmitMessage(e)) {
                 e.preventDefault();
                 this.triggerSend();
             }
@@ -1403,12 +1402,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private adjustTextareaHeight(): void {
-        this.textarea.style.height = 'auto';
-        const style = getComputedStyle(this.textarea), lineHeight = parseFloat(style.lineHeight) || 24;
-        const minHeight = parseFloat(style.minHeight) || lineHeight * 2 + 8;
-        const maxHeight = parseFloat(style.maxHeight) || 200;
-        const newHeight = Math.max(minHeight, Math.min(this.textarea.scrollHeight, maxHeight));
-        this.textarea.style.height = `${newHeight}px`;
+        resizeMessageInput(this.textarea);
     }
 
     // ================================================================

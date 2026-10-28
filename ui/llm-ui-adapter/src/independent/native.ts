@@ -1,5 +1,7 @@
 import {messageState, toolState} from './message-state';
-import {createImageChatView, type ImageChatOptions} from './image-chat-view';
+import {prepareImageChatOptions, type ImageChatOptions} from './image-chat-view';
+import {createChatView, type ChatOptions, type ChatView} from '@itookit/llm-ui';
+import {retainViewBindings, type ViewBinding} from './retained-view';
 import type {ImageEditingHost} from './image-editing';
 import {prepareRemoteAttachments} from '../shell/remote-attachments';
 import { type ChatMessage, type ConversationActions,
@@ -228,8 +230,11 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         } : undefined},
         dispose() { if (closed) return; closed = true; lifetime.abort(); ++generation; capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
 }
-export async function createNativeChatView(container: HTMLElement, binding: Awaited<ReturnType<typeof createNativeChatBinding>>,
-    options: ImageChatOptions = {}) {
+type NativeBinding = Awaited<ReturnType<typeof createNativeChatBinding>>;
+export interface NativeChatView extends ChatView {
+    replaceNativeBinding(binding: NativeBinding, options?: ImageChatOptions): Promise<void>;
+}
+function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): ViewBinding & {options: ChatOptions} {
     const outputs = new Set<NativeCommandOutput>(), repairs = new Set<NativeResultRepair>();
     const queue = nativeQueueToolbar(binding.instructionQueue, options);
     const renderer: ExtensionRenderer = (root, part) => {
@@ -237,18 +242,22 @@ export async function createNativeChatView(container: HTMLElement, binding: Awai
         output.update(part.data as unknown as ConversationCommandOutput);
         return {update: part => output.update(part.data as unknown as ConversationCommandOutput), destroy: () => {outputs.delete(output); output.destroy();}};
     };
-    const view = await createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations,
+    const images = prepareImageChatOptions({...options, source: binding.source, actions: binding.actions, operations: binding.operations,
         renderers: {...options.renderers, 'native-command-output': renderer},
         mountToolbar: nativeToolbar(binding, {...options, mountToolbar: queue.mount}, repairs)}, options.images ?? binding.images);
-    const active = view.setActive.bind(view), destroy = view.destroy.bind(view);
-    let closing: Promise<void> | undefined;
-    view.setActive = value => {
-        if (closing) return;
-        queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value); active(value);
-    };
-    view.destroy = () => closing ??= (async () => {queue.setActive(false); for (const output of outputs) output.setActive(false); await destroy();})();
-    return view;
+    return {options: images.options, setActive: value => {
+        queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value);
+    }, release: () => images.release()};
 }
+export async function createNativeChatView(container: HTMLElement, binding: NativeBinding, options: ImageChatOptions = {}): Promise<NativeChatView> {
+    const initial = prepareNativeView(binding, options);
+    try {
+        const retained = retainViewBindings(await createChatView(container, initial.options), initial);
+        return Object.assign(retained.view, {replaceNativeBinding: (next: NativeBinding, nextOptions: ImageChatOptions = {}) =>
+            retained.replace(prepareNativeView(next, nextOptions), nextOptions.initialDraft)});
+    } catch (error) {await initial.release?.(); throw error;}
+}
+
 function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger, state: NativeSnapshot, conversationId: string): ChatMessage {
     const submission = state.instructionQueue?.submissions?.find(item => item.turnId && item.turnId === message.turnId);
     const record = operations.getSnapshot().find(item => {

@@ -380,7 +380,7 @@ it('rejects a native attachment read finishing after binding disposal', async ()
 it('assembles image preprocessing and metadata persistence when creating a native ChatView', async () => {
     const {createChatView} = await import('@itookit/llm-ui'), {createNativeChatView} = await import('./native');
     const host = fixture(), close = vi.fn(async () => {}), dispose = vi.fn(async () => {}), setActive = vi.fn();
-    vi.mocked(createChatView).mockResolvedValueOnce({destroy: close, setActive} as never);
+    vi.mocked(createChatView).mockResolvedValueOnce({destroy: close, setActive, replaceBinding: vi.fn()} as never);
     let uploadId = 0;
     const upload = vi.fn(async (file: File) => ({id: file.name + ++uploadId, name: file.name, mimeType: file.type}));
     const saveMetadata = vi.fn(async () => {});

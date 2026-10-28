@@ -1,23 +1,12 @@
 // @file: llm-ui/utils/textUtils.ts
 
 import type { ExecutionNode } from '@itookit/llm-session/contracts';
+export {getPreviewText} from '@itookit/llm-ui';
 
 /**
  * 纯函数文本工具集
  * 消除 SessionRenderer、FloatingNavPanel 中的重复代码
  */
-
-/**
- * 将 Markdown 内容转为预览文本
- */
-export function getPreviewText(content: string, maxLen: number = 60): string {
-    if (!content) return '';
-    const plain = content
-        .replace(/[\r\n]+/g, ' ')
-        .replace(/[*#`_~[\]()]/g, '')
-        .trim();
-    return plain.length > maxLen ? plain.substring(0, maxLen) + '...' : plain;
-}
 
 /**
  * Truncate text to maxLen, replacing newlines with spaces.

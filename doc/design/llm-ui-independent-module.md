@@ -42,6 +42,24 @@ C4Component
 
 独立源码、JavaScript 和声明均不得引用其他内部包，不通过内联构建掩盖依赖，也不把聊天或 Flow 执行职责迁入 mdxeditor。独立仓库、子模块与发布操作未在本次实施中进行。
 
+### 1.1 通用机制与默认外观的收敛状态
+
+提问目录由独立库 `PromptNavigator` 提供一套视图和交互；独立 ChatView 与兼容产品编辑器都消费它。adapter 的同名类只接入产品文案、图标、历史身份与目标展开。目录 CSS、最近优先排序、过滤、键盘操作、按需分页状态及生命周期归独立库，不依赖 Session 类型。原先独立 ChatView 的简易提问按钮列表已删除。
+
+历史滚动共用独立库 `ScrollController`；输入共用 `shouldSubmitMessage` 与 `resizeMessageInput`。原生和 Session 产品编辑器通过既有 HistoryView/ChatInput 消费这些规则，独立 ChatView 也直接消费。旧 common 路径仅保留转导出，避免破坏兼容导入。输入、气泡、标题栏与目录的默认外观归独立库，adapter 只保留宿主控件样式及主题/图标注入。
+
+这不表示产品已全部迁入 ChatView：默认工厂仍使用兼容编辑器，项目草稿仍通过 WorkspaceHandoff 原位转正。切换默认入口前必须接齐草稿转正、历史编辑/分支、配置通知及恢复能力，并验证首次提交期间输入 DOM、焦点、Session UUID 和 operationId 稳定；不能通过重建输入框或静默回退到另一套视图绕过这些要求。独立库可操作预览见 [chat-preview.html](../../libraries/llm-ui/examples/chat-preview.html)。
+
+### 1.2 保留视图与绑定替换
+
+ChatView 通过 `replaceBinding` 更换宿主 source/actions/operations、草稿保存、资源端口及展示扩展，保留输入框和历史容器。省略 draft 时保留当前输入；显式 draft 用于恢复目标分支草稿，不重建 DOM。另一个 conversationId 必须显式提供草稿。主题、语言与 Flow 功能等视图级配置不随绑定改变。
+
+替换先保存旧输入，包括等待期间的新编辑，再安装新源。保存或订阅失败保留旧绑定，错误以 bindingCommitted 标识是否已完成安装。旧操作在登记前冻结原动作和台账；登记完成前视图已更换时不再派发，已派发操作的迟到结果只结算原台账。旧分页被中止，不得改变新历史的滚动和错误。操作诊断不记录正文；onBindingDiagnostic 单独记录 flush/subscribe/commit/cleanup 阶段、关联身份、结果、耗时及安全错误码。
+
+Session/native 适配分别提供 `replaceSessionBinding` / `replaceNativeBinding`，将队列、上下文、命令输出与图片端口等展示钩子换入同一 ChatView，不关闭宿主共享连接。IndependentSessionEditor 切分支和重新激活时已消费此能力，旧草稿保存捕获原分支 store，目标草稿以 inputToken/scopeId 隔离。兼容字段变化时优先恢复兼容编辑器的新输入，不能用陈旧 inputView 覆盖。显式核对旧 operationId 可读取原分支冻结请求，自动观察仍按当前分支过滤。
+
+此阶段尚未更换默认 Chat 工厂，也未将项目 SessionDraftEditor 的 WorkspaceHandoff 切换到独立 ChatView；草稿转正、完整历史操作和配置接线仍需后续迁移与验收。
+
 ## 2 协作方式
 
 - 操作用具名 callback / Promise，返回与请求关联的 OperationReceipt。

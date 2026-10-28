@@ -5,6 +5,7 @@ import {ChatInputTemplates} from '../components/templates/ChatInputTemplates';
 export function presentChatButton(node: HTMLButtonElement, action: string): void {
     const icons: Readonly<Record<string, string>> = {
         refresh: ACTION_ICONS.refreshView, prompts: ACTION_ICONS.promptList,
+        close: ACTION_ICONS.close, preview: ACTION_ICONS.wordWrap,
         search: CHAT_ICONS.search, copy: CHAT_ICONS.copy, edit: CHAT_ICONS.edit,
         retry: ACTION_ICONS.rerun, send: ChatInputTemplates.sendIcon(),
         attach: ChatInputTemplates.addIcon(), cancel: ChatInputTemplates.stopIcon(),

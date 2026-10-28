@@ -1,20 +1,17 @@
-import {flowNodeDocument, flowNodeDocumentPart, flowNodeDocumentRenderer} from './flow-node-document';
-import {messageOutputs, messageOutputsPart, outputRenderer} from './message-outputs';
+import {flowNodeDocument} from './flow-node-document';
+import {messageOutputs, outputRenderer} from './message-outputs';
 import {SessionExecution} from './session-execution';
-import {sessionQueueToolbar} from './session-queue';
 import {messageState, toolState} from './message-state';
 import {verifyInputContext} from '../services/verify-input-context';
-import {SessionContextPicker} from './session-context';
 import {prepareInputContextDraft} from '../domain/context-draft';
 import type {ContextOptionsQuery, ContextOptionsPage} from '@itookit/llm-session/contracts';
 import type {InteractionDraftStorage} from '../domain/interaction-draft';
 import {CallControlOperations} from './call-control';
-import {SessionCallPresentation, independentCallPart} from './session-calls';
+import {SessionCallPresentation} from './session-calls';
 import {createModuleLogger, t} from '@itookit/common';
 import {IndependentCallCommand, type IndependentCallReceipt} from '@itookit/llm-session/contracts';
 import {InvocationOperations} from '../flows/invocation-operations';
 import {ControlOperations} from '../flows/control-operations';
-import {createImageChatView, type ImageChatOptions} from './image-chat-view';
 import type {ImageEditingHost} from './image-editing';
 import { type ConversationActions, type MessagePart,
     type OperationContext, type OperationLedger, type OperationReceipt, type SelectorView, type ComposerCommand, type CommandSubmission } from '@itookit/llm-ui';
@@ -29,6 +26,8 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly prepareSend?: ConversationActions['prepareSend'];
+    readonly resolveSubmission?: (operationId: string) => SessionSubmission | undefined;
     readonly openOutputs?: (taskId: string) => void | Promise<void>;
     readonly prepareRequest?: (request: SubmissionRequest, input: ChatSubmission) => Promise<SubmissionRequest>;
     readonly prepareAttachments?: (input: ChatSubmission, operationId: string) => Promise<NonNullable<SubmissionRequest['attachments']>>;
@@ -93,6 +92,7 @@ class SessionChatBinding {
         if (options.targetSelection) this.targets = new SessionCallTargets(options.commands, () => this.publish());
         this.source = new ChatProjection(this.sessionId, options.onError, this.targets ? () => this.refreshTargets() : undefined);
         this.actions = { send: (input, context) => this.send(input, context), reconcile: id => this.reconcile(id) };
+        if (options.prepareSend) this.actions.prepareSend = options.prepareSend;
         if (options.kernel) {
             this.execution = new SessionExecution(options.kernel, this.sessionId, () => options.session.getSessions(),
                 () => this.current() && !options.readOnly, () => this.publish(), error => options.onError?.(error));
@@ -186,7 +186,7 @@ class SessionChatBinding {
         if (this.queued.has(operationId)) return Promise.resolve(true);
         const existing = this.admissionChecks.get(operationId);
         if (existing) return existing;
-        const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
+        const record = this.options.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
         const input = record?.input as unknown as ChatSubmission | undefined;
         if (!input?.target && !(input as {request?: SubmissionRequest} | undefined)?.request?.target) return Promise.resolve(false);
@@ -205,9 +205,11 @@ class SessionChatBinding {
         this.admissionChecks.set(operationId, pending); return pending;
     }
     private submission(operationId: string): SessionSubmission {
-        const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.conversationId === this.sessionId);
+        const record = this.options.operations.getSnapshot().find(item => item.context.operationId === operationId && item.conversationId === this.sessionId);
         const input = record?.input as {sessionRequest?: SubmissionRequest; request?: SubmissionRequest} | undefined;
-        return input?.sessionRequest?.submission ?? input?.request?.submission
+        const prepared = this.options.resolveSubmission?.(operationId);
+        if (prepared && prepared.id !== operationId) throw new Error('Prepared submission identity differs from the operation');
+        return input?.sessionRequest?.submission ?? input?.request?.submission ?? prepared
             ?? { id: operationId, source: { kind: 'conversation', ownerId: this.sessionId, id: operationId } };
     }
     private check(operationId: string): Promise<boolean> {
@@ -255,7 +257,7 @@ class SessionChatBinding {
             {id: 'current', label: t('callable.independent.current')}, {id: 'independent', label: t('callable.independent.run')}]}];
     }
     private independentTitle(operationId: string): string | undefined {
-        const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId
+        const record = this.options.operations.getSnapshot().find(item => item.context.operationId === operationId
             && item.kind === 'send' && item.conversationId === this.sessionId);
         return (record?.input as {independentTitle?: string} | undefined)?.independentTitle;
     }
@@ -281,7 +283,7 @@ class SessionChatBinding {
     }
     setActive(active: boolean): void {this.active = active; this.execution?.setActive(active); this.admissionChecks.clear(); this.presentation?.setActive(active && this.current()); this.scheduleIndependentAdmission();}
     private frozenRequest(operationId: string): SubmissionRequest {
-        const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
+        const record = this.options.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
         const input = record?.input as {sessionRequest?: SubmissionRequest; request?: SubmissionRequest} | undefined;
         const request = input?.sessionRequest ?? input?.request;
@@ -311,17 +313,18 @@ class SessionChatBinding {
             : Promise.resolve(rejected(context, 'STALE_COMMAND', 'Command changed or is unavailable'));
     }
     private async reconcile(operationId: string): Promise<OperationReceipt> {
-        const action = this.operations.getSnapshot().find(record => record.conversationId === this.sessionId && record.context.operationId === operationId);
-        if (this.execution && (action?.kind === 'cancel' || action?.kind === 'respond')) return this.execution.reconcile(operationId, this.operations);
-        const callControls = new CallControlOperations(this.operations, this.options.commands, this.sessionId);
+        const ledger = this.options.operations;
+        const action = ledger.getSnapshot().find(record => record.conversationId === this.sessionId && record.context.operationId === operationId);
+        if (this.execution && (action?.kind === 'cancel' || action?.kind === 'respond')) return this.execution.reconcile(operationId, ledger);
+        const callControls = new CallControlOperations(ledger, this.options.commands, this.sessionId);
         if (callControls.has(operationId)) return callControls.reconcile(operationId);
-        const invocations = new InvocationOperations(this.operations, this.options.commands, this.sessionId);
+        const invocations = new InvocationOperations(ledger, this.options.commands, this.sessionId);
         if (invocations.has(operationId)) return invocations.reconcile(operationId);
-        const controls = new ControlOperations(this.operations, this.options.commands, this.sessionId);
+        const controls = new ControlOperations(ledger, this.options.commands, this.sessionId);
         if (controls.has(operationId)) return controls.reconcile(operationId);
-        if (this.operations.getSnapshot().some(record => record.context.operationId === operationId && record.kind === 'command') && this.options.composerCommands)
+        if (ledger.getSnapshot().some(record => record.context.operationId === operationId && record.kind === 'command') && this.options.composerCommands)
             return this.options.composerCommands.reconcile(operationId);
-        const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send');
+        const record = ledger.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send' && item.conversationId === this.sessionId);
         if ((record?.input as ChatSubmission | undefined)?.target || (record?.input as {request?: SubmissionRequest} | undefined)?.request?.target)
             return await this.checkAdmission(operationId) ? {status: 'accepted', operationId}
                 : {status: 'unknown', operationId, message: 'No durable admission evidence is visible yet'};
@@ -370,33 +373,8 @@ function validInputContract(input: ChatSubmission, contract?: ComposerInputContr
     return !!contract && sameTarget && (!selected || selected === targetId) && targetId === contract.targetId
         && signature.id === contract.signature.id && signature.revision === contract.signature.revision && signature.digest === contract.signature.digest;
 }
-export async function createSessionChatView(container: HTMLElement, binding: ReturnType<typeof createSessionChatBinding>,
-    options: ImageChatOptions = {}) {
-    if (options.renderers?.[messageOutputsPart]) throw new Error('The execution outputs renderer is reserved by the Session adapter');
-    const outputs = binding.outputsRenderer;
-    if (options.renderers?.[independentCallPart]) throw new Error('The independent call renderer is reserved by the Session adapter');
-    const queue = sessionQueueToolbar(binding.instructionQueue, options);
-    options = {...options, mountToolbar: queue.mount};
-    const calls = binding.mountCalls(); let contextPicker: SessionContextPicker | undefined;
-    try {
-        const mountToolbar: ImageChatOptions['mountToolbar'] = calls || binding.contextSelection ? (host, context) => {
-            const custom = document.createElement('div'); custom.className = 'llm-chat__host-toolbar'; host.append(custom);
-            const mounted = options.mountToolbar?.(custom, context);
-            if (calls) host.append(calls.notices);
-            if (binding.contextSelection) contextPicker = new SessionContextPicker(host, context, () => binding.contextScope(), query => binding.readContextOptions(query));
-            return {update: next => {mounted?.update?.(next); contextPicker?.update(next);},
-                destroy: async () => {contextPicker?.destroy(); contextPicker = undefined; await mounted?.destroy(); custom.remove(); calls?.notices.remove();}};
-        } : options.mountToolbar;
-        const view = await createImageChatView(container, {...options, mountToolbar,
-            onDraftChange: draft => {contextPicker?.updateDraft(draft); options.onDraftChange?.(draft);}, renderers: {...options.renderers, [flowNodeDocumentPart]: flowNodeDocumentRenderer,
-            ...(calls ? {[independentCallPart]: calls.renderer} : {}), ...(outputs ? {[messageOutputsPart]: outputs} : {})},
-            source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
-        const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
-        view.setActive = active => {binding.setActive(active); queue.setActive(active); contextPicker?.setActive(active); setActive(active);};
-        view.destroy = async () => {binding.setActive(false); queue.setActive(false); try {await destroy();} finally {binding.releaseCalls(calls);}};
-        return view;
-    } catch (error) {binding.releaseCalls(calls); throw error;}
-}
+export {createRetainedSessionChatView as createSessionChatView} from './session-view';
+export type {SessionChatView} from './session-view';
 
 function splitUserMessages(group: SessionGroup, message: import('@itookit/llm-ui').ChatMessage): import('@itookit/llm-ui').ChatMessage[] {
     if (group.role !== 'user' || !group.inputMessages || group.inputMessages.length < 2) return [message];

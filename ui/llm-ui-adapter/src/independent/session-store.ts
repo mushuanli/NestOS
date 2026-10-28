@@ -7,6 +7,9 @@ import {persistOperations} from '../services/OperationPersistence';
 import {readDraftFiles} from '../services/DraftFilesCodec';
 import {readInputDraft} from '../domain/input-draft';
 import {isTargetRef} from '@itookit/llm-flow/contracts';
+import {validDraftToken} from '../domain/draft-file-identity';
+import {readInputContextDraft} from '../domain/context-draft';
+import {canonicalJson} from '../utils/canonical-json';
 
 type StoredBranch = BranchDraft & {inputView?: {version: 1; draft: ComposerDraft}};
 /** Keep the existing branch draft and CAS conflict boundary while replacing its renderer. */
@@ -21,10 +24,19 @@ export class SessionChatStore {
     }
     static async open(repository: ISessionRepository, sessionId: string, branch: string, assets: AssetService): Promise<SessionChatStore> {
         const store = new SessionChatStore(repository, sessionId, branch, assets);
-        store.raw = await repository.getUIState(sessionId) ?? undefined;
-        store.persistence.observe(sessionId, branch, store.raw);
-        const stored = readBranchDraft(store.raw, branch) as StoredBranch | undefined;
-        store.saved = restore(stored); return store;
+        const operationId = randomUUID(), started = Date.now(); let stage = 'read';
+        try {
+            store.raw = await repository.getUIState(sessionId) ?? undefined; stage = 'restore';
+            store.persistence.observe(sessionId, branch, store.raw);
+            store.saved = restore(readBranchDraft(store.raw, branch) as StoredBranch | undefined);
+            reportRestore(operationId, sessionId, branch, stage, started); return store;
+        } catch (error) {
+            const raw = (error as {code?: unknown})?.code;
+            const code = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw
+                : stage === 'read' ? 'DRAFT_STORE_READ_FAILED' : 'DRAFT_FORMAT_INVALID';
+            reportRestore(operationId, sessionId, branch, stage, started, code);
+            throw Object.assign(new Error(error instanceof Error ? error.message : String(error), {cause: error}), {code});
+        }
     }
     get draft(): ComposerDraft {return structuredClone(this.saved);}
     ledger(): OperationLedger {
@@ -37,9 +49,10 @@ export class SessionChatStore {
             if (this.suspended) return;
             if (captured.revision < this.saved.revision) return;
             const old = readBranchDraft(this.raw, this.branch) as StoredBranch | undefined;
-            const branch: StoredBranch = {...old, inputText: captured.text, inputToken: old?.inputToken ?? randomUUID(),
+            const branch: StoredBranch = {...old, inputText: captured.text, inputToken: validDraftToken(captured.scopeId) ? captured.scopeId : old?.inputToken ?? randomUUID(),
                 inputTarget: isTargetRef(captured.target) ? captured.target : undefined,
                 inputArguments: captured.input ? JSON.parse(JSON.stringify(captured.input)) : undefined,
+                inputContext: captured.context?.value == null ? undefined : structuredClone(captured.context.value),
                 inputFiles: captured.attachments.map(item => ({id: item.file.id, name: item.file.name, type: item.file.mimeType ?? '', lastModified: 0, fileId: item.id})),
                 inputView: {version: 1, draft: captured}};
             const patch = {branchDrafts: {[this.branch]: branch}};
@@ -65,17 +78,37 @@ export class SessionChatStore {
         return files;
     }
 }
+function reportRestore(operationId: string, sessionId: string, branch: string, stage: string, started: number, code?: string): void {
+    try {
+        const data = {operationId, sessionId, branch, stage, result: code ? 'failure' : 'success', durationMs: Date.now() - started, code};
+        const log = createModuleLogger('session-chat-storage');
+        if (code) log.warn('chat.draft.restore', data); else log.debug('chat.draft.restore', data);
+    } catch { /* Diagnostics cannot change draft restoration. */ }
+}
 function restore(stored?: StoredBranch): ComposerDraft {
+    const legacy = restoreLegacy(stored);
     if (stored?.inputView) {
         const value = stored.inputView;
         if (value.version !== 1 || typeof value.draft?.text !== 'string' || !Array.isArray(value.draft.attachments)
             || !Number.isSafeInteger(value.draft.revision) || !Number.isSafeInteger(value.draft.textRevision)) throw new Error('Invalid stored ChatView draft');
-        return structuredClone(value.draft);
+        const tokenChanged = validDraftToken(value.draft.scopeId) && stored.inputToken && stored.inputToken !== value.draft.scopeId;
+        if (tokenChanged || !sameLegacyDraft(value.draft, legacy)) return {...legacy, revision: value.draft.revision + 1, textRevision: value.draft.textRevision + 1};
+        return {...structuredClone(value.draft), scopeId: value.draft.scopeId ?? legacy.scopeId};
     }
+    return legacy;
+}
+function restoreLegacy(stored?: StoredBranch): ComposerDraft {
     const files = readDraftFiles(stored?.inputFiles ?? []);
-    return {revision: 0, textRevision: 0, text: stored?.inputText ?? '', target: stored?.inputTarget,
+    const context = readInputContextDraft(stored?.inputContext);
+    return {revision: 0, textRevision: 0, scopeId: stored?.inputToken ?? randomUUID(), text: stored?.inputText ?? '', target: stored?.inputTarget,
         input: readInputDraft(stored?.inputArguments),
+        ...(context ? {context: {revision: context.revision, value: JSON.parse(JSON.stringify(context))}} : {}),
         attachments: files.map(file => ({id: file.fileId ?? randomUUID(), revision: 0, file: {id: file.id, name: file.name, mimeType: file.type}}))};
+}
+function sameLegacyDraft(view: ComposerDraft, legacy: ComposerDraft): boolean {
+    const summarize = (draft: ComposerDraft) => ({text: draft.text, target: draft.target, input: draft.input, context: draft.context?.value ?? undefined,
+        attachments: draft.attachments.map(item => ({id: item.id, file: {...item.file, mimeType: item.file.mimeType ?? ''}}))});
+    return canonicalJson(summarize(view)) === canonicalJson(summarize(legacy));
 }
 
 function reportUpload(operationId: string, stage: string, started: number, bytes: number, error?: unknown): void {

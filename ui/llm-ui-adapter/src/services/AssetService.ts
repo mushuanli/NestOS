@@ -1,10 +1,13 @@
 // @file: llm-ui/services/AssetService.ts
 
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
-import {randomUUID, sha256Hex, t} from '@itookit/common';
+import {createModuleLogger, randomUUID, sha256Hex, t} from '@itookit/common';
 import type {ChatAttachment} from '@itookit/llm-session/contracts';
 import {fileBytes} from '../utils/file-bytes';
 import type {DraftFilePort} from './DraftFilesCodec';
+import {validDraftToken} from '../domain/draft-file-identity';
+
+const draftReference = (id: string): boolean => validDraftToken(id) || /^draft-[a-f0-9]{64}\.bin$/.test(id);
 
 export interface PreparedAttachmentUpload {references: string[]; files: Omit<ChatAttachment, 'fileRef'>[];}
 
@@ -25,10 +28,29 @@ export class AssetService {
             const name = `draft-${await sha256Hex(data)}.bin`;
             await this.createAsset(name, data); return name;
         }, read: async id => {
-            if (!this.assets || !/^draft-[a-f0-9]{64}\.bin$/.test(id))
+            if (!this.assets || !draftReference(id))
                 throw Object.assign(new Error(t('chatInput.attachments.draftInvalid')), {code: 'DRAFT_FILE_REFERENCE_INVALID'});
             return this.assets.driver.readContent(`/${id}`, {encoding: 'binary'});
         }};
+    }
+    /** Retain opaque draft resource identities when transferring ownership to this asset directory. */
+    async retainDraftFile(id: string, read: DraftFilePort['read'], signal: AbortSignal): Promise<void> {
+        const operationId = randomUUID(), started = Date.now(); let stage = 'validate', bytes: number | undefined;
+        try {
+            if (!draftReference(id)) throw Object.assign(new Error(t('chatInput.attachments.draftInvalid')), {code: 'DRAFT_FILE_REFERENCE_INVALID'});
+            signal.throwIfAborted(); stage = 'source-read'; const content = await read(id); bytes = content.byteLength;
+            signal.throwIfAborted(); stage = 'destination-write'; await this.createAsset(id, content); signal.throwIfAborted();
+            this.reportRetention(operationId, stage, started, bytes);
+        } catch (error) {this.reportRetention(operationId, stage, started, bytes, error); throw error;}
+    }
+    private reportRetention(operationId: string, stage: string, started: number, bytes?: number, error?: unknown): void {
+        const raw = (error as {code?: unknown})?.code;
+        try {
+            const data = {operationId, stage, bytes, result: error ? 'failure' : 'success', durationMs: Date.now() - started,
+                ...(error ? {code: typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'DRAFT_FILE_RETAIN_FAILED'} : {})};
+            const log = createModuleLogger('chat-draft-assets');
+            if (error) log.warn('chat.draft.retain', data); else log.debug('chat.draft.retain', data);
+        } catch { /* Asset ownership cannot depend on diagnostics. */ }
     }
 
     /**

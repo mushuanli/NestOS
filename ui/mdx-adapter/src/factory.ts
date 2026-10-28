@@ -27,6 +27,8 @@ function pluginDefaults(options: MDxAdapterOptions, path?: string, getPath: () =
     for (const [key, value] of Object.entries(options.defaultPluginOptions ?? {})) {
         if (typeof value === 'object' && value !== null) defaults[key] = value as Record<string, any>;
     }
+    defaults['codeblock-controls'] = {wrapText: t('editor.wrap.label'), ...defaults['codeblock-controls']};
+    defaults['interaction:codeblock-controls'] = {wrapText: t('editor.wrap.label'), ...defaults['interaction:codeblock-controls']};
     const titlebar = (defaults['core:titlebar'] ?? {}) as Record<string, unknown>;
     defaults['core:titlebar'] = { ...titlebar,
         aiCallback: titlebar.aiCallback ?? (path && options.hostContext?.chatFromFile ? async (editor: MDxEditor) => {

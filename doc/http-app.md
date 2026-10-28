@@ -69,6 +69,8 @@ pnpm httpd --root /srv/nestos --users-dir /srv/nestos/home
 
 启动先打开 admin，完成公共配置初始化，再恢复所有已登记用户，全部成功后才监听。请求只能进入证书所属的 Runtime/ViewApi；同一用户的新窗口复用该 Runtime，不同用户的相同 clientId、Session ID 和逻辑路径不会选择到同一份私有存储。新增登记的用户在首次应用请求时初始化，并复用初始化中的 Promise；最多同时保留 100 个用户 Runtime。关闭网页不停止后台任务，宿主退出才依次释放流、视图、Runtime、数据库和锁。当前实现面向少量用户，每用户仍有独立 Kernel、工具装配与后台恢复开销。
 
+远程项目挂载和本地会话记录归各用户所有；不同用户可以挂载同一远程目录。共享 `/etc/llm` 中的 MCP 连接使用同一远端凭据，因此在 nestos-node 上代表同一 principal，其远端项目和原生会话按该 principal 授权，不会自动按 NestOS userId 隔离。需要远端身份隔离时必须配置不同凭据；挂载复用优先核对已验证 principal；未验证的 Bearer 连接按凭据引用区分，不能因为用户名都为空而合并。HTTP 宿主租约使用 `httpd` 标识，历史 `cli` 租约仍按原有效期处理。
+
 多用户工具包安装到 `<rootDir>/tools/<包名>/<版本>`，登记文件为 `<rootDir>/etc/tool-packages.json`；所有用户加载同一份工具代码，运行数据仍归各自用户。工具包源沿用 `NESTOS_TOOL_PACKAGE_DIRS` 或启动目录的 `tools/`。`bin/` 可用于命令行入口，不作为工具注册依据。
 
 物理布局：

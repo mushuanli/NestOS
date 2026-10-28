@@ -83,7 +83,7 @@ async function openUserRuntime(options: HttpHostOptions, home: string, internal:
     await privateDirectory(state); await privateDirectory(path.join(internal, 'meta')); await privateDirectory(path.join(internal, 'private'));
     const host = await openNodeApplication({root: state, sidecar: path.join(internal, 'meta'), authDir: path.join(internal, 'private'), createFs: () => new UserFiles(state, home),
         toolPackages: {directories: configurationReadonly ? [] : undefined, dataDirectory: path.join(options.root, 'tools'), registryFile: path.join(options.root, 'etc', 'tool-packages.json')},
-        auditFile: path.join(internal, 'logs', 'audit.jsonl'), runtime: {startupMode: 'server', additionalMounts: mounts,
+        auditFile: path.join(internal, 'logs', 'audit.jsonl'), runtime: {startupMode: 'server', ownerKind: 'httpd', additionalMounts: mounts,
             sharedLlmConfiguration: true, configurationReadonly, costStorageRoot: '/var/lib/accounting'}});
     cleanup.push(host.close);
     if (options.editorSwap?.enabled) {

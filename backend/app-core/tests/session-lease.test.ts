@@ -4,6 +4,16 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionLeaseStore } from '../src/index';
 
 describe('SessionLeaseStore', () => {
+    it('persists and reloads the httpd owner kind', async () => {
+        const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+        try {
+            const fs = await manager.openFileSystem('/data');
+            const store = new SessionLeaseStore(fs);
+            await store.acquire('session-http', {id: 'httpd-host', kind: 'httpd'});
+            expect(await new SessionLeaseStore(fs).inspect('session-http')).toMatchObject({ownerId: 'httpd-host', ownerKind: 'httpd'});
+        } finally { await manager.dispose(); }
+    });
+
     it('acquires a deduplicated batch while preserving busy owners, skew and fencing tokens', async () => {
         const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
         const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs, { now: () => 1000 });

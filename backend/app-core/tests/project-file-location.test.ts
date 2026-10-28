@@ -32,3 +32,9 @@ it('distinguishes managed and host sources and accepts Windows host paths', () =
     expect(projectFileLocation({ ...project, project: { ...project.project, directory: 'host:C:\\Projects\\docs' } }, '/note.md', []).path)
         .toBe('C:/Projects/docs/note.md');
 });
+
+it('separates bearer credential namespaces before a principal has been verified', () => {
+    const first = {...grant, username: undefined};
+    const second = {...first, credentialRef: 'other-token-reference'};
+    expect(projectFileLocation(project, '/', [first]).namespace).not.toBe(projectFileLocation(project, '/', [second]).namespace);
+});

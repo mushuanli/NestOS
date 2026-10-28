@@ -10,14 +10,14 @@ import { RemoteSessionStatus } from '../session/remote-session-status';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import type { MCPDeletedProject, MCPDeletionReference } from '../configuration/model-commands';
 import { MCPRemoteConnections, remoteMCPConnection } from './mcp-remote-connections';
-import { RemoteConnectionUnavailableError, reportRemoteFailure, type MCPConnectionDiagnostic } from './remote-diagnostics';
+import { RemoteConnectionUnavailableError, reportRemoteFailure, remoteLog, type MCPConnectionDiagnostic } from './remote-diagnostics';
 import type { ExecutionCapabilities, ProjectExecutionContext } from './execution/contracts';
 import { RemoteMountStore, type RemoteMountCatalog as Catalog } from './remote-mount-store';
 import { randomUUID } from '@itookit/common';
 import { checkOperation, createFileSystemView, FSError, normalizeVirtualPath, operationScope,
     type FileSystemSourceOwner, type FileSystemMount, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
 import { createUnavailableDirectory } from '../vfs/unavailable-directory';
-import { canReaddressConnection, normalizeConnection, remoteProjectPath, type RemoteFileSystemConfig, type RemoteFileSystemInput } from './remote-connections';
+import { canReaddressConnection, normalizeConnection, remoteCredentialIdentity, remoteProjectPath, type RemoteFileSystemConfig, type RemoteFileSystemInput } from './remote-connections';
 import type { HarnessClient } from '@itookit/nestos-node-driver/harness';
 import type { ProjectClient, RemoteProject, HarnessConversationPort, HarnessProfile, HarnessConversationJournal } from '@itookit/nestos-node-driver';
 
@@ -206,7 +206,7 @@ export class ProjectRemoteMountService {
             const value = normalizeConnection(input), existing = id ? this.connection(id) : undefined;
             if (!existing && !password) throw new FSError('EINVAL', 'Password required');
             const connections = this.connections();
-            if (connections.some(item => item.id !== id && (item.name === value.name || (item.endpoint === value.endpoint && item.username === value.username))))
+            if (connections.some(item => item.id !== id && (item.name === value.name || (!!value.username && item.endpoint === value.endpoint && item.username === value.username))))
                 throw new FSError('EEXIST', 'Remote file system already configured');
             const affected = this.connectionProjects(id);
             if (affected.length && existing?.endpoint !== value.endpoint) throw new FSError('EBUSY', 'Referenced endpoint cannot change');
@@ -338,12 +338,16 @@ export class ProjectRemoteMountService {
         await (await source?.catch(() => undefined))?.dispose();
     }
     findRemoteProject(connectionId: string, path: string): string | undefined {
-        const connection = this.connection(connectionId), { alias, root } = remoteProjectPath(path);
+        const started = Date.now(), connection = this.connection(connectionId), { alias, root } = remoteProjectPath(path);
         // Identity is part of the key: the same path under a different account is a different grant,
         // never a silent reuse of another user's project.
-        return Object.keys(this.catalog.projects).find(id => this.list(id).some(mount => mount.at === '/'
+        const projectId = Object.keys(this.catalog.projects).find(id => this.list(id).some(mount => mount.at === '/'
             && (mount.endpoint === connection.endpoint || !!connection.serverId && mount.serverId === connection.serverId) && mount.username === connection.username
+            && remoteCredentialIdentity(mount) === remoteCredentialIdentity(connection)
             && mount.alias === alias && mount.root === root));
+        remoteLog.debug('project.mount.lookup', {operationId: randomUUID(), stage: 'credential-identity', result: 'success', connectionId,
+            matched: !!projectId, projectId, durationMs: Date.now() - started});
+        return projectId;
     }
     bindProject(projectId: string, connectionId: string, path: string, access: 'ro' | 'rw', options?: OperationOptions & {createDirectory?: boolean; projectName?: string}): Promise<void> {
         return this.serial(async () => {

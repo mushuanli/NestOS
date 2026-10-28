@@ -1,6 +1,6 @@
 import { FSError, pathUtils, type IFileSystem } from '@itookit/vfs-core';
 
-export type SessionOwnerKind = 'cli' | 'tauri' | 'web';
+export type SessionOwnerKind = 'cli' | 'tauri' | 'web' | 'httpd';
 
 export interface SessionLeaseOwner {
     id: string;
@@ -148,7 +148,7 @@ function key(sessionId: string): string {
 function parse(raw: string): SessionLeaseRecord {
     const value = JSON.parse(raw) as SessionLeaseRecord;
     if (!value || typeof value.sessionId !== 'string' || typeof value.ownerId !== 'string'
-        || !['cli', 'tauri', 'web'].includes(value.ownerKind)
+        || !['cli', 'tauri', 'web', 'httpd'].includes(value.ownerKind)
         || !Number.isSafeInteger(value.fencingToken) || !Number.isFinite(value.leaseUntil)) {
         throw new Error('Invalid Session lease record');
     }

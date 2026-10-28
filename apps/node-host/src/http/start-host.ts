@@ -22,7 +22,7 @@ export async function startHost(options: HttpHostOptions) {
     console.warn('\u001b[1;31m【单用户模式：admin】所有访问均操作同一份 admin 数据。\u001b[0m');
     const cleanup: HostCleanup = [];
     try {
-        const host = await openNodeApplication({...options, runtime: {startupMode: 'server'}}); cleanup.push(host.close);
+        const host = await openNodeApplication({...options, runtime: {startupMode: 'server', ownerKind: 'httpd'}}); cleanup.push(host.close);
         if (options.editorSwap?.enabled) {
             const swaps = await NodeEditorSwapStore.start(options.editorSwap.directory, options.root, options.staticDir);
             host.runtime.editorSwapStore = swaps; cleanup.push(() => swaps.dispose());

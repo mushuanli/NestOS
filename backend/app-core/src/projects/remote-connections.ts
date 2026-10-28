@@ -7,6 +7,13 @@ export interface RemoteFileSystemConfig {
 }
 export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username' | 'anonymous'>;
 
+/** Unverified bearer accounts must never collapse into the same absent username. */
+export function remoteCredentialIdentity(connection: Pick<RemoteFileSystemConfig, 'username' | 'credentialRef' | 'anonymous' | 'authorization'>): string {
+    if (connection.authorization) return JSON.stringify(['principal', connection.authorization.principalId, connection.authorization.anonymous]);
+    if (connection.anonymous) return 'anonymous';
+    return JSON.stringify(connection.username ? ['basic', connection.username] : ['credential', connection.credentialRef]);
+}
+
 /** A verified location change must retain both node identity and its resource-scoped grant. */
 export function canReaddressConnection(before: RemoteFileSystemConfig, after: RemoteFileSystemConfig, legacyCredentialUnchanged = false): boolean {
     if (!before.serverId || before.serverId !== after.serverId || !after.authorization) return false;

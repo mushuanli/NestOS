@@ -1,4 +1,5 @@
 import { normalizeVirtualPath } from '@itookit/vfs-core';
+import { remoteCredentialIdentity } from './remote-connections';
 import type { ProjectFolder } from './project-service';
 import type { ProjectRemoteMount } from './remote-mounts';
 
@@ -26,7 +27,7 @@ export function projectFileLocation(project: ProjectFolder, relative: string,
     if (mount) {
         const suffix = mount.at === '/' ? relative : relative.slice(mount.at.length);
         const path = normalizeVirtualPath(mount.root.replace(/\/$/, '') + '/' + suffix);
-        return { namespace: JSON.stringify(['remote', mount.serverId ?? mount.endpoint, mount.username ?? '', mount.alias]), path,
+        return { namespace: JSON.stringify(['remote', mount.serverId ?? mount.endpoint, remoteCredentialIdentity(mount), mount.alias]), path,
             label: `${mount.endpoint}/${mount.alias}${path === '/' ? '' : path}` };
     }
     if (project.project.source?.kind === 'remote') {

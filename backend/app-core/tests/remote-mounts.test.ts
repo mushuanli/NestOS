@@ -286,6 +286,22 @@ it('keeps the same remote path under a different account as a separate grant', a
     } finally { await runtime.dispose(); }
 });
 
+it('keeps bearer credentials at the same endpoint in separate project grants', async () => {
+    const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: memoryProvider() });
+    try {
+        const remote = runtime.projects.remoteMounts!;
+        const alice = await remote.saveConnection({ name: 'Alice token', endpoint: 'files.test' }, 'alice-token');
+        const bob = await remote.saveConnection({ name: 'Bob token', endpoint: 'files.test' }, 'bob-token');
+        const a = await runtime.projects.createRemote('A', null, alice, '/docs/a');
+        expect(remote.findRemoteProject(bob, '/docs/a')).toBeUndefined();
+        const b = await runtime.projects.createRemote('B', null, bob, '/docs/a');
+        expect(b.project.id).not.toBe(a.project.id);
+        expect(remote.findRemoteProject(alice, '/docs/a')).toBe(a.project.id);
+        expect(remote.findRemoteProject(bob, '/docs/a')).toBe(b.project.id);
+        await expect(remote.saveConnection({ name: 'Bob token', endpoint: 'other.test' }, 'token')).rejects.toMatchObject({code: 'EEXIST'});
+    } finally { await runtime.dispose(); }
+});
+
 it('checks that a project is unmountable before destroying its Sessions', async () => {
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: memoryProvider() });
     const browser = await createSessionBrowser({ repository: runtime.sessionRepository, files: runtime.sessionFiles,

@@ -1,11 +1,11 @@
-export const TPL_MIND = `# Welcome to Minds!
+export const TPL_MIND = `# Welcome to Notes!
 
 This is your personal space to create, manage, and reuse powerful prompts for Large Language Models (LLMs).
 
 ## How to Use This Space
 
-*   **Create a New Mind**: Click the '+' icon in the sidebar to create a new mind file.
-*   **Organize**: Use folders to group related minds.
+*   **Create a New Note**: Click the '+' icon in the sidebar to create a new note file.
+*   **Organize**: Use folders to group related notes.
 *   **Use Variables**: You can use placeholders like \`{{variable_name}}\` in your prompts.
 `;
 

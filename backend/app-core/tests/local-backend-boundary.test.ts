@@ -10,7 +10,7 @@ describe('local host boundary', () => {
         const etc = await manager.openFileSystem('/etc');
         await etc.driver.createFile({ name: 'contacts.json', parentPath: '/', content: JSON.stringify([{ id: 'saved', name: 'Saved' }]) });
         const open = vi.spyOn(manager, 'openFileSystem');
-        const service = await bindApplicationBackend({ vfs: manager } as never).settings([{ name: 'Notes', workspace: 'minds' }]);
+        const service = await bindApplicationBackend({ vfs: manager } as never).settings([{ name: 'Notes', workspace: 'notes' }]);
         try {
             expect(service.getContacts()).toEqual([{ id: 'saved', name: 'Saved' }]);
             expect(service.workspaces).toEqual([{ name: 'Notes', description: undefined }]);

@@ -38,7 +38,7 @@ it('persists CLI scan plans and queued work through SQLite reopen without regist
         return { manager, service, close: async () => { await service.dispose(); await manager.dispose(); } };
     };
     let host = await open();
-    const sourceId = await host.service.addSource({ kind: 'file', target: '/home/admin/minds/sqlite.md', label: 'SQLite' }, 'model');
+    const sourceId = await host.service.addSource({ kind: 'file', target: '/home/admin/notes/sqlite.md', label: 'SQLite' }, 'model');
     const planId = await scanCommand(host.service, ['plan-create'], JSON.stringify({ name: 'SQLite plan', sourceIds: [sourceId], connectionId: 'model' })) as string;
     await host.service.configure({ paused: true }, (await host.service.snapshot()).settings.revision);
     const runId = await host.service.runScanPlan(planId); await host.service.scanOnce(); await host.close();

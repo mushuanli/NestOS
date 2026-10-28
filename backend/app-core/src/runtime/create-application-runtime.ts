@@ -1,3 +1,4 @@
+import {migrateNotes} from './migrate-notes';
 import {createSessionTaskCallAuthority} from '../session/task-call-authority';
 import {renewSessionWriteLease} from '../kernel/session-lease';
 import {FlowInstallationService} from '../configuration/flow-installation';
@@ -184,6 +185,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             vfs.openFileSystem(workspaceRoot('agents')), vfs.openFileSystem(workspaceRoot('flows')), vfs.openFileSystem('/home/admin'),
             vfs.openFileSystem('/home/admin/.config/nestos/prompt-history'),
         ]));
+        await traceBoot('notes.migrate', () => migrateNotes(homeFiles));
         const agentService   = new VFSAgentService(agentFiles, llmDriver, { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot });
         cleanupFns.push(() => agentService.dispose());
         const projectSync = options.sync ? new ProjectSyncService(options.sync.provider, options.sync.coordinator) : undefined;

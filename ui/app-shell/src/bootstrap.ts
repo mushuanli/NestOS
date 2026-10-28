@@ -389,7 +389,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 items: (_item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]) => {
                     if (uiPassThrough.readOnly) return [];
                     if (strategyType === 'flows') return flowContextMenu.items?.(_item, defaults) ?? defaults;
-                    if (services.digitalTwin && ['emails', 'minds', 'home', 'projects'].includes(wsConfig.workspaceName)) return [...defaults,
+                    if (services.digitalTwin && ['emails', 'notes', 'home', 'projects'].includes(wsConfig.workspaceName)) return [...defaults,
                         ...twinSourceMenu(services.digitalTwin, async () => ({ kind: 'file', target: workspaceRoot(wsConfig.workspaceName) + '/' + _item.id.replace(/^\//, ''),
                             directory: _item.type === 'directory', label: _item.metadata.title || _item.id }),
                             async () => { await handleNavigationRequest({ target: 'twin', resourceId: '/sources' }); }, twinMenuLifetime.signal)];

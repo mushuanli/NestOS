@@ -13,8 +13,8 @@ afterEach(async () => { vi.useRealTimers(); for (const close of cleanup.splice(0
 async function fixture() {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() }); cleanup.push(() => manager.dispose());
     const root = await manager.openFileSystem('/');
-    await root.driver.createDirectory({ parentPath: '/home/admin', name: 'minds', recursive: true });
-    const fs = await manager.openFileSystem('/home/admin/minds');
+    await root.driver.createDirectory({ parentPath: '/home/admin', name: 'notes', recursive: true });
+    const fs = await manager.openFileSystem('/home/admin/notes');
     await fs.driver.createFile({ parentPath: '/', name: 'note.md', content: 'body' });
     const backend = bindApplicationBackend({ vfs: manager } as LocalApplicationServices);
     return { manager, fs, backend };
@@ -23,11 +23,11 @@ it('consumes one aggregated root and UI snapshot without secondary reads or crea
     const f = await fixture();
     await f.fs.driver.createFile({ parentPath: '/', name: '.gitignore', content: 'hidden.log\n' });
     await f.fs.driver.createFile({ parentPath: '/', name: 'hidden.log', content: 'hidden' });
-    const view = await f.backend.navigationView({ root: '/home/admin/minds', scope: 'minds' });
+    const view = await f.backend.navigationView({ root: '/home/admin/notes', scope: 'notes' });
     const fs = withInitialDirectory(view.files.fs, view.directory), reads = vi.spyOn(f.fs.driver, 'readContent'), listing = vi.spyOn(f.fs.driver, 'getChildren'), type = vi.spyOn(f.fs.driver, 'getNodeType');
     const uiRead = vi.spyOn(f.backend, 'readUiDocuments'), store = new VfsJsonStore(f.backend); store.seed(view.documents);
     const state = new VfsUIPersistence(store), sidebar = document.createElement('div'), editor = document.createElement('div'); document.body.append(sidebar, editor);
-    const [uiPersistence, workbenchState] = await Promise.all([state.port('minds'), state.workbenchPort('minds')]);
+    const [uiPersistence, workbenchState] = await Promise.all([state.port('notes'), state.workbenchPort('notes')]);
     const factory = vi.fn();
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: editor, editorFactory: factory,
         fileTypes: [{ extensions: ['.md', '.log'] }], uiPersistence, workbenchState }); cleanup.push(() => workbench.destroy());
@@ -80,7 +80,7 @@ it('revalidates a normal workbench if hiding interrupts a refresh', async () => 
 });
 it('discards initial metadata when an observed mutation precedes the first tree read', async () => {
     const f = await fixture();
-    const view = await f.backend.navigationView({ root: '/home/admin/minds', scope: 'minds' });
+    const view = await f.backend.navigationView({ root: '/home/admin/notes', scope: 'notes' });
     const fs = withInitialDirectory(view.files.fs, view.directory);
     const sidebar = document.createElement('div'), editor = document.createElement('div'); document.body.append(sidebar, editor);
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: editor, editorFactory: vi.fn() });

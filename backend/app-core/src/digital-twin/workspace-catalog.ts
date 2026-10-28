@@ -2,7 +2,7 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import type { TwinSourceCatalog } from './domain';
 import { documentPath } from './project-catalog';
 
-const WORKSPACES = ['emails', 'minds', 'home', 'projects'];
+const WORKSPACES = ['emails', 'notes', 'home', 'projects'];
 /** Ordinary workspace documents are discoverable; rules decide which ones may be read. */
 export async function discoverWorkspaces(fs: IFileSystem, catalog: TwinSourceCatalog): Promise<void> {
     for (const name of WORKSPACES) {

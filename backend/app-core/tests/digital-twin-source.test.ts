@@ -13,15 +13,15 @@ async function setup() {
 }
 it('reads only authorized ordinary VFS documents and rejects private paths, protected ancestors and oversized sources', async () => {
     const { fs, reader } = await setup();
-    await fs.driver.createFile({ parentPath: '/home/admin/minds', name: 'source.md', content: 'public source', recursive: true });
-    expect((await reader.read({ kind: 'file', target: '/home/admin/minds/source.md', label: '' })).text).toBe('public source');
-    for (const target of ['/var/lib/kernel/input.md', '/home/admin/private/note.md', '/home/admin/minds/../private/note.md', '/home/admin/.config/secrets.md']) {
+    await fs.driver.createFile({ parentPath: '/home/admin/notes', name: 'source.md', content: 'public source', recursive: true });
+    expect((await reader.read({ kind: 'file', target: '/home/admin/notes/source.md', label: '' })).text).toBe('public source');
+    for (const target of ['/var/lib/kernel/input.md', '/home/admin/private/note.md', '/home/admin/notes/../private/note.md', '/home/admin/.config/secrets.md']) {
         await expect(reader.read({ kind: 'file', target, label: '' })).rejects.toThrow('SOURCE_SCOPE');
     }
-    await fs.driver.createFile({ parentPath: '/home/admin/minds', name: 'protected.md', content: 'secret', metadata: { isProtected: true }, recursive: true });
-    await expect(reader.read({ kind: 'file', target: '/home/admin/minds/protected.md', label: '' })).rejects.toThrow('PRIVATE_SOURCE');
-    await fs.driver.createFile({ parentPath: '/home/admin/minds', name: 'large.md', content: 'x'.repeat(1024 * 1024 + 1), recursive: true });
-    await expect(reader.read({ kind: 'file', target: '/home/admin/minds/large.md', label: '' })).rejects.toThrow('SOURCE_LIMIT');
+    await fs.driver.createFile({ parentPath: '/home/admin/notes', name: 'protected.md', content: 'secret', metadata: { isProtected: true }, recursive: true });
+    await expect(reader.read({ kind: 'file', target: '/home/admin/notes/protected.md', label: '' })).rejects.toThrow('PRIVATE_SOURCE');
+    await fs.driver.createFile({ parentPath: '/home/admin/notes', name: 'large.md', content: 'x'.repeat(1024 * 1024 + 1), recursive: true });
+    await expect(reader.read({ kind: 'file', target: '/home/admin/notes/large.md', label: '' })).rejects.toThrow('SOURCE_LIMIT');
 });
 it('preserves user and assistant attribution while excluding system prompts, thinking and tool outputs from native history', async () => {
     const { reader, repository } = await setup();

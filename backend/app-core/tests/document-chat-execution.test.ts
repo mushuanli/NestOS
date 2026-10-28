@@ -17,7 +17,7 @@ it('creates a real linked Session, appends deterministic Flow calls to its branc
         await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
         const catalog = await view.services.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets);
         const target = catalog.entries.find(entry => entry.target.id === 'document-worker')!.target;
-        const files = await view.services.vfs.openFileSystem('/home/admin/minds');
+        const files = await view.services.vfs.openFileSystem('/home/admin/notes');
         await files.driver.createFile({parentPath: '/', name: 'linked.md', content: 'Selected text ::@anchor@'});
         const links = await view.backend.documentChatFile({files, path: '/linked.md'});
         await links.create('anchor', 'Selected text'); const reserved = await links.reserve('anchor', 'first');

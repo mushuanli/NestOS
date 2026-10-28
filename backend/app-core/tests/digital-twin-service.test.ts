@@ -31,7 +31,7 @@ async function setup(kind: 'memory' | 'indexeddb') {
     const deleteSession = vi.fn(async () => {});
     const deps = { fs, reader, extractor, deleteSession, executionExists: async (_session: string, task: string) => task === 'known-task', connectionFingerprint: async () => route };
     const service = new DigitalTwinService(deps);
-    const sourceId = await service.addSource({ kind: 'file', target: '/home/admin/minds/context.md', label: 'Context' }, 'model');
+    const sourceId = await service.addSource({ kind: 'file', target: '/home/admin/notes/context.md', label: 'Context' }, 'model');
     const request = (entries: Awaited<ReturnType<DigitalTwinService['retrieve']>>) => ({ resourceHandleId: 'llm', connectionId: 'model',
         request: { messages: entries.map(entry => ({ role: 'user' as const, content: `Memory (${entry.namespaceId}/${entry.entryId}):\n${entry.content}` })) } });
     return { fs, service, sourceId, request, extractor, deleteSession, reader,

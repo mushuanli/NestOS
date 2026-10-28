@@ -151,7 +151,7 @@ it('keeps staged image references valid across the authenticated command transpo
     expect(JSON.stringify(auditEvents)).not.toContain(url); expect(JSON.stringify(auditEvents)).not.toContain('AQID');
 });
 it('uses one authenticated application transport for user files and backend commands', async () => {
-    const root = await client('reader'), fs = await root.services.vfs.openFileSystem('/home/admin/minds');
+    const root = await client('reader'), fs = await root.services.vfs.openFileSystem('/home/admin/notes');
     const file = await fs.driver.createFile({ name: 'http.md', parentPath: '/' }); await fs.driver.writeContent(file.path, '# HTTP');
     expect(await fs.driver.readContent(file.path, { encoding: 'utf-8' })).toBe('# HTTP');
     expect(await root.services.digitalTwin!.snapshot()).toHaveProperty('settings');
@@ -281,7 +281,7 @@ it('transfers raw file bytes through view-scoped handles and retains write autho
         return auth.fetcher(input, init);
     };
     const peer = new HttpViewClient('binary', server.origin + '/api/application', fetcher); clients.push(peer);
-    const root = await peer.start(), fs = await root.services.vfs.openFileSystem('/home/admin/minds');
+    const root = await peer.start(), fs = await root.services.vfs.openFileSystem('/home/admin/notes');
     const node = await fs.driver.createFile({ name: '字节.bin', parentPath: '/' }); requests.length = 0;
     const bytes = new Uint8Array(256 * 1024); bytes[0] = 128; bytes[bytes.length - 1] = 255;
     const written = vi.fn(), read = vi.fn();
@@ -304,7 +304,7 @@ it('updates another browser configuration cache after a backend change without r
 });
 
 it.each(['queries', 'file'])('marks an expired %s view without creating a replacement or executing its operation', async kind => {
-    const root = await client('expired'), fs = await root.services.vfs.openFileSystem('/home/admin/minds');
+    const root = await client('expired'), fs = await root.services.vfs.openFileSystem('/home/admin/notes');
     const peer = clients.at(-1)!, ref = await peer.peer.expose(fs.driver) as { $ref: string };
     const closeResponse = await auth.fetcher(server.origin + '/api/application', { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'close', clientId: 'expired', version: RPC_VERSION }) });
@@ -364,7 +364,7 @@ it('resumes the same view and replays missed configuration updates and callbacks
 it('stops old-handle requests after the view expires, including binary file requests', async () => {
     const fetcher = vi.fn(auth.fetcher), disconnected = vi.fn();
     const peer = new HttpViewClient('lost-view', server.origin + '/api/application', fetcher, disconnected); clients.push(peer);
-    const root = await peer.start(), fs = await root.services.vfs.openFileSystem('/home/admin/minds');
+    const root = await peer.start(), fs = await root.services.vfs.openFileSystem('/home/admin/notes');
     await auth.fetcher(server.origin + '/api/application', {method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({kind: 'close', clientId: 'lost-view', version: RPC_VERSION})});
     await vi.waitFor(() => expect(disconnected.mock.calls.some(([error]) => error instanceof ViewExpiredError)).toBe(true));

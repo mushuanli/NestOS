@@ -12,7 +12,7 @@ afterEach(async () => {for (const stop of stops.splice(0).reverse()) await stop(
 async function setup() {
     const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', startupMode: 'interactive', digitalTwinAutoStart: false});
     stops.push(() => runtime.dispose());
-    const files = await runtime.vfs.openFileSystem('/home/admin/minds');
+    const files = await runtime.vfs.openFileSystem('/home/admin/notes');
     await files.driver.createFile({parentPath: '/', name: 'note.md', content: 'Note'});
     const services = bindLocalApplicationServices(runtime);
     const receipt = vi.fn(async () => ({status: 'accepted'})); services.commandBus = {...services.commandBus, execute: receipt} as never;

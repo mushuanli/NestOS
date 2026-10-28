@@ -13,7 +13,7 @@ import {
 
 describe('app-core shared headless services', () => {
     it('keeps workspace and Session route identities in one place', () => {
-        expect(workspaceRoot('minds')).toBe('/home/admin/minds');
+        expect(workspaceRoot('notes')).toBe('/home/admin/notes');
         expect(() => workspaceRoot('../etc')).toThrow('Invalid workspace identity');
         expect(parseSessionRoute('abc?branch=feature')).toEqual({ path: '/abc', branch: 'feature' });
         expect(sessionRoute('abc', 'feature')).toBe('abc?branch=feature');

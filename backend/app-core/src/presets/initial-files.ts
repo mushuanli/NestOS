@@ -20,7 +20,7 @@ export class NestosInitialFiles {
     async list(): Promise<InitialFileEntry[]> {
         const entries: InitialFileEntry[] = [];
         if (this.notes) for (const note of noteTemplates) entries.push({ id: note.id, group: 'notes', name: note.name,
-            path: `/home/admin/minds/${note.name}`, exists: await this.notes.driver.exists('/' + note.name) });
+            path: `/home/admin/notes/${note.name}`, exists: await this.notes.driver.exists('/' + note.name) });
         for (const flow of this.flows) entries.push({ id: 'flow:' + flow.id, group: 'flows', name: `${flow.id}.flow`,
             path: `/home/admin/flows/${flow.id}.flow`, exists: Boolean(await this.commands.execute(FlowCommand.DraftLoad, { id: flow.id })) });
         return entries;

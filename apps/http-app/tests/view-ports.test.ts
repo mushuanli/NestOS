@@ -23,7 +23,7 @@ async function setup(providerAuthorization?: ProviderAuthorizationHost) {
 describe('full application view ports', () => {
     it('drains queued file unsubscriptions before disposing their owning workspace', async () => {
         const {root, server, client} = await setup();
-        const settings = await root.backend.settings([{name: 'Notes', workspace: 'minds'}]);
+        const settings = await root.backend.settings([{name: 'Notes', workspace: 'notes'}]);
         const files = await settings.openWorkspace('Notes');
         const stop = files.on('node:created', () => {}); await client.whenIdle();
         let finish!: () => void, begun = false; const gate = new Promise<void>(resolve => {finish = resolve;});
@@ -42,7 +42,7 @@ describe('full application view ports', () => {
 
     it('roundtrips document anchor capabilities and releases subscriptions without disposing borrowed files', async () => {
         const {root} = await setup();
-        const files = await root.services.vfs.openFileSystem('/home/admin/minds');
+        const files = await root.services.vfs.openFileSystem('/home/admin/notes');
         await files.driver.createFile({parentPath: '/', name: 'anchors.md', content: 'Selected text'});
         const port = await root.backend.documentChatFile({files, path: '/anchors.md'});
         expect(await port.get('a')).toEqual({});
@@ -100,7 +100,7 @@ describe('full application view ports', () => {
     });
     it('keeps delayed settings workspace views within the same file permissions', async () => {
         const { root } = await setup();
-        const settings = await root.backend.settings([{ name: 'Notes', workspace: 'minds' }, { name: 'Sessions', workspace: 'chats' }]);
+        const settings = await root.backend.settings([{ name: 'Notes', workspace: 'notes' }, { name: 'Sessions', workspace: 'chats' }]);
         expect(settings.workspaces).toEqual([{ name: 'Notes' }, { name: 'Sessions' }]);
         expect(settings.init).toBeUndefined();
         const notes = await settings.openWorkspace('Notes');
@@ -123,7 +123,7 @@ describe('full application view ports', () => {
     it('provides files, configuration, projects, sessions and digital twin through the public graph', async () => {
         const { root } = await setup(), { services, backend } = root;
         expect(services.digitalTwin).toBeDefined();
-        const notes = await services.vfs.openFileSystem('/home/admin/minds');
+        const notes = await services.vfs.openFileSystem('/home/admin/notes');
         const file = await notes.driver.createFile({ name: 'remote.md', parentPath: '/' });
         await notes.driver.writeContent(file.path, '# Remote');
         expect(await notes.driver.readContent(file.path, { encoding: 'utf-8' })).toBe('# Remote');
@@ -133,8 +133,8 @@ describe('full application view ports', () => {
         expect(model.findAgent('default')).toBeDefined();
         const snapshot = await services.digitalTwin.snapshot(); expect(snapshot.settings).toBeDefined();
         expect(await services.projects.list()).toBeInstanceOf(Array);
-        const settings = await backend.settings([{ name: 'minds', fs: notes }]);
-        expect(settings.getAvailableWorkspaces()).toEqual([{ name: 'minds', description: undefined }]);
+        const settings = await backend.settings([{ name: 'notes', fs: notes }]);
+        expect(settings.getAvailableWorkspaces()).toEqual([{ name: 'notes', description: undefined }]);
     });
     it('keeps runtime ownership and arbitrary properties outside the public API', async () => {
         const { root, server } = await setup();
@@ -152,7 +152,7 @@ describe('full application view ports', () => {
     });
     it('carries binary files, callbacks, unsubscribe and async iterators without shipping source', async () => {
         const { root } = await setup();
-        const fs = await root.services.vfs.openFileSystem('/home/admin/minds');
+        const fs = await root.services.vfs.openFileSystem('/home/admin/notes');
         const file = await fs.driver.createFile({ name: 'image.bin', parentPath: '/' });
         const bytes = new Uint8Array([0, 128, 255]).buffer;
         await fs.driver.writeContent(file.path, bytes);

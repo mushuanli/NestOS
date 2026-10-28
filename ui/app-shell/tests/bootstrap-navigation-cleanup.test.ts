@@ -176,17 +176,17 @@ it('opens an ordinary workspace without OCR, settings, flow installation or inac
     const ocr = vi.spyOn(OcrService.prototype, 'readSettings').mockRejectedValue(new Error('OCR must remain lazy'));
     const settings = vi.spyOn(SettingsService.prototype, 'init').mockRejectedValue(new Error('Settings must remain lazy'));
     const runtime = makeRuntime();
-    const active = { ...workspace, elementId: 'minds-workspace', slug: 'minds', workspaceName: 'minds', type: 'standard' as const };
+    const active = { ...workspace, elementId: 'notes-workspace', slug: 'notes', workspaceName: 'notes', type: 'standard' as const };
     const inactive = { ...active, elementId: 'inactive-workspace', slug: 'inactive', workspaceName: 'emails' };
-    document.body.innerHTML = '<div id="minds-workspace"></div><div id="inactive-workspace"></div>';
+    document.body.innerHTML = '<div id="notes-workspace"></div><div id="inactive-workspace"></div>';
     const factory = vi.fn(() => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }))), install = vi.fn();
     vi.mocked(themeService.init).mockClear();
-    const handle = await initTestApp({ services: runtime, workspaces: [active, workspace, inactive], defaultSlug: 'minds',
+    const handle = await initTestApp({ services: runtime, workspaces: [active, workspace, inactive], defaultSlug: 'notes',
         ui: { createChatEditor: factory, createAgentEditor: factory, createFlowEditor: factory,
             createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), installFlowLibrary: install, llmUiEditors: {} } as any });
     try {
         expect(themeService.init).toHaveBeenCalledOnce(); expect(ocr).not.toHaveBeenCalled(); expect(settings).not.toHaveBeenCalled(); expect(install).not.toHaveBeenCalled();
-        expect(new Set(vi.mocked(runtime.vfs.openFileSystem).mock.calls.map(([path]) => path))).toEqual(new Set(['/etc', '/home/admin/minds']));
+        expect(new Set(vi.mocked(runtime.vfs.openFileSystem).mock.calls.map(([path]) => path))).toEqual(new Set(['/etc', '/home/admin/notes']));
     } finally { await handle.destroy(); }
 });
 

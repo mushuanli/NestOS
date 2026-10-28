@@ -32,9 +32,9 @@ it('extracts through the durable kernel and uses approved context in a later rea
         logRequest: (_id, request) => { diagnostic.push(JSON.stringify(request)); }, logResponse: () => {} } });
     try {
         const fs = await runtime.vfs.openFileSystem('/');
-        await fs.driver.createFile({ parentPath: '/home/admin/minds', name: 'context.md', content: '我希望 Alpha 使用 TypeScript。', recursive: true });
+        await fs.driver.createFile({ parentPath: '/home/admin/notes', name: 'context.md', content: '我希望 Alpha 使用 TypeScript。', recursive: true });
         const twin = runtime.digitalTwin!;
-        const source = await twin.addSource({ kind: 'file', target: '/home/admin/minds/context.md', label: 'Context' }, 'default');
+        const source = await twin.addSource({ kind: 'file', target: '/home/admin/notes/context.md', label: 'Context' }, 'default');
         await twin.analyze(source);
         const candidate = (await twin.snapshot()).memories[0];
         expect(candidate.data.state).toBe('candidate');
@@ -74,8 +74,8 @@ it('persists the real provider rejection with timestamps through the Web kernel 
     const runtime = await createApplicationRuntime({ backend, ownerKind: 'web', digitalTwinAutoStart: false });
     try {
         const fs = await runtime.vfs.openFileSystem('/');
-        await fs.driver.createFile({ parentPath: '/home/admin/minds', name: 'test.md', content: '我喜欢茶。' });
-        const source = { kind: 'file' as const, target: '/home/admin/minds/test.md', label: 'test.md' };
+        await fs.driver.createFile({ parentPath: '/home/admin/notes', name: 'test.md', content: '我喜欢茶。' });
+        const source = { kind: 'file' as const, target: '/home/admin/notes/test.md', label: 'test.md' };
         const sourceId = await runtime.digitalTwin!.addSource(source, 'default');
         await expect(runtime.digitalTwin!.analyze(sourceId)).rejects.toThrow('TWIN_EXTRACTION_FAILED');
         const info = await runtime.digitalTwin!.selectionInfo(source), job = info.jobs[0];

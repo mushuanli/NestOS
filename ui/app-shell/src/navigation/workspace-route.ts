@@ -8,7 +8,7 @@ export function parseWorkspaceHash(hash: string, fallback: string): { slug: stri
     const raw = segments.join('/');
     let resource = raw;
     try { resource = decodeURIComponent(raw); } catch { /* Let the workbench report a malformed address. */ }
-    return { slug: slug || fallback, resource: resource && resource !== 'new' ? resource : undefined };
+    return { slug: (slug === 'minds' ? 'notes' : slug) || fallback, resource: resource && resource !== 'new' ? resource : undefined };
 }
 
 /** Old .prj files stay in their original filesystem and are exposed as project files. */

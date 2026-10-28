@@ -90,11 +90,11 @@ it('uses literal source identity for directory selection, including wildcard cha
 });
 it('discovers real mail and note workspace documents without exposing protected files', async () => {
     const host = await setup('memory');
-    for (const name of ['emails', 'minds']) await host.fs.driver.createFile({ parentPath: `/home/admin/${name}`, name: 'a.md', content: name, recursive: true });
+    for (const name of ['emails', 'notes']) await host.fs.driver.createFile({ parentPath: `/home/admin/${name}`, name: 'a.md', content: name, recursive: true });
     await host.fs.driver.createFile({ parentPath: '/home/admin/emails', name: 'private.email', content: 'secret', metadata: { isProtected: true } });
     const catalog = { resources: [] as TwinDiscoveredSource[], projects: [] as string[], completeScopes: [] as string[], errors: [] as string[] };
     await discoverWorkspaces(host.fs, catalog);
-    expect(catalog.resources.map(source => source.target)).toEqual(['/home/admin/emails/a.md', '/home/admin/minds/a.md']);
+    expect(catalog.resources.map(source => source.target)).toEqual(['/home/admin/emails/a.md', '/home/admin/notes/a.md']);
     expect(catalog.errors).toEqual([]);
 });
 it('rejects a late extraction result after removal and keeps raw sources readable', async () => {

@@ -44,7 +44,7 @@ it('restores the single self-contained Anki Flow from System Recovery and preser
     for (const fn of draft.functions!) expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, { id: fn.id })).toBeNull();
     for (const id of ['anki-build', 'anki-from-image', 'anki-recognize-group', 'anki-complete-batch'])
         expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, { id })).toBeNull();
-    expect(await (await runtime.vfs.openFileSystem('/home/admin/minds')).driver.exists('/demo.md')).toBe(false);
+    expect(await (await runtime.vfs.openFileSystem('/home/admin/notes')).driver.exists('/demo.md')).toBe(false);
     draft.name = 'My Anki workflow'; draft.functions![0].name = 'My inline function';
     await runtime.commandBus.execute(FlowCommand.DraftSave, { draft, expectedDraftVersion: draft.draftVersion });
     const saved = await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, { id: draft.id });

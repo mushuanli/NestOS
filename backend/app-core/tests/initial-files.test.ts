@@ -13,7 +13,7 @@ afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await c
 async function setup() {
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), digitalTwinAutoStart: false });
     cleanup.push(() => runtime.dispose());
-    const notes = await runtime.vfs.openFileSystem('/home/admin/minds');
+    const notes = await runtime.vfs.openFileSystem('/home/admin/notes');
     return { runtime, notes, library: new NestosInitialFiles(runtime.commandBus, notes) };
 }
 it('lists exact files, restores only selected notes and preserves edits', async () => {
@@ -21,7 +21,7 @@ it('lists exact files, restores only selected notes and preserves edits', async 
     await runtime.flowEngine.engine.driver.delete(['/essay-review.flow']);
     const entries = await library.list();
     expect(entries.map(entry => entry.name)).toEqual(['readme.md', 'person-agent-demo.md', 'essay-review.flow', 'anki-generate.flow']);
-    expect(entries[1]).toMatchObject({ path: '/home/admin/minds/person-agent-demo.md', exists: false });
+    expect(entries[1]).toMatchObject({ path: '/home/admin/notes/person-agent-demo.md', exists: false });
     expect(await library.restore(['note:demo'])).toEqual([{ id: 'note:demo', status: 'restored' }]);
     expect(await notes.driver.readContent('/person-agent-demo.md', { encoding: 'utf-8' })).toBe(demo.content);
     expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, { id: 'essay-review' })).toBeNull();

@@ -96,7 +96,7 @@ it('renders five pages and allows review, correction and forgetting with honest 
         await workbench.start(); expect(await twinNavigationSource().children(null)).toHaveLength(5);
         expect(editor.querySelector('[data-form=grant]')).toBeNull();
         expect(editor.textContent).toContain(t('twin.defaultKnowledgeUse'));
-        const sourceId = await service.addSource({ kind: 'file', target: '/home/admin/minds/source.md', label: 'Source' }, 'model');
+        const sourceId = await service.addSource({ kind: 'file', target: '/home/admin/notes/source.md', label: 'Source' }, 'model');
         await service.analyze(sourceId);
         await vi.waitFor(async () => expect((await service.snapshot()).memories).toHaveLength(1));
         await workbench.openResource('/memories'); expect(editor.querySelector('script')).toBeNull();

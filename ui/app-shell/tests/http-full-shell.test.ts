@@ -14,21 +14,21 @@ import { createHostedView } from '@itookit/node-host/http';
 const releases: Array<() => Promise<void>> = [];
 const wireBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); });
-it.each(['start', 'chat', 'minds', 'session'])('mounts the complete common shell starting at %s without eager feature services', async slug => {
+it.each(['start', 'chat', 'notes', 'session'])('mounts the complete common shell starting at %s without eager feature services', async slug => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
     const { initApp } = await import('../src/bootstrap');
     const html = readFileSync('../../apps/web-app/index.html', 'utf8');
     document.body.replaceWith(document.importNode(new DOMParser().parseFromString(html, 'text/html').body, true));
-    history.replaceState({}, '', slug === 'minds' ? '/#/minds/' + encodeURIComponent('/简历.mind') : slug === 'start' ? '/' : '/#/chat');
+    history.replaceState({}, '', slug === 'notes' ? '/#/notes/' + encodeURIComponent('/简历.mind') : slug === 'start' ? '/' : '/#/chat');
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', startupMode: 'interactive', digitalTwinAutoStart: false });
     releases.push(() => runtime.dispose());
     if (slug === 'session') {
         const id = await runtime.projects.sessions.create('Cold HTTP conversation', null);
         history.replaceState({}, '', '/#/chat/' + encodeURIComponent(id));
     }
-    if (slug === 'minds') {
-        const fs = await runtime.vfs.openFileSystem('/home/admin/minds');
+    if (slug === 'notes') {
+        const fs = await runtime.vfs.openFileSystem('/home/admin/notes');
         await fs.driver.createFile({ parentPath: '/', name: '简历.mind', content: '# Resume' });
     }
     const view = await createHostedView(runtime);
@@ -113,19 +113,19 @@ it.each(['start', 'chat', 'minds', 'session'])('mounts the complete common shell
     }
     if (slug === 'start') {
         for (const method of Object.keys(calls)) delete calls[method];
-        await app.navigate('minds');
+        await app.navigate('notes');
         console.log('[HTTP first nav methods]', calls);
         expect(calls.navigationView).toBe(1);
         for (const method of ['openFileSystem', 'readUiDocuments', 'getChildren', 'getNodeType', 'createFile', 'readContent']) expect(calls[method]).toBeUndefined();
         await app.navigate('start');
         for (const method of Object.keys(calls)) delete calls[method];
-        await app.navigate('minds');
+        await app.navigate('notes');
         for (const method of ['navigationView', 'getChildren', 'getNodeType']) expect(calls[method]).toBeUndefined();
         const route = location.hash;
         await new Promise(resolve => setTimeout(resolve, 300));
         expect(calls.workbenchView).toBeUndefined(); expect(calls.toolboxView).toBeUndefined();
         expect(location.hash).toBe(route);
-        expect(document.getElementById('minds-workspace')?.classList.contains('active')).toBe(true);
+        expect(document.getElementById('notes-workspace')?.classList.contains('active')).toBe(true);
         expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-input')).toBeNull();
         for (const method of ['settings', 'ocr', 'prepareConfiguration', 'prepareSession', 'acquireFiles']) expect(calls[method]).toBeUndefined();
         const joined = app.navigate('chat'); releaseWorkbench(); await joined;

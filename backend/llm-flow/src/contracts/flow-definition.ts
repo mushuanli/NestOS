@@ -138,6 +138,8 @@ export interface FlowInputGroup {
 }
 
 export interface FlowParameter {
+    /** UI hints only; hidden fields retain their values and execution constraints. */
+    presentation?: {group?: string; visibleWhen?: SerializableExpression; contentSource?: boolean};
     /** Explicit composer binding; parameter names never imply an input source. */
     inputSource?: 'composer.text' | 'composer.attachments';
     imageConstraints?: FlowImageConstraints;
@@ -165,6 +167,7 @@ export interface FlowParameter {
  * `defaultConnection` is used when a node does not name one.
  */
 export interface FlowConnection {
+    presentation?: {group?: string};
     name: string;
     label?: string;
     /** When present, this condition determines whether a binding is required. */

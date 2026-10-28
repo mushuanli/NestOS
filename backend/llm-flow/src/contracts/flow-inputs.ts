@@ -29,7 +29,8 @@ export function validateFlowInputGroups(schema: FlowParameter[] | undefined, gro
     const issues: FlowInputIssue[] = [];
     for (const group of groups ?? []) {
         const count = group.parameters.filter(name => Object.hasOwn(values, name) && flowInputPresent(values[name])).length;
-        const interactive = options.allowInteractiveMissing && group.parameters.every(name => schema?.find(field => field.name === name)?.onMissing === 'interact');
+        const collectors = group.parameters.map(name => schema?.find(field => field.name === name)?.onMissing === 'interact');
+        const interactive = options.allowInteractiveMissing && (group.mode === 'anyOf' ? collectors.some(Boolean) : collectors.every(Boolean));
         if (count === 1 || group.mode === 'anyOf' && count > 1 || count === 0 && interactive) continue;
         const requirement = group.mode === 'anyOf' ? 'at least one value' : 'exactly one value';
         issues.push({code: count ? 'conflicting-input-group' : 'missing-input-group', message: `Input group ${group.name} requires ${requirement}`});
@@ -40,6 +41,8 @@ export function validateFlowInputGroups(schema: FlowParameter[] | undefined, gro
 export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; inputGroups?: FlowInputGroup[]; connections?: FlowConnection[]}): FlowInputIssue[] {
     const issues: FlowInputIssue[] = [], names = new Set((flow.parameters ?? []).map(field => field.name)), seen = new Set<string>();
     for (const parameter of flow.parameters ?? []) {
+        if (parameter.presentation !== undefined && !validPresentation(parameter.presentation, names, true))
+            issues.push({code: 'invalid-parameter-presentation', message: `Invalid parameter presentation: ${parameter.name}`});
         if (parameter.inputSource !== undefined && (parameter.inputSource !== 'composer.text' && parameter.inputSource !== 'composer.attachments'
             || parameter.inputSource === 'composer.text' && parameter.type !== 'string'
             || parameter.inputSource === 'composer.attachments' && (parameter.type !== 'json' || !['images', 'files'].includes(parameter.widget ?? '')))) {
@@ -50,11 +53,22 @@ export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; 
         if (!validGroup(group, names, seen)) issues.push({code: 'invalid-input-group', message: 'Invalid Flow input group declaration'});
     }
     for (const connection of flow.connections ?? []) {
+        if (connection.presentation !== undefined && !validPresentation(connection.presentation, names, false))
+            issues.push({code: 'invalid-connection-presentation', message: `Invalid connection presentation: ${connection.name}`});
         if (connection.requiredWhen !== undefined && !validCondition(connection.requiredWhen, names)) {
             issues.push({code: 'invalid-connection-condition', message: `Invalid connection requirement condition: ${connection.name}`});
         }
     }
     return issues;
+}
+
+function validPresentation(value: unknown, names: Set<string>, parameter: boolean): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const hints = value as Record<string, unknown>, keys = parameter ? ['group', 'visibleWhen', 'contentSource'] : ['group'];
+    if (Object.keys(hints).some(key => !keys.includes(key))) return false;
+    return (hints.group === undefined || typeof hints.group === 'string' && !!hints.group.trim())
+        && (hints.contentSource === undefined || typeof hints.contentSource === 'boolean')
+        && (hints.visibleWhen === undefined || validCondition(hints.visibleWhen as SerializableExpression, names));
 }
 
 function validGroup(group: FlowInputGroup, names: Set<string>, seen: Set<string>): boolean {

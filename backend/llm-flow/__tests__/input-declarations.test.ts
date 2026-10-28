@@ -132,3 +132,29 @@ it('supports inclusive anyOf groups through defaults, scoped values and persiste
     expect(flowRevisionToDraft(createFlowRevision(draft, 1)).inputGroups).toEqual(any);
     expect(prepareFlowParameters(schema.map(field => ({...field, onMissing: 'interact' as const})), {}, any)).toEqual({});
 });
+
+
+it('accepts presentation hints without changing retained execution parameters', () => {
+    const draft = definition();
+    draft.parameters![0].presentation = {group: 'Sources', contentSource: false, visibleWhen: condition};
+    draft.connections![0].presentation = {group: 'Sources'};
+    expect(flowInputDeclarationIssues(draft)).toEqual([]);
+    const restored = flowRevisionToDraft(createFlowRevision(draft, 1));
+    expect(restored.parameters![0].presentation).toEqual(draft.parameters![0].presentation);
+    expect(restored.connections![0].presentation).toEqual({group: 'Sources'});
+    expect(prepareFlowParameters(draft.parameters, {body: 'retained', enabled: false}, draft.inputGroups).body).toBe('retained');
+    for (const presentation of [{group: ''}, {contentSource: 'false'}, {visibleWhen: {kind: 'param', path: ['missing']}}]) {
+        draft.parameters![0].presentation = presentation as never;
+        expect(flowInputDeclarationIssues(draft).some(issue => issue.code === 'invalid-parameter-presentation')).toBe(true);
+    }
+    draft.connections![0].presentation = {group: false} as never;
+    expect(flowInputDeclarationIssues(draft).some(issue => issue.code === 'invalid-connection-presentation')).toBe(true);
+});
+
+it('defers a missing anyOf group when one member has a collector', () => {
+    const fields = schema.map((field, index) => ({...field, onMissing: index === 0 ? 'interact' as const : 'error' as const}));
+    const any: FlowInputGroup[] = [{...groups[0], mode: 'anyOf'}];
+    expect(prepareFlowParameters(fields, {}, any)).toEqual({});
+    expect(validateFlowInputGroups(fields, any, {})).toMatchObject([{code: 'missing-input-group'}]);
+    expect(() => prepareFlowParameters(fields, {}, groups)).toThrow('exactly one');
+});

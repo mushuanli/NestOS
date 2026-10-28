@@ -54,6 +54,17 @@ describe('default essay-review flow', () => {
         expect(draft.nodes.find(node => node.id === 'report')?.plugin).toBe('builtin.transform');
     });
 
+    it('uses prompt JSON with local validation for every model node', () => {
+        const nodes = essayReviewDraft().nodes.filter(node => node.plugin === 'builtin.agent');
+        expect(nodes).toHaveLength(5);
+        for (const node of nodes) {
+            const config = node.config as any;
+            expect(config.responseFormat).toEqual({ type: 'text' });
+            expect(config.outputValidation).toMatchObject({ onInvalid: 'repair', retries: 3, schema: { type: 'object' } });
+            expect(config.systemPrompt.join('\n')).toContain(JSON.stringify(config.outputValidation.schema));
+        }
+    });
+
     it('publishes the same current template once with its variables and control settings', async () => {
         const store = new FlowDefinitionStore(memoryStore());
         await seedDefaultFlows(store);

@@ -77,7 +77,9 @@ judge 先判断四项 score 是否全部大于等于 passScore，再判断当前
 
 四个检查与 rewrite 均配置 `invocationContext: isolated`、`historyPolicy: none`、`includeDependencyOutputs: false`。它们只接收自身 system 指令和模板显式读取的作文要求、当前稿件及修改所需的本轮意见，不隐式导入 Session 历史、父任务上下文或其他检查的评分。检查任务使用 temperature=0；模型连接仍经宿主通用连接准入验证。
 
-检查请求声明严格 JSON Schema：
+检查节点使用 `responseFormat: { type: text }`，在 system prompt 中明确要求只返回 JSON 并附上完整 Schema，同时通过 `outputValidation.schema` 做本地严格校验。无需模型声明原生结构化输出能力，也不向服务端发送 `json_schema` 请求；未通过校验的结果不能进入下游。此行为只由 Flow 配置表达，复用通用执行器。
+
+检查结果的 JSON Schema：
 
 ```yaml
 type: object

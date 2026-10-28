@@ -186,7 +186,8 @@
       "inputs": {},
       "config": {
         "systemPrompt": [
-          "执行审题与内容检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。"
+          "执行审题与内容检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。",
+          "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
         "invocationContext": "isolated",
@@ -197,43 +198,39 @@
         "temperature": 0,
         "connectionId": "default",
         "responseFormat": {
-          "type": "json_schema",
-          "json_schema": {
-            "name": "review_result",
-            "schema": {
-              "type": "object",
-              "required": [
-                "score",
-                "issues",
-                "suggestions"
-              ],
-              "properties": {
-                "score": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 10
-                },
-                "issues": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "suggestions": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "additionalProperties": false
-            },
-            "strict": true
-          }
+          "type": "text"
         },
         "outputValidation": {
           "onInvalid": "repair",
-          "retries": 3
+          "retries": 3,
+          "schema": {
+            "type": "object",
+            "required": [
+              "score",
+              "issues",
+              "suggestions"
+            ],
+            "properties": {
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggestions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -245,7 +242,8 @@
       "inputs": {},
       "config": {
         "systemPrompt": [
-          "执行结构主旨检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。"
+          "执行结构主旨检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。",
+          "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
         "invocationContext": "isolated",
@@ -256,43 +254,39 @@
         "temperature": 0,
         "connectionId": "default",
         "responseFormat": {
-          "type": "json_schema",
-          "json_schema": {
-            "name": "review_result",
-            "schema": {
-              "type": "object",
-              "required": [
-                "score",
-                "issues",
-                "suggestions"
-              ],
-              "properties": {
-                "score": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 10
-                },
-                "issues": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "suggestions": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "additionalProperties": false
-            },
-            "strict": true
-          }
+          "type": "text"
         },
         "outputValidation": {
           "onInvalid": "repair",
-          "retries": 3
+          "retries": 3,
+          "schema": {
+            "type": "object",
+            "required": [
+              "score",
+              "issues",
+              "suggestions"
+            ],
+            "properties": {
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggestions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -304,7 +298,8 @@
       "inputs": {},
       "config": {
         "systemPrompt": [
-          "执行描写语言检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。"
+          "执行描写语言检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。",
+          "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
         "invocationContext": "isolated",
@@ -315,43 +310,39 @@
         "temperature": 0,
         "connectionId": "default",
         "responseFormat": {
-          "type": "json_schema",
-          "json_schema": {
-            "name": "review_result",
-            "schema": {
-              "type": "object",
-              "required": [
-                "score",
-                "issues",
-                "suggestions"
-              ],
-              "properties": {
-                "score": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 10
-                },
-                "issues": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "suggestions": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "additionalProperties": false
-            },
-            "strict": true
-          }
+          "type": "text"
         },
         "outputValidation": {
           "onInvalid": "repair",
-          "retries": 3
+          "retries": 3,
+          "schema": {
+            "type": "object",
+            "required": [
+              "score",
+              "issues",
+              "suggestions"
+            ],
+            "properties": {
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggestions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -363,7 +354,8 @@
       "inputs": {},
       "config": {
         "systemPrompt": [
-          "执行逻辑一致性检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。"
+          "执行逻辑一致性检查。按作文要求评审作文，给出0到10分的score、具体issues和suggestions。只输出符合schema的JSON，不修改作文，不参考其他检查评分。",
+          "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
         "invocationContext": "isolated",
@@ -374,43 +366,39 @@
         "temperature": 0,
         "connectionId": "default",
         "responseFormat": {
-          "type": "json_schema",
-          "json_schema": {
-            "name": "review_result",
-            "schema": {
-              "type": "object",
-              "required": [
-                "score",
-                "issues",
-                "suggestions"
-              ],
-              "properties": {
-                "score": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 10
-                },
-                "issues": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "suggestions": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "additionalProperties": false
-            },
-            "strict": true
-          }
+          "type": "text"
         },
         "outputValidation": {
           "onInvalid": "repair",
-          "retries": 3
+          "retries": 3,
+          "schema": {
+            "type": "object",
+            "required": [
+              "score",
+              "issues",
+              "suggestions"
+            ],
+            "properties": {
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggestions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -604,7 +592,8 @@
       "inputs": {},
       "config": {
         "systemPrompt": [
-          "你是作文修改员。根据四维评审意见修改作文，保持原题意、事实和作者立场。只输出一个符合 schema 的 JSON 对象，essay 为完整修改稿。不得添加 Markdown 代码块或解释。essay 字符串内的换行、双引号、反斜杠必须按 JSON 规则转义，不得截断输出。"
+          "你是作文修改员。根据四维评审意见修改作文，保持原题意、事实和作者立场。只输出一个符合 schema 的 JSON 对象，essay 为完整修改稿。不得添加 Markdown 代码块或解释。essay 字符串内的换行、双引号、反斜杠必须按 JSON 规则转义，不得截断输出。",
+          "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"properties\":{\"essay\":{\"type\":\"string\"}},\"required\":[\"essay\"],\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n当前作文：${vars.essay}\n本轮评审意见：${vars.results}\n请针对这些意见改写作文，返回完整的 essay。",
         "invocationContext": "isolated",
@@ -614,27 +603,23 @@
         "maxExchanges": "${param.maxExchanges}",
         "connectionId": "default",
         "responseFormat": {
-          "type": "json_schema",
-          "json_schema": {
-            "name": "revised_essay",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "essay": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "essay"
-              ],
-              "additionalProperties": false
-            },
-            "strict": true
-          }
+          "type": "text"
         },
         "outputValidation": {
           "onInvalid": "repair",
-          "retries": 3
+          "retries": 3,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "essay": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "essay"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "assign": {

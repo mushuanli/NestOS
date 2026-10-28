@@ -104,8 +104,21 @@ function freezeParameterControls(dialog: HTMLElement): () => void {
 
 export function flowParameterFields(parameters: FlowParameter[], connection?: FlowConnectionSelection, groups: readonly FlowInputGroup[] = []): string {
     const inputs = parameters.length ? parameterSection('flow.parameters.inputs', renderFlowInputGroups(parameters, groups)
-        + renderParameterFields(parameters, parameterOptions(parameters))) : '';
+        + compactParameterFields(parameters, groups)) : '';
     return inputs + (connection ? parameterSection('flow.parameters.connections', flowConnectionFields(connection)) : '');
+}
+
+function compactParameterFields(parameters: FlowParameter[], groups: readonly FlowInputGroup[]): string {
+    const template = document.createElement('template');
+    template.innerHTML = renderParameterFields(parameters, parameterOptions(parameters));
+    const primary: string[] = [], optional: string[] = [];
+    for (const row of template.content.children) {
+        const field = parameters[Number((row as HTMLElement).dataset.parameterRow)];
+        const important = field.required || field.inputSource || groups.some(group => group.parameters.includes(field.name));
+        (important ? primary : optional).push(row.outerHTML);
+    }
+    return primary.join('') + (optional.length ? `<details class="flow-parameter-more"><summary>${escapeHTML(t('flow.parameters.moreSettings', {count: optional.length}))}</summary>
+        <div class="flow-parameter-section__fields">${optional.join('')}</div></details>` : '');
 }
 
 /** Reuse form parsing and constraints without opening a confirmation dialog. */

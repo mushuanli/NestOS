@@ -294,6 +294,14 @@
 .flow-input-group__choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .flow-parameter-section .flow-input-group__choices label { display: flex; flex: 1 1 130px; align-items: center; gap: 8px; min-height: 44px; margin: 0; padding: 8px 12px; border: 1px solid var(--dag-border); border-radius: 7px; cursor: pointer; }
 .flow-input-group__choices label:has(input:checked) { border-color: var(--dag-focus); background: var(--dag-bg-tertiary); }
+.flow-input-group__or { align-self: center; color: var(--dag-text-secondary); font-size: .8rem; }
+.flow-input-group__choices [role="tab"] { flex: 1 1 100px; padding: 10px 12px; min-height: 44px; border: 1px solid var(--dag-border); border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
+.flow-input-group__choices [role="tab"][aria-selected="true"] { border-color: var(--dag-focus); background: var(--dag-bg-tertiary); }
+.flow-input-group__choices [data-flow-filled][hidden] { display: none; }
+.flow-input-group__choices [data-flow-filled] { display: block; margin-top: 3px; color: var(--dag-text-secondary); font-size: .7rem; }
+.flow-parameter-more { grid-column: 1 / -1; min-width: 0; }
+.flow-parameter-more > summary { cursor: pointer; padding-block: 10px; color: var(--dag-text-secondary); }
+.flow-parameter-more[open] > summary { margin-bottom: 12px; }
 .flow-input-group__choices input[type="radio"] { flex: 0 0 18px; width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; accent-color: var(--dag-focus); }
 .flow-input-group > small { display: block; margin-top: 10px; color: var(--dag-text-secondary); line-height: 1.5; }
 .flow-image-picker { position: relative; display: grid; align-items: center; justify-items: center; gap: 12px; min-height: 116px; padding: 18px; border: 1px dashed var(--dag-border); border-radius: 9px; background: var(--dag-bg-secondary); color: var(--dag-text-secondary); text-align: center; cursor: pointer; }

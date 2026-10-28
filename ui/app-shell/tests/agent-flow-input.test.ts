@@ -195,11 +195,10 @@ it('prefills only declared text and attachment sources in the initial dialog and
     expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.ImportFile)).toHaveLength(1);
 });
 
-it('requires an explicit source choice for a declared exclusive group and submits only that source', async () => {
+it('preselects the single populated exclusive source and submits only that source', async () => {
     const f = setup(); f.changeFlow(sourceFlow(true) as never); f.type('Composer text'); f.send.click(); const dialog = await form();
-    expect(dialog.querySelector('[data-flow-input-group="source"] input:checked')).toBeNull();
-    submit(dialog); await vi.waitFor(() => expect(dialog.querySelector('[data-form-error]')!.textContent).not.toBe(''));
-    expect(f.onSend).not.toHaveBeenCalled(); chooseSource(dialog, 'lesson'); submit(dialog);
+    expect(dialog.querySelector<HTMLInputElement>('[data-flow-input-group="source"] input:checked')?.value).toBe('lesson');
+    submit(dialog);
     await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
     expect(f.onSend.mock.calls[0][3]).toMatchObject({flowParameters: {lesson: 'Composer text'}});
     expect((f.onSend.mock.calls[0][3] as {flowParameters: object}).flowParameters).not.toHaveProperty('images');

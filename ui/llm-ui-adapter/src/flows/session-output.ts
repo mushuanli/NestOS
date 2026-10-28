@@ -3,10 +3,11 @@ import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import { DagWorkbench } from '../components/DagWorkbench';
+import {runLabel} from './run-presentation';
 
 export interface Branches { currentBranch: string; branches: Array<{ name: string; taskIds: string[]; runs?: Array<{ taskId: string; flowId: string; revision: number }> }> }
 
-export interface Run { taskId: string; sessionId: string; name: string; status: string }
+export interface Run { taskId: string; sessionId: string; name: string; status: string; createdAt?: number; failure?: {code?: string; message: string} }
 
 export function unlinkedSessionRuns(runs: Run[], memberships: Branches, sessionId: string): Run[] {
     const linked = new Set(memberships.branches.flatMap(branch => branch.taskIds));
@@ -28,7 +29,7 @@ export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string,
     const select = dialog.querySelector<HTMLSelectElement>('[data-run]')!;
     const branch = dialog.querySelector<HTMLSelectElement>('[data-branch]')!;
     let memberships: Branches = { currentBranch: '', branches: [] }, runs: Run[] = [];
-    const workbench = new DagWorkbench(body, { commands, readOnly: true, backLabel: t('flow.transcript.close'),
+    const workbench = new DagWorkbench(body, { commands, readOnly: true, hideBackButton: true, backLabel: t('flow.transcript.close'),
         onModeChange: mode => { if (mode === 'design') dialog.close(); } });
     let revision = 0, timer: ReturnType<typeof setTimeout> | undefined;
     const close = () => dialog.close();
@@ -46,7 +47,7 @@ export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string,
         const selected = memberships.branches.find(item => item.name === branch.value);
         const allowed = new Set(branch.value === '' ? unlinkedSessionRuns(runs, memberships, sessionId).map(run => run.taskId) : selected?.taskIds ?? []);
         const ownRuns = runs.filter(run => run.sessionId === sessionId && allowed.has(run.taskId)), previous = select.value || initialTaskId || '';
-        select.innerHTML = ownRuns.map(run => `<option value="${escapeHTML(run.taskId)}">${escapeHTML(run.name)}${escapeHTML(flowVersion(selected?.runs?.find(item => item.taskId === run.taskId)))} · ${escapeHTML(run.status)}</option>`).join('');
+        select.innerHTML = ownRuns.map(run => `<option value="${escapeHTML(run.taskId)}">${escapeHTML(runLabel(run))}${escapeHTML(flowVersion(selected?.runs?.find(item => item.taskId === run.taskId)))}</option>`).join('');
         if (ownRuns.some(run => run.taskId === previous)) select.value = previous;
         message.textContent = ownRuns.length ? '' : t('flow.runs.empty');
         await open();

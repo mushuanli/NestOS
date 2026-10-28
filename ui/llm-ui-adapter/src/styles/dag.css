@@ -565,12 +565,12 @@
 
 .dag-run-nodes {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
     padding: 14px;
 }
 
-.dag-run-nodes article {
+.dag-run-nodes > article {
     padding: 12px;
     border: 1px solid var(--dag-border);
     border-radius: 7px;
@@ -578,7 +578,7 @@
     background: var(--dag-bg-secondary);
 }
 
-.dag-run-nodes article > header,
+.dag-run-nodes > article > header,
 .dag-run-goal {
     display: flex;
     gap: 8px;
@@ -586,16 +586,16 @@
     justify-content: space-between;
 }
 
-.dag-run-nodes article small { color: var(--dag-text-secondary); }
+.dag-run-nodes > article small { color: var(--dag-text-secondary); }
 
-.dag-run-nodes article menu {
+.dag-run-nodes > article menu {
     display: flex;
     gap: 6px;
     margin: 10px 0 0;
     padding: 0;
 }
 
-.dag-run-nodes article pre {
+.dag-run-nodes > article pre {
     max-height: 220px;
     overflow: auto;
     white-space: pre-wrap;
@@ -615,7 +615,9 @@
 .dag-run-error { margin-top: 8px; color: var(--llm-color-error, #ef4444); }
 .dag-run-wait { margin-top: 8px; padding: 7px; border-radius: 5px; background: var(--llm-color-warning-bg, #fef3c7); }
 
-.dag-workbench[data-mode="run"] { overflow: auto; }
+.dag-workbench[data-mode="run"] { display: block; overflow: auto; }
+.dag-workbench[data-mode="run"] > .dag-toolbar { flex-wrap: wrap; }
+.dag-run-nodes > article { min-width: 0; overflow-wrap: anywhere; }
 .dag-workbench[data-mode="run"] button { cursor: pointer; }
 .dag-workbench[data-mode="run"] [data-status="succeeded"] { color: var(--llm-color-success, #10b981); }
 .dag-workbench[data-mode="run"] [data-status="failed"],
@@ -754,10 +756,13 @@
 .dag-output__summary { font-weight: 600; }
 .dag-output__scores { width: 100%; border-collapse: collapse; }
 .dag-output__scores th, .dag-output__scores td { padding: 6px; text-align: left; border-bottom: 1px solid var(--dag-border, #ddd); }
-.dag-output-dialog { width: min(1100px, 94vw); max-height: 90vh; }
+.dag-output-dialog { width: min(1100px, 94vw); max-height: 90vh; overflow: hidden; }
+.dag-output-dialog[open] { display: flex; flex-direction: column; }
 .dag-output-dialog > header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dag-output-dialog > header select { max-width: 45%; }
-.dag-output-dialog__body { height: 70vh; overflow: auto; }
+.dag-output-dialog__body { height: 70vh; min-height: 0; overflow: auto; }
+.dag-output-dialog__body > .dag-workbench[data-mode="run"] { height: auto; overflow: visible; }
+.dag-output-dialog > header, .dag-output-dialog > [data-error] { flex-shrink: 0; }
 
 .dag-artifacts {
     display: grid;

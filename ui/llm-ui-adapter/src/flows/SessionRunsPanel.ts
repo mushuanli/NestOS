@@ -3,11 +3,7 @@ import {SessionCommand, type ICommandBus} from '@itookit/llm-session/contracts';
 import {FlowCommand} from '@itookit/llm-flow/contracts';
 import {openSessionFlowOutputs, unlinkedSessionRuns, type Branches, type Run} from './session-output';
 
-const statuses: Record<string, Parameters<typeof t>[0]> = {
-    created: 'flow.invoke.created', ready: 'flow.invoke.ready', blocked: 'flow.invoke.blocked',
-    running: 'flow.invoke.running', waiting: 'flow.invoke.waiting', succeeded: 'flow.invoke.succeeded',
-    failed: 'flow.invoke.failed', cancelled: 'flow.invoke.cancelled',
-};
+import {runIdentity, runStatus, runTitle} from './run-presentation';
 
 /** Observe standalone runs without inventing chat history or resuming execution. */
 export class SessionRunsPanel {
@@ -48,17 +44,30 @@ export class SessionRunsPanel {
         const signature = JSON.stringify(runs);
         if (signature === this.rendered) return;
         this.rendered = signature;
+        const expanded = this.root.querySelector('details')?.open ?? false;
         this.root.replaceChildren(); this.root.hidden = !runs.length;
         if (!runs.length) return;
-        const title = document.createElement('p'); title.textContent = `${t('flow.runs.title')} · ${t('flow.output.unlinked')}`;
-        this.root.append(title);
-        for (const run of runs) {
-            const button = document.createElement('button'); button.type = 'button';
-            button.textContent = `${run.name} · ${statuses[run.status] ? t(statuses[run.status]) : run.status}`;
-            button.onclick = () => openSessionFlowOutputs(this.commands, this.sessionId, this.lifetime.signal, run.taskId);
-            this.root.append(button);
-        }
+        const details = document.createElement('details'), title = document.createElement('summary');
+        title.textContent = t('flow.runs.standalone', {count: runs.length}); details.open = expanded;
+        const hint = document.createElement('p'); hint.textContent = t('flow.runs.separateHint');
+        details.append(title, hint); this.root.append(details);
+        for (const run of runs) this.renderRun(details, run);
     }
+    private renderRun(parent: HTMLElement, run: Run): void {
+        const row = document.createElement('section'), button = document.createElement('button'); button.type = 'button';
+        const name = document.createElement('strong'), identity = document.createElement('small'), status = document.createElement('span');
+        name.textContent = runTitle(run); name.title = run.name;
+        identity.textContent = runIdentity(run); status.textContent = runStatus(run.status); status.dataset.status = run.status;
+        button.append(name, identity, status); button.title = run.taskId;
+        button.onclick = () => openSessionFlowOutputs(this.commands, this.sessionId, this.lifetime.signal, run.taskId);
+        row.append(button); parent.append(row);
+        if (run.status !== 'failed') return;
+        const error = document.createElement('p'); error.className = 'llm-session-runs__error';
+        error.textContent = run.failure ? t('flow.runs.failureReason', {reason: [run.failure.code, run.failure.message].filter(Boolean).join(': ')})
+            : t('flow.runs.failureDetails');
+        row.append(error);
+    }
+
     setVisible(active: boolean): void {
         this.active = active; this.revision++; clearTimeout(this.timer);
         if (!active) this.lifetime.abort();

@@ -57,6 +57,8 @@ it('shows only the current Session runs and closes on Session switch', async () 
     await vi.waitFor(() => expect(document.querySelector('[data-run-document] .flow-document__body')?.textContent).toContain('false'));
     expect(document.querySelector('select')?.textContent).not.toContain('foreign');
     expect(execute.mock.calls.some(([command]) => command === FlowCommand.RunResume)).toBe(false);
+    expect(document.querySelector('[data-run-action="back"]')).toBeNull();
+    expect(document.querySelectorAll('[data-close]')).toHaveLength(1);
     abort.abort(); expect(document.querySelector('dialog')).toBeNull();
 });
 
@@ -122,13 +124,16 @@ it('shows unlinked runs in empty sessions, excludes other sessions, and drops la
     panel.setVisible(false); finish([{taskId: 'late', sessionId: 's', name: 'late', status: 'succeeded'}]);
     await vi.advanceTimersByTimeAsync(1); expect(root.textContent).toBe('');
     panel.setVisible(true); finish([
-        {taskId: 'cli', sessionId: 's', name: '<img src=x>', status: 'failed'},
+        {taskId: 'cli', sessionId: 's', name: '<img src=x>', status: 'failed', createdAt: 1700000000000,
+            failure: {code: 'TOOL_DENIED', message: 'Read permission is missing'}},
         {taskId: 'linked', sessionId: 's', name: 'linked', status: 'succeeded'},
         {taskId: 'foreign', sessionId: 'other', name: 'foreign', status: 'succeeded'},
     ]);
     await vi.advanceTimersByTimeAsync(1);
     expect(root.querySelectorAll('button')).toHaveLength(1); expect(root.textContent).toContain('<img src=x>');
     expect(root.querySelector('img')).toBeNull(); expect(onRuns).toHaveBeenCalledTimes(1);
+    expect(root.querySelector('details')?.open).toBe(false);
+    expect(root.textContent).toContain('Read permission is missing'); expect(root.textContent).toContain('#cli');
     panel.destroy(); const count = execute.mock.calls.length; await vi.advanceTimersByTimeAsync(10000);
     expect(execute).toHaveBeenCalledTimes(count); expect(root.children).toHaveLength(0);
 });

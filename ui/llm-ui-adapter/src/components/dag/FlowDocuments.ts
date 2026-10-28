@@ -16,7 +16,8 @@ export class FlowDocuments {
         const element = document.createElement('details'), summary = document.createElement('summary'), body = document.createElement('div');
         element.className = 'flow-document'; body.className = 'flow-document__body';
         summary.textContent = title; element.append(summary, body); element.open = initiallyOpen;
-        const editor = new MDxController(body, text, {deferred: true, editable: false, readOnly: true});
+        const mount = document.createElement('div'); mount.className = 'flow-document__editor'; body.append(mount);
+        const editor = new MDxController(mount, text, {deferred: true, editable: false, readOnly: true});
         const activate = () => {
             if (!element.open) return;
             const started = Date.now();

@@ -16,7 +16,7 @@ import { FlowCommand, type DurableFlowSnapshot } from '@itookit/llm-flow/contrac
 import type { InteractionRequest, TaskRecord } from '@itookit/durable-kernel/contracts';
 import { InteractionPanel } from '../components/input/InteractionPanel';
 import { promptFlowParameters } from '../components/FlowParameterForm';
-import { DagWorkbench } from '../components/DagWorkbench';
+import {openSessionFlowOutputs} from './session-output';
 import { inputInteraction } from '../shell/input-interaction';
 import {invocationControl, invocationControlTasks, invocationStatus, type InvocationControl} from './invocation-control';
 
@@ -324,14 +324,7 @@ export class InvocationPanel {
     }
 
     private async details(call: FlowInvocationRecord): Promise<void> {
-        const signal = this.viewAbort.signal;
-        const dialog = document.createElement('dialog'); dialog.className = 'dag-dialog dag-output-dialog';
-        const close = document.createElement('button'); close.textContent = t('flow.launch.cancel'); close.onclick = () => dialog.close();
-        const body = document.createElement('div'); dialog.append(close, body);
-        const workbench = new DagWorkbench(body, { commands: this.commands, readOnly: true });
-        const abort = () => dialog.close(); signal.addEventListener('abort', abort, { once: true });
-        dialog.addEventListener('close', () => { workbench.destroy(); dialog.remove(); signal.removeEventListener('abort', abort); }, { once: true });
-        document.body.append(dialog); dialog.showModal(); await workbench.openRun(call.rootTaskId!, call.executionSessionId ?? this.sessionId);
+        openSessionFlowOutputs(this.commands, call.executionSessionId ?? this.sessionId, this.viewAbort.signal, call.rootTaskId);
     }
 }
 

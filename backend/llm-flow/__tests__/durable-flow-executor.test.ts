@@ -31,6 +31,21 @@ describe('DurableFlowExecutor', () => {
     let kernel: Kernel;
     let model: ReturnType<typeof llmEffect>;
 
+    it('lists each run with its own persisted failure reason', async () => {
+        const service = executor(kernel);
+        const failed = await service.submit('session-one', {nodes: [{id: 'read', name: 'Read', plugin: 'builtin.tool',
+            pluginVersion: '1.0.0', inputs: {}, config: {toolId: 'Read', toolVersion: '1', args: {}}}], edges: []});
+        expect((await runToEnd(failed)).status).toBe('failed');
+        const success = await service.submit('session-one', valueFlow()); await runToEnd(success); await service.waitIdle();
+        const handlers = new Map<string, (args: any) => Promise<any>>();
+        new DagCommandService({kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never})
+            .register({register: (name, handler) => handlers.set(name, handler)} as never);
+        const rows = await handlers.get(FlowCommand.RunList)!({sessionId: 'session-one'});
+        expect(rows.find((row: any) => row.taskId === failed.root.id)).toMatchObject({status: 'failed',
+            failure: {message: expect.stringContaining('Flow tool is not authorized')}});
+        expect(rows.find((row: any) => row.taskId === success.root.id)).not.toHaveProperty('failure');
+    });
+
     it.each([-1, 0.5, NaN, Infinity])('rejects invalid scheduler skew allowance %s', async schedulerLeaseSkewMs => {
         const run = new DurableFlowExecutor({ kernel, plugins: createBuiltinDagPluginRegistry(), schedulerLeaseSkewMs });
         await expect(run.submit('session-one', valueFlow())).rejects.toThrow('skewMs');

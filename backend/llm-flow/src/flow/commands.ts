@@ -58,7 +58,8 @@ export interface FlowRunPreparation {
     connectionBindings?: Record<string, string>;
 }
 
-export interface FlowRunSummary { taskId: string; sessionId: string; name: string; status: string; createdAt: number; invocation?: import('../contracts').InvocationIdentity; }
+export interface FlowRunSummary { taskId: string; sessionId: string; name: string; status: string; createdAt: number;
+    failure?: {code?: string; message: string}; invocation?: import('../contracts').InvocationIdentity; }
 
 export interface DurableFlowSnapshot {
     controlStats?: Record<string, import('@itookit/durable-kernel/contracts').TaskStat>;
@@ -225,7 +226,9 @@ export class DagCommandService {
                 const input = task.input as { run?: { goal?: { objective?: string } }; initialScheduler?: { nodes?: { name?: string }[] } };
                 const name = input?.run?.goal?.objective || input?.initialScheduler?.nodes?.map(node => node.name).filter(Boolean).join(' → ') || 'Flow';
                 const invocation = invocationFromLabels(task.labels);
+                const failure = task.status === 'failed' ? task.exit?.error ?? task.lastError : undefined;
                 runs.push({ taskId: task.id, sessionId: session.id, name, status: task.status, createdAt: task.createdAt,
+                    ...(failure ? {failure: {code: failure.code, message: failure.message}} : {}),
                     ...(invocation ? {invocation} : {}) });
             }
         }

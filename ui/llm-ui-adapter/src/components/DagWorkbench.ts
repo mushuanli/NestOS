@@ -888,12 +888,14 @@ export class DagWorkbench {
     }
 
     private selectNode(id: FlowNodeId): void {
+        this.inspectorMode = 'edit';
         this.selectedNodeId = id;
         this.selectedEdgeId = undefined;
         this.render();
     }
 
     private selectEdge(id: string): void {
+        this.inspectorMode = 'edit';
         this.selectedNodeId = undefined;
         this.selectedEdgeId = id;
         this.render();

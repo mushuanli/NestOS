@@ -92,8 +92,7 @@ it('keeps the form DOM and input when selecting nodes, editing connections, and 
     original.value = 'Keep this'; f.slot().value = 'model';
     f.root.querySelector<HTMLElement>('[data-flow-node="node"]')!.click();
     expect(f.field()).toBe(original);
-    expect(f.root.querySelector<HTMLButtonElement>('[data-inspector-tab="parameters"]')!.getAttribute('aria-pressed')).toBe('true');
-    f.root.querySelector<HTMLButtonElement>('[data-inspector-tab="edit"]')!.click();
+    expect(f.root.querySelector<HTMLButtonElement>('[data-inspector-tab="edit"]')!.getAttribute('aria-pressed')).toBe('true');
     expect(f.root.querySelector<HTMLElement>('.dag-run-parameters')!.hidden).toBe(true);
     f.root.querySelector<HTMLButtonElement>('[data-inspector-tab="parameters"]')!.click();
     f.root.querySelector<HTMLButtonElement>('[data-action="zoom-in"]')!.click();

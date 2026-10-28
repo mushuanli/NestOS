@@ -28,3 +28,9 @@
 .llm-session-material summary { cursor: pointer; }
 .llm-session-material pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
 @media (max-width: 768px) { .llm-input__flow-launch { min-height: 44px; } }
+.flow-source-dialog { width: min(1000px, 94vw); max-height: 90vh; overflow: auto; }
+.flow-source-dialog select { max-width: 100%; }
+.flow-source-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 35vh; overflow: auto; }
+.flow-content-source > input:not([type="file"]) { width: 100%; box-sizing: border-box; }
+.flow-content-source pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+.flow-content-source select { max-width: 100%; }

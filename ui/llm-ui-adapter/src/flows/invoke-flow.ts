@@ -1,35 +1,32 @@
+import {resolveFlowArguments} from './flow-arguments';
 import type {OperationLedger} from '@itookit/llm-ui';
 import { flowConnectionSelection } from './connection-selection';
 import { escapeHTML, t } from '@itookit/common';
-import { type FlowRevision, type JsonValue } from '@itookit/llm-flow/contracts';
+import { type FlowRevision } from '@itookit/llm-flow/contracts';
 import {SessionCommand, type RootCallTarget, type RootTargetCatalog, type ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import { promptInvocation } from './prompt-invocation';
 
 /** Slash calls leave the Session's ordinary chat execution mode untouched. */
 export async function invokeFlowText(commands: ICommandBus, sessionId: string, text: string, signal?: AbortSignal, openChild?: (id: string) => void | Promise<void>, operations?: OperationLedger): Promise<boolean> {
-    const match = text.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
+    const match = text.trim().match(/^("(?:\\.|[^"\\])*"|\S+)(?:\s+([\s\S]*))?$/);
     const catalog = await commands.execute<RootTargetCatalog>(SessionCommand.ListTargets);
     const flows = catalog.entries.filter(entry => entry.target.kind === 'flow');
     const id = match?.[1] ?? await pickFlow(flows, signal);
     if (!id || signal?.aborted) return false;
-    const choice = flows.find(flow => flow.target.id === id || flow.name === id);
+    const name = id.startsWith('"') ? JSON.parse(id) : id;
+    const matches = flows.filter(flow => flow.target.id === name || flow.name === name);
+    const choice = matches.length === 1 ? matches[0] : undefined;
     if (!choice) throw new Error(t('flow.launch.invalid'));
     const revision = await commands.execute<FlowRevision | null>(FlowCommand.RevisionGet, {id: choice.target.id, revision: Number(choice.target.version)});
     if (!revision || revision.digest !== choice.target.digest) throw new Error(t('callable.catalog.changed'));
-    const provided = parseArguments(match?.[2]), fields = revision.parameters ?? [];
+    const fields = revision.parameters ?? [];
+    const provided = await resolveFlowArguments(match?.[2] ?? '', fields, commands, {navigation: 'projects', sessionId}, signal);
     for (const name of Object.keys(provided)) if (!fields.some(field => field.name === name)) throw new Error(t('flow.invoke.unknownParameter', { name }));
     const connection = await flowConnectionSelection(commands, undefined, revision.connections, undefined, revision);
     return promptInvocation({ commands, sessionId, name: choice.name, connection, signal, openChild, operations,
         fields: fields.map(field => ({ ...field, ...(Object.hasOwn(provided, field.name) ? { default: provided[field.name] } : {}) })),
         revision: async () => revision });
-}
-
-function parseArguments(text?: string): Record<string, JsonValue> {
-    if (!text?.trim()) return {};
-    const value = JSON.parse(text);
-    if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error(t('flow.invoke.arguments'));
-    return value;
 }
 
 function pickFlow(drafts: RootCallTarget[], signal?: AbortSignal): Promise<string | null> {

@@ -56,6 +56,7 @@ export interface ChatInputOptions {
     maxAgentExchanges?: number;
     onIndependentSend?: ChatInputOptions['onSend'];
     onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides, target?: TargetRef) => Promise<void | false>;
+    flowCommandSelectsTarget?: boolean;
     requestCallTargets?(): Promise<RootTargetCatalog>;
     contextOptions?: ContextOptionsPort;
     contextScope?(): ContextScope | undefined;
@@ -1012,11 +1013,33 @@ export class ChatInput implements IChatInputPresenter {
         } finally {this.restoringRecovery = false;}
     }
 
+    private async selectFlowCommand(): Promise<boolean> {
+        if (!this.options.flowCommandSelectsTarget || this.config.agentId.startsWith('remote:')) return true;
+        const text = this.textarea.value, revision = this.getDraftRevision();
+        const match = text.trim().match(/^\/flow\s+("(?:\\.|[^"\\])*"|\S+)(?:\s+([\s\S]*))?$/);
+        if (!match) return true;
+        try {
+            await this.callTargets?.refreshCurrent();
+            if (this.connectionsDisposed || revision !== this.getDraftRevision() || text !== this.textarea.value) return false;
+            const selected = this.callTargets?.namedFlow(match[1].startsWith('"') ? JSON.parse(match[1]) : match[1]);
+            if (!selected) throw new Error(t('flow.launch.invalid'));
+            this.flowPreparation?.abort(); this.config.input = undefined;
+            this.config.settings.flowId = undefined; this.config.settings.flowRevision = undefined; this.config.settings.flowParameters = undefined;
+            this.config.target = {...selected.target}; this.config.agentId = ''; this.currentAgentId = '';
+            this.textarea.value = '/run' + (match[2] ? ' ' + match[2] : '');
+            this.textarea.dispatchEvent(new Event('input', {bubbles: true}));
+            this.updateAgentTrigger(); this.options.onExecutorChange?.(''); this.notifyConfigChange();
+            return true;
+        } catch (error) {Toast.error(error instanceof Error ? error.message : t('flow.launch.invalid')); return false;}
+    }
+
     private async triggerSend(independent = false): Promise<void> {
         if (independent && (!this.options.onIndependentSend || !this.config.target || this.config.context || this.config.agentId.startsWith('remote:')
             || isCommandInput(this.textarea.value.trim()) || isDirectCommandInput(this.textarea.value.trim()))) {Toast.error(t('callable.independent.unsupported')); return;}
         if (!this.inputAvailable() || this.checkingConnection || this.submitting > 0 && !this.independentQueryAvailable()) return;
+        if (!await this.selectFlowCommand()) return;
         const text = this.textarea.value.trim();
+        if (/^\/run(?:\s|$)/.test(text) && !this.agentFlow()) {Toast.error(t('flow.source.selectFlow')); return;}
         const unavailable = this.targetIssue();
         if (unavailable && !isDirectCommandInput(text) && !text.startsWith('/')) { Toast.error(unavailable); return; }
         if (!text && this.files.length === 0 && !this.agentFlow() && !this.config.settings.flowId) return;
@@ -1026,7 +1049,7 @@ export class ChatInput implements IChatInputPresenter {
 
         // ✨ before 钩子
         for (const plugin of this.plugins) {
-            if (plugin.onBeforeSend?.(text) === false) return;
+            if (!/^\/run(?:\s|$)/.test(text) && plugin.onBeforeSend?.(text) === false) return;
         }
         if (unavailable && !isDirectCommandInput(text)) {Toast.error(unavailable); return;}
 

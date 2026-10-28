@@ -1,3 +1,6 @@
+import {ParameterSources} from './parameter-sources';
+import {resolveFlowArguments} from './flow-arguments';
+import type {ResourceScope} from '@itookit/app-contracts';
 import { createModuleLogger, t, randomUUID } from '@itookit/common';
 import {assertRootCallable, FlowCommand, type FlowRevision, type JsonValue} from '@itookit/llm-flow/contracts';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
@@ -20,6 +23,7 @@ export interface AgentFlowSubmission {
 export interface AgentFlowDraftInput {
     text: string;
     files: readonly File[];
+    sourceScope?: ResourceScope;
     input?: import('../domain/input-draft').WorkspaceArgumentDraft;
 }
 
@@ -58,7 +62,7 @@ export async function prepareCallTarget(commands: ICommandBus, choice: RootCallT
         if (target.kind !== 'flow' || !flow || flow.id !== target.id || String(flow.revision) !== target.version || flow.digest !== target.digest)
             throw Object.assign(new Error(t('callable.catalog.changed')), {code: 'CALL_TARGET_CHANGED'});
         assertRootCallable(flow);
-        if (draft.text && !flow.parameters?.some(field => field.inputSource === 'composer.text'))
+        if (draft.text && !/^\/run(?:\s|$)/.test(draft.text) && !flow.parameters?.some(field => field.inputSource === 'composer.text'))
             throw Object.assign(new Error(t('callable.input.unboundText')), {code: 'FLOW_INPUT_UNBOUND'});
         if (draft.files.length && !flow.parameters?.some(field => field.inputSource === 'composer.attachments'))
             throw Object.assign(new Error(t('callable.input.unboundFiles')), {code: 'FLOW_INPUT_UNBOUND'});
@@ -75,7 +79,11 @@ async function prepareDefinition(commands: ICommandBus, flow: FlowRevision, sign
     trace: AgentFlowTrace, agent?: ExecutorOption): Promise<AgentFlowSubmission | null> {
     const execution = agent?.execution?.kind === 'flow' ? agent.execution : undefined;
     trace.stage = 'input';
-    const {parameters, initialFiles} = confirmedFlowInput(flow, trace.draft, execution?.parameters);
+    const scope = trace.draft?.sourceScope ?? {navigation: 'projects'};
+    const command = trace.draft?.text.match(/^\/run(?:\s+([\s\S]*))?$/);
+    const supplied = command ? await resolveFlowArguments(command[1] ?? '', flow.parameters ?? [], commands, scope, signal) : execution?.parameters;
+    const {parameters, initialFiles} = confirmedFlowInput(flow, command ? {...trace.draft!, text: '', input: undefined} : trace.draft, supplied);
+    const sources = new ParameterSources(commands, scope, parameters);
     trace.stage = 'connections';
     const connection = await flowConnectionSelection(commands, undefined, flow.connections, execution?.connectionBindings, flow, agent);
     if (signal.aborted) return null;
@@ -84,7 +92,7 @@ async function prepareDefinition(commands: ICommandBus, flow: FlowRevision, sign
     if (composite) {await connection.validate?.(); await validateComposerFiles(trace.draft?.files ?? [], {}, signal);}
     const values = composite ? {} : await promptFlowParameters(parameters, `${agent?.name ?? flow.name} · ${t('agent.execution.runParameters')}`,
         values => validateComposerFiles(trace.draft?.files ?? [], values, signal), signal, connection, undefined,
-        t('flow.launch.reviewInputs'), {initialFiles, inputGroups: flow.inputGroups, submitLabel: 'flow.launch.start'});
+        t('flow.launch.reviewInputs'), {mount: root => sources.mount(root), validate: () => sources.validate(), initialFiles, inputGroups: flow.inputGroups, submitLabel: 'flow.launch.start'});
     return values === null || signal.aborted ? null : {flowParameters: values,
         flowExpectedSignature: {id: flow.id, revision: flow.revision, digest: flow.digest},
         flowConnectionBindings: connection.bindings, connectionId: connection.selected};

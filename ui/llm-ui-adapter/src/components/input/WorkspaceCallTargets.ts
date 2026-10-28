@@ -15,6 +15,12 @@ export class WorkspaceCallTargets {
     private partial?: string;
     constructor(private readonly read: () => Promise<RootTargetCatalog>, private readonly changed: () => void) {}
     find(target?: TargetRef): RootCallTarget | undefined {return this.entries.find(entry => sameTargetRef(entry.target, target));}
+    namedFlow(name: string): RootCallTarget {
+        if (this.error || !this.ready) throw new Error(this.error ?? t('callable.catalog.loading'));
+        const matches = this.entries.filter(entry => entry.target.kind === 'flow' && (entry.target.id === name || entry.name === name));
+        if (matches.length !== 1) throw new Error(t('flow.launch.invalid'));
+        return matches[0];
+    }
     initial(agentId: string): TargetRef | undefined {return this.entries.find(entry => entry.target.kind === 'agent' && entry.target.id === agentId)?.target;}
     select(key: string): RootCallTarget | undefined {return this.entries.find(entry => targetKey(entry.target) === key);}
     issue(target?: TargetRef): string | undefined {

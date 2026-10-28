@@ -490,12 +490,12 @@ export class LLMWorkspaceEditor implements IEditor {
             flushDraft: () => this.flushPendingSave(true),
             onExecutorChange: () => { this.skillRefreshBinding?.refresh(); },
             onRequestConnections: () => this.connectionOptions!.read(),
-            prepareAgentFlow: (agent, signal, draft) => prepareAgentFlow(this.commandBus, agent, signal, draft),
+            prepareAgentFlow: (agent, signal, draft) => prepareAgentFlow(this.commandBus, agent, signal, {...draft!, sourceScope: {navigation: 'projects', sessionId: this.options.sessionId}}),
             requestCallTargets: () => this.commandBus.execute(SessionCommand.ListTargets),
             contextOptions: query => this.commandBus.execute(SessionCommand.ContextOptions, query),
             contextScope: () => ({sessionId: this.options.sessionId, branchId: this.stateManager.getDraftBranch()}),
             contextRevisionFloor: () => this.contextRevisionFloor(),
-            prepareCallTarget: (target, signal, draft) => prepareCallTarget(this.commandBus, target, signal, draft),
+            prepareCallTarget: (target, signal, draft) => prepareCallTarget(this.commandBus, target, signal, {...draft, sourceScope: {navigation: 'projects', sessionId: this.options.sessionId}}),
 
             // ── @mention file reference ───────────────────────────────────────
             onRequestFiles: async (query, options) => this.fileSearchService.search(query, options),

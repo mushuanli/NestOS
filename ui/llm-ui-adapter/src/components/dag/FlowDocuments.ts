@@ -9,6 +9,7 @@ export class FlowDocuments {
     mount(target: HTMLElement, key: string, title: string, text: string, initiallyOpen = text.length < 4000): void {
         let view = this.views.get(key);
         if (!view) {view = this.create(key, title, text, initiallyOpen); this.views.set(key, view);}
+        view.element.querySelector('summary')!.textContent = title;
         if (view.text !== text) {view.text = text; view.editor.setContent(text);}
         target.append(view.element);
     }

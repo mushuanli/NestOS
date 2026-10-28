@@ -65,3 +65,18 @@ it('rejects a result from another session and ignores a response after closing',
     view.update(call); view.destroy(); finish({root: {task: {id: 'run', sessionId: 'child', output: 'late result'}}});
     await Promise.resolve(); expect(document.body.textContent).toBe('');
 });
+
+it('mounts separate Flow node editors and refreshes their status without recreating them', async () => {
+    const {flowNodeDocument, flowNodeDocumentRenderer} = await import('../../llm-ui-adapter/src/independent/flow-node-document');
+    const root = document.createElement('div'); document.body.append(root);
+    const node = {id: 'a', name: 'Review', status: 'running', data: {input: {value: 'request'}, output: 'result'}} as any;
+    const a = document.createElement('div'), b = document.createElement('div'); root.append(a, b);
+    const first = await flowNodeDocumentRenderer(a, flowNodeDocument(node) as any, {} as any);
+    const second = await flowNodeDocumentRenderer(b, flowNodeDocument({...node, id: 'b'}) as any, {} as any);
+    await vi.waitFor(() => expect(createMDxEditor).toHaveBeenCalledTimes(2));
+    const summary = a.querySelector('summary')!.textContent;
+    await first.update?.(flowNodeDocument({...node, status: 'success'}) as any, {} as any);
+    expect(a.querySelector('summary')!.textContent).not.toBe(summary);
+    expect(createMDxEditor).toHaveBeenCalledTimes(2);
+    await first.destroy(); await second.destroy();
+});

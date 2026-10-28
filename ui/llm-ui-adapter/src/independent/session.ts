@@ -1,3 +1,4 @@
+import {flowNodeDocument, flowNodeDocumentPart, flowNodeDocumentRenderer} from './flow-node-document';
 import {messageOutputs, messageOutputsPart, outputRenderer} from './message-outputs';
 import {SessionExecution} from './session-execution';
 import {sessionQueueToolbar} from './session-queue';
@@ -387,7 +388,7 @@ export async function createSessionChatView(container: HTMLElement, binding: Ret
                 destroy: async () => {contextPicker?.destroy(); contextPicker = undefined; await mounted?.destroy(); custom.remove(); calls?.notices.remove();}};
         } : options.mountToolbar;
         const view = await createImageChatView(container, {...options, mountToolbar,
-            onDraftChange: draft => {contextPicker?.updateDraft(draft); options.onDraftChange?.(draft);}, renderers: {...options.renderers,
+            onDraftChange: draft => {contextPicker?.updateDraft(draft); options.onDraftChange?.(draft);}, renderers: {...options.renderers, [flowNodeDocumentPart]: flowNodeDocumentRenderer,
             ...(calls ? {[independentCallPart]: calls.renderer} : {}), ...(outputs ? {[messageOutputsPart]: outputs} : {})},
             source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
         const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
@@ -427,6 +428,8 @@ function projectGroup(group: SessionGroup, ledger: OperationLedger, confirmed: R
 }
 function projectNode(node?: ExecutionNode): MessagePart[] {
     if (!node) return [];
+    if (node.data.metaInfo?.flowInteraction || node.children?.some(child => child.data.metaInfo?.flowInteraction))
+        return [...(node.children ?? []).flatMap(projectNode), flowNodeDocument(node)];
     const parts: MessagePart[] = [];
     if (node.executorType === 'tool') parts.push({ id: node.id, kind: 'tool', name: node.name,
         summary: node.data.toolCall?.name ?? node.name, detail: node.data.error ?? node.data.output,

@@ -168,3 +168,19 @@ it('reconciles frozen child submissions through original host admission without 
         expect(reconcile).not.toHaveBeenCalled(); expect(host.hasCommittedSubmission).not.toHaveBeenCalled();
     } finally {binding.dispose();}
 });
+
+it('restores direct Flow nodes as separate editor documents instead of flat Markdown', () => {
+    const host = fixture();
+    const child = {id: 'review-node', executorId: 'task-review', executorType: 'composite', name: 'Review', status: 'success',
+        data: {input: {text: 'request'}, output: 'review result', metaInfo: {flowInteraction: true}}, children: []};
+    const groups = [{id: 'response', role: 'assistant', timestamp: 1, executionRoot: {
+        ...child, id: 'root', name: 'Flow', data: {output: 'final result'}, children: [child],
+    }}] as unknown as SessionGroup[];
+    const session = {...host.options.session, getSessions: () => groups};
+    const binding = createSessionChatBinding({...host.options, session});
+    const parts = binding.source.getSnapshot().messages[0].parts;
+    expect(parts.map(part => [part.id, part.kind])).toEqual([['review-node', 'extension'], ['root', 'extension']]);
+    expect(parts[0]).toMatchObject({type: 'mindos.flow-node-document', data: {text: expect.stringContaining('review result')}});
+    expect(parts[1]).toMatchObject({data: {text: 'final result'}});
+    binding.dispose();
+});

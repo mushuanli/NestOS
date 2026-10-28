@@ -1,3 +1,4 @@
+import {resourceSuggestions} from '../flows/resource-suggestions';
 import {SessionRunsPanel} from '../flows/SessionRunsPanel';
 import {workspaceMessagePlugins} from '../independent/message-markdown';
 import {InteractionDraftPersistence} from '../services/InteractionDraftPersistence';
@@ -498,6 +499,7 @@ export class LLMWorkspaceEditor implements IEditor {
             prepareCallTarget: (target, signal, draft) => prepareCallTarget(this.commandBus, target, signal, {...draft, sourceScope: {navigation: 'projects', sessionId: this.options.sessionId}}),
 
             // ── @mention file reference ───────────────────────────────────────
+            onRequestReferences: (query, options) => resourceSuggestions(this.commandBus, {navigation: 'projects', sessionId: this.options.sessionId}, query, true, options),
             onRequestFiles: async (query, options) => this.fileSearchService.search(query, options),
 
             // ── OCR (image → text) — only when a one-shot LLM service is injected ─

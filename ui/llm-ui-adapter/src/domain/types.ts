@@ -200,6 +200,8 @@ export type TokenStats = SessionTokenUsage;
  * 文件引用建议项（供 MentionPlugin 使用）
  */
 export interface FileSuggestion {
+    /** Explicit insertion supplied by scoped resource discovery (Flow arguments only). */
+    reference?: string;
     /** 文件名（显示用） */
     name: string;
     /**

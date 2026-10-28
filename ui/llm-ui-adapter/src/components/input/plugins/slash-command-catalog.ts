@@ -541,7 +541,9 @@ function globCommand(cb: SlashCommandCallbacks): SlashCommandDef {
 }
 function chatSlashCommands(cb: SlashCommandCallbacks): SlashCommandDef[] {
     return [
-        ...(cb.onFlow ? [flowCommand(cb)] : []),
+        ...(cb.onFlow ? [flowCommand(cb), {name: 'run', label: '/run', description: t('flow.source.runCommand'),
+            icon: SLASH_ICONS.new, group: 'chat', hasArgs: true, argsPlaceholder: '@notes:/file @/file',
+            preserveInput: true, execute: () => {}}] : []),
         newCommand(cb),
         retryCommand(cb),
         continueCommand(cb),

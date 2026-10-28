@@ -1487,6 +1487,7 @@ export const en: LocaleStrings = {
     'flow.source.error.CONTENT_CHILD_RECEIPT_MISMATCH': 'The child creation receipt does not match the original request. Keep the request and check host state.',
     'flow.source.error.CONTENT_CHILD_RESULT_INVALID': 'The host returned an invalid child identity. Keep the original request and inspect its creation receipt.',
     'flow.source.start': 'Start flow',
+    'flow.source.runCommand': 'Run the selected Flow (arguments in declaration order)',
     'flow.source.selectFlow': 'Select a Flow before using /run',
     'flow.source.search': 'Search files',
     'flow.source.selectFile': 'Select a file',
@@ -2666,6 +2667,8 @@ export const en: LocaleStrings = {
     'chatInput.add.camera':      'Camera',
     'chatInput.add.photoAlbum':  'Photo Album',
     'chatInput.add.attach':      'Upload attachment',
+    'chatInput.filesEmpty': 'No files found',
+    'chatInput.filesHint': 'Type to filter · Enter to insert · Esc to close; Flow supports notes:/ and //project/',
     'chatInput.includeIgnored': 'Include ignored files',
     'chatInput.add.fileRef':     'Reference file',
 

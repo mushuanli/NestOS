@@ -21,6 +21,7 @@ import {WorkspaceContextPicker, type ContextOptionsPort, type ContextScope} from
 import { type ModelTier } from '@itookit/driver-llm/contracts';
 import { ChatInputTemplates } from '../templates/ChatInputTemplates';
 import type { InputPlugin, InputPluginContext } from './plugins/InputPlugin';
+import { SlashSuggestionsPlugin } from './plugins/NativeSlashCommandPlugin';
 import { MentionPlugin } from './plugins/MentionPlugin';
 import { TokenMeterPlugin } from './plugins/TokenMeterPlugin';
 import { PopupPanel } from './plugins/PopupPanel';
@@ -119,6 +120,9 @@ export interface ChatInputOptions {
      * 发送时由 AttachmentProcessor 自动解析并附加文件内容。
      */
     onRequestFiles?: (query: string, options?: { includeIgnored?: boolean; signal?: AbortSignal }) => Promise<FileSuggestion[]>;
+
+    /** Standard scoped references for Flow command arguments; never ordinary chat attachments. */
+    onRequestReferences?: (query: string, options?: {includeIgnored?: boolean}) => Promise<FileSuggestion[]>;
 
     /** Host-owned image recognition, shared configuration and live connection label. */
     ocr?: import('@itookit/ui-common').OcrControls;
@@ -346,9 +350,12 @@ export class ChatInput implements IChatInputPresenter {
         this.registerPlugin(tokenMeter);
 
         // Register MentionPlugin if file-request callback is available
-        if (options.onRequestFiles) {
-            this.registerPlugin(new MentionPlugin({ onRequestFiles: options.onRequestFiles }));
-        }
+        if (options.onRequestFiles || options.onRequestReferences) this.registerMentions();
+        if (options.flowCommandSelectsTarget) this.registerPlugin(new SlashSuggestionsPlugin(async () =>
+            this.options.flowCommandSelectsTarget ? [
+                {name: 'run', description: t('flow.source.runCommand'), argumentHint: '@notes:/file @/file'},
+                {name: 'flow', description: t('flow.invoke.description'), argumentHint: '"name" @notes:/file @/file'},
+            ] : [], () => !!this.options.flowCommandSelectsTarget));
 
     }
 
@@ -461,6 +468,16 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private selectedExecutor(): ExecutorOption | undefined { return this.config.target?.kind === 'flow' ? undefined : this.agents.find(agent => agent.id === this.config.agentId); }
+    private referenceInput(): boolean {
+        return /^\/(?:run|flow)(?:\s|$)/.test(this.textarea.value);
+    }
+    private registerMentions(): void {
+        this.registerPlugin(new MentionPlugin({onRequestFiles: (query, options) =>
+            this.referenceInput() && this.options.onRequestReferences
+                ? this.options.onRequestReferences(query, {includeIgnored: options?.includeIgnored})
+                : this.options.onRequestFiles?.(query, options) ?? Promise.resolve([])}));
+    }
+
     private agentFlow(): boolean { return this.config.target?.kind === 'flow' || this.selectedExecutor()?.execution?.kind === 'flow'; }
     private targetIssue(): string | undefined {
         return this.callTargets && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId
@@ -608,10 +625,10 @@ export class ChatInput implements IChatInputPresenter {
         };
     }
     adopt(options: ChatInputOptions): void {
-        const hadFiles = !!this.options.onRequestFiles;
+        const hadFiles = !!(this.options.onRequestFiles || this.options.onRequestReferences);
         this.options = options;
         this.bindCallTargets();
-        if (options.onRequestFiles && !hadFiles) this.registerPlugin(new MentionPlugin({onRequestFiles: options.onRequestFiles}));
+        if ((options.onRequestFiles || options.onRequestReferences) && !hadFiles) this.registerMentions();
         this.executionMode.configure(options.executionModeInfo, options.maxAgentExchanges);
         if (options.initialAgents) {
             this.agentPopup?.hide(); this.updateExecutors(options.initialAgents);

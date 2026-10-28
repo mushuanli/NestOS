@@ -21,10 +21,10 @@
 
 import type { InputPlugin, InputPluginContext } from './InputPlugin';
 import { PopupPanel } from './PopupPanel';
-import { t } from '@itookit/common';
+import { t, createModuleLogger, randomUUID } from '@itookit/common';
 import type { FileSuggestion } from '../../../domain/types';
 
-const TRIGGER_CHAR = '@';
+const log = createModuleLogger('file-suggestions');
 const IMAGE_MIMES = new Set([
     'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml',
 ]);
@@ -60,8 +60,9 @@ export class MentionPlugin implements InputPlugin {
         this.popup = new PopupPanel(ctx.textarea, {
             variant: 'slash',
             maxVisible: 10,
-            emptyText: 'No files found',
-            footerHint: 'Type to filter · Enter to insert · Esc to cancel',
+            emptyText: t('chatInput.filesEmpty'),
+            showSearch: false,
+            footerHint: t('chatInput.filesHint'),
             animated: true,
             toggle: { label: t('chatInput.includeIgnored'), checked: this.includeIgnored, onChange: checked => {
                 this.includeIgnored = checked;
@@ -99,34 +100,11 @@ export class MentionPlugin implements InputPlugin {
     }
 
     onInput(text: string, cursorPos: number): void {
-        if (this.mentionStart >= 0) {
-            // Still in mention: check boundaries
-            const afterAt = text.slice(this.mentionStart + 1, cursorPos);
-
-            // Terminate on space, newline, or cursor moved before @
-            if (
-                afterAt.includes(' ') ||
-                afterAt.includes('\n') ||
-                cursorPos <= this.mentionStart
-            ) {
-                this.close();
-                return;
-            }
-
-            this.currentQuery = afterAt;
-            this.scheduleFetch();
-        } else {
-            // Detect new @ trigger:  character before cursor is '@'
-            // and either at start or preceded by whitespace
-            if (cursorPos > 0 && text[cursorPos - 1] === TRIGGER_CHAR) {
-                const preceding = text[cursorPos - 2];
-                if (preceding === undefined || preceding === ' ' || preceding === '\n') {
-                    this.mentionStart = cursorPos - 1;
-                    this.currentQuery = '';
-                    this.scheduleFetch();
-                }
-            }
-        }
+        const match = /(?:^|[\s=])@("[^"\n]*|[^\s"]*)$/.exec(text.slice(0, cursorPos));
+        if (!match) {this.close(); return;}
+        this.mentionStart = cursorPos - match[1].length - 1;
+        this.currentQuery = match[1].replace(/^"/, '');
+        this.scheduleFetch();
     }
 
     deactivate(): void {
@@ -158,14 +136,18 @@ export class MentionPlugin implements InputPlugin {
         const controller = new AbortController();
         this.pendingFetch = controller;
 
+        const operationId = randomUUID(), started = Date.now();
+        let failure: string | undefined;
         try {
             const suggestions = await this.opts.onRequestFiles(this.currentQuery,
                 { includeIgnored: this.includeIgnored, signal: controller.signal });
             if (controller.signal.aborted) return;
             this.cachedSuggestions = suggestions;
-        } catch {
+        } catch (error) {
             if (controller.signal.aborted) return;
             this.cachedSuggestions = [];
+            failure = error instanceof Error ? error.message : String(error);
+            log.warn('files.search', {operationId, stage: 'search', result: 'failure', code: 'RESOURCE_SEARCH_FAILED', durationMs: Date.now() - started});
         }
 
         const items = this.cachedSuggestions.map((f) => ({
@@ -180,7 +162,8 @@ export class MentionPlugin implements InputPlugin {
             onSelect: (item) => this.insertMention(item.id as string),
             onClose: () => this.close(),
         });
-        this.popup?.filter(this.currentQuery);
+        // Results have already been matched by the scoped provider.
+        if (failure) this.popup?.show([{id: 'error', label: failure, disabled: true}], {onSelect: () => {}});
 
         // PopupPanel.show() may call searchInput.focus(), which steals focus
         // from the textarea. Once focus leaves the textarea, ChatInputView's
@@ -198,9 +181,10 @@ export class MentionPlugin implements InputPlugin {
 
         const name = suggestion.name;
         const isImage = suggestion.mimeType && IMAGE_MIMES.has(suggestion.mimeType);
-        const markdown = isImage
+        const directory = !!suggestion.reference && /\/"?$/.test(suggestion.reference);
+        const markdown = (directory ? suggestion.reference!.replace(/"$/, '') : suggestion.reference) ?? (isImage
             ? `![${name}](${filePath})`
-            : `[${name}](${filePath})`;
+            : `[${name}](${filePath})`);
 
         // Replace from @ to current cursor with the markdown link
         const endPos = this.ctx.getCursorPosition();
@@ -208,6 +192,7 @@ export class MentionPlugin implements InputPlugin {
         this.ctx.setCursorPosition(this.mentionStart + markdown.length);
 
         this.close();
+        if (directory) this.onInput(this.ctx.getText(), this.ctx.getCursorPosition());
     }
 
     private close(): void {

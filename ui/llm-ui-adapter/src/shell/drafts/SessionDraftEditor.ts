@@ -1,3 +1,4 @@
+import {resourceSuggestions} from '../../flows/resource-suggestions';
 import {prepareRemoteAttachments} from '../remote-attachments';
 import { DraftSaveQueue } from './draft-save-queue';
 import { LayoutTemplates } from '../../components/templates/LayoutTemplates';
@@ -113,6 +114,10 @@ export class SessionDraftEditor extends IEditor {
             prepareAgentFlow: this.flowControls?.commands ? (agent, signal, draft) => prepareAgentFlow(this.flowControls!.commands!, agent, signal, {...draft!, sourceScope: {navigation: 'projects', projectId: this.options.sessionDraft?.scope?.id}}) : undefined,
             ...(this.flowControls?.commands && this.options.sessionDraft?.executorScope !== 'remote' ? {
                 flowCommandSelectsTarget: true,
+                onRequestReferences: (query: string, options?: {includeIgnored?: boolean}) => resourceSuggestions(this.flowControls!.commands!,
+                    {navigation: 'projects', projectId: this.options.sessionDraft?.scope?.id}, query, true, options),
+                onRequestFiles: (query: string, options?: {includeIgnored?: boolean}) => resourceSuggestions(this.flowControls!.commands!,
+                    {navigation: 'projects', projectId: this.options.sessionDraft?.scope?.id}, query, false, options),
                 requestCallTargets: () => this.flowControls!.commands!.execute<import('@itookit/llm-session/contracts').RootTargetCatalog>(SessionCommand.ListTargets),
                 prepareCallTarget: (target: import('@itookit/llm-session/contracts').RootCallTarget, signal: AbortSignal,
                     draft: import('../../flows/agent-flow').AgentFlowDraftInput) => prepareCallTarget(this.flowControls!.commands!, target, signal, {...draft, sourceScope: {navigation: 'projects', projectId: this.options.sessionDraft?.scope?.id}}),

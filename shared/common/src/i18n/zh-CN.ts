@@ -1488,6 +1488,7 @@ export const zhCN = {
     'flow.source.error.CONTENT_CHILD_RECEIPT_MISMATCH': '子会话创建回执与原请求不一致，请保留原请求并核对宿主状态。',
     'flow.source.error.CONTENT_CHILD_RESULT_INVALID': '宿主返回的子会话身份无效，请保留原请求并核对创建结果。',
     'flow.source.start': '启动流程',
+    'flow.source.runCommand': '运行当前选择的 Flow（按声明顺序填写参数）',
     'flow.source.selectFlow': '请先选择要运行的 Flow',
     'flow.source.search': '搜索文件',
     'flow.source.selectFile': '选择文件',
@@ -2679,6 +2680,8 @@ export const zhCN = {
     'chatInput.add.camera':      '拍照',
     'chatInput.add.photoAlbum':  '相册',
     'chatInput.add.attach':      '上传附件',
+    'chatInput.filesEmpty': '未找到文件',
+    'chatInput.filesHint': '输入筛选 · Enter 插入 · Esc 关闭；Flow 支持 notes:/ 和 //项目名/',
     'chatInput.includeIgnored': '包含忽略文件',
     'chatInput.add.fileRef':     '引用文件',
 

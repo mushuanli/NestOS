@@ -1,5 +1,5 @@
 import { escapeHTML, t } from '@itookit/common';
-import { type FlowInputGroup, type FlowParameter, type JsonValue, validFlowImages, validFlowFiles } from '@itookit/llm-flow/contracts';
+import { type FlowInputGroup, type FlowParameter, type JsonValue, validFlowImages, validFlowFiles, validateFlowInputGroups } from '@itookit/llm-flow/contracts';
 import { type ConnectionMeta } from '@itookit/driver-llm/contracts';
 import { renderParameterFields, readParameterFields, type ParameterFormOptions } from '@itookit/llm-ui/forms';
 import { bindFlowImageFields, imageParameterField, type FlowInitialFiles } from './FlowImageFields';
@@ -106,6 +106,16 @@ export function flowParameterFields(parameters: FlowParameter[], connection?: Fl
     const inputs = parameters.length ? parameterSection('flow.parameters.inputs', renderFlowInputGroups(parameters, groups)
         + renderParameterFields(parameters, parameterOptions(parameters))) : '';
     return inputs + (connection ? parameterSection('flow.parameters.connections', flowConnectionFields(connection)) : '');
+}
+
+/** Reuse form parsing and constraints without opening a confirmation dialog. */
+export function readFlowParameterDefaults(parameters: FlowParameter[], groups: FlowInputGroup[] = []): Record<string, JsonValue> {
+    const root = document.createElement('div');
+    root.innerHTML = renderParameterFields(parameters, parameterOptions(parameters));
+    const values = readParameterFields(root, parameters, parameterOptions(parameters));
+    const issues = validateFlowInputGroups(parameters, groups, values);
+    if (issues.length) throw new Error(issues[0].message);
+    return values;
 }
 
 export function readFlowParameterForm(root: HTMLElement, parameters: FlowParameter[], connection?: FlowConnectionSelection): Record<string, JsonValue> {

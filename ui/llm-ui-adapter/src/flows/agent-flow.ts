@@ -2,11 +2,11 @@ import {ParameterSources} from './parameter-sources';
 import {resolveFlowArguments} from './flow-arguments';
 import type {ResourceScope} from '@itookit/app-contracts';
 import { createModuleLogger, t, randomUUID } from '@itookit/common';
-import {assertRootCallable, FlowCommand, type FlowRevision, type JsonValue} from '@itookit/llm-flow/contracts';
+import {assertRootCallable, flowParameterValues, FlowCommand, type FlowRevision, type JsonValue} from '@itookit/llm-flow/contracts';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { ExecutorOption } from '../domain/types';
-import { promptFlowParameters } from '../components/FlowParameterForm';
+import { promptFlowParameters, readFlowParameterDefaults } from '../components/FlowParameterForm';
 import { flowConnectionSelection } from './connection-selection';
 import {confirmedFlowInput} from './agent-flow-input';
 import {validateComposerFiles} from './composer-file-bindings';
@@ -82,12 +82,19 @@ async function prepareDefinition(commands: ICommandBus, flow: FlowRevision, sign
     const scope = trace.draft?.sourceScope ?? {navigation: 'projects'};
     const command = trace.draft?.text.match(/^\/run(?:\s+([\s\S]*))?$/);
     const supplied = command ? await resolveFlowArguments(command[1] ?? '', flow.parameters ?? [], commands, scope, signal) : execution?.parameters;
-    const {parameters, initialFiles} = confirmedFlowInput(flow, command ? {...trace.draft!, text: '', input: undefined} : trace.draft, supplied);
+    const inputFlow = command ? {...flow, parameters: flow.parameters?.map(({default: _default, ...field}) => field)} : flow;
+    const {parameters, initialFiles} = confirmedFlowInput(inputFlow, command ? {...trace.draft!, text: '', input: undefined} : trace.draft, command ? flowParameterValues(flow.parameters, supplied as Record<string, JsonValue>, flow.inputGroups) : supplied);
     const sources = new ParameterSources(commands, scope, parameters);
     trace.stage = 'connections';
     const connection = await flowConnectionSelection(commands, undefined, flow.connections, execution?.connectionBindings, flow, agent);
     if (signal.aborted) return null;
     trace.stage = 'parameters';
+    const direct = command?.[1]?.trim() && !trace.draft?.files.length
+        ? await directRunValues(parameters, flow, connection, trace) : undefined;
+    if (direct) return signal.aborted ? null : {flowParameters: direct,
+        flowExpectedSignature: {id: flow.id, revision: flow.revision, digest: flow.digest},
+        flowConnectionBindings: connection.bindings, connectionId: connection.selected};
+    recordPreparation(trace, 'form', command?.[1]?.trim() ? 'INPUT_OR_CONNECTION_REQUIRED' : 'EXPLICIT_CONFIGURATION');
     const composite = !!agent?.composition && !parameters.length && !flow.connections?.length;
     if (composite) {await connection.validate?.(); await validateComposerFiles(trace.draft?.files ?? [], {}, signal);}
     const values = composite ? {} : await promptFlowParameters(parameters, `${agent?.name ?? flow.name} · ${t('agent.execution.runParameters')}`,
@@ -96,6 +103,22 @@ async function prepareDefinition(commands: ICommandBus, flow: FlowRevision, sign
     return values === null || signal.aborted ? null : {flowParameters: values,
         flowExpectedSignature: {id: flow.id, revision: flow.revision, digest: flow.digest},
         flowConnectionBindings: connection.bindings, connectionId: connection.selected};
+}
+
+async function directRunValues(parameters: import('@itookit/llm-flow/contracts').FlowParameter[], flow: FlowRevision,
+    connection: import('../components/FlowParameterForm').FlowConnectionSelection, trace: AgentFlowTrace): Promise<Record<string, JsonValue> | undefined> {
+    let values: Record<string, JsonValue>;
+    try {values = readFlowParameterDefaults(parameters, flow.inputGroups);}
+    catch {return undefined;}
+    try {await connection.validate?.(values);}
+    catch (error) {
+        const code = (error as {code?: unknown})?.code;
+        if (code === 'FLOW_CONNECTION_BINDING_MISSING' || code === 'FLOW_CONNECTION_OUTPUT_FORMAT_UNSUPPORTED'
+            || code === 'FLOW_CONNECTION_UNAVAILABLE' || code === 'FLOW_CONNECTION_INVALID' && typeof (error as {field?: unknown}).field === 'string') return undefined;
+        throw error;
+    }
+    recordPreparation(trace, 'direct', 'COMPLETE_RUN_ARGUMENTS');
+    return values;
 }
 
 function recordPreparation({operationId, started, stage, draft}: AgentFlowTrace, result: string, category?: string): void {

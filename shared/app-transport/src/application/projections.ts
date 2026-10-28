@@ -1,13 +1,20 @@
 import { createFile } from '@itookit/vfs-core';
 import { favoriteKey, projectNavigation, projectFileSource, projectWorkspaceAccess, toolGrant } from '@itookit/app-contracts';
 import type { ProjectFavoriteTarget } from '@itookit/app-contracts/services';
+import {readSessionHistory} from './session-history';
 
 /** Synchronous UI reads project already loaded snapshots; writes always cross the port. */
 export function installViewProjections(kind: string, proxy: any): void {
     if (kind === 'SessionManagementPort') {
+        const read = proxy.getSnapshot;
+        proxy.getSnapshot = () => readSessionHistory(read());
         proxy.getSessions = () => proxy.getSnapshot().sessions ?? [];
         proxy.getStatus = () => proxy.getSnapshot().status;
         proxy.isGenerating = () => proxy.getSnapshot().isRunning;
+    }
+    if (kind === 'ApplicationViewObservation') {
+        const read = proxy.getSessionBaseline;
+        proxy.getSessionBaseline = () => {const baseline = read(); return {...baseline, snapshot: readSessionHistory(baseline.snapshot)};};
     }
     if (kind === 'IFileSystem' || kind === 'FileSystemView') proxy.openFile = (path: string) => createFile(proxy, path);
     if (kind === 'IAgentManagementService' || kind === 'IConnectionService') {

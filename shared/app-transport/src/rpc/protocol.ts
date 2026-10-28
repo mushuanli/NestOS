@@ -3,7 +3,7 @@ export interface Call { target: string; method: string; args: WireValue[]; notif
 export interface Reply { value?: WireValue; updates?: WireValue[]; error?: { name: string; message: string; code?: string; field?: string; remoteCode?: string; requestId?: string; outcome?: 'committed' | 'not-committed' | 'unknown' } }
 export interface CallbackRequest { id?: string; call: Call }
 export interface Descriptor { id: string; kind: string; version?: number; fields: Record<string, WireValue>; snapshots: Record<string, WireValue>; lookups: Record<string, WireValue> }
-export const RPC_VERSION = 14;
+export const RPC_VERSION = 15;
 export const MAX_RPC_HANDLES = 4096;
 
 export const MAX_BODY_BYTES = 32 * 1024 * 1024;

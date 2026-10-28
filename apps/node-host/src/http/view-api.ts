@@ -11,6 +11,7 @@ import { MAX_BODY_BYTES } from '@itookit/app-transport/rpc';
 import { createHostedView, type HostedView } from './view-services';
 import { ViewNotifications } from './view-notifications';
 import { ViewEventStream } from './view-event-stream';
+import {ViewUpdateReads} from './view-update-reads';
 import type { AuditPort } from '../logging/audit-log';
 import { recordRequestPhase } from '../logging/audit-log';
 import {SnapshotCache} from '@itookit/app-transport/http';
@@ -19,7 +20,7 @@ import { callDiagnostics, replyDiagnostics } from './call-diagnostics';
 
 interface Client { peer: RpcPeer; view: HostedView; stream?: ServerResponse; lastSeen: number; active: number;
     bootstrap?: Promise<Reply>; stopObservation?: () => void;
-    initialized: boolean; notifications: ViewNotifications; events: ViewEventStream;
+    initialized: boolean; notifications: ViewNotifications; events: ViewEventStream; updateReads: ViewUpdateReads;
     pending: Map<string, { resolve(reply: Reply): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>; }
 type ApplicationRequest = BootstrapRequest & {clientId?: unknown; version?: unknown; kind?: string;
     call?: Call; calls?: Call[]; id?: string; reply?: Reply};
@@ -51,11 +52,20 @@ export class ViewApi {
         recordRequestPhase(response, 'viewReadyMs', Date.now() - preparing);
         if (body.kind === 'bootstrap') return this.respondBootstrap(client, identity, body, response);
         if (body.kind === 'bootstrap-data') {json(response, 200, await client.bootstrap!); return;}
+        if (body.kind === 'updates-read') return this.readUpdates(client, body.id, response);
         if (body.kind === 'reply') {
             const pending = client.pending.get(body.id!); if (!pending) throw new FSError('ENOENT', 'Unknown callback');
             clearTimeout(pending.timer); client.pending.delete(body.id!); pending.resolve(body.reply!); json(response, 200, {}); return;
         }
         return this.invoke(client, body, response);
+    }
+    private readUpdates(client: Client, id: string | undefined, response: ServerResponse): void {
+        if (typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id)) throw new FSError('EINVAL', 'Invalid prepared update identity');
+        try {json(response, 200, client.updateReads.read(id, String(response.getHeader('X-Request-ID') ?? '')));}
+        catch (error) {
+            if (error instanceof FSError && error.code === 'ENOENT') this.expire(response, 'VIEW_UPDATE_EXPIRED', 'Prepared view update expired; reconnect the page');
+            throw error;
+        }
     }
     private async respondBootstrap(client: Client, identity: string, body: BootstrapRequest, response: ServerResponse): Promise<void> {
         const started = Date.now(), existing = client.bootstrap;
@@ -154,7 +164,9 @@ export class ViewApi {
                 client.events.write(`data: ${JSON.stringify({ id, call, updates })}\n\n`);
             });
         }, error => console.warn('[View] Callback failed', error), undefined, domains => view.prepare(client.peer, domains));
-        client.notifications = new ViewNotifications(() => client.events, () => client.initialized ? client.peer.refresh() : Promise.resolve([]), error => console.warn('[View] Notifications failed', error));
+        client.updateReads = new ViewUpdateReads(this.audit);
+        client.notifications = new ViewNotifications(() => client.events, () => client.initialized ? client.peer.refresh() : Promise.resolve([]),
+            error => console.warn('[View] Notifications failed', error), 16, data => client.updateReads.stage(data));
         client.peer.onInvalidated(() => { void client.notifications.enqueue(); });
         return client;
     }
@@ -188,7 +200,7 @@ export class ViewApi {
     }
     private async release(identity: string): Promise<void> {
         const ready = this.clients.get(identity); if (!ready) return; this.clients.delete(identity);
-        const client = await ready; client.stopObservation?.(); client.notifications.close(); client.events.end();
+        const client = await ready; client.stopObservation?.(); client.notifications.close(); client.events.end(); client.updateReads.clear();
         for (const pending of client.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('View closed')); }
         client.pending.clear(); await client.peer.close(); await client.view.close();
     }

@@ -15,7 +15,7 @@ export class ViewNotifications {
     private queuedBytes = 0;
     private inFlightBytes = 0;
     constructor(private readonly stream: () => NotificationStream | undefined, private readonly refresh: () => Promise<Reply['updates']>,
-        private readonly report: (error: unknown) => void, private readonly delay = 16) {}
+        private readonly report: (error: unknown) => void, private readonly delay = 16, private readonly stage?: (data: string) => string) {}
     enqueue(call?: Call): Promise<Reply> {
         const stream = this.stream();
         if (this.closed || !stream || stream.destroyed) return Promise.resolve({ value: null });
@@ -53,7 +53,10 @@ export class ViewNotifications {
             const updates = await this.refresh();
             if (this.closed || stream.destroyed) return;
             if (stream.writableLength > 1024 * 1024) { stream.end(); this.close(); }
-            else if (calls.length || viewEvents.length || updates?.length) stream.write(`data: ${JSON.stringify({ calls, updates, ...(viewEvents.length ? {viewEvents} : {}) })}\n\n`);
+            else if (calls.length || viewEvents.length || updates?.length) {
+                const data = JSON.stringify({calls, updates, ...(viewEvents.length ? {viewEvents} : {})});
+                stream.write(`data: ${this.stage?.(data) ?? data}\n\n`);
+            }
         } finally { this.inFlight = 0; this.inFlightBytes = 0; this.running = false; this.schedule(); }
     }
     close(): void { this.closed = true; this.dirty = false; if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.calls.length = 0; this.viewEvents.length = 0; this.queuedBytes = 0; }

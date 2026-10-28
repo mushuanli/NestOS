@@ -1,14 +1,16 @@
 import type {ApplicationViewObservation} from '@itookit/app-contracts/services';
+import {SessionHistory} from './session-history';
 
 type Snapshot = Record<string, any>;
 
 /** Own immutable wire projections; domain objects remain mutable and private. */
 class SessionSnapshots {
+    private readonly history = new SessionHistory();
     private rows: any[] = [];
     private readonly owners = new Map<string, string>();
     private dirty = new Set<string>();
     private reset = true;
-    private sessionId?: string;
+    private scope?: string;
     private projected?: { type: string; delta: string };
     change(event: any): void {
         if (event?.type === 'session_status_changed' || event?.type === 'session_unread_updated') return;
@@ -23,10 +25,11 @@ class SessionSnapshots {
     snapshot(source: Snapshot): Snapshot {
         const key = Array.isArray(source.sessions) ? 'sessions' : 'messages', rows = source[key];
         if (!Array.isArray(rows)) return source;
-        if (this.sessionId !== source.sessionId) this.reset = true;
-        this.sessionId = source.sessionId;
+        const scope = JSON.stringify([source.sessionId, source.view?.manifest?.currentBranch]);
+        if (this.scope !== scope) this.reset = true;
+        this.scope = scope;
         if (this.reset || this.dirty.size) this.update(rows);
-        return { ...source, [key]: this.rows };
+        return this.history.project(source, key, this.rows);
     }
     private update(rows: any[]): void {
         if (this.reset) this.owners.clear();

@@ -11,7 +11,9 @@ import { QueryBatcher } from './query-batcher';
 import { installFileTransport } from './file-transport';
 import { ViewExpiredError } from './view-expired';
 
-type NotificationPacket = Partial<CallbackRequest> & Pick<Reply, 'updates'> & { calls?: Call[]; viewEvents?: ApplicationViewEvent[] };
+type NotificationPacket = Partial<CallbackRequest> & Pick<Reply, 'updates'> & { calls?: Call[]; viewEvents?: ApplicationViewEvent[]; updatesRead?: string };
+const maxNotificationCount = 256;
+const maxEventBytes = 2 * 1024 * 1024;
 export interface HttpViewStartOptions {initialView?: OpenViewRequest; snapshots?: SnapshotCache;}
 
 /** HTTP commands are never automatically replayed after an unknown outcome. */
@@ -35,6 +37,7 @@ export class HttpViewClient {
     private updateFailed = false;
     private pendingNotifications = 0;
     private notificationBytes = 0;
+    private notificationStarted = 0;
     private initialized!: () => void;
     private readonly ready = new Promise<void>(resolve => { this.initialized = resolve; });
     private readonly queries: QueryBatcher;
@@ -178,16 +181,25 @@ export class HttpViewClient {
                 this.lastStreamActivity = Date.now();
                 clearTimeout(idle);
                 buffer += decoder.decode(chunk.value, { stream: true });
-                if (buffer.length > 2 * 1024 * 1024) { this.showUpdateError(new FSError('EBUSY', 'View event is too large')); return; }
-                let end: number;
-                while ((end = buffer.indexOf('\n\n')) >= 0) {
-                    const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
-                    if (!this.consumeFrame(frame)) return;
-                }
+                const remaining = await this.consumeFrames(buffer, signal);
+                if (remaining === undefined) return; buffer = remaining;
             }
         } finally { clearTimeout(idle); signal.removeEventListener('abort', cancel); await reader.cancel().catch(() => {}); reader.releaseLock(); }
     }
-    private consumeFrame(frame: string): boolean {
+    private async consumeFrames(buffer: string, signal: AbortSignal): Promise<string | undefined> {
+        let end: number;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+            const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+            if (!await this.consumeFrame(frame) || signal.aborted) return;
+        }
+        if (new TextEncoder().encode(buffer).byteLength > maxEventBytes) {
+            this.showUpdateError(new FSError('EBUSY', 'View event is too large')); return;
+        }
+        return buffer;
+    }
+    private async consumeFrame(frame: string): Promise<boolean> {
+        const bytes = new TextEncoder().encode(frame).byteLength;
+        if (bytes > maxEventBytes) {this.showUpdateError(new FSError('EBUSY', 'View event is too large')); return false;}
         const lines = frame.split('\n'), data = lines.find(line => line.startsWith('data: '));
         if (!data) return true;
         try {
@@ -203,22 +215,40 @@ export class HttpViewClient {
             if (!packet || typeof packet !== 'object' || Array.isArray(packet)) throw new FSError('EIO', 'Invalid view event');
             // Blocking replies remain independent of notification delivery.
             if (packet.id) void this.callback(packet).catch(error => this.showUpdateError(error));
-            else return this.enqueueNotification(packet, frame.length * 2);
+            else return await this.enqueueNotification(packet, bytes);
             return true;
         } catch (error) { this.showUpdateError(error); this.abort.abort(); return false; }
     }
-    private enqueueNotification(packet: NotificationPacket, bytes: number): boolean {
+    private async enqueueNotification(packet: NotificationPacket, bytes: number): Promise<boolean> {
         const count = Math.max(1, (packet.calls?.length ?? 0) + (packet.viewEvents?.length ?? 0));
-        this.pendingNotifications += count; this.notificationBytes += bytes;
-        if (this.pendingNotifications > 256 || this.notificationBytes > 2 * 1024 * 1024) {
-            this.showUpdateError(new FSError('EBUSY', 'View notification queue is full')); this.abort.abort(); return false;
+        const full = () => this.pendingNotifications + count > maxNotificationCount || this.notificationBytes + bytes > maxEventBytes;
+        // Network chunks and resumed journals may burst. Yield once without waiting for blocked callbacks.
+        if (this.pendingNotifications && full()) await new Promise<void>(resolve => setTimeout(resolve, 0));
+        if (this.abort.signal.aborted) return false;
+        if (full()) {
+            this.notificationOverflow(count, bytes); return false;
         }
+        if (!this.pendingNotifications) this.notificationStarted = Date.now();
+        this.pendingNotifications += count; this.notificationBytes += bytes;
         this.callbacks = this.callbacks.then(() => this.callback(packet)).catch(error => this.showUpdateError(error))
             .finally(() => { this.pendingNotifications -= count; this.notificationBytes -= bytes; });
         return true;
     }
+    private notificationOverflow(count: number, bytes: number): void {
+        const error = Object.assign(new FSError('EBUSY', 'View notification queue is full'), {
+            operation: 'view.notification', stage: 'enqueue', result: 'failure', clientId: this.clientId,
+            reason: this.pendingNotifications + count > maxNotificationCount ? 'NOTIFICATION_COUNT_LIMIT' : 'NOTIFICATION_BYTES_LIMIT',
+            pendingNotifications: this.pendingNotifications, notificationBytes: this.notificationBytes,
+            incomingNotifications: count, incomingBytes: bytes, lastEventId: this.lastEventId,
+            maxNotifications: maxNotificationCount, maxBytes: maxEventBytes,
+            durationMs: this.pendingNotifications ? Date.now() - this.notificationStarted : 0,
+        });
+        this.showUpdateError(error);
+    }
     private async callback(packet: NotificationPacket): Promise<void> {
         await this.ready;
+        if (this.abort.signal.aborted) return;
+        if (packet.updatesRead !== undefined) packet = await this.readNotification(packet.updatesRead);
         if (this.abort.signal.aborted) return;
         this.peer.applyUpdates(packet.updates);
         await this.peer.waitUpdates(packet.updates);
@@ -228,6 +258,13 @@ export class HttpViewClient {
             if (packet.id) await this.post({ kind: 'reply', id: packet.id, reply });
             else if (reply.error) throw Object.assign(new Error(reply.error.message), reply.error);
         }
+    }
+    private async readNotification(id: string): Promise<NotificationPacket> {
+        if (!/^[a-f0-9-]{36}$/.test(id)) throw new FSError('EIO', 'Invalid prepared view update identity');
+        const packet = await this.post({kind: 'updates-read', id}) as NotificationPacket;
+        if (!packet || typeof packet !== 'object' || Array.isArray(packet) || packet.updatesRead !== undefined || packet.id !== undefined)
+            throw new FSError('EIO', 'Invalid prepared view update');
+        return packet;
     }
     private showUpdateError(error: unknown): void {
         if (this.closing || this.expired || this.updateFailed) return;

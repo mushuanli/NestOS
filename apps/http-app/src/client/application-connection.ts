@@ -1,5 +1,6 @@
 import { randomUUID } from '@itookit/common';
 import {HttpViewClient, SnapshotCache, ViewExpiredError} from '@itookit/app-transport/http';
+import {RPC_VERSION} from '@itookit/app-transport/rpc';
 import {setFileRecoveryOwner} from '@itookit/app-shell/startup';
 import {initialView} from './initial-view';
 
@@ -45,7 +46,7 @@ export function connectApplication() {
     let started = false;
     const ready = identity.then(userId => {
         setFileRecoveryOwner(userId);
-        const key = `mindos.snapshot-cache.v14:${userId}`;
+        const key = `mindos.snapshot-cache.v${RPC_VERSION}:${userId}`;
         const snapshots = new SnapshotCache({read: () => sessionStorage.getItem(key), write: value => sessionStorage.setItem(key, value)});
         started = true;
         return client.start({initialView: route.request, snapshots});

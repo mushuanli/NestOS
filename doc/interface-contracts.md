@@ -273,7 +273,7 @@ HarnessExecutionProvider.reconcile 返回 ConnectionReconcileResult；Effect 桥
 
 `ApplicationBackend.openView` 返回 `OpenedApplicationView`（UI 文档、工作台、可选初始会话、事件水位与观察句柄）；由 app-core 的 host/open-view 实现，app-shell 的 lifecycle/opened-view 消费。`ApplicationViewObservation.observeView(after, listener)` 在登记时有界重放并持续分发；快照水位仅属于当前客户端，已有编辑器切换保留 openSessionView/activate 屏障。详见 [HTTP 打开与观察聚合](./http-app.md#打开与观察聚合已实现)。
 
-HTTP v14 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClient.initialView，先登记观察再导出能力；HttpViewClient 将 SSE viewEvents 适配为本地 ApplicationViewObservation。纯数据按 SHA-256 校准，句柄每个连接独立，见 [一次打开同步握手](./http-app.md#一次打开同步握手与首帧v14)。
+HTTP v15 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClient.initialView，先登记观察再导出能力；HttpViewClient 将 SSE viewEvents 适配为本地 ApplicationViewObservation。纯数据按 SHA-256 校准，句柄每个连接独立，见 [一次打开同步握手](./http-app.md#一次打开同步握手与首帧v14)。
 
 `ApplicationViewObservation.getSessionBaseline` 返回成对快照/水位，调用者只读使用；传输按公开 `observeView` 的事件更新行投影，不读取具体宿主的内部会话源。`KernelInspectionPort` 仅供 `LocalApplicationServices` 的宿主聚合使用，不属于前端 `KernelViewPort`，也不注册为远程能力。
 

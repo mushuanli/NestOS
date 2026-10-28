@@ -16,7 +16,7 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
         domain: 'opened-view', invalidates: [],
         fields: ['documents', 'workbench', 'initial', 'taskAttachmentKey', 'connectionInterests', 'observation', 'cursor'], methods: {dispose: 'async'}},
     "ApplicationViewObservation": {markers: ['getViewCursor', 'getSessionBaseline', 'observeView', 'dispose'], fields: [], scopedObserver: true, observer: observeApplication,
-        snapshotView: applicationSnapshot,
+        snapshotView: applicationSnapshot, sharedSnapshots: true,
         methods: {getViewCursor: 'snapshot', getSessionBaseline: 'snapshot', observeView: 'async-subscribe', dispose: 'async'}},
     "ChatConfigurationView": { markers: ["getConfigurationSnapshot", "subscribe", "dispose"], fields: [],
         domain: 'configuration', scopedObserver: true, observer: 'subscribe', sharedSnapshots: true,

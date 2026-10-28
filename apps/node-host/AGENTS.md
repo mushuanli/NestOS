@@ -27,3 +27,5 @@ httpd 仅在 http.editorSwap=true 时装配 EditorSwapStore，默认 ~/swap；�
 - http/user-host 按 mTLS 登记的 userId 选择 Runtime/ViewApi；http/user-application 组合用户数据包和共享定义。禁止从 body、query、clientId、证书 CN 或 X-NestOS-User 选择用户目录；该请求头只用于拒绝身份变化。
 - storage/UserFiles 将逻辑 /home/admin 映射到当前物理 home，其他状态及统一 sidecar 位于 .nestos；顶层 .nestos 永不进入用户文件能力。保持单用户记录事务，不把项目正文与 /var/lib 拆成不同 backend。home 中的项目内部 .nestos 仍为原有合法布局。
 - 总审计的请求/业务事件带 userId，用户初始化、共享配置、存储就绪、关闭和离线导入事件带 operationId、stage、result、code、durationMs；HOST_LOCK_BUSY 和 CLIENT_POLICY_INVALID 必须保留分类，不记录正文、参数或凭据。
+
+- v15 的 ViewUpdateReads 按浏览器视图隔离大通知读取，超过 64 KiB 的包不直接进入 SSE；32 项 / 32 MiB / 60 秒有界保留，释放视图清空。updates-read 只读取原准备结果，认证、clientId 和协议检查保持；缺失标记视图过期。审计不得包含正文。

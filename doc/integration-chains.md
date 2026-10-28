@@ -174,4 +174,4 @@ MCP 配置是唯一连接权威，`/etc/fs` 只保存项目授权；旧连接迁
 
 聊天冷启动链：`app-shell.initApp` → `backend.openView` → 先登记源观察、并行文档/工作台、无旧绑定时激活、并行恢复读模型 → 返回快照及水位 → `OpenedViewProjection.start` 登记一次 observeView → 宿主补发并经 SSE 持续更新 → 本地分发给组件。已有编辑器切换继续走 openSessionView/保存/activate；不同 HTTP 客户端保持各自绑定。详见 [HTTP 打开与观察聚合](./http-app.md#打开与观察聚合已实现)。
 
-HTTP v14 轻入口并行启动 SSE/初始 POST、Shell 模块与当前编辑器代码；POST 携带目标与已知数据摘要，宿主一次完成准备、激活、观察登记和能力导出。前端安装缓存校准后的服务图，再将 initialView 交给 initApp；首帧骨架保持至当前导航完成，后续变化复用同一 SSE。
+HTTP v15 轻入口并行启动 SSE/初始 POST、Shell 模块与当前编辑器代码；POST 携带目标与已知数据摘要，宿主一次完成准备、激活、观察登记和能力导出。前端安装缓存校准后的服务图，再将 initialView 交给 initApp；首帧骨架保持至当前导航完成，后续变化复用同一 SSE。

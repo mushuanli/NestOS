@@ -6,7 +6,7 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - `src/server/` 仅委托 node-host/http；node-host 装配 LocalFS、Node SQLite、静态 UI 与应用 Runtime（默认一个；--users-dir 时每用户一个）；浏览器不能再装配另一套执行 Runtime。
 - `src/client/` 不导入 Node、LocalFS、Tauri。Web UI 经 nestos-web 的公开入口导入。
 - 对外 API 暴露应用查询、命令、确认和事件，不提供 SQL、任意宿主路径、原始托管状态写入或 Tauri invoke；没有原始 VFS 存储 HTTP 协议。
-- app-transport/application 绑定应用能力描述与共享 selector；app-transport/rpc 通过注入获得描述，不导入业务模块。协议 v14 拒绝旧客户端。
+- app-transport/application 绑定应用能力描述与共享 selector；app-transport/rpc 通过注入获得描述，不导入业务模块。协议 v15 拒绝旧客户端。
 - bootstrap 不预开文件系统，主题与 UI 状态经文档端口读取；OCR、设置、恢复与聊天能力按消费创建。设置工作区以声明身份传递，后端按需解析并保持写权限保护，不能通过延迟视图绕过托管状态命令。
 - bootstrap 安装后才消费 SSE；资源释放回收独占句柄和订阅，共享句柄保留，回调能力按借用寿命释放。
 - 查询、订阅装配分别有界合并；写命令独立确认。快照按资源事件失效，未知写操作保留域失效兜底，通知批次保持顺序，版本补丁不得覆盖新状态。二进制通道仍使用已授权的文件视图句柄。
@@ -45,3 +45,5 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - 用户正文位于 <usersDir>/<userId>，私有记录、数据库、OAuth、日志与可选 swap 收在 .nestos；UserFiles 仅映射物理位置，保留 /home/admin 逻辑别名和单用户索引事务。公共 llm/agents/flows 定义由 admin 写入，普通用户只读，查询凭据脱敏。不得把公共配置文件通过设置偏好、文件能力或导出绕回浏览器。
 - 浏览器先认证 /api/identity，再按 userId 隔离 DTO 缓存和文件恢复副本；后续请求钉住该 userId，不能在证书重分配后自动恢复旧页面到新账号。SSE 复验原证书及 userId。公共配置更新目前需重启全部 Runtime。
 - --import-legacy-root 只做离线复制，要求完整旧 _meta/index.db；可显式带 --import-legacy-auth-dir。取得源与目标锁后，通过存储 API 复制 SeqFile 值、完整侧车元数据和标签，暂存成功后发布；源数据保留，不能覆盖现有 admin/etc。详见 doc/http-app.md。
+
+- v15 的 Session 历史按 Session/分支分别保留有界基线，回到旧会话与自己的最新基线比较；大于 64 KiB 的数组补丁整段同步。超过 64 KiB 的 SSE 通知只带 updatesRead，客户端按序通过认证的 updates-read 读取准备好的响应，禁止重执行绑定或写命令。准备区失效按视图过期恢复，不静默漏过补丁。

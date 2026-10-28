@@ -303,6 +303,36 @@ it('updates another browser configuration cache after a backend change without r
     await vi.waitFor(() => expect(second.services.agentService.getProvider('shared')?.name).toBe('Shared'));
 });
 
+it('reads large updates over authenticated HTTP and keeps SSE small without replaying the write', async () => {
+    const requests: string[] = [], frameSizes: number[] = [], readIds: string[] = []; let buffer = '';
+    const fetcher: typeof fetch = async (input, init) => {
+        if (init?.body) {const request = JSON.parse(String(init.body)); requests.push(request.kind); if (request.kind === 'updates-read') readIds.push(request.id);}
+        const response = await auth.fetcher(input, init);
+        if (!String(input).includes('/events?')) return response;
+        const decoder = new TextDecoder();
+        return new Response(response.body!.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({transform(chunk, controller) {
+            buffer += decoder.decode(chunk, {stream: true}); let end: number;
+            while ((end = buffer.indexOf('\n\n')) >= 0) {
+                const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+                frameSizes.push(Buffer.byteLength(frame));
+            }
+            controller.enqueue(chunk);
+        }})), {headers: response.headers});
+    };
+    const errors = vi.fn(), peer = new HttpViewClient('large-update-reader', server.origin + '/api/application', fetcher, errors, errors); clients.push(peer);
+    const observer = await peer.start(), writer = await client('large-update-writer'), text = 'large-description '.repeat(10000);
+    await writer.services.agentService.saveProvider({id: 'large-update', name: 'Large',
+        implementation: 'openai-compatible', baseURL: 'https://example.test', models: [{id: 'model', name: text}]});
+    await vi.waitFor(() => expect(observer.services.agentService.getProvider('large-update')?.models[0].name).toBe(text));
+    expect(requests).toContain('updates-read'); expect(Math.max(...frameSizes)).toBeLessThan(64 * 1024);
+    expect(errors).not.toHaveBeenCalled();
+    expect(auditEvents.filter(event => event.rpcOperations?.includes('IAgentManagementService.saveProvider'))).toHaveLength(1);
+    expect(auditEvents).toContainEqual(expect.objectContaining({event: 'view.update.read', stage: 'read', result: 'success', requestId: expect.any(String)}));
+    const denied = await auth.fetcher(server.origin + '/api/application', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({kind: 'updates-read', clientId: 'large-update-writer', version: RPC_VERSION, id: readIds[0]})});
+    expect(denied.status).toBe(400); expect(denied.headers.get('X-NestOS-View-Expired')).toBe('1');
+});
+
 it.each(['queries', 'file'])('marks an expired %s view without creating a replacement or executing its operation', async kind => {
     const root = await client('expired'), fs = await root.services.vfs.openFileSystem('/home/admin/notes');
     const peer = clients.at(-1)!, ref = await peer.peer.expose(fs.driver) as { $ref: string };

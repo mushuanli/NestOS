@@ -10,7 +10,7 @@ describe('expandWorkflow', () => {
             {id: 'fetch', tool: 'fixture.fetch'}, {id: 'save', tool: 'fixture.save', needs: 'fetch'},
         ], result: 'save'});
         const config = validateWorkflow(value, false);
-        const graph = compileWorkflow(config.tasks, () => {throw new Error('A tool workflow must not acquire an Agent');});
+        const graph = compileWorkflow(config.tasks.map(task => ({...task})), () => {throw new Error('A tool workflow must not acquire an Agent');});
         expect(graph.edges).toEqual([expect.objectContaining({from: 'fetch', to: 'save', kind: 'control'})]);
     });
     it('composes MCP input, a configured Harness and a tool output without a local model', () => {

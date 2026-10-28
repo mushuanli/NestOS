@@ -1,39 +1,50 @@
 import {createModuleLogger, randomUUID, sha256Hex} from '@itookit/common';
-import {ResourceCommand, parseResourceReference, formatResourceReference, type ResourceScope, type ResourceReference} from '@itookit/app-contracts';
+import {INPUT_ASSET_MAX_BYTES, ResourceCommand, parseResourceReference, formatResourceReference, type ResourceScope, type ResourceReference, type ResourceReadInput, type ResourceContent, type ResourceMediaContent} from '@itookit/app-contracts';
 import type {ProjectService} from '@itookit/app-contracts/services';
 import {createVFSFileDiscoverySource, discoverFiles, FSError, type IVFSManager} from '@itookit/vfs-core';
 import type {CommandBus, ISessionRepository} from '@itookit/llm-session';
+import {classifyResourceBytes, decodeResourceText} from './resource-media';
 interface Options {vfs: IVFSManager; projects?: ProjectService; repository: ISessionRepository}
 interface ResourceSearchInput {query: string; scope: ResourceScope; includeIgnored?: boolean}
 const log = createModuleLogger('resource-reference'), maxBytes = 2 * 1024 * 1024;
 const navigations = new Set(['notes', 'emails', 'private', 'projects']);
 
 export function registerResourceReferences(commands: CommandBus, options: Options) {
-    const read = commands.register(ResourceCommand.Read, args => readResource(options, args as {reference: string; scope: ResourceScope}));
+    const read = commands.register(ResourceCommand.Read, args => readResource(options, args as ResourceReadInput));
     const search = commands.register(ResourceCommand.Search, args => searchResources(options, args as ResourceSearchInput));
     return {dispose() {read.dispose(); search.dispose();}};
 }
-export async function readResource(options: Options, input: {reference: string; scope: ResourceScope}) {
+export function readResource(options: Options, input: ResourceReadInput & {mode: 'auto'}): Promise<ResourceMediaContent>;
+export function readResource(options: Options, input: ResourceReadInput & {mode?: 'text'}): Promise<ResourceContent>;
+export function readResource(options: Options, input: ResourceReadInput): Promise<ResourceContent | ResourceMediaContent>;
+export async function readResource(options: Options, input: ResourceReadInput): Promise<ResourceContent | ResourceMediaContent> {
     const operationId = randomUUID(), started = Date.now(); let stage = 'resolve';
     try {
+        if (input.mode !== undefined && input.mode !== 'text' && input.mode !== 'auto') throw new FSError('EINVAL', 'Unknown resource read mode');
         const reference = parseResourceReference(input.reference), source = await resolve(options, reference, input.scope);
         try {
-            stage = 'read'; const node = await source.fs.driver.getNode(source.path);
-            if (node?.type !== 'file') throw new FSError('ENOENT', 'Referenced file is unavailable');
-            if ((node.size ?? 0) > maxBytes) throw new FSError('EFBIG', 'Referenced text exceeds 2 MiB');
-            const raw = await source.fs.driver.readContent(source.path, {encoding: 'binary'}), bytes = new Uint8Array(raw);
-            if (bytes.byteLength > maxBytes) throw new FSError('EFBIG', 'Referenced text exceeds 2 MiB');
-            stage = 'decode'; const text = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes);
-            if (text.includes('\0')) throw new FSError('EINVAL', 'Referenced file is not UTF-8 text');
-            const result = {reference, scope: source.scope, path: source.path, text, bytes: bytes.byteLength, sha256: await sha256Hex(bytes)};
-            log.info('resource.read', {operationId, stage: 'complete', result: 'success', bytes: bytes.byteLength, durationMs: Date.now() - started});
-            return result;
+            stage = 'read'; const bytes = await readBytes(source, input.mode === 'auto');
+            stage = 'classify'; const content = input.mode === 'auto' ? classifyResourceBytes(bytes) : {text: decodeResourceText(bytes)};
+            const identity = {reference, scope: source.scope, path: source.path, bytes: bytes.byteLength, sha256: await sha256Hex(bytes)};
+            const result = input.mode === 'auto' ? {...identity, ...content, name: source.path.split('/').pop()!, data: bytes.buffer} : {...identity, ...content};
+            log.info('resource.read', {operationId, stage: 'complete', result: 'success', mode: input.mode ?? 'text', bytes: bytes.byteLength,
+                ...('kind' in content ? {kind: content.kind, mimeType: content.mimeType} : {}), durationMs: Date.now() - started});
+            return result as ResourceContent | ResourceMediaContent;
         } finally {await source.release();}
     } catch (error) {
         log.warn('resource.read', {operationId, stage, result: 'failure', code: error instanceof FSError ? error.code : 'RESOURCE_READ_FAILED', durationMs: Date.now() - started});
         throw error;
     }
 }
+async function readBytes(source: Awaited<ReturnType<typeof resolve>>, media: boolean): Promise<Uint8Array<ArrayBuffer>> {
+    const node = await source.fs.driver.getNode(source.path), limit = media ? INPUT_ASSET_MAX_BYTES : maxBytes;
+    if (node?.type !== 'file') throw new FSError('ENOENT', 'Referenced file is unavailable');
+    const checkSize = (size: number) => {if (size > limit) throw new FSError('EFBIG', `Referenced ${media ? 'file exceeds 20' : 'text exceeds 2'} MiB`);};
+    checkSize(node.size ?? 0);
+    const raw = await source.fs.driver.readContent(source.path, {encoding: 'binary'}), bytes = new Uint8Array(raw);
+    checkSize(bytes.byteLength); return bytes;
+}
+
 async function resolve(options: Options, ref: ResourceReference, supplied: ResourceScope) {
     const scope = {...supplied, navigation: ref.navigation ?? supplied?.navigation};
     if (!navigations.has(scope.navigation)) throw new FSError('EINVAL', 'Unknown resource navigation');

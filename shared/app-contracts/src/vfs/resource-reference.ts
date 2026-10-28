@@ -1,6 +1,11 @@
 export interface ResourceScope {navigation: string; projectId?: string; sessionId?: string}
 export interface ResourceReference {navigation?: string; root: 'current' | 'navigation'; path: string}
 export interface ResourceContent {reference: ResourceReference; scope: ResourceScope; path: string; text: string; bytes: number; sha256: string}
+/** Auto reads retain binary bytes; staging into an execution asset is a separate operation. */
+export interface ResourceReadInput {reference: string; scope: ResourceScope; mode?: 'text' | 'auto'}
+export interface ResourceMediaContent extends Omit<ResourceContent, 'text'> {
+    kind: 'text' | 'image' | 'file'; name: string; mimeType: string; data: ArrayBuffer; text?: string;
+}
 export const ResourceCommand = {Read: 'app.resource.read', Search: 'app.resource.search'} as const;
 
 /** Presentation syntax only; authorization and mount binding belong to the host. */

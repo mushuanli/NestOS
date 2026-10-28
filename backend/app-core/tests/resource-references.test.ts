@@ -42,3 +42,20 @@ it('discovers another project by readable name and preserves its scope in refere
         .toEqual([{label: '/nested/draft.md', reference: '@//Demo/nested/draft.md'}]);
     expect(releases).toBe(1);
 });
+
+it('auto reads classify binary references without decoding or staging them', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); closes.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/'), options = {vfs: manager, repository: {} as any};
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 1]);
+    await fs.driver.createFile({parentPath: '/home/admin/notes', name: 'photo.txt', content: bytes.buffer, recursive: true});
+    const input = {reference: '@notes:/photo.txt', scope: {navigation: 'notes'}};
+    const media = await readResource(options, {...input, mode: 'auto'});
+    expect(media).toMatchObject({kind: 'image', mimeType: 'image/jpeg', name: 'photo.txt', bytes: bytes.length});
+    expect(new Uint8Array(media.data)).toEqual(bytes);
+    expect(media.text).toBeUndefined();
+    expect(await fs.driver.exists('/var/lib/inputs.seq')).toBe(false);
+    await expect(readResource(options, input)).rejects.toMatchObject({code: 'EINVAL'});
+    await fs.driver.createFile({parentPath: '/home/admin/notes', name: 'words.jpg', content: 'actual text'});
+    expect(await readResource(options, {...input, reference: '@notes:/words.jpg', mode: 'auto'}))
+        .toMatchObject({kind: 'text', mimeType: 'text/plain', text: 'actual text'});
+});

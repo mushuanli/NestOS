@@ -50,3 +50,11 @@ it('wraps a referenced document as a file asset for a compatible file parameter'
     expect((await resolveFlowArguments('@/one.pdf', fields, mediaCommands('application/pdf'), {navigation: 'projects'})).document)
         .toMatchObject([{type: 'file', source: {type: 'asset', asset: {mimeType: 'application/pdf'}}}]);
 });
+it('rejects oversized text binding and mismatched asset receipts', async () => {
+    const oversized = {execute: vi.fn(async () => ({kind: 'text', text: 'document', bytes: 2 * 1024 * 1024 + 1}))} as any;
+    await expect(resolveFlowArguments('@/large.txt', imageFields, oversized, {navigation: 'projects'})).rejects.toMatchObject({code: 'FLOW_ARGUMENT_TEXT_LIMIT'});
+    const commands = mediaCommands();
+    commands.execute.mockResolvedValueOnce({kind: 'image', name: 'image.jpg', mimeType: 'image/jpeg', bytes: 3, sha256: 'a'.repeat(64), data: new ArrayBuffer(3)});
+    commands.execute.mockResolvedValueOnce({kind: 'input', id: 'wrong', mimeType: 'image/jpeg', bytes: 3, sha256: 'a'.repeat(64)});
+    await expect(resolveFlowArguments('@/image.jpg', imageFields, commands, {navigation: 'projects'})).rejects.toMatchObject({code: 'INPUT_ASSET_RECEIPT_INVALID'});
+});

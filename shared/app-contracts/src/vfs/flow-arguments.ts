@@ -48,6 +48,7 @@ async function bindReference(reference: string, named: FlowParameter | undefined
     signal?.throwIfAborted();
     if (typeof resource.text === 'string' && (!named || !mediaField(named))) {
         const field = named ?? nextField(fields, values);
+        if (resource.bytes > 2 * 1024 * 1024) throw failure('FLOW_ARGUMENT_TEXT_LIMIT', 'Referenced text exceeds 2 MiB; use a files parameter for larger documents');
         values[field.name] = parameterSourceValue(resource.text, field); return;
     }
     const field = named ?? mediaTarget(resource, fields);
@@ -74,22 +75,35 @@ function mediaTarget(resource: ResourceMediaContent, fields: FlowParameter[]): F
 }
 function checkMediaBounds(field: FlowParameter, parts: JsonValue[], resource: ResourceMediaContent): void {
     const constraints = field.widget === 'images' ? field.imageConstraints : field.fileConstraints;
-    const bytes = parts.reduce<number>((total, part) => total + Number((part as {source?: {asset?: {bytes?: number}}})?.source?.asset?.bytes ?? 0), resource.bytes);
+    const bytes = parts.reduce<number>((total, part) => total + mediaBytes(part), resource.bytes);
     if (constraints?.maxItems !== undefined && parts.length + 1 > constraints.maxItems)
         throw failure('FLOW_ARGUMENT_MEDIA_LIMIT', `${field.label ?? field.name} accepts at most ${constraints.maxItems} files`);
     if (constraints?.maxBytes !== undefined && bytes > constraints.maxBytes)
         throw failure('FLOW_ARGUMENT_MEDIA_LIMIT', `${field.label ?? field.name} exceeds its ${constraints.maxBytes} byte limit`);
+}
+function mediaBytes(part: JsonValue): number {
+    const value = part as {source?: {asset?: {bytes?: number}}; image_url?: {url?: string}};
+    if (typeof value?.source?.asset?.bytes === 'number') return value.source.asset.bytes;
+    const data = value?.image_url?.url?.split(',')[1];
+    return data ? data.length * 3 / 4 - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0) : 0;
 }
 async function importMedia(resource: ResourceMediaContent, field: FlowParameter, commands: ICommandBus): Promise<JsonValue> {
     const operationId = randomUUID(), started = Date.now();
     try {
         const asset = await commands.execute<JsonValue>(InputAssetCommand.ImportFile, {uploadId: operationId, name: resource.name,
             mimeType: resource.mimeType, bytes: resource.bytes, sha256: resource.sha256, data: resource.data});
+        validateAsset(asset, operationId, resource);
         log.info('flow.argument.media', {operationId, stage: 'import', result: 'success', parameter: field.name, mimeType: resource.mimeType, bytes: resource.bytes, durationMs: Date.now() - started});
         return {type: field.widget === 'images' ? 'image' : 'file', name: resource.name, source: {type: 'asset', asset}};
     } catch (error) {
         log.warn('flow.argument.media', {operationId, stage: 'import', result: 'failure', code: 'FLOW_ARGUMENT_ASSET_IMPORT_FAILED', durationMs: Date.now() - started}); throw error;
     }
+}
+function validateAsset(value: JsonValue, id: string, resource: ResourceMediaContent): void {
+    const asset = value as Record<string, JsonValue> | null;
+    if (!asset || asset.kind !== 'input' || asset.id !== id || asset.mimeType !== resource.mimeType
+        || asset.bytes !== resource.bytes || asset.sha256 !== resource.sha256)
+        throw failure('INPUT_ASSET_RECEIPT_INVALID', 'Imported file receipt differs from the referenced content');
 }
 function failure(code: string, message: string): Error { return Object.assign(new Error(message), {code}); }
 export function parameterSourceValue(value: unknown, field: FlowParameter): JsonValue {

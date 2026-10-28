@@ -23,3 +23,7 @@ CLI 与 httpd 共用的 Node 宿主适配包，不是业务策略层，不导入
 - 通知刷新、序列化或输出失败时，关闭通知队列并使事件日志失效；不得丢弃已出队应用事件后继续发送下一序号。客户端随后按视图过期提供重载入口，不能重放业务写命令。
 
 httpd 仅在 http.editorSwap=true 时装配 EditorSwapStore，默认 ~/swap；不开放到 VFS/静态目录。每个编辑器独立 0600 swap，修改防抖写入，>=512KiB 不写；正常关闭删自己的文件，句柄断连 dispose 保留异常残留。启动和每小时清理本数据根作用域下更新超过48小时的文件。原始存储只由后端用例通过受限文件能力创建句柄，不进入公共服务图，日志不记录正文或路径。
+
+- http/user-host 按 mTLS 登记的 userId 选择 Runtime/ViewApi；http/user-application 组合用户数据包和共享定义。禁止从 body、query、clientId、证书 CN 或 X-NestOS-User 选择用户目录；该请求头只用于拒绝身份变化。
+- storage/UserFiles 将逻辑 /home/admin 映射到当前物理 home，其他状态及统一 sidecar 位于 .nestos；顶层 .nestos 永不进入用户文件能力。保持单用户记录事务，不把项目正文与 /var/lib 拆成不同 backend。home 中的项目内部 .nestos 仍为原有合法布局。
+- 总审计的请求/业务事件带 userId，用户初始化、共享配置、存储就绪、关闭和离线导入事件带 operationId、stage、result、code、durationMs；HOST_LOCK_BUSY 和 CLIENT_POLICY_INVALID 必须保留分类，不记录正文、参数或凭据。

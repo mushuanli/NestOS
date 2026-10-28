@@ -10,9 +10,9 @@ import type { HostedApplicationClient } from '@itookit/app-contracts/services';
 export interface HostedView { root: HostedApplicationClient; prepare(peer: RpcPeer, domains?: ReadonlySet<ViewDomain>): Promise<void>; close(): Promise<void> }
 const ROOTS = ['/etc', '/home/admin', ...APPLICATION_WORKSPACES.map(name => `/home/admin/${name}`)];
 /** Each browser owns view resources and bindings; execution remains daemon-owned. */
-export async function createHostedView(runtime: ApplicationRuntime): Promise<HostedView> {
-    const view = await openApplicationView(runtime, { preload: true });
-    const client = restrictApplicationFiles(view, ROOTS);
+export async function createHostedView(runtime: ApplicationRuntime, configurationReadonly = false): Promise<HostedView> {
+    const view = await openApplicationView(runtime, { preload: true, configurationReadonly });
+    const client = restrictApplicationFiles(view, ROOTS, configurationReadonly);
     try {
         const root: HostedApplicationClient = { ...client, services: { ...client.services, startBackground: undefined },
             flowLibrary: createNestosFlowLibrary(), fileTemplates: { agent: JSON.stringify(createNestosLlmPresets().agents, null, 2) } };

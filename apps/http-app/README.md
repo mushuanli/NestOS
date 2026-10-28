@@ -1,12 +1,14 @@
 # NestOS HTTP app
 
-Node.js 提供受双向 TLS 保护的应用能力服务，持有唯一的 Session/Kernel/LLM Runtime。浏览器仅装配 UI、应用端口适配器与视图状态。Node.js >=22.13；初始化证书需要 OpenSSL。
+Node.js 提供受双向 TLS 保护的应用能力服务，默认持有一套 Session/Kernel/LLM Runtime；配置 `http.usersDir` 或显式 `--users-dir` 时每用户一套。浏览器仅装配 UI、应用端口适配器与视图状态。Node.js >=22.13；初始化证书需要 OpenSSL。
 
 ```text
 Browser + client certificate + shared AppShell
   → HTTPS :2000 (mTLS + enrolled certificate fingerprint)
   → ViewApi + application facade → app-core Runtime → LocalFS + SQLite
 ```
+
+多用户在启动目录的 `nestos.json` 配置 `http.usersDir` 和 `http.mtls.clients`，登记证书指纹对应的 `userId`，仍强制 mTLS；命令行 `--users-dir` 可覆盖目录。推荐 `rootDir=/srv/nestos`、`http.usersDir=/srv/nestos/home`，公共配置位于 `/srv/nestos/etc`。公共定义只保留一份，由 admin 维护；每用户完整数据包位于 `home/<userId>`，内部状态、索引与私有授权收在 `.nestos`。旧 admin 数据可用 `--import-legacy-root` 离线导入，详见 [多用户配置与迁移](../../doc/http-app.md#mtls-多用户与可迁移-home)。
 
 完整复用 Web/Tauri 的工作区和编辑器，包括工具箱、设置、数字分身和 Flow。浏览器不再通过原始存储 API 创建执行 Runtime；详细边界和验收见 [HTTP 应用宿主](../../doc/http-app.md)。
 
@@ -61,7 +63,7 @@ pnpm httpd
 
 发布使用根目录的 `pnpm httpd:build` 构建并选择独立 release，再运行 `pnpm httpd`（或 `pnpm --filter @itookit/http-app start`）。`--cert-dir` 指定证书目录，`--audit-file` 指定 JSONL 日志；缺少有效证书或指纹允许名单时拒绝启动。没有匿名或明文降级开关。更新 UI 也需构建新 release，并在重启后生效。
 
-`pnpm httpd` 直接启动已选 release；默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），Runtime 直接使用本地存储，不再监听内部 VFS 端口。默认读取 `~/.config/nestos/nestos.json`，设置了 `XDG_CONFIG_HOME` 时读取其下的 `nestos/nestos.json`；文件缺失时创建与 CLI/桌面端相同的默认配置。证书默认使用该配置目录，可通过下面的 `http` 配置覆盖。可用 `pnpm httpd --host 127.0.0.1 --port 3000 --root /path/to/data` 覆盖启动参数。监听所有网卡不改变证书要求，`--cert-host` 仍需包含浏览器实际访问的 IP/DNS。
+`pnpm httpd` 直接启动已选 release；默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），Runtime 直接使用本地存储，不再监听内部 VFS 端口。优先读取启动目录下的 `nestos.json`，不存在时读取 `~/.config/nestos/nestos.json`，设置了 `XDG_CONFIG_HOME` 时读取其下的 `nestos/nestos.json`；文件缺失时创建与 CLI/桌面端相同的默认配置。证书默认使用该配置目录，可通过下面的 `http` 配置覆盖。可用 `pnpm httpd --host 127.0.0.1 --port 3000 --root /path/to/data` 覆盖启动参数。监听所有网卡不改变证书要求，`--cert-host` 仍需包含浏览器实际访问的 IP/DNS。
 
 可在 `nestos.json` 指定宿主私有目录，证书初始化和启动读取同一配置：
 
@@ -90,7 +92,7 @@ HTTPS 监听队列默认为 4096，可用 `--backlog <正整数>` 调整，例�
 
 移动端在标签栏和空面板初始化期间保留文件列表，活动面板挂载正文后才自动切换到详情。标签切换与关闭会重新检查活动面板；用户返回列表后，正文的后台更新不会把页面强制切回详情。
 
-证书有效期：CA 10 年，服务器及客户端证书 1 年。`clients.json` 保存允许的 SHA-256 指纹；删除对应项后下一次请求立即拒绝，包括已有连接。全部移除可禁止所有访问，重启前需恢复至少一枚有效身份。指纹文件不是私钥，不应填写任意 API Token。
+证书有效期：CA 10 年，服务器及客户端证书 1 年。配置了 `http.mtls.clients` 时以 JSON 映射为唯一登记来源，否则兼容 `clients.json` 中的 SHA-256 指纹；删除对应项后下一次请求立即拒绝，包括已有连接。全部移除可禁止所有访问，重启前需恢复至少一枚有效身份。指纹文件不是私钥，不应填写任意 API Token。
 
 默认排查 release 日志：`/var/log/nestos/httpd.runtime.log`（运行日志）与 `/var/log/nestos/httpd.audit.jsonl`（审计日志）；文件名不含版本。dev 文件名分别为 `httpd.debug.runtime.log` 和 `httpd.debug.audit.jsonl`。运行用户需拥有日志目录的写权限，可用 `NESTOS_HTTPD_LOG_DIR` 覆盖目录；部署准备与 `/api/health` 运行版本查询见 [启动与认证](../../doc/http-app.md#启动与认证)。审计记录认证成功/拒绝、请求 ID、来源 IP、路由、HTTP 状态、错误码及耗时，不记录密码、Authorization/Cookie、查询参数、文件正文或模型消息。文件权限 0600，每份 10 MiB，保留当前及 3 份轮转记录；极端突发时汇总记录丢弃数量。
 

@@ -124,6 +124,10 @@ export interface ApplicationRuntimeOptions {
     contextEngineOptions?: CreateKernelRuntimeOptions['contextEngineOptions'];
     agentResolution?: import('@itookit/llm-session').AgentResolutionPolicy;
     backend: IStorageBackend;
+    /** Host-owned shared configuration and per-user accounting storage. */
+    configurationReadonly?: boolean;
+    costStorageRoot?: string;
+    sharedLlmConfiguration?: boolean;
     additionalMounts?: Array<{ path: string; backend: IStorageBackend; options?: MountOptions }>;
     directorySourceProvider?: DirectorySourceProvider;
     remoteSourceProvider?: RemoteFileSourceProvider;

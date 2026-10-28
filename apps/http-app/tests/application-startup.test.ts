@@ -37,12 +37,14 @@ function connected(port: number): Promise<boolean> {
 }
 it('keeps the TCP port closed until application initialization completes, then serves ready health', async () => {
     const values = await options(), original = VFSAgentService.prototype.init;
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanups.push(release);
     const initialize = vi.spyOn(VFSAgentService.prototype, 'init').mockImplementation(async function (this: VFSAgentService) { await gate; await original.call(this); });
     const opening = startHost(values); cleanups.push(async () => { release(); await opening.then(host => host.close()); });
     await vi.waitFor(() => expect(initialize).toHaveBeenCalled());
     expect(await connected(values.port)).toBe(false);
     release(); const host = await opening; expect(host.server.listening).toBe(true);
+    expect(warning).toHaveBeenCalledWith('\u001b[1;31m【单用户模式：admin】所有访问均操作同一份 admin 数据。\u001b[0m');
     const auth = await authenticatedFetch(path.join(directory, 'certs')); cleanups.push(auth.close);
     expect(await (await auth.fetcher(`https://127.0.0.1:${values.port}/api/health`)).json()).toMatchObject({ ready: true });
 });

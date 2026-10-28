@@ -16,6 +16,7 @@ async function connection() {
     const bootstrap = await server.bootstrap({execute: async () => {}, list: () => []});
     let controller!: ReadableStreamDefaultController<Uint8Array>, expired = false;
     vi.stubGlobal('fetch', async (_url: unknown, init?: RequestInit) => {
+        if (String(_url) === '/api/identity') return Response.json({userId: 'admin'});
         if (!init?.method) return new Response(new ReadableStream<Uint8Array>({start(value) {controller = value;}}));
         if (expired) return Response.json({error: {message: 'Expired'}}, {status: 400, headers: {'X-NestOS-View-Expired': '1'}});
         return Response.json(bootstrap);
@@ -43,4 +44,13 @@ it('replays expiration to a late UI subscriber and checks readiness without repe
     releases.push(installHttpStatus({connection: f.client, fetcher, reload}));
     await vi.waitFor(() => expect(document.querySelector('.http-status')?.textContent).toContain(t('httpApp.viewExpiredReady')));
     expect(fetcher).toHaveBeenCalledOnce(); expect(reload).not.toHaveBeenCalled();
+});
+
+it('pins the authenticated user and refuses to rebuild an old page for a different certificate user', async () => {
+    const f = await connection();
+    const fetcher = vi.fn(async () => Response.json({userId: 'alice'})); vi.stubGlobal('fetch', fetcher);
+    const other = connectApplication(); releases.push(() => other.close());
+    await expect(other.ready).rejects.toThrow('Certificate user changed');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await f.client.close();
 });

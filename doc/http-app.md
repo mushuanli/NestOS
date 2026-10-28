@@ -1,6 +1,6 @@
 # HTTP 应用宿主
 
-`apps/http-app` 在 Node.js 中装配唯一的 ApplicationRuntime。浏览器使用与 Web 相同的 HTML、CSS、工作区配置、编辑器工厂和 `app-shell.initApp()`，通过服务端口操作后端，不创建 IndexedDB、LLM 或 Kernel Runtime。Tauri 仍通过本地端口注入同一套 UI。CLI 的 `-d` 模式见 [CLI HTTP 模式](http-mode.md)。
+`apps/http-app` 在 Node.js 中装配 ApplicationRuntime：默认单用户；显式 `--users-dir` 时按 mTLS 用户分别装配。浏览器使用与 Web 相同的 HTML、CSS、工作区配置、编辑器工厂和 `app-shell.initApp()`，通过服务端口操作后端，不创建 IndexedDB、LLM 或 Kernel Runtime。Tauri 仍通过本地端口注入同一套 UI。CLI 的 `-d` 模式见 [CLI HTTP 模式](http-mode.md)。
 
 ## 模块和所有权
 
@@ -19,9 +19,107 @@
 
 目录隔离与远程行为一致性分别验证。Web、Tauri 与 HTTP 共用 app-core/host 的应用门面；UI 不传仓储、内核或构造工厂，任务详情和工具箱在后端聚合。同步/异步返回契约显式声明，传输适配持有远端对象句柄；`app-shell`、`llm-ui`、`app-settings` 不识别 HTTP、URL 或证书。
 
-运行时、存储、租约、扫描和任务执行属于 daemon。浏览器只拥有视图绑定、文件视图和订阅。各浏览器的 Session 绑定独立，共用同一份持久化数据与 Kernel。
+运行时、存储、租约、扫描和任务执行属于 daemon。浏览器只拥有视图绑定、文件视图和订阅。各浏览器的 Session 绑定独立；默认模式共用同一份持久化数据与 Kernel，多用户模式只在同一 userId 内共享。
 
 `pnpm httpd` 和 `pnpm httpd:dev` 沿用启动环境中的 `http_proxy` / `https_proxy`（也支持大写）及 `no_proxy` / `NO_PROXY`。存在非空 HTTP(S) 代理地址且未显式设置 `NODE_USE_ENV_PROXY` 时，启动器为后端进程自动启用 Node 环境代理，无需每次额外设置开关；地址、大小写优先级和绕过规则由 Node 处理。显式 `NODE_USE_ENV_PROXY=0` 保持关闭，没有代理地址时保持默认行为；启动器不修改父进程环境。此规则属于宿主启动层，不进入前端、app-core 或 LLM Provider。
+
+HTTP 配置优先读取启动目录下的 `nestos.json`，不存在时使用原 XDG 配置目录。启动目录遵循 `INIT_CWD`，否则使用进程 cwd。选中配置后的相对路径均相对于配置文件目录；本地配置损坏时明确报错，不静默回退其他 profile。启动输出 `[HTTP] Config:` 显示实际文件及来源。CLI 和桌面宿主的默认配置定位不变。
+
+单用户启动会输出 ANSI **红色加粗**的 `【单用户模式：admin】` 提示，并写入 `server.mode` 审计事件；提示即使在日志重定向时也保留样式控制码。
+
+## mTLS 多用户与可迁移 home
+
+在启动目录的 `nestos.json` 中配置用户目录和证书映射：
+
+```json
+{
+  "rootDir": "/srv/nestos",
+  "http": {
+    "certDir": "/srv/nestos-host/certs",
+    "authDir": "/srv/nestos-host/auth",
+    "usersDir": "/srv/nestos/home",
+    "mtls": {
+      "clients": {
+        "<admin证书的64位小写SHA256指纹>": {"userId": "admin"},
+        "<li证书的64位小写SHA256指纹>": {"userId": "li"},
+        "<sxw证书的64位小写SHA256指纹>": {"userId": "sxw"}
+      }
+    }
+  }
+}
+```
+
+`http.usersDir` 或 `--users-dir` 显式启用多用户。HTTPS 强制校验客户端证书。配置了 `http.mtls.clients` 后，该映射是唯一登记来源，每次认证重新读取；删除或损坏策略会拒绝认证，不回退旧登记。未配置 `http.mtls` 时兼容证书目录的 `clients.json`，其对象格式与 `clients` 相同，旧指纹数组映射到 admin。
+
+使用现有 CA 签发独立用户证书：
+
+```bash
+pnpm httpd --create-user-cert li
+pnpm httpd --create-user-cert sxw
+```
+
+命令生成 `certDir/users/<userId>/browser-client.p12` 和 `client-password.txt`，输出证书指纹供填写上述映射，不自动登记，不覆盖已有用户证书，不打印密码。用户导入自己的 p12；admin 继续使用原证书，也拥有独立数据目录。
+
+userId 必须匹配 `[a-z][a-z0-9_-]{0,63}`，不能用客户端参数或证书 CN 选择目录。多张证书可以登记为同一 userId；换证保留 userId 即保留数据。至少登记一张 admin 证书。登记非 admin 身份后，未开启多用户的宿主拒绝启动和访问，避免误入旧共享 Runtime。登记策略每次请求重读，SSE 每 15 秒重新验证证书及原 userId；撤销或重新分配证书会停止原事件流。浏览器通过认证后的 `/api/identity` 确认身份并钉住后续请求，证书用户变化时必须重新加载，不能把旧页面恢复到新账号。
+
+```bash
+# 新安装；证书和日志沿用原来的私密目录配置
+pnpm httpd --root /srv/nestos --users-dir /srv/nestos/home
+```
+
+启动先打开 admin，完成公共配置初始化，再恢复所有已登记用户，全部成功后才监听。请求只能进入证书所属的 Runtime/ViewApi；同一用户的新窗口复用该 Runtime，不同用户的相同 clientId、Session ID 和逻辑路径不会选择到同一份私有存储。新增登记的用户在首次应用请求时初始化，并复用初始化中的 Promise；最多同时保留 100 个用户 Runtime。关闭网页不停止后台任务，宿主退出才依次释放流、视图、Runtime、数据库和锁。当前实现面向少量用户，每用户仍有独立 Kernel、工具装配与后台恢复开销。
+
+多用户工具包安装到 `<rootDir>/tools/<包名>/<版本>`，登记文件为 `<rootDir>/etc/tool-packages.json`；所有用户加载同一份工具代码，运行数据仍归各自用户。工具包源沿用 `NESTOS_TOOL_PACKAGE_DIRS` 或启动目录的 `tools/`。`bin/` 可用于命令行入口，不作为工具注册依据。
+
+物理布局：
+
+```text
+/srv/nestos/
+├── _meta/                          宿主互斥锁
+├── etc/                            所有用户共用，只有 admin 可修改
+│   ├── llm/                        Provider、Connection、MCP、Skill、定价与提示配置
+│   ├── agents/                     公共 Agent 定义
+│   ├── flows/                      公共 Flow 定义
+│   └── _meta/                      公共配置的 SQLite 索引和记录
+└── home/
+    ├── admin/
+    │   ├── notes/、projects/、…     用户正文
+    │   └── .nestos/
+    │       ├── state/              私有逻辑根，含 etc、var/lib、var/log 等
+    │       ├── meta/               私有 SQLite 索引与 SeqFile 记录
+    │       ├── private/            个人 OAuth 授权，不进入 VFS
+    │       ├── logs/               用户宿主审计
+    │       ├── host-lock/          用户数据包互斥锁
+    │       └── swap/               启用 editorSwap 时的私有恢复文件
+    ├── li/
+    │   └── …
+    └── sxw/
+        └── …
+```
+
+Runtime 内继续使用既有 `/home/admin` 作为“当前用户 home”的逻辑别名，不代表服务器 admin 的物理目录。宿主 `UserFiles` 将该路径映射到当前用户 home，将其他私有路径留在 `.nestos/state`；记录键仍沿用原逻辑路径，正文、会话和项目记录共用一个用户索引，保留既有事务边界。顶层 `.nestos` 不允许通过用户文件能力、链接或普通目录遍历访问；项目内部已有的 `.nestos` 会话布局不受此规则影响。
+
+公共配置只有 admin 可写，普通用户通过同一份配置执行，公共密钥仍由服务端执行路径使用；普通用户的完整配置查询返回脱敏结果，原始 `/etc/llm` 文档不通过普通用户文件或设置偏好读取接口开放。个人偏好、默认项目、远程项目连接登记、会话、任务、草稿、费用记录和 OAuth 授权都留在用户目录中。共享 MCP 端点或外部项目是否具有用户隔离能力取决于外部服务及其授权，不能因本地 Runtime 隔离就假定远端也隔离。公共配置修改后重启 httpd，使所有用户重新加载配置；当前不承诺跨 Runtime 配置热更新。
+
+浏览器 DTO 缓存和文件恢复副本按认证 userId 分区；跨账号不消费原有未分区恢复副本。已打开页面遇到证书重新分配时停止复用旧状态，重新加载后进入新的用户空间。
+
+### 从旧单用户数据离线导入
+
+先停止占用旧数据根及授权目录的宿主，使用新的 rootDir 和 home 目录。导入通过存储 API 复制文件、元数据、标签和 SeqFile 字段，不能只复制空 `.seq` 文件。它会取得旧数据与可选授权目录的互斥锁，保留源数据，拒绝覆盖已有 admin 数据包或公共配置；成功后退出，不启动服务。
+
+```bash
+pnpm httpd --root /srv/nestos --users-dir /srv/nestos/home \
+  --import-legacy-root /path/to/old-data \
+  --import-legacy-auth-dir /path/to/old-private-auth
+
+pnpm httpd --root /srv/nestos --users-dir /srv/nestos/home
+```
+
+旧侧车数据库必须位于旧根的 `_meta`；使用自定义外置侧车的 profile 应先制作完整离线副本并整理为此布局。`--import-legacy-auth-dir` 可省略，省略后 admin 需重新完成个人 OAuth 授权。公共配置进入 `<rootDir>/etc`，原费用记录进入 admin 的私有记账目录，其他旧数据归 admin。不要把目标 rootDir/home 放在旧数据根内。导入中断后，源数据仍在；未发布的 `.import-*`/`.etc-*` 目录可在确认没有导入进程后清理，不能把残留暂存目录当成成功结果。
+
+后续迁移单个用户时，停止拥有该数据包的宿主后复制完整 `home/<userId>`，保留文件权限；目标服务必须提供对应公共配置并重新登记证书映射。当前全局 httpd 停止后再复制即可，不支持在线一致快照或在线逐用户卸载。宿主外部目录、远程项目和系统工具依赖需在新机器核对；这些外部内容不会随 home 复制。VFS 隔离不等于操作系统沙箱，开放任意 Shell/TTY 的部署仍需单独配置系统账号或容器边界。
+
+诊断复用总审计日志，重要事件为 `auth.accepted/rejected`、`user.paths.ready`、`user.configuration.ready`、`user.storage.ready`、`user.runtime.start/ready/failed/closed` 和 `user.import.start/complete/failed`。记录 userId、requestId 或 operationId、阶段、结果、安全错误码和耗时；请求日志和应用业务失败也带 userId。`HOST_LOCK_BUSY`、`CLIENT_POLICY_INVALID`、目录或链接拒绝可分别定位，不记录文件正文、消息、参数、授权令牌或配置密钥。
 
 ## 协议
 

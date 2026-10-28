@@ -1,6 +1,9 @@
 import {randomUUID} from '@itookit/common';
 
 export interface FileRecovery { base: string; text: string; savedAt?: number; retentionStartedAt?: number; }
+let recoveryOwner = '';
+/** Hosts set a stable authenticated scope before opening editors. */
+export function setFileRecoveryOwner(owner: string): void {recoveryOwner = owner;}
 const maxRefreshBackupBytes = 512 * 1024;
 export const canPreserveRefreshBackup = (text: string): boolean => text.length < maxRefreshBackupBytes && new TextEncoder().encode(text).byteLength < maxRefreshBackupBytes;
 
@@ -15,7 +18,7 @@ export class FileRecoveryStore {
             tab = existing ?? randomUUID();
             if (!existing) sessionStorage.setItem('mindos.file-recovery.tab', tab);
         } catch { this.available = false; }
-        this.key = 'mindos.file-recovery.v1:' + JSON.stringify([tab, scope, path]) + (slot ? ':' + slot : '');
+        this.key = 'mindos.file-recovery.v1:' + JSON.stringify([recoveryOwner ? `${recoveryOwner}:${tab}` : tab, scope, path]) + (slot ? ':' + slot : '');
     }
     async read(): Promise<FileRecovery | undefined> {
         if (!this.available) throw new Error('Recovery tab identity unavailable');

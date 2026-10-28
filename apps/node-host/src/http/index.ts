@@ -14,3 +14,7 @@ export { startHost } from './start-host';
 export type { HttpHostOptions } from './start-host';
 export { createCertificates } from './create-certificates';
 export { runHttpHost } from './entry';
+
+export {importLegacyUser} from './import-legacy-user';
+
+export {createUserCertificate} from './create-user-certificate';

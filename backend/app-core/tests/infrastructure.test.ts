@@ -17,9 +17,10 @@ describe('application infrastructure ownership', () => {
         try {
             expect(infrastructure.vfs.devices.isFrozen()).toBe(true);
             expect(infrastructure.llmDriver.supportsMCPStdio()).toBe(false);
-            for (const path of ['/run', '/extra', '/home/admin/chats', '/home/admin/.config']) {
+            for (const path of ['/run', '/extra', '/home/admin/projects', '/home/admin/.config']) {
                 expect(await infrastructure.systemFS.driver.getNode(path)).not.toBeNull();
             }
+            expect(await infrastructure.systemFS.driver.exists('/home/admin/chats')).toBe(false);
             infrastructure.logIO('test');
             expect(infrastructure.vfs.ioStats.stat).toBe(0);
             expect(close).not.toHaveBeenCalled();

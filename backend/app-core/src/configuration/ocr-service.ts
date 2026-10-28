@@ -29,12 +29,13 @@ export class OcrService {
     private preparation?: Promise<void>;
     private configured = false;
     constructor(private readonly fs: IFileSystem, private readonly agents: IAgentManagementService,
-        private readonly llm: ILLMService) {}
+        private readonly llm: ILLMService, private readonly configurationReadonly = false) {}
     private ensureSettings(): Promise<void> {
         return this.initialization ??= this.loadSettings().catch(error => { this.initialization = undefined; throw error; });
     }
     async readSettings(): Promise<OcrSettings> { await this.ensureSettings(); return this.snapshot(); }
     prepareConfiguration(): Promise<void> {
+        if (this.configurationReadonly) return this.ensureSettings();
         return this.preparation ??= this.prepareDefaults().catch(error => { this.preparation = undefined; throw error; });
     }
     private async prepareDefaults(): Promise<void> {

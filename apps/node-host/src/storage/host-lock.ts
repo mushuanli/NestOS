@@ -8,6 +8,6 @@ export async function acquireHostLock(directory: string): Promise<() => void> {
     const { DatabaseSync } = await import(moduleName) as { DatabaseSync: new (file: string) => { exec(sql: string): void; close(): void } };
     const database = new DatabaseSync(path.join(directory, 'httpd-host-lock.sqlite'));
     try { database.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE;'); }
-    catch { database.close(); throw new Error('This data or credential directory is already owned by another application host'); }
+    catch { database.close(); throw Object.assign(new Error('This data or credential directory is already owned by another application host'), {code: 'HOST_LOCK_BUSY'}); }
     return () => database.close();
 }

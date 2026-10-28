@@ -28,7 +28,7 @@ export class ViewApi {
     private readonly snapshots = new SnapshotCache();
     private readonly clients = new Map<string, Promise<Client>>();
     private readonly sweep: ReturnType<typeof setInterval>;
-    constructor(private readonly runtime: Promise<ApplicationRuntime>, private readonly audit?: AuditPort, private readonly ownsRuntime = true) {
+    constructor(private readonly runtime: Promise<ApplicationRuntime>, private readonly audit?: AuditPort, private readonly ownsRuntime = true, private readonly configurationReadonly = false) {
         this.sweep = setInterval(() => { void this.releaseIdle(); }, 15000); this.sweep.unref();
     }
     private identity(request: IncomingMessage, id: unknown): string {
@@ -141,7 +141,7 @@ export class ViewApi {
         throw new FSError('ECAPABILITY', message);
     }
     private async createClient(): Promise<Client> {
-        const view = await createHostedView(await this.runtime);
+        const view = await createHostedView(await this.runtime, this.configurationReadonly);
         const client = { view, lastSeen: Date.now(), active: 0, initialized: false, pending: new Map(), events: new ViewEventStream() } as Client;
         client.peer = new RpcPeer('server', async call => {
             if (call.notification) return client.notifications.enqueue(call);

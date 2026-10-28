@@ -1,3 +1,4 @@
+import {publicConfiguration} from './configuration-access';
 import {DocumentChatFileView} from '../document-chat/file';
 import {documentChatBacklinks} from '../document-chat/backlinks';
 import {submitSession, prepareSessionBranch} from '../session/submit-session';
@@ -39,9 +40,10 @@ import { taskAttachment } from './task-attachment';
 import {openView} from './open-view';
 import type { ApplicationClient, ApplicationBackend, LocalApplicationServices, LocalBackendOptions, ToolboxView } from '@itookit/app-contracts/services';
 
-export interface ApplicationViewOptions extends LocalBackendOptions { preload?: boolean }
+export interface ApplicationViewOptions extends LocalBackendOptions { preload?: boolean; configurationReadonly?: boolean }
 /** Bind construction dependencies once, inside the host rather than across the UI port. */
 export function createApplicationClient(services: LocalApplicationServices, options: ApplicationViewOptions = {}): ApplicationClient & { close(): Promise<void> } {
+    if (options.configurationReadonly) services = {...services, agentService: publicConfiguration(services.agentService), llmDriver: publicConfiguration(services.llmDriver)};
     const scope = new ViewScope(), backend = bindApplicationBackend(services, options, scope);
     const { acquireConversation: _acquireConversation, editorSwapStore: _editorSwapStore, ...publicServices } = services;
     return { services: { ...publicServices, agentService: withConfigurationImport(services.agentService),
@@ -95,7 +97,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         readUiDocuments: names => readUiDocuments(vfs, names),
         writeUiDocuments: documents => writeUiDocuments(vfs, documents),
         settings: sources => settingsService(services, sources, options, scope),
-        ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService),
+        ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService, options.configurationReadonly),
         initialFiles: async () => new NestosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/minds'), services.flowInstallations),
         projectSessions: async () => projects?.sessions ?? new ProjectSessions(repository),
         skillsFiles: () => scope.own(new SkillsEngine(agentService)),

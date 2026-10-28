@@ -1,12 +1,15 @@
 import { TwinSafeLlmLogger } from '../digital-twin/llm-logger';
 import { createNestosLlmPresets, firstChatModelConnection } from '@itookit/kernel-adapters/llm/presets';
-import { createVFS, MemoryBackend, type IFileSystem, type IStorageBackend, type IVFSManager, type MountOptions } from '@itookit/vfs-core';
+import { createVFS, createFileSystemView, MemoryBackend, type IFileSystem, type IStorageBackend, type IVFSManager, type MountOptions } from '@itookit/vfs-core';
 import { LLMDeviceDriver, type CodexAppServerTransport } from '@itookit/kernel-adapters/llm/core';
 import { t, traceBoot, createModuleLogger } from '@itookit/common';
 import { type ILLMLogger } from '@itookit/driver-llm/contracts';
 
 export interface ApplicationInfrastructureOptions {
     backend: IStorageBackend;
+    configurationReadonly?: boolean;
+    costStorageRoot?: string;
+    sharedLlmConfiguration?: boolean;
     llmInitialization?: 'before-ready' | 'background';
     deviceInitialization?: 'before-ready' | 'on-demand';
     preloadDirectories?: readonly string[];
@@ -66,6 +69,10 @@ async function initializeDevices(options: ApplicationInfrastructureOptions, vfs:
 
     logStep(t('boot.llmDriver'));
     const llmDriver = new LLMDeviceDriver(vfs, {
+        configurationReadonly: options.configurationReadonly,
+        configurationFileSystem: options.sharedLlmConfiguration ? createFileSystemView({viewId: 'llm-configuration', mounts: [{mountId: 'configuration',
+            at: '/llm', fs: await vfs.openFileSystem('/etc/llm'), access: options.configurationReadonly ? 'ro' : 'rw'}]}) : undefined,
+        costFileSystem: options.costStorageRoot ? await vfs.openFileSystem(options.costStorageRoot) : undefined,
         logger: createModuleLogger('llm-driver'),
         presets: createNestosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
         providerAuthorization: options.providerAuthorization,
@@ -85,7 +92,7 @@ async function initializeDevices(options: ApplicationInfrastructureOptions, vfs:
         });
     }
     logIO('LLM driver');
-    const directories = options.preloadDirectories ?? ['/home/admin/chats', '/home/admin/notes', '/home/admin/projects', '/home/admin/.config'];
+    const directories = options.preloadDirectories ?? ['/home/admin/notes', '/home/admin/projects', '/home/admin/.config'];
     await Promise.all(directories.map(path => vfs.openFileSystem(path)));
     const systemFS = await vfs.openFileSystem('/');
     return {

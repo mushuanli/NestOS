@@ -1,14 +1,15 @@
+import {privateConfigurationFiles} from './configuration-access';
 import { FSError, normalizeVirtualPath, type IFileSystem } from '@itookit/vfs-core';
 import type { ApplicationClient, FileSystemsPort } from '@itookit/app-contracts/services';
 
 /** Managed state is writable through application commands; UI preferences remain files. */
-export function restrictApplicationFiles(client: ApplicationClient, roots: readonly string[]): ApplicationClient {
-    const vfs = viewVfs(client.services.vfs, roots);
+export function restrictApplicationFiles(client: ApplicationClient, roots: readonly string[], configurationReadonly = false): ApplicationClient {
+    const vfs = viewVfs(client.services.vfs, roots, configurationReadonly);
     return { services: { ...client.services, vfs }, backend: { ...client.backend,
         navigationView: async options => {
             assertRoot(options.root, roots);
             const view = await client.backend.navigationView(options);
-            return { ...view, files: { ...view.files, fs: protectFiles(view.files.fs, options.root) } };
+            return { ...view, files: { ...view.files, fs: exposeFiles(view.files.fs, options.root, configurationReadonly) } };
         },
         warmNavigation: async targets => {
             if (!Array.isArray(targets) || targets.length > 2) throw new FSError('EINVAL', 'Too many navigation roots');
@@ -25,17 +26,19 @@ export function restrictApplicationFiles(client: ApplicationClient, roots: reado
                     const fs = await target.openWorkspace(name), source = sources.find(source => source.name === name);
                     return source?.workspace ? protectFiles(fs, '/home/admin/' + source.workspace) : fs;
                 };
+                if (key === 'readPreference' && configurationReadonly) return (path: string) =>
+                    privateConfigurationFiles(target.configFiles).driver.readContent(path, {encoding: 'utf-8'});
                 if (key === 'writePreference') return (path: string, content: string) => {
                     if (!normalizeVirtualPath(path).startsWith('/ui/')) throw new FSError('EACCES', 'Unknown UI preference');
                     return target.writePreference(path, content);
                 };
-                if (key === 'configFiles') return target.configFiles ? protectFiles(target.configFiles, '/etc') : undefined;
+                if (key === 'configFiles') return target.configFiles ? exposeFiles(target.configFiles, '/etc', configurationReadonly) : undefined;
                 const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
             } });
         },
     } };
 }
-function viewVfs(vfs: FileSystemsPort, roots: readonly string[]): FileSystemsPort {
+function viewVfs(vfs: FileSystemsPort, roots: readonly string[], configurationReadonly: boolean): FileSystemsPort {
     const devices = { list: () => vfs.devices.list(), isFrozen: () => true, get: (id: string) => {
         const driver = vfs.devices.get(id);
         return { handlerId: driver.handlerId, description: driver.description, writable: driver.writable, streamable: driver.streamable, sessionable: driver.sessionable };
@@ -44,7 +47,7 @@ function viewVfs(vfs: FileSystemsPort, roots: readonly string[]): FileSystemsPor
         if (key === 'devices') return devices;
         if (key === 'openFileSystem') return async (root: string) => {
             assertRoot(root, roots);
-            return protectFiles(await target.openFileSystem(root), root);
+            return exposeFiles(await target.openFileSystem(root), root, configurationReadonly);
         };
         const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
     } });
@@ -88,4 +91,9 @@ function protectOperations<T extends object>(operations: T, root: string): T {
             return value.apply(target, args);
         };
     } });
+}
+
+function exposeFiles(fs: IFileSystem, root: string, configurationReadonly: boolean): IFileSystem {
+    const files = protectFiles(fs, root);
+    return configurationReadonly && root === '/etc' ? privateConfigurationFiles(files) : files;
 }

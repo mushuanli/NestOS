@@ -11,6 +11,8 @@ export interface HostedApi { handle(request: ApplicationRequest, response: Appli
 import { json } from './http-response';
 
 export interface HttpServerOptions {
+    multiUser?: boolean;
+    userAudit?(userId: string): AuditPort;
     build?: { mode: string; version?: string };
     application?: HostedApi;
     certificates: CertificateAuth; staticDir: string; audit: AuditPort;
@@ -27,20 +29,29 @@ export function createHttpServer(options: HttpServerOptions): Server {
     return server;
 }
 async function validateConnection(socket: TLSSocket, options: HttpServerOptions): Promise<void> {
-    const remoteAddress = socket.remoteAddress;
-    const accepted = await options.certificates.accepts(socket).catch(() => false);
-    options.audit.write({ event: accepted ? 'auth.accepted' : 'auth.rejected', remoteAddress,
-        certificate: socket.getPeerCertificate()?.fingerprint256, code: accepted ? undefined : 'CLIENT_CERTIFICATE_NOT_ENROLLED' });
-    if (!accepted) socket.destroy();
+    const started = Date.now(), auth = await authenticate(socket, options.certificates);
+    options.audit.write({event: auth.accepted ? 'auth.accepted' : 'auth.rejected', remoteAddress: socket.remoteAddress,
+        userId: auth.userId, certificate: socket.getPeerCertificate()?.fingerprint256, code: auth.code,
+        operation: 'certificate.authenticate', stage: 'enrollment', result: auth.accepted ? 'success' : 'failure', durationMs: Date.now() - started});
+    if (!auth.accepted) socket.destroy();
 }
 async function serve(request: IncomingMessage, response: ServerResponse, options: HttpServerOptions): Promise<void> {
-    if (!await options.certificates.accepts(request.socket as TLSSocket).catch(() => false)) {
-        options.audit.write({ event: 'auth.rejected', remoteAddress: request.socket.remoteAddress, code: 'CLIENT_CERTIFICATE_NOT_ENROLLED' });
+    const auth = await authenticate(request.socket as TLSSocket, options.certificates);
+    if (!auth.accepted) {
+        options.audit.write({event: 'auth.rejected', remoteAddress: request.socket.remoteAddress, code: auth.code,
+            operation: 'certificate.authenticate', stage: 'request', result: 'failure'});
         request.socket.destroy(); return;
     }
     const pathname = new URL(request.url ?? '/', 'https://localhost').pathname;
-    const route = ['/api/vfs', '/api/health', '/api/application', '/api/application/events', '/api/application/files'].includes(pathname) ? pathname : pathname.startsWith('/api/') ? '/api/unknown' : '/ui';
-    auditRequest(options.audit, request, response, route);
+    const route = ['/api/identity', '/api/vfs', '/api/health', '/api/application', '/api/application/events', '/api/application/files'].includes(pathname) ? pathname : pathname.startsWith('/api/') ? '/api/unknown' : '/ui';
+    const userId = auth.userId;
+    if (userId && userId !== 'admin' && !options.multiUser) throw new FSError('EACCES', 'User mappings require multi-user hosting');
+    const audit = userId && options.userAudit ? options.userAudit(userId) : options.audit;
+    auditRequest(audit, request, response, route);
+    if (pathname === '/api/identity') {
+        if (request.method !== 'GET') throw new FSError('EINVAL', 'Identity requires GET');
+        json(response, 200, {userId: userId ?? 'admin'}); return;
+    }
     if (request.method === 'POST' || pathname.startsWith('/api/application')) validateOrigin(request);
     if (['/api/application', '/api/application/events', '/api/application/files'].includes(pathname)) {
         if (!options.application) throw new FSError('ECAPABILITY', 'Application hosting is disabled');
@@ -59,4 +70,15 @@ function validateOrigin(request: IncomingMessage): void {
 function safeCode(error: Error): string {
     const code = (error as NodeJS.ErrnoException).code;
     return code && /^[A-Z0-9_]{1,100}$/.test(code) ? code : 'TLS_CLIENT_AUTHENTICATION_FAILED';
+}
+
+async function authenticate(socket: TLSSocket, certificates: CertificateAuth): Promise<{accepted: boolean; userId?: string; code?: string}> {
+    try {
+        const userId = await certificates.identity?.(socket);
+        const accepted = certificates.identity ? Boolean(userId) : await certificates.accepts(socket);
+        return {accepted, userId, code: accepted ? undefined : 'CLIENT_CERTIFICATE_NOT_ENROLLED'};
+    } catch (error) {
+        const code = (error as {code?: unknown})?.code;
+        return {accepted: false, code: typeof code === 'string' && /^[A-Z0-9_]{1,80}$/.test(code) ? code : 'CLIENT_POLICY_UNAVAILABLE'};
+    }
 }

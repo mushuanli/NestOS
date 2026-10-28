@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export interface AuditEvent {
+    userId?: string; operationId?: string; stage?: string; result?: string; count?: number;
     event: string; requestId?: string; remoteAddress?: string; method?: string; route?: string;
     status?: number; durationMs?: number; operation?: string; code?: string; certificate?: string; parentRequestId?: string;
     rpcKind?: string; rpcBatchSize?: number; rpcOperations?: string[];

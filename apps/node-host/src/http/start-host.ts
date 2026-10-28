@@ -1,3 +1,4 @@
+import {startUserHost} from './user-host';
 import type { Server } from 'node:http';
 import { closeHostResources, type HostCleanup } from '../runtime/host-runtime';
 import { openNodeApplication } from '../runtime/application';
@@ -7,6 +8,7 @@ import type { loadCertificates } from './certificates';
 import {NodeEditorSwapStore} from '../storage/editor-swaps';
 
 export interface HttpHostOptions {
+    usersDir?: string;
     root: string; sidecar: string; certificates: Awaited<ReturnType<typeof loadCertificates>>; staticDir: string;
     auditFile: string; authDir: string; logMode?: string; port: number; host: string; backlog: number;
     editorSwap?: {enabled: boolean; directory: string};
@@ -14,6 +16,10 @@ export interface HttpHostOptions {
 
 /** Admit traffic only after the application's server readiness barrier succeeds. */
 export async function startHost(options: HttpHostOptions) {
+    if (options.usersDir) return startUserHost(options);
+    if ((await options.certificates.users?.())?.some(user => user !== 'admin'))
+        throw new Error('Certificate user mappings require --users-dir; single-user hosting only admits admin');
+    console.warn('\u001b[1;31m【单用户模式：admin】所有访问均操作同一份 admin 数据。\u001b[0m');
     const cleanup: HostCleanup = [];
     try {
         const host = await openNodeApplication({...options, runtime: {startupMode: 'server'}}); cleanup.push(host.close);
@@ -22,6 +28,7 @@ export async function startHost(options: HttpHostOptions) {
             host.runtime.editorSwapStore = swaps; cleanup.push(() => swaps.dispose());
         }
         const {audit} = host;
+        audit.write({event: 'server.mode', userId: 'admin', operation: 'server.start', stage: 'mode', result: 'single-user', code: 'SINGLE_USER_ADMIN'});
         const application = new ViewApi(Promise.resolve(host.runtime), audit, false);
         cleanup.push(() => application.close());
         const server = createHttpServer({ certificates: options.certificates, staticDir: options.staticDir, audit, application,

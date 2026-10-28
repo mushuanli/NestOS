@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type {IFsOps} from '@itookit/vfsdriver-local';
 import {resolveHostPaths} from './paths';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from '../storage/sqlite-sidecar';
@@ -15,15 +16,15 @@ export async function closeHostResources(callbacks: HostCleanup): Promise<void> 
     }
     if (errors.length) throw new AggregateError(errors, 'Node host cleanup failed');
 }
-export async function openHostRuntime(options: { root: string; sidecar: string; authDir: string; auditFile: string }) {
-    options = await resolveHostPaths(options);
+export async function openHostRuntime(options: { root: string; sidecar: string; authDir: string; auditFile: string; createFs?: () => IFsOps }) {
+    options = {...options, ...await resolveHostPaths(options)};
     const cleanup: HostCleanup = [];
     try {
         cleanup.push(await acquireHostLock(path.join(options.root, '_meta')));
         cleanup.push(await acquireHostLock(options.authDir));
         const store = new PrivateAuthStore(options.authDir); await store.initialize();
         const backend = await openLocalFSBackend({ rootDir: options.root, sidecarDir: options.sidecar,
-            durability: 'full', createDb: file => NodeSqliteSidecarDb.open(file) });
+            durability: 'full', createFs: options.createFs, createDb: file => NodeSqliteSidecarDb.open(file) });
         cleanup.push(() => backend.close());
         const audit = new AuditLog(options.auditFile); await audit.initialize(); cleanup.push(() => audit.close());
         const authorization = new ChatGPTAuthorization(store, undefined, audit); cleanup.push(() => authorization.close());

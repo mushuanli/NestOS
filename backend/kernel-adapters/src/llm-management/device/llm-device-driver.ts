@@ -133,6 +133,9 @@ export interface IShellRunner {
 // ─── LLMDeviceDriver ─────────────────────────────────────────────────────────
 
 export interface LLMDeviceDriverOptions {
+    configurationReadonly?: boolean;
+    configurationFileSystem?: IFileSystem;
+    costFileSystem?: IFileSystem;
     /** Diagnostics only; request bodies and credentials never enter this sink. */
     logger?: import('@itookit/driver-llm/contracts').LLMLogSink;
     providerAuthorization?: ProviderAuthorizationHost;
@@ -178,6 +181,9 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     private _syncTimer: ReturnType<typeof setTimeout> | null = null;
     private _eventUnsubs: Array<() => void> = [];
 
+    private readonly configurationFileSystem?: IFileSystem;
+    private readonly configurationReadonly: boolean;
+    private readonly costFileSystem?: IFileSystem;
     private engine!: import('@itookit/vfs-core').IFileSystem;
     private readonly shellRunner: IShellRunner | undefined;
     private readonly codexRunner: CodexCommandRunner | undefined;
@@ -206,6 +212,9 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     constructor(private readonly vfs: IVFSManager, options?: LLMDeviceDriverOptions) {
+        this.configurationFileSystem = options?.configurationFileSystem;
+        this.configurationReadonly = options?.configurationReadonly ?? false;
+        this.costFileSystem = options?.costFileSystem;
         this.logger = options?.logger;
         this.authorization = new ProviderAuthorization(options?.providerAuthorization, id => this.getFullProvider(id));
         if (options?.providerAuthorization) this._eventUnsubs.push(options.providerAuthorization.onChange(() => this.notify()));
@@ -248,7 +257,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         };
 
         // /etc is a rootfs built-in directory — no mount() needed.
-        this.engine = await this.vfs.openFileSystem('/etc');
+        this.engine = this.configurationFileSystem ?? await this.vfs.openFileSystem('/etc');
         _log('openConfigFiles');
 
         // Initialise helpers first (no async deps)
@@ -277,13 +286,13 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         _log('configStores');
 
         // Sync default providers, then merge into cache
-        await this.providerManager.syncDefaultProviders(preProviders);
+        if (!this.configurationReadonly) await this.providerManager.syncDefaultProviders(preProviders);
         _log('syncDefaultProviders');
         this.providerManager.reloadProvidersFrom(preProviders);
         _log('reloadProviders');
 
         // Sync default connections, then cache
-        const updatedConns = await this.connectionManager.ensureDefaultsWith(preConnections);
+        const updatedConns = this.configurationReadonly ? preConnections : await this.connectionManager.ensureDefaultsWith(preConnections);
         _log('ensureDefaults');
         this.connectionManager.setConnections(updatedConns);
         await this.connectionManager.loadSettings();
@@ -304,7 +313,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     private async initializeCostStore(): Promise<void> {
-        const store = new CostStore(this.engine);
+        const store = new CostStore(this.costFileSystem ?? this.engine);
         await store.ensureFile();
         this.costManager = new CostManager(store);
     }
@@ -312,7 +321,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     private async initializePromptStore(): Promise<void> {
         const store = new SystemPromptStore(this.engine, this.presets.agents);
         await store.ensureFile();
-        await store.seedDefaults();
+        if (!this.configurationReadonly) await store.seedDefaults();
     }
 
     async dispose(): Promise<void> {

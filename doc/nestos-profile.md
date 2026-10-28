@@ -1,6 +1,6 @@
 # NestOS Profile
 
-NestOS profile 是三端共享的数据根与运行定位。
+NestOS profile 是三端共享的数据根与运行定位。HTTP 配置 `http.usersDir` 或显式启用 `--users-dir` 时，每用户拥有独立可迁移数据包，公共配置保留一份；布局、证书登记和离线导入见 [HTTP 多用户](http-app.md#mtls-多用户与可迁移-home)。
 
 它与 Session 工作目录分开：Tauri/CLI 新会话默认将宿主当前目录映射为 `/workspace`，可以在会话中修改或挂载其他目录；这不会迁移 profile 的配置、历史或 Kernel 存储。
 
@@ -51,6 +51,7 @@ Node HTTP 宿主还支持可选的宿主私有配置（不进入应用 VFS 或�
 `http.certDir` 供证书初始化和 httpd 启动读取，`http.authDir` 是认证目录基址，release/dev 分别添加相应子目录。
 显式 `--cert-dir` / `--auth-dir` 优先；参数是最终目录。配置内相对路径按配置目录解析，命令行路径按调用目录解析。
 不配置时保留旧路径；不会自动迁移现有凭据。目录须在数据根、静态 UI 根之外，可使用数据根的同级 `nestos-host/`。
+多用户可设置 `http.usersDir` 和 `http.mtls.clients`（证书指纹到 userId 的映射）；公共配置存于 `<rootDir>/etc`，用户数据存于 `<usersDir>/<userId>`，示例见 [HTTP 多用户](http-app.md#mtls-多用户与可迁移-home)。
 详细迁移和 CLI 共享规则见 [HTTP app](../apps/http-app/README.md)。
 
 数据根解析顺序：
@@ -81,6 +82,8 @@ NESTOS_ROOT
 旧 `#/projects/<编码后的路径>` 地址会在工作台注册“原项目文档”，指向原来的 `/home/admin/projects`，再打开相应文件。`.prj` 文档保留原路径和内容，地址更新为工作台项目文件路由，刷新后继续可用。项目分组保存在 Session repository 中，应用内新项目的文件位于 `/home/admin/projects/<项目 ID>`；宿主项目仍引用其原本的本地目录。
 
 换机器时，先退出使用该 profile 的 Tauri/CLI，再复制整个 `nestos/`（包括数据、元数据和配置）；若 `rootDir` 指向目录外，还需复制该数据根并调整配置。宿主项目目录是外部引用，需要在新机器上保留或重新配置其路径。Web 的 IndexedDB 存储属于浏览器来源（协议、地址和端口），不会自动读取宿主的 `~/.config/nestos`。
+
+当前聊天入口使用项目工作台，启动不再预加载 `/home/admin/chats`。项目文件位于 `/home/admin/projects`；会话与执行记录仍按各自存储协议保存，不因导航归入项目而搬动底层记录。已有 `chats` 内容不会自动删除。
 
 ### 旧版聊天（`<rootDir>/module/chats`）
 

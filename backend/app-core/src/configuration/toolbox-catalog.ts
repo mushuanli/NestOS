@@ -71,7 +71,7 @@ export class ToolboxInventory {
             this.providers.set(item.id, { id: item.id, name: item.name, capabilityTags: modelCapabilities(item),
             icon: item.icon === defaults[item.id]?.icon ? undefined : item.icon, enabled: item.enabled !== false,
             ...(subscription ? { authentication: 'chatgpt', authorizationAvailable: authorization?.supported === true } : {}),
-            configured: subscription ? authorization?.status === 'authorized' : item.credentialMode === 'host' || item.id === 'codex' || !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim() });
+            configured: subscription ? authorization?.status === 'authorized' : item.credentialMode === 'host' || item.id === 'codex' || ((item as {hasApiKey?: boolean}).hasApiKey ?? !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim()) });
         }
         for (const item of connections) {
             const provider = providers.find(provider => provider.id === item.providerId);

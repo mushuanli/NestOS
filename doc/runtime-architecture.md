@@ -1,5 +1,7 @@
 # NestOS Runtime 架构
 
+HTTP 多用户宿主按证书 userId 分别创建 ApplicationRuntime；同一用户的网页视图共享该实例，公共配置通过宿主存储装配复用，私有数据与费用记录独立。物理 home 数据包及旧数据导入见 [HTTP 多用户](http-app.md#mtls-多用户与可迁移-home)。
+
 ## 单一 runtime 契约
 
 应用级宿主（Web / Tauri / CLI 本地应用命令 / httpd）共用：

@@ -172,3 +172,13 @@ join 配置 failure=fail；任一检查失败时不会把部分新结果当作�
 - 历史派发 join/reducer 通过真实 task-exited 身份汇合，按声明顺序合并，支持 latest/append 和 fail/partial。宿主可注册版本化纯 reducer；当前 aggregate@3 使用 latest@1，不以模型消息决定汇合完成。
 
 这些机制保持既有编译、权限、恢复和检查点边界。产品模板只保存业务提示词、参数与图定义，通用 Session、Flow 和 Kernel 不按作文业务字段或 Flow ID 分支。
+
+### 参数分层与旧流程迁移
+
+运行签名继续使用 `parameters`，新增可选 `role: input | option | policy`：输入材料与业务选项常显，执行策略收起但仍参与原有默认值解析、校验与提交。省略 role 保留旧版兼容布局。只有 input 可声明 composer 绑定；option/policy 不挂文件或工具内容来源。当前作文模板将 essay/requirements 声明为 input、passScore/maxRounds 为 option、maxConcurrency/maxExchanges 为 policy；仅 essay 使用 `inputSource: composer.text`。
+
+五个 Agent 的共同上下文隔离、历史、审批和交互预算放在 Flow `defaults`，各节点的提示词与结果校验继续保留。节点 ID、连线、循环和结果修订语义不变；达到轮数上限与评分达标仍是不同结束原因。
+
+`layout.steps` 可选声明 `{name, nodes: string[]}` 的步骤概览；设计界面展开步骤后可选择原节点，完整执行图保留。该字段属于草稿布局，不参与执行，不替代子流程、并行或循环语义，也不是新的高层编译语言。
+
+迁移已有流程：在设置中选择参数用途；需要聊天预填的字段选择聊天文字来源；保存并发布新修订。布局概览及公共 defaults 可通过 Flow 源文件配置。已安装的用户草稿与历史修订不会随内置模板修改自动覆盖；恢复已有文件也不会强制替换它们。远程项目 harness 自动继承不属于本次表单分层实现。

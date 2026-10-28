@@ -806,3 +806,9 @@
 .llm-ui-message-more__items .dag-artifacts { margin: 0; }
 .llm-ui-message-more__items [data-artifacts-load] { width: 100%; min-height: 36px; text-align: start; }
 @media (max-width: 768px) { .llm-ui-message-more__items [data-artifacts-load] { min-height: 44px; } }
+
+.flow-steps { display: grid; gap: 12px; padding: 16px; }
+.flow-steps summary, .flow-steps-graph > summary { cursor: pointer; padding: 10px; }
+.flow-steps details { border: 1px solid var(--dag-border); border-radius: 8px; }
+.flow-steps button { display: block; margin: 8px 12px; padding: 8px 12px; }
+.flow-steps-graph { position: relative; min-width: 0; }

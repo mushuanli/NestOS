@@ -86,6 +86,8 @@ export interface FlowNodeDefinition {
 }
 
 export interface FlowLayout {
+    /** Author-owned overview groups; execution continues to use nodes and edges. */
+    steps?: Array<{name: string; nodes: string[]}>;
     nodes?: Record<string, { x: number; y: number }>;
     viewport?: { x: number; y: number; zoom: number };
 }
@@ -138,6 +140,8 @@ export interface FlowInputGroup {
 }
 
 export interface FlowParameter {
+    /** Public input, business option, or advanced execution policy; omitted preserves legacy forms. */
+    role?: 'input' | 'option' | 'policy';
     /** UI hints only; hidden fields retain their values and execution constraints. */
     presentation?: {group?: string; visibleWhen?: SerializableExpression; contentSource?: boolean; connectionToggle?: string; connectionVoices?: string};
     /** Explicit composer binding; parameter names never imply an input source. */

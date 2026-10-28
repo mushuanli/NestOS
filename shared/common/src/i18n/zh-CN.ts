@@ -5,6 +5,15 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'flow.steps.overview': '流程步骤',
+    'flow.steps.graph': '展开完整执行图',
+    'flow.parameters.options': '业务选项',
+    'flow.parameters.advanced': '高级执行设置',
+    'flow.parameters.role': '参数用途',
+    'flow.parameters.role.legacy': '兼容旧版',
+    'flow.parameters.role.input': '输入材料',
+    'flow.parameters.role.option': '业务选项',
+    'flow.parameters.role.policy': '执行策略',
     'connection.slotOff': '关闭',
     'flow.tool.title': '选择工具与参数',
     'flow.tool.command': '选择并执行工具，结果可用于流程输入',

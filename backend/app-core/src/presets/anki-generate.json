@@ -20,9 +20,8 @@
       "description": "填写英文单词、Unit N 分组或 WordData JSON；也可仅选择图片。图片和文字可从同一入口提交。",
       "default": "",
       "inputSource": "composer.text",
-      "presentation": {
-        "contentSource": true
-      }
+      "presentation": {},
+      "role": "input"
     },
     {
       "name": "images",
@@ -42,9 +41,8 @@
         ]
       },
       "inputSource": "composer.attachments",
-      "presentation": {
-        "contentSource": false
-      }
+      "presentation": {},
+      "role": "input"
     },
     {
       "name": "wordsGroups",
@@ -55,7 +53,8 @@
       "description": "输入 JSON 数组，例如 [\"Unit 1\\napple\", \"Unit 2\\npear\"]。",
       "presentation": {
         "contentSource": false
-      }
+      },
+      "role": "input"
     },
     {
       "name": "requirements",
@@ -64,9 +63,8 @@
       "default": "面向中国青少年英语学习者，例句简洁自然，中文解释清楚，难度适中。",
       "widget": "textarea",
       "description": "年级、例句难度和记忆技巧偏好。图片及语音默认关闭，可按需开启；需要宿主安装 anki-cli 工具模块。",
-      "presentation": {
-        "contentSource": false
-      }
+      "presentation": {},
+      "role": "option"
     },
     {
       "name": "deckName",
@@ -75,9 +73,8 @@
       "required": true,
       "nonBlank": true,
       "default": "英语单词",
-      "presentation": {
-        "contentSource": false
-      }
+      "presentation": {},
+      "role": "option"
     },
     {
       "name": "outputDirectory",
@@ -87,9 +84,8 @@
       "nonBlank": true,
       "default": "anki-output",
       "description": "授权工作区内的相对目录；每次打包保存到独立子目录，保留此前产物。",
-      "presentation": {
-        "contentSource": false
-      }
+      "presentation": {},
+      "role": "option"
     },
     {
       "name": "generateImages",
@@ -98,10 +94,10 @@
       "default": false,
       "widget": "checkbox",
       "presentation": {
-        "contentSource": false,
         "group": "生成选项",
         "connectionToggle": "image"
-      }
+      },
+      "role": "option"
     },
     {
       "name": "generateAudio",
@@ -110,10 +106,10 @@
       "default": false,
       "widget": "checkbox",
       "presentation": {
-        "contentSource": false,
         "group": "生成选项",
         "connectionToggle": "speech"
-      }
+      },
+      "role": "option"
     },
     {
       "name": "voice",
@@ -122,7 +118,6 @@
       "default": "",
       "description": "选择语音模型支持的音色。",
       "presentation": {
-        "contentSource": false,
         "group": "生成选项",
         "visibleWhen": {
           "kind": "eq",
@@ -140,7 +135,8 @@
           ]
         },
         "connectionVoices": "speech"
-      }
+      },
+      "role": "option"
     },
     {
       "name": "processingMode",
@@ -154,7 +150,6 @@
       ],
       "description": "combined 将多张图片或多个文本组一起处理；grouped 按指定分组分别处理。全部结果最终汇总为一个完整 Anki 包。",
       "presentation": {
-        "contentSource": false,
         "visibleWhen": {
           "kind": "or",
           "args": [
@@ -226,7 +221,8 @@
             }
           ]
         }
-      }
+      },
+      "role": "option"
     },
     {
       "name": "imageGroups",
@@ -236,7 +232,6 @@
       "widget": "textarea",
       "description": "分组模式可填 [[0,1],[2]]，索引从0开始，每张图片必须恰好属于一组；留空时每张图片一组。",
       "presentation": {
-        "contentSource": false,
         "visibleWhen": {
           "kind": "and",
           "args": [
@@ -273,7 +268,8 @@
             }
           ]
         }
-      }
+      },
+      "role": "policy"
     },
     {
       "name": "groupUnits",
@@ -283,7 +279,6 @@
       "widget": "textarea",
       "description": "可填 [1,3,5]，用于图片页首未写单元标题时的延续单元；每组图片有明确单元标题时以图片为准。",
       "presentation": {
-        "contentSource": false,
         "visibleWhen": {
           "kind": "and",
           "args": [
@@ -320,7 +315,8 @@
             }
           ]
         }
-      }
+      },
+      "role": "policy"
     }
   ],
   "connections": [
@@ -970,7 +966,41 @@
       "x": 0,
       "y": 0,
       "zoom": 1
-    }
+    },
+    "steps": [
+      {
+        "name": "输入材料",
+        "nodes": [
+          "source",
+          "collect-groups",
+          "collect",
+          "collect-images"
+        ]
+      },
+      {
+        "name": "整理与识别",
+        "nodes": [
+          "prepare",
+          "recognition",
+          "dispatch-recognition",
+          "recognized"
+        ]
+      },
+      {
+        "name": "校对",
+        "nodes": [
+          "review"
+        ]
+      },
+      {
+        "name": "生成卡片与导出",
+        "nodes": [
+          "prepare-image",
+          "normalize",
+          "build"
+        ]
+      }
+    ]
   },
   "functions": [
     {

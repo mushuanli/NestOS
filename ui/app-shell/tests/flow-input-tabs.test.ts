@@ -85,3 +85,25 @@ it('binds connection enablement and refreshes voice choices without retaining an
     slot.value = ''; syncConnectionParameters(root, parameters, connection);
     expect(readFlowParameterForm(root, parameters, connection)).toEqual({enabled: false});
 });
+
+it('separates declared inputs and options from required policies while preserving validation and values', async () => {
+    const {ParameterSources} = await import('../../llm-ui-adapter/src/flows/parameter-sources');
+    const parameters: FlowParameter[] = [
+        {name: 'body', type: 'string', role: 'input', default: 'essay'},
+        {name: 'score', type: 'number', role: 'option', default: 9},
+        {name: 'parallel', type: 'number', role: 'policy', required: true, default: 4, maximum: 4},
+    ];
+    const root = document.createElement('div'); root.innerHTML = flowParameterFields(parameters); document.body.append(root);
+    cleanups.push(bindFlowParameterState(root, parameters, [], () => {}));
+    cleanups.push(new ParameterSources({} as never, {navigation: 'projects'}, parameters).mount(root));
+    expect(root.querySelectorAll('.flow-content-source')).toHaveLength(1);
+    expect(root.querySelector('[data-parameter="1"]')!.closest('details')).toBeNull();
+    const policy = root.querySelector<HTMLInputElement>('[data-parameter="2"]')!;
+    expect(policy.closest('details')!.open).toBe(false);
+    expect(readFlowParameterForm(root, parameters)).toEqual({body: 'essay', score: 9, parallel: 4});
+    policy.value = '5';
+    try {readFlowParameterForm(root, parameters); throw new Error('Expected validation');}
+    catch (error) {showFlowFieldError(root, error);}
+    expect(policy.closest('details')!.open).toBe(true);
+    expect(policy.getAttribute('aria-invalid')).toBe('true');
+});

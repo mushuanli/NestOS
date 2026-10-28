@@ -41,6 +41,10 @@ export function validateFlowInputGroups(schema: FlowParameter[] | undefined, gro
 export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; inputGroups?: FlowInputGroup[]; connections?: FlowConnection[]}): FlowInputIssue[] {
     const issues: FlowInputIssue[] = [], names = new Set((flow.parameters ?? []).map(field => field.name)), seen = new Set<string>();
     for (const parameter of flow.parameters ?? []) {
+        if (parameter.role !== undefined && !['input', 'option', 'policy'].includes(parameter.role))
+            issues.push({code: 'invalid-parameter-role', message: `Invalid parameter role: ${parameter.name}`});
+        if (parameter.inputSource && parameter.role && parameter.role !== 'input')
+            issues.push({code: 'invalid-input-source', message: `Composer binding requires an input: ${parameter.name}`});
         for (const key of ['connectionToggle', 'connectionVoices'] as const) {
             const slot = parameter.presentation?.[key];
             if (slot !== undefined && (parameter.type !== (key === 'connectionToggle' ? 'boolean' : 'string') || !flow.connections?.some(item => item.name === slot)))
@@ -55,6 +59,8 @@ export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; 
         }
     }
     for (const group of flow.inputGroups ?? []) {
+        if (Array.isArray(group?.parameters) && group.parameters.some(name => {const field = flow.parameters?.find(item => item.name === name); return field?.role && field.role !== 'input';}))
+            issues.push({code: 'invalid-input-group', message: 'Input groups require input parameters'});
         if (!validGroup(group, names, seen)) issues.push({code: 'invalid-input-group', message: 'Invalid Flow input group declaration'});
     }
     for (const connection of flow.connections ?? []) {

@@ -356,3 +356,5 @@ profile 的 Provider 配置读取。配置示例见 [Flow API](../llm-flow-api.m
 运行参数展示通过 Flow 声明控制：文本为首个输入页签，支持直接输入、文件读取及工具/MCP 结果；`composer.text` 和 `composer.attachments` 负责聊天预填。分组使用 JSON 编辑，不挂内容来源入口。多项处理仅在图片或文本组数量大于一时显示，默认 combined，grouped 在图片分组为空时逐图处理。
 
 `parameter.presentation.connectionToggle` 引用连接槽，表单将连接选择映射为布尔实参，并合并原开关；空连接表示关闭。`connectionVoices` 引用槽位，候选来自所选连接实际语音模型的 voices，切换模型清除不兼容选择。两项声明验证参数类型和槽位存在性，执行仍消费普通参数与连接绑定。Anki 的生成开关、分组及来源限制仅保存在预设声明中；更新预设需要通过已有恢复/发布流程才会作用于已安装版本。
+
+参数支持通用 role 分层：words/images/wordsGroups 为 input，普通业务设置为 option，图片组索引及起始单元为 policy。非输入字段不再逐项声明 contentSource=false；分组 JSON 保留显式禁用内容来源。模态启动与设计器右侧运行表单共用连接启停、音色联动及来源读取。`layout.steps` 提供可展开的草稿步骤概览，引用原节点，不生成新任务或改变连接。已有定义需编辑并发布新修订，不自动覆盖用户资源。

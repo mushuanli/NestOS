@@ -290,6 +290,7 @@ function parameterPresentation(param: FlowParameter): string {
     const widgets = ['', 'text', 'textarea', 'number', 'select', 'checkbox', 'images', 'files'] as const;
     const sources = ['', 'composer.text', 'composer.attachments'] as const;
     return `<div class="dag-settings__grid">
+        ${field('flow.parameters.role', `<select data-param-role>${(['', 'input', 'option', 'policy'] as const).map(role => `<option value="${role}" ${role === (param.role ?? '') ? 'selected' : ''}>${text(`flow.parameters.role.${role || 'legacy'}`)}</option>`).join('')}</select>`)}
         ${field('flow.editor.widget', `<select data-param-widget>${widgets.map(widget => `<option value="${widget}" ${widget === (param.widget ?? '') ? 'selected' : ''}>${text(`flow.parameters.widget.${widget || 'auto'}`)}</option>`).join('')}</select>`)}
         ${field('flow.source.label', `<select data-param-source>${sources.map(source => `<option value="${source}" ${source === (param.inputSource ?? '') ? 'selected' : ''}>${text(source === 'composer.text' ? 'flow.parameters.source.text' : source === 'composer.attachments' ? 'flow.parameters.source.attachments' : 'flow.source.custom')}</option>`).join('')}</select>`)}
     </div>`;
@@ -449,7 +450,9 @@ function parameterPresentationValues(row: HTMLElement, original: FlowParameter, 
         minimum: _min, maximum: _max, integer: _integer, onMissing: _missing, imageConstraints: _images, fileConstraints: _files, ...presentation } = original;
     const result: Partial<FlowParameter> = {...presentation};
     const widget = readInput(row, '[data-param-widget]'), inputSource = readInput(row, '[data-param-source]');
-    delete result.widget; delete result.inputSource;
+    delete result.widget; delete result.inputSource; delete result.role;
+    const role = readInput(row, '[data-param-role]');
+    if (role) result.role = role as FlowParameter['role'];
     if (widget) result.widget = widget as FlowParameter['widget'];
     if (inputSource) result.inputSource = inputSource as FlowParameter['inputSource'];
     if (type !== 'json' && ['images', 'files'].includes(result.widget ?? '')) delete result.widget;

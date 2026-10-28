@@ -4,6 +4,15 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'flow.steps.overview': 'Workflow steps',
+    'flow.steps.graph': 'Show execution graph',
+    'flow.parameters.options': 'Options',
+    'flow.parameters.advanced': 'Advanced execution settings',
+    'flow.parameters.role': 'Parameter role',
+    'flow.parameters.role.legacy': 'Legacy',
+    'flow.parameters.role.input': 'Input material',
+    'flow.parameters.role.option': 'Business option',
+    'flow.parameters.role.policy': 'Execution policy',
     'connection.slotOff': 'Off',
     'flow.tool.title': 'Choose a tool and arguments',
     'flow.tool.command': 'Choose and execute a tool for workflow input',

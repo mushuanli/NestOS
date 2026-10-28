@@ -14,7 +14,7 @@ export class FlowInputSources implements FlowParameterExtension {
         const events = new AbortController();
         this.fields.forEach((field, index) => {
             if (this.names && !this.names.includes(field.name)) return;
-            if (field.presentation?.contentSource === false) return;
+            if (field.presentation?.contentSource === false || !!field.role && field.role !== 'input') return;
             if (field.widget === 'images' || field.widget === 'files') return;
             const input = root.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[data-parameter="${index}"]`);
             if (!input) return;

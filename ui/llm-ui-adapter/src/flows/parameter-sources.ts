@@ -14,7 +14,7 @@ export class ParameterSources {
     constructor(private commands: ICommandBus, private scope: ResourceScope, private fields: FlowParameter[]) {}
     mount(root: HTMLElement): () => void {
         for (const [index, field] of this.fields.entries()) {
-            if (field.presentation?.contentSource === false || ['images', 'files'].includes(field.widget ?? '')) continue;
+            if (field.presentation?.contentSource === false || !!field.role && field.role !== 'input' || ['images', 'files'].includes(field.widget ?? '')) continue;
             const input = root.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[data-parameter="${index}"]`);
             if (input) this.mountField(input, field);
         }

@@ -1,3 +1,4 @@
+import {mountFlowSteps} from './dag/FlowSteps';
 import type {OperationLedger} from '@itookit/llm-ui';
 import {ControlOperations} from '../flows/control-operations';
 import {FlowRunControl} from '../flows/run-control';
@@ -214,6 +215,7 @@ export class DagWorkbench {
             onEditNode: id => void this.openNodeEditor(id),
         });
         this.canvas.render(draft, this.selectedNodeId, manifests, this.selectedEdgeId);
+        mountFlowSteps(root, draft, id => {this.inspectorMode = 'edit'; this.selectNode(id as FlowNodeId);}, !!this.selectedNodeId || !!this.selectedEdgeId);
     }
 
     private async renderInspector(draft: FlowDraft): Promise<void> {

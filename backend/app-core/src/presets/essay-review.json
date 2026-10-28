@@ -58,20 +58,58 @@
       "x": 0,
       "y": 0,
       "zoom": 0.65
-    }
+    },
+    "steps": [
+      {
+        "name": "输入作文",
+        "nodes": [
+          "collect"
+        ]
+      },
+      {
+        "name": "评审与修改循环",
+        "nodes": [
+          "loop",
+          "review",
+          "check-content",
+          "check-structure",
+          "check-language",
+          "check-logic",
+          "join",
+          "aggregate",
+          "judge",
+          "rewrite"
+        ]
+      },
+      {
+        "name": "最终报告",
+        "nodes": [
+          "report"
+        ]
+      }
+    ]
   },
   "parameters": [
     {
       "name": "requirements",
       "type": "string",
       "required": true,
-      "onMissing": "interact"
+      "onMissing": "interact",
+      "role": "input",
+      "label": "作文要求",
+      "widget": "textarea",
+      "nonBlank": true
     },
     {
       "name": "essay",
       "type": "string",
       "required": true,
-      "onMissing": "interact"
+      "onMissing": "interact",
+      "role": "input",
+      "label": "作文内容",
+      "widget": "textarea",
+      "nonBlank": true,
+      "inputSource": "composer.text"
     },
     {
       "name": "maxRounds",
@@ -81,7 +119,9 @@
       "minimum": 1,
       "maximum": 1000,
       "integer": true,
-      "description": "最多评审轮数"
+      "description": "最多评审轮数",
+      "role": "option",
+      "label": "最多评审轮数"
     },
     {
       "name": "maxConcurrency",
@@ -91,7 +131,9 @@
       "minimum": 1,
       "maximum": 4,
       "integer": true,
-      "description": "同时执行的检查数"
+      "description": "同时执行的检查数",
+      "role": "policy",
+      "label": "并发检查数"
     },
     {
       "name": "passScore",
@@ -100,7 +142,9 @@
       "default": 9,
       "minimum": 0,
       "maximum": 10,
-      "description": "各项达标分数"
+      "description": "各项达标分数",
+      "role": "option",
+      "label": "达标分数"
     },
     {
       "name": "maxExchanges",
@@ -110,7 +154,9 @@
       "minimum": 2,
       "maximum": 100,
       "integer": true,
-      "description": "每个检查节点最多模型交互次数，包含工具调用后的续答和格式修复；与评审轮数独立"
+      "description": "每个检查节点最多模型交互次数，包含工具调用后的续答和格式修复；与评审轮数独立",
+      "role": "policy",
+      "label": "模型交互上限"
     }
   ],
   "nodes": [
@@ -190,13 +236,7 @@
           "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
-        "invocationContext": "isolated",
-        "historyPolicy": "none",
-        "includeDependencyOutputs": false,
-        "approval": "none",
-        "maxExchanges": "${param.maxExchanges}",
         "temperature": 0,
-        "connectionId": "default",
         "responseFormat": {
           "type": "text"
         },
@@ -231,7 +271,8 @@
             },
             "additionalProperties": false
           }
-        }
+        },
+        "connectionId": "default"
       }
     },
     {
@@ -246,13 +287,7 @@
           "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
-        "invocationContext": "isolated",
-        "historyPolicy": "none",
-        "includeDependencyOutputs": false,
-        "approval": "none",
-        "maxExchanges": "${param.maxExchanges}",
         "temperature": 0,
-        "connectionId": "default",
         "responseFormat": {
           "type": "text"
         },
@@ -287,7 +322,8 @@
             },
             "additionalProperties": false
           }
-        }
+        },
+        "connectionId": "default"
       }
     },
     {
@@ -302,13 +338,7 @@
           "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
-        "invocationContext": "isolated",
-        "historyPolicy": "none",
-        "includeDependencyOutputs": false,
-        "approval": "none",
-        "maxExchanges": "${param.maxExchanges}",
         "temperature": 0,
-        "connectionId": "default",
         "responseFormat": {
           "type": "text"
         },
@@ -343,7 +373,8 @@
             },
             "additionalProperties": false
           }
-        }
+        },
+        "connectionId": "default"
       }
     },
     {
@@ -358,13 +389,7 @@
           "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"required\":[\"score\",\"issues\",\"suggestions\"],\"properties\":{\"score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":10},\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"suggestions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n作文内容：${vars.essay}\n请根据你的 system prompt 中的职责进行检查，返回 score、issues、suggestions。",
-        "invocationContext": "isolated",
-        "historyPolicy": "none",
-        "includeDependencyOutputs": false,
-        "approval": "none",
-        "maxExchanges": "${param.maxExchanges}",
         "temperature": 0,
-        "connectionId": "default",
         "responseFormat": {
           "type": "text"
         },
@@ -399,7 +424,8 @@
             },
             "additionalProperties": false
           }
-        }
+        },
+        "connectionId": "default"
       }
     },
     {
@@ -596,12 +622,6 @@
           "输出必须是合法 JSON，不要添加 Markdown 代码块或解释。必须符合以下 JSON Schema：{\"type\":\"object\",\"properties\":{\"essay\":{\"type\":\"string\"}},\"required\":[\"essay\"],\"additionalProperties\":false}"
         ],
         "instruction": "作文要求：${param.requirements}\n当前作文：${vars.essay}\n本轮评审意见：${vars.results}\n请针对这些意见改写作文，返回完整的 essay。",
-        "invocationContext": "isolated",
-        "historyPolicy": "none",
-        "includeDependencyOutputs": false,
-        "approval": "none",
-        "maxExchanges": "${param.maxExchanges}",
-        "connectionId": "default",
         "responseFormat": {
           "type": "text"
         },
@@ -620,7 +640,8 @@
             ],
             "additionalProperties": false
           }
-        }
+        },
+        "connectionId": "default"
       },
       "assign": {
         "essay": "${output.essay}"
@@ -782,5 +803,12 @@
       "type": "number",
       "initial": 0
     }
+  },
+  "defaults": {
+    "invocationContext": "isolated",
+    "historyPolicy": "none",
+    "includeDependencyOutputs": false,
+    "approval": "none",
+    "maxExchanges": "${param.maxExchanges}"
   }
 }

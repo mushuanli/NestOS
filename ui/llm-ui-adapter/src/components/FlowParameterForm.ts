@@ -59,15 +59,7 @@ function mountParameterDialog(parameters: FlowParameter[], title: string | undef
     const dialog = document.createElement('dialog'); dialog.className = 'dag-dialog flow-parameter-dialog';
     dialog.setAttribute('aria-labelledby', 'flow-parameter-dialog-title');
     dialog.innerHTML = parameterDialogTemplate(parameters, title, submitting, connection, description, extension?.inputGroups);
-    syncConnectionParameters(dialog, parameters, connection, true);
-    const events = new AbortController();
-    const sync = () => syncConnectionParameters(dialog, parameters, connection);
-    dialog.addEventListener('input', sync, {capture: true, signal: events.signal});
-    dialog.addEventListener('change', sync, {capture: true, signal: events.signal});
-    const unbind = bindFlowParameterState(dialog, parameters, extension?.inputGroups ?? [], values => {
-        if (connection) updateFlowConnectionRequirements(dialog, connection, values);
-        syncConnectionParameters(dialog, parameters, connection);
-    });
+    const unbind = bindFlowRunState(dialog, parameters, extension?.inputGroups ?? [], connection);
     const initialName = Object.keys(extension?.initialFiles ?? {}).find(name => extension?.initialFiles?.[name]?.length);
     if (initialName && !parameters.some(field => field.inputSource === 'composer.text' && field.default))
         [...dialog.querySelectorAll<HTMLButtonElement>('[data-flow-tab]')].find(tab => tab.dataset.flowTab === initialName)?.click();
@@ -78,7 +70,7 @@ function mountParameterDialog(parameters: FlowParameter[], title: string | undef
         return pending.length ? Promise.all(pending).then(() => {}) : undefined;
     };
     if (extension?.submitLabel) dialog.querySelector('button[type="submit"]')!.textContent = t(extension.submitLabel);
-    return {dialog, imagesReady, unmount: () => {events.abort(); unmount?.(); unbind();}};
+    return {dialog, imagesReady, unmount: () => {unmount?.(); unbind();}};
 }
 
 function bindParameterSubmission(dialog: HTMLElement, read: () => Record<string, JsonValue> | Promise<Record<string, JsonValue>>,
@@ -114,22 +106,25 @@ function freezeParameterControls(dialog: HTMLElement): () => void {
 }
 
 export function flowParameterFields(parameters: FlowParameter[], connection?: FlowConnectionSelection, groups: readonly FlowInputGroup[] = []): string {
-    const inputs = parameters.length ? parameterSection('flow.parameters.inputs', renderFlowInputGroups(parameters, groups)
-        + compactParameterFields(parameters, groups)) : '';
+    const inputs = parameters.length ? compactParameterFields(parameters, groups) : '';
     return groupFlowParameterFields(inputs + (connection ? parameterSection('flow.parameters.connections', flowConnectionFields(connection)) : ''), parameters, connection?.slots);
 }
 
 function compactParameterFields(parameters: FlowParameter[], groups: readonly FlowInputGroup[]): string {
     const template = document.createElement('template');
     template.innerHTML = renderParameterFields(parameters, parameterOptions(parameters));
-    const primary: string[] = [], optional: string[] = [];
+    const inputs: string[] = [], options: string[] = [], advanced: string[] = [];
     for (const row of template.content.children) {
         const field = parameters[Number((row as HTMLElement).dataset.parameterRow)];
         const important = field.required || field.inputSource || groups.some(group => group.parameters.includes(field.name));
-        (important ? primary : optional).push(row.outerHTML);
+        const target = field.role === 'policy' ? advanced : field.role === 'option' ? options
+            : field.role === 'input' || important ? inputs : advanced;
+        target.push(row.outerHTML);
     }
-    return primary.join('') + (optional.length ? `<details class="flow-parameter-more"><summary>${escapeHTML(t('flow.parameters.moreSettings', {count: optional.length}))}</summary>
-        <div class="flow-parameter-section__fields">${optional.join('')}</div></details>` : '');
+    return (inputs.length ? parameterSection('flow.parameters.inputs', renderFlowInputGroups(parameters, groups) + inputs.join('')) : '')
+        + (options.length ? parameterSection('flow.parameters.options', options.join('')) : '')
+        + (advanced.length ? `<details class="flow-parameter-more"><summary>${escapeHTML(t('flow.parameters.advanced'))}</summary>
+            <div class="flow-parameter-section__fields">${advanced.join('')}</div></details>` : '');
 }
 
 /** Reuse form parsing and constraints without opening a confirmation dialog. */
@@ -200,4 +195,18 @@ function renderMaterialParameter(parameter: FlowParameter, index: number): strin
     const label = `<span class="llm-parameter-field__label">${name}</span>${description}`;
     const render = parameter.widget === 'files' ? fileParameterField : imageParameterField;
     return render(parameter, index, label, `data-parameter="${index}" name="${escapeHTML(parameter.name)}"`);
+}
+
+/** Share connection-derived state across modal and embedded launch forms. */
+export function bindFlowRunState(root: HTMLElement, parameters: FlowParameter[], groups: readonly FlowInputGroup[], connection?: FlowConnectionSelection): () => void {
+    const events = new AbortController();
+    const sync = () => syncConnectionParameters(root, parameters, connection);
+    syncConnectionParameters(root, parameters, connection, true);
+    root.addEventListener('input', sync, {capture: true, signal: events.signal});
+    root.addEventListener('change', sync, {capture: true, signal: events.signal});
+    const unbind = bindFlowParameterState(root, parameters, groups, values => {
+        if (connection) updateFlowConnectionRequirements(root, connection, values);
+        sync();
+    });
+    return () => {events.abort(); unbind();};
 }

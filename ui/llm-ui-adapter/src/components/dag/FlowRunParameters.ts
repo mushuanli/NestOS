@@ -5,8 +5,8 @@ import { flowConnectionSelection } from '../../flows/connection-selection';
 import type { FlowRunInput } from '../../flows/run-flow';
 import { bindFlowImageFields } from '../FlowImageFields';
 import {bindFlowFileFields} from '../FlowFileFields';
-import {bindFlowParameterState, flowParameterFields, readFlowParameterForm, showFlowFieldError, validateFlowConnectionForm, type FlowConnectionSelection} from '../FlowParameterForm';
-import {updateFlowConnectionRequirements} from '../FlowConnectionFields';
+import {bindFlowRunState, flowParameterFields, readFlowParameterForm, showFlowFieldError, validateFlowConnectionForm, type FlowConnectionSelection} from '../FlowParameterForm';
+import {ParameterSources} from '../../flows/parameter-sources';
 
 /** Keep form DOM alive while the canvas and node inspector are redrawn. */
 export class FlowRunParameters {
@@ -18,6 +18,7 @@ export class FlowRunParameters {
     private imagesReady?: () => Promise<void> | undefined;
     private unbindFields?: () => void;
     private ready: Promise<void>;
+    private sources?: ParameterSources;
 
     constructor(private readonly draft: FlowDraft, private readonly commands: ICommandBus) {
         this.key = FlowRunParameters.keyFor(draft);
@@ -49,9 +50,10 @@ export class FlowRunParameters {
             this.unbindFields?.();
             fields.innerHTML = flowParameterFields(this.draft.parameters ?? [], connection, this.draft.inputGroups);
             fields.disabled = false;
-            this.unbindFields = bindFlowParameterState(this.root, this.draft.parameters ?? [], this.draft.inputGroups ?? [], values => {
-                updateFlowConnectionRequirements(this.root, connection, values);
-            });
+            const unbind = bindFlowRunState(this.root, this.draft.parameters ?? [], this.draft.inputGroups ?? [], connection);
+            this.sources = new ParameterSources(this.commands, {navigation: 'projects'}, this.draft.parameters ?? []);
+            const unmount = this.sources.mount(this.root);
+            this.unbindFields = () => {unbind(); unmount();};
             const images = bindFlowImageFields(this.root, this.draft.parameters ?? [], connection.assets);
             const files = bindFlowFileFields(this.root, this.draft.parameters ?? [], connection.assets);
             this.imagesReady = () => {
@@ -74,6 +76,7 @@ export class FlowRunParameters {
         try {
             await this.imagesReady?.();
             if (this.disposed) return null;
+            this.sources?.validate();
             const parameters = readFlowParameterForm(this.root, this.draft.parameters ?? [], this.connection);
             await validateFlowConnectionForm(this.root, this.connection, parameters);
             if (this.disposed) return null;

@@ -666,3 +666,9 @@ prepareFlowCallTask(graph, parameters, options) 将可信冻结图转换为原 f
 ### 受管调用启动前宿主准入
 
 TaskCallSubmitOptions.beforeBind(caller) 在原 caller 已接纳且仍为 created 时执行，之后才绑定原计划；失败保留同一 deferred caller。该可信回调不进入 Task 规格或 RPC 参数，Session 用于在执行前固定已接受的模式偏好。
+
+### 运行参数用途与步骤概览
+
+`FlowParameter.role` 可选为 `input`、`option`、`policy`，分别用于材料、业务设置和高级执行策略。role 不改变实参结构或约束；未声明时兼容旧表单。`inputSource` 只能用于 input 或未声明 role 的旧字段。UI 必须继续校验收起的 policy，错误时展开定位。
+
+`FlowLayout.steps?: Array<{name: string; nodes: string[]}>` 是设计器概览分组；仅引用草稿内原节点，不参与执行编译和发布修订。运行依赖仍由 edges、内联函数与已有控制节点决定。

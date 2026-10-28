@@ -158,3 +158,13 @@ it('defers a missing anyOf group when one member has a collector', () => {
     expect(validateFlowInputGroups(fields, any, {})).toMatchObject([{code: 'missing-input-group'}]);
     expect(() => prepareFlowParameters(fields, {}, groups)).toThrow('exactly one');
 });
+
+it('publishes parameter roles and rejects composer bindings on configuration fields', () => {
+    const draft = definition(); draft.parameters![0].role = 'input'; draft.parameters![2].role = 'policy';
+    expect(flowInputDeclarationIssues(draft)).toEqual([]);
+    expect(flowRevisionToDraft(createFlowRevision(draft, 1)).parameters).toEqual(draft.parameters);
+    draft.parameters![0].role = 'option';
+    expect(flowInputDeclarationIssues(draft).some(issue => issue.code === 'invalid-input-source')).toBe(true);
+    draft.parameters![0].role = 'unknown' as never;
+    expect(flowInputDeclarationIssues(draft).some(issue => issue.code === 'invalid-parameter-role')).toBe(true);
+});

@@ -21,7 +21,7 @@ app-core 保存关系及接纳回执；llm-ui 继续展示完整 Session，不�
 
 ## 规范关系与索引
 
-`DocumentChatLink` 是规范记录，保存在 `/etc/fs/document-chat-links.seq`：
+`DocumentChatLink` 是当前用户的私有规范记录，保存在该用户隔离的 `/etc/fs/document-chat-links.seq`：
 
 ```ts
 {
@@ -54,8 +54,9 @@ initialMessageId 使用 Session 的标准 assistant 投影 ID（`round-<roundId>
 | `source:<namespace>:<path>:<anchorId>` | linkId，用于改名后的定位及撤销恢复 |
 | `branch:<sessionId>:<branch>:<linkId>` | linkId，仅有效绑定进入反向索引 |
 
-文件 metadata 的 `_nestos_document_chat` 保存 `{schemaVersion, documentId, anchors}`。
-每个 anchors[id] 保存 linkId、状态、引用选区、默认提示词及有效 binding/projectId/latestRoundId。
+文件 metadata 的 `_mindos_document_chat` 保存 `{schemaVersion, documentId, anchors}`，保留历史键名以兼容现有文件。
+每个 `anchors[id]` 仅保存稳定 `linkId`；选区、提示词、状态、Session/branch 绑定及项目归属均只写当前用户的私有 registry。
+多个用户可分别绑定同一共享文件的 anchor，不读取或继承其他用户的会话。旧文件在 metadata 写回时以身份白名单重建所有 anchors，清除历史私有字段；各用户已有 registry 保持原记录并继续恢复自己的绑定。
 普通 Markdown 读取、保存不会创建这项 metadata 或关系表；用户明确插入 AI 时才记录。
 删除最后一个标记并保存时移除该 metadata 键。
 

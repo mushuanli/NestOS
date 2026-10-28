@@ -2,11 +2,11 @@ import {DOCUMENT_CHAT_META_KEY} from '@itookit/app-contracts';
 import {FSError} from '@itookit/vfs-core';
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import {SessionCommand, type SubmissionRequest, type SessionGroup} from '@itookit/llm-session/contracts';
-import type {DocumentChatBinding, DocumentChatFile, DocumentChatFileRequest, DocumentChatLink, DocumentChatResponse, LocalApplicationServices} from '@itookit/app-contracts/services';
+import type {DocumentChatFile, DocumentChatFileRequest, DocumentChatLink, DocumentChatResponse, LocalApplicationServices} from '@itookit/app-contracts/services';
 import {DocumentChatRegistry} from './registry';
 
 const metaKey = DOCUMENT_CHAT_META_KEY, log = createModuleLogger('document-chat-links');
-interface FileMeta {schemaVersion: 1; documentId: string; anchors: Record<string, {linkId: string; status: DocumentChatLink['status']; selection: string; defaultPrompt: string; latestRoundId?: string; binding?: DocumentChatBinding; projectId?: string}>}
+interface FileMeta {schemaVersion: 1; documentId: string; anchors: Record<string, {linkId: string}>}
 const validId = (id: string) => /^[a-zA-Z0-9_-]{1,128}$/.test(id);
 
 /** This borrowed file capability owns only observers, never the filesystem or Session. */
@@ -26,7 +26,21 @@ export class DocumentChatFileView implements DocumentChatFile {
         const value = node.metadata[metaKey] as FileMeta | undefined;
         if (value && (value.schemaVersion !== 1 || !validId(value.documentId) || (!value.anchors || typeof value.anchors !== 'object' || Array.isArray(value.anchors))))
             throw new FSError('EINVAL', 'Document chat metadata is invalid');
-        return value;
+        // Shared files expose stable anchors only; conversation state belongs to the user's registry.
+        return value ? {schemaVersion: 1, documentId: value.documentId, anchors: Object.fromEntries(
+            Object.keys(value.anchors).map(anchorId => [anchorId, {linkId: `${value.documentId}:${anchorId}`}]))} : undefined;
+    }
+    private async writeMetadata(meta: FileMeta | undefined, operationId: string): Promise<void> {
+        const started = Date.now();
+        try {
+            await this.request.files.driver.updateMetadata(this.request.path, {[metaKey]: meta});
+            log.info('document.chat.metadata', {operationId, stage: 'shared-anchors', result: 'success',
+                anchorCount: Object.keys(meta?.anchors ?? {}).length, durationMs: Date.now() - started});
+        } catch (error) {
+            log.warn('document.chat.metadata', {operationId, stage: 'shared-anchors', result: 'failure',
+                code: (error as {code?: string})?.code ?? 'METADATA_WRITE_FAILED', durationMs: Date.now() - started});
+            throw error;
+        }
     }
     private async record(anchorId: string): Promise<DocumentChatLink | undefined> {
         if (!validId(anchorId)) throw new FSError('EINVAL', 'Invalid document chat anchor');
@@ -50,7 +64,6 @@ export class DocumentChatFileView implements DocumentChatFile {
             const existing = await this.record(anchorId); if (existing) return this.project(existing);
             let meta = await this.metadata();
             const previous = meta && await this.registry.read(`${meta.documentId}:${anchorId}`);
-            if (meta?.anchors[anchorId] && !previous) throw new FSError('ECONFLICT', 'Stored AI chat link is unavailable in this backend; connect its original backend or repair the link');
             if (previous && (previous.source.namespaceId !== this.request.files.viewId || previous.source.path !== this.request.path || previous.source.fileIdentity && this.fileIdentity && previous.source.fileIdentity !== this.fileIdentity)) meta = undefined;
             const documentId = meta?.documentId ?? randomUUID(), project = this.request.projectFolder
                 ? await this.services.projects.forFolder(this.request.projectFolder) : undefined;
@@ -141,9 +154,8 @@ export class DocumentChatFileView implements DocumentChatFile {
         try {
             const meta = await this.metadata();
             const anchors = meta?.documentId === link.documentId ? {...meta.anchors} : {};
-            anchors[link.anchorId] = {linkId: link.id, status: link.status, selection: link.selection, defaultPrompt: link.defaultPrompt, projectId: link.source.projectId,
-                ...(link.status === 'bound' ? {binding: link.binding, latestRoundId: link.latestRoundId} : {})};
-            await this.request.files.driver.updateMetadata(this.request.path, {[metaKey]: {schemaVersion: 1, documentId: link.documentId, anchors}});
+            anchors[link.anchorId] = {linkId: link.id};
+            await this.writeMetadata({schemaVersion: 1, documentId: link.documentId, anchors}, link.anchorId);
             const identity = (await this.request.files.driver.getNode(this.request.path))?.sourceIdentity;
             return link.projectionPending || identity !== link.source.fileIdentity
                 ? await this.registry.save({...link, source: {...link.source, fileIdentity: identity}, projectionPending: false}, link) : link;
@@ -186,7 +198,7 @@ export class DocumentChatFileView implements DocumentChatFile {
                 if (link && link.status !== 'detached') await this.registry.save({...link, status: 'detached'}, link);
                 delete meta.anchors[id]; changed = true;
             }
-            if (changed) await this.request.files.driver.updateMetadata(this.request.path, {[metaKey]: Object.keys(meta!.anchors).length ? meta : undefined});
+            if (changed) await this.writeMetadata(Object.keys(meta!.anchors).length ? meta : undefined, randomUUID());
             for (const id of live) {
                 let link = await this.record(id);
                 if (link?.status === 'detached') {

@@ -35,7 +35,8 @@ it('leaves ordinary Markdown untouched, then scopes independent anchors to the d
     const etc = await f.runtime.vfs.openFileSystem('/etc'); expect(await etc.driver.exists('/fs/document-chat-links.seq')).toBe(false);
     const a = await f.port.create('a', 'Selected text'), b = await f.port.create('b', 'Other text');
     expect(a.documentId).toBe(b.documentId); expect(a.id).not.toBe(b.id);
-    expect((await f.meta()).anchors.a.selection).toBe('Selected text');
+    expect((await f.meta()).anchors.a).toEqual({linkId: a.id});
+    expect((await f.port.get('a')).link?.selection).toBe('Selected text');
     expect((await f.port.reserve('a', 'retry')).endpoint).toEqual((await f.port.reserve('a', 'retry')).endpoint);
 });
 it('keeps the initial reply and the same branch across subsequent sends and returns backlinks', async () => {
@@ -46,8 +47,8 @@ it('keeps the initial reply and the same branch across subsequent sends and retu
     expect(second.binding).toEqual(first.binding);
     expect((await f.port.get('a', true)).response).toMatchObject({markdown: '**First**', status: 'completed'});
     expect((await documentChatBacklinks(f.services, first.binding!.sessionId, first.binding!.branch)).map(link => link.anchorId)).toEqual(['a']);
-    expect((await f.meta()).anchors.a.binding.initialRoundId).toBe('initial-round');
-    expect((await f.meta()).anchors.a.latestRoundId).toBe('second-round');
+    expect((await f.meta()).anchors.a).toEqual({linkId: first.id});
+    expect((await f.port.get('a')).link?.latestRoundId).toBe('second-round');
     expect((await f.port.get('a', true)).activity).toMatchObject({operationId: 'second-round', status: 'pending', markdown: ''});
     await f.runtime.sessionRepository.writeDocument(first.binding!.sessionId, 'round-second-round.json', JSON.stringify({status: 'running',
         output: [{role: 'assistant', content: 'Partial reply'}, {role: 'tool', content: 'private tool result'}]}));
@@ -66,7 +67,7 @@ it('removes only the deleted branch projection and recovers with a fresh endpoin
     const f = await setup(); await f.port.create('a', 'A'); await f.port.create('b', 'B'); const first = await f.bind('a');
     await f.runtime.sessionRepository.updateManifest(first.binding!.sessionId, {branches: {main: null}, currentBranch: 'main'});
     expect((await f.port.get('a')).link?.status).toBe('missing');
-    expect((await f.meta()).anchors.a.binding).toBeUndefined(); expect((await f.meta()).anchors.b.selection).toBe('B');
+    expect((await f.meta()).anchors.a.binding).toBeUndefined(); expect((await f.port.get('b')).link?.selection).toBe('B');
     expect(await documentChatBacklinks(f.services, first.binding!.sessionId, first.binding!.branch)).toEqual([]);
     expect((await f.port.reserve('a', 'new-round')).endpoint?.sessionId).not.toBe(first.binding!.sessionId);
 });
@@ -74,7 +75,7 @@ it('detaches a removed marker and restores its binding on undo without sending a
     const f = await setup(); await f.port.create('a', 'A'); const first = await f.bind('a');
     await f.port.reconcile([]); expect(await f.meta()).toBeUndefined();
     expect(await documentChatBacklinks(f.services, first.binding!.sessionId, first.binding!.branch)).toEqual([]);
-    await f.port.reconcile(['a']); expect((await f.meta()).anchors.a.binding).toEqual(first.binding);
+    await f.port.reconcile(['a']); expect((await f.port.get('a')).link?.binding).toEqual(first.binding);
     expect((await f.port.get('a')).link?.status).toBe('bound');
 });
 it('preserves unknown submission identity and reconciles an accepted receipt after reopening', async () => {
@@ -98,7 +99,8 @@ it('retains accepted admission when the file projection fails and repairs it on 
     vi.spyOn(f.files.driver, 'updateMetadata').mockRejectedValueOnce(Object.assign(new Error('Disk unavailable'), {code: 'EIO'}));
     expect((await f.port.bind('a', request)).projectionPending).toBe(true);
     expect((await f.port.get('a')).link?.projectionPending).toBe(false);
-    expect((await f.meta()).anchors.a.binding.initialRoundId).toBe('round');
+    expect((await f.meta()).anchors.a).toEqual({linkId: (await f.port.get('a')).link!.id});
+    expect((await f.port.get('a')).link?.binding?.initialRoundId).toBe('round');
 });
 it('does not resurrect a marker removed while its submission receipt was pending', async () => {
     const f = await setup(); await f.port.create('a', 'A'); const reserved = await f.port.reserve('a', 'round');
@@ -106,7 +108,8 @@ it('does not resurrect a marker removed while its submission receipt was pending
     await f.runtime.sessionRepository.updateManifest(reserved.endpoint!.sessionId, {branches: {[reserved.endpoint!.branch]: null}});
     const request = f.request(reserved.endpoint!, 'round'); await f.port.prepare('a', request); await f.port.reconcile([]);
     expect((await f.port.bind('a', request)).status).toBe('detached'); expect(await f.meta()).toBeUndefined();
-    await f.port.reconcile(['a']); expect((await f.meta()).anchors.a.binding.initialRoundId).toBe('round');
+    await f.port.reconcile(['a']); expect((await f.meta()).anchors.a).toEqual({linkId: (await f.port.get('a')).link!.id});
+    expect((await f.port.get('a')).link?.binding?.initialRoundId).toBe('round');
 });
 it('follows a rename but gives a copied document an independent identity', async () => {
     const f = await setup(); const original = await f.port.create('a', 'A');
@@ -136,11 +139,45 @@ it('keeps one anchor when a persistent source file is opened through another mou
         expect(read.source.path).toBe('/workspace/note.md');
     } finally {await other.dispose(); await projected.dispose();}
 });
-it('does not overwrite a shared remote anchor when its canonical link is missing in this backend', async () => {
-    const f = await setup(); await f.files.driver.updateMetadata('/note.md',{[DOCUMENT_CHAT_META_KEY]:{
-        schemaVersion:1,documentId:'foreign-document',anchors:{a:{linkId:'foreign-document:a',status:'bound',binding:{sessionId:'other-backend'}}}}});
-    const original = await f.meta(); await expect(f.port.create('a','New selection')).rejects.toMatchObject({code:'ECONFLICT'});
-    expect(await f.meta()).toEqual(original);
+it('creates a private link for an existing shared anchor and strips all legacy private projections', async () => {
+    const f = await setup(); await f.files.driver.updateMetadata('/note.md', {[DOCUMENT_CHAT_META_KEY]: {
+        schemaVersion: 1, documentId: 'shared-document', anchors: {
+            a: {linkId: 'shared-document:a', status: 'bound', selection: 'Private selection', defaultPrompt: 'Private prompt', binding: {sessionId: 'other-user'}},
+            b: {linkId: 'shared-document:b', latestRoundId: 'private-round', projectId: 'private-project'},
+        }}});
+    expect(await f.port.get('a')).toEqual({});
+    const link = await f.port.create('a', 'My selection', 'My prompt');
+    expect(link).toMatchObject({id: 'shared-document:a', selection: 'My selection', defaultPrompt: 'My prompt', status: 'unbound'});
+    expect(link.binding).toBeUndefined();
+    expect(await f.meta()).toEqual({schemaVersion: 1, documentId: 'shared-document', anchors: {
+        a: {linkId: 'shared-document:a'}, b: {linkId: 'shared-document:b'},
+    }});
+});
+
+it('keeps independent user sessions on the same shared anchor and restores each private registry', async () => {
+    const alice = await setup(), bob = await setup();
+    await alice.port.create('a', 'Alice selection', 'Alice prompt');
+    const first = await alice.bind('a');
+    await alice.files.driver.updateMetadata('/note.md', {[DOCUMENT_CHAT_META_KEY]: {schemaVersion: 1, documentId: first.documentId,
+        anchors: {a: {linkId: first.id, binding: first.binding, selection: first.selection, defaultPrompt: first.defaultPrompt}}}});
+    const other = new DocumentChatFileView(bob.services, {files: alice.files, path: '/note.md'});
+    stops.push(() => other.dispose());
+    expect(await other.get('a')).toEqual({});
+    const second = await other.create('a', 'Bob selection', 'Bob prompt');
+    expect(second.id).toBe(first.id);
+    const reserved = await other.reserve('a', 'bob-round'), endpoint = reserved.endpoint!;
+    await bob.runtime.sessionRepository.ensureSession(endpoint.sessionId, 'Bob');
+    await bob.runtime.sessionRepository.updateManifest(endpoint.sessionId, {branches: {[endpoint.branch]: null}});
+    const request = bob.request(endpoint, 'bob-round'); await other.prepare('a', request); await other.bind('a', request);
+    expect(endpoint.sessionId).not.toBe(first.binding!.sessionId);
+    for (const [services, selection, sessionId] of [[alice.services, 'Alice selection', first.binding!.sessionId],
+        [bob.services, 'Bob selection', endpoint.sessionId]] as const) {
+        const reopened = new DocumentChatFileView(services, {files: alice.files, path: '/note.md'});
+        try {expect((await reopened.get('a')).link).toMatchObject({selection, binding: {sessionId}});}
+        finally {await reopened.dispose();}
+    }
+    expect((await alice.meta()).anchors.a).toEqual({linkId: first.id});
+    expect(await documentChatBacklinks(bob.services, first.binding!.sessionId, first.binding!.branch)).toEqual([]);
 });
 
 it('reads partial assistant text from the matching live round without changing its completion status', async () => {

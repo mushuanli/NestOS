@@ -53,7 +53,7 @@ export class ParameterSources {
             } finally {if (current === revision) {this.pending.delete(field.name); button.disabled = false;}}
         };
         input.addEventListener('input', () => {revision++; this.invalid.delete(field.name); this.pending.delete(field.name); button.disabled = false;}, {signal: this.abort.signal});
-        reference.oninput = () => {revision++; this.invalid.add(field.name); this.pending.delete(field.name); button.disabled = false; preview.textContent = '';};
+        reference.oninput = () => {reference.setCustomValidity(''); revision++; this.invalid.add(field.name); this.pending.delete(field.name); button.disabled = false; preview.textContent = '';};
         button.onclick = () => {void read(async () => (await this.commands.execute<ResourceContent>(ResourceCommand.Read, {reference: reference.value, scope: this.scope})).text);};
         const output = document.createElement('button'); output.type = 'button'; output.textContent = t('flow.source.output'); box.append(output);
         output.onclick = async () => {const current = revision;

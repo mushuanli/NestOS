@@ -17,7 +17,7 @@ class OutputSourcePicker {
     private status = document.createElement('p'); private preview = document.createElement('pre');
     private viewer = document.createElement('div'); private workbench?: DagWorkbench;
     private options: Run[] = []; private output: SourceValue[] = []; private result: SourceValue | null = null;
-    private receipt?: InputSourceReceipt; private request?: InputSourceExecution; private busy = false;
+    private receipt?: InputSourceReceipt; private request?: InputSourceExecution; private busy = false; private unresolved = false;
     constructor(private commands: ICommandBus, private scope: ResourceScope, private signal: AbortSignal) {}
     open(): Promise<SourceValue | null> {
         if (this.signal.aborted) return Promise.resolve(null);
@@ -67,18 +67,21 @@ class OutputSourcePicker {
     }
     private showValue(): void {const value = this.output[Number(this.values.value)]?.value; this.preview.textContent = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value, null, 2);}
     private async start(kind: 'tool' | 'mcp' | 'flow'): Promise<void> {
-        if (this.request && !this.receipt?.taskId) throw new Error(t('flow.source.reconcileRequired'));
+        if (this.unresolved) throw new Error(t('flow.source.reconcileRequired'));
         const source = await sourceExecutionForm(this.commands, kind, this.abort.signal);
         if (!source || this.abort.signal.aborted) return;
         this.clearOutput(); this.receipt = undefined;
         this.request = {requestId: randomUUID(), scope: {...this.scope}, source};
+        this.unresolved = true;
         this.receipt = await this.commands.execute<InputSourceReceipt>(InputSourceCommand.Execute, this.request);
+        this.unresolved = !this.receipt?.taskId;
         if (!this.abort.signal.aborted) await this.showExecution();
     }
     private async reconcile(): Promise<void> {
         if (!this.request) return;
         this.receipt = await this.commands.execute<InputSourceReceipt | undefined>(InputSourceCommand.Inspect, {requestId: this.request.requestId});
         if (!this.receipt?.taskId) throw new Error(t('flow.source.noResult'));
+        this.unresolved = false;
         if (!this.abort.signal.aborted) await this.showExecution();
     }
     private async showExecution(): Promise<void> {

@@ -61,7 +61,7 @@ class InputSourceExecutionService {
         if (source.kind !== 'tool' || !(await this.options.tools()).some(tool => tool.id === source.toolId && (tool.version ?? '1') === source.toolVersion)) throw new Error('TOOL_COMMAND_UNAVAILABLE');
         if (!source.args || typeof source.args !== 'object' || Array.isArray(source.args)) throw new Error('TOOL_COMMAND_ARGUMENTS_INVALID');
         return {id: `input-${input.requestId}`, revision: 1, digest: await sha256Hex(JSON.stringify(source)), name: source.toolId,
-            nodes: [{id: 'source', plugin: 'builtin.tool', pluginVersion: '1.0.0', capabilities: [source.toolId], inputs: {},
+            nodes: [{id: 'source', name: source.toolId, plugin: 'builtin.tool', pluginVersion: '1.0.0', capabilities: [source.toolId], inputs: {},
                 config: {toolId: source.toolId, toolVersion: source.toolVersion, args: source.args, approval: 'all'}}], edges: []} as unknown as FlowRevision;
     }
     private async reserve(input: InputSourceExecution, flow: FlowRevision): Promise<Intent> {

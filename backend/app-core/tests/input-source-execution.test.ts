@@ -47,4 +47,21 @@ it('executes a published source Flow through the application runtime', async () 
     }, {timeout: 10000});
     expect(JSON.stringify(snapshot.root.task.output)).toContain('fixture');
     expect(await runtime.commandBus.execute(InputSourceCommand.Inspect, {requestId: input.requestId})).toEqual(receipt);
+    const tools = await runtime.commandBus.execute<any[]>(InputSourceCommand.Catalog);
+    const tool = tools.find(tool => tool.id === 'Read'); expect(tool).toBeDefined();
+    const toolReceipt = await runtime.commandBus.execute<any>(InputSourceCommand.Execute, {requestId: 'actual-tool', scope: {navigation: 'notes'},
+        source: {kind: 'tool', toolId: tool.id, toolVersion: tool.version, args: {file_path: '/missing.txt'}}});
+    let pending: any;
+    await vi.waitFor(async () => {
+        const tasks = await runtime.kernel.kernel.listSessionTasks(toolReceipt.sessionId);
+        pending = tasks.flatMap(task => Object.values(task.interactions ?? {}).map(interaction => ({task, interaction})))
+            .find(({interaction}: any) => interaction.status === 'pending');
+        expect(pending).toBeDefined();
+    }, {timeout: 10000});
+    await runtime.commandBus.execute(FlowCommand.RunRespond, {taskId: toolReceipt.taskId, targetTaskId: pending.task.id,
+        requestId: pending.interaction.id, responseRequestId: 'deny-source', value: {approved: false}});
+    await vi.waitFor(async () => {
+        const denied = await runtime.commandBus.execute<any>(FlowCommand.RunGet, toolReceipt);
+        expect(denied.root.task.status).toBe('failed');
+    }, {timeout: 10000});
 });

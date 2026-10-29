@@ -2,11 +2,12 @@ import type { TwinDiscoveredSource, TwinSourceSpec } from './domain';
 
 export interface TwinScanRules { include: string[]; exclude: string[]; selection?: boolean; }
 export interface TwinScanRuleInput extends TwinScanRules {
+    mode?: 'analyze' | 'collect';
     input?: import('@itookit/app-contracts').TwinScannerInput;
     executor?: import('@itookit/app-contracts').TwinScannerExecutor;
-    trigger?: 'manual' | 'interval' | 'changes';
+    trigger?: 'manual' | 'interval' | 'changes' | 'event';
     autoConfirm?: boolean;
-    collection?: import('@itookit/app-contracts').TwinScannerExecutor;
+    collection?: import('@itookit/app-contracts').TwinCollectionExecutor;
     maxOutputTokens?: number;
     runTokenLimit?: number | null;
     focus?: string;

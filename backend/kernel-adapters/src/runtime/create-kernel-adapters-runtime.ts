@@ -43,6 +43,7 @@ import { ContextPrepareEffect, ContextLlmEffect, ContextToolEffect, type Context
 import {LiveTools} from './live-tools';
 
 export interface KernelAdaptersRuntimeOptions extends KernelAdapterDiagnostics {
+    authorizeTool?(request: import('../effects/tool-call-effect').ToolCallEffectRequest, context: import('@itookit/durable-kernel').EffectExecutionContext): Promise<void>;
     harnessExecution?: import('../llm-management/contracts/harness-execution').HarnessExecutionProvider;
     taskAssetStore?: import('@itookit/tools/contracts').TaskAssetStore;
     readTaskAsset?: import('@itookit/tools/contracts').TaskAssetReader;
@@ -407,13 +408,16 @@ function createEffects(
     const effects: import('@itookit/durable-kernel').EffectAdapter[] = [
         new LlmChatEffectAdapter(llm, diagnostics.logger, diagnostics.authorizeLlm, diagnostics.readTaskAsset),
         new ToolCallEffectAdapter(async (context, request) => {
+            await diagnostics.authorizeTool?.(request, context);
             const scope = await registry.getForEffect(context);
+            await diagnostics.authorizeTool?.(request, context);
             const meta = scope.toolService.getToolMeta(request.toolId);
             if (meta?.skillUnloaderArgKey) return scope.toolService;
             if (meta?.skillLoaderArgKey) return tools(context);
             return runSessionSkillOperation(registry, context.sessionId, async () => {
                 const ready = await registry.getForContext(context);
                 await ready.prepareTools?.([request.toolId]);
+                await diagnostics.authorizeTool?.(request, context);
                 return ready.toolService;
             });
         }, async (skillId, context) => {

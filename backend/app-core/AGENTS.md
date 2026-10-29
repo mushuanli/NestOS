@@ -137,7 +137,7 @@ NestOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createNe
 
 - `projects/project-directory-recovery.ts` 恢复有数据的工作台直属旧目录：条件补建 info.seq、沿用旧项目身份与会话归属；不移动正文，读取故障或根重叠不能当作不存在。
 
-- 分身扫描规则通过 `scan-rules` / `source-index` 维护自动来源；`project-catalog` / `harness-reader` 复用项目与会话公开接口。文件的到期检查核对正文 hash，失败范围不推断删除。新规则全局模型/预算，明确主体信息自动生效；layout 6 原子迁移 2/3/4/5，旧指定来源计划保留兼容。
+- 分身扫描规则通过 `scan-rules` / `source-index` 维护自动来源；`project-catalog` / `harness-reader` 复用项目与会话公开接口。文件的到期检查核对正文 hash，失败范围不推断删除。新规则全局模型/预算，明确主体信息自动生效；layout 8 原子迁移 2/3/4/5/6/7，旧指定来源计划保留兼容。
 
 - 扫描 `focus` 随 run/scope 固化并参与检查点身份；无关注点的旧检查点保持兼容。规则停用或删除保留知识快照，`retained` 不代表继续读取源文件；全局排除仍使其失效。`graph.ts` 从可用记忆派生图，人物合并通过 entity 映射与版本检查点完成，不能按同名自动合并。
 
@@ -218,4 +218,6 @@ configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、�
 
 数字分身 `scanner-executor` 复用发布 Agent / Flow 的独立调用和 Kernel 回执；工具与 MCP 通过 Flow 接入。`scanner-input` 保存空间内文本快照，工作区文件仍经过来源授权；`scanner-authority` 绑定子 Session、发送前复验与逐 attempt 额度。`workspaces` 只提供宿主授权的独立空间句柄，读写权限在后端强制；runtime 按真实执行绑定路由到所属空间，不以界面选择作为全局授权状态。当前文本扫描不接入 harness、媒体、动态委派及嵌套独立调用，范围见扫描器设计文档。
 
-- 数字分身可在每次扫描前执行单独冻结的采集 Flow，仅允许静态 Tool/Transform/Return，禁止模型、嵌套调用和来源变化触发；先保存工作区来源再重新发现，来源与知识继续用原 hash/证据机制。maxOutputTokens 同规则/运行/job 冻结并在发送前强制上限，layout 7 阻断旧客户端忽略新约束。
+- 数字分身可在每次扫描前执行单独冻结的采集 Flow，仅允许静态 Tool/Transform/Return，禁止模型、嵌套调用和来源变化触发；先保存工作区来源再重新发现，来源与知识继续用原 hash/证据机制。maxOutputTokens 同规则/运行/job 冻结并在发送前强制上限，layout 8 阻断旧客户端忽略新约束。
+
+扫描器以触发方式、动作、结果接纳组合规则；collection 可直接绑定固定版本 Tool，复用 kernel-adapters.tool 与 tool.call，不创建包装 Flow。collect 模式不要求模型或来源范围，也不参与知识规则匹配。triggerScanPlan 的 eventId 回执与入队原子提交；重复事件返回原运行，运行中新增事件合并到后续队列，event 不参与定时调度。Tool 能力获取前后复验空间、规则和目录签名；MCP 未进入直接采集目录时不在 UI 冒充可用。

@@ -1,24 +1,38 @@
-import type {TwinScannerExecutor} from '@itookit/app-contracts';
+import {collectWithTool, type ToolCollectorOptions} from './tool-collector';
+import {collectionTools, validateCollectionTool} from './collection-tools';
+import type {TwinCollectionExecutor} from '@itookit/app-contracts';
 import type {IndependentCallService, SessionRepository} from '@itookit/llm-session';
 import {KernelError, KernelErrorCode, type Kernel, type TaskCallResult} from '@itookit/durable-kernel';
 import type {DagRunSpec} from '@itookit/llm-flow/contracts';
 import {traceAnalysis, TwinDiagnosticError} from './diagnostics';
 
-export interface TwinCollectionRequest {runId: string; sessionId: string; executor: TwinScannerExecutor}
+export interface TwinCollectionRequest {runId: string; sessionId: string; executor: TwinCollectionExecutor}
 export interface TwinCollectionPort {
+    tools?(): import('@itookit/app-contracts').TwinScannerTool[];
+    validate?(executor: TwinCollectionExecutor): void;
     collect(request: TwinCollectionRequest, attached: (taskId: string) => Promise<void>, bind: (sessionId: string) => Promise<void>): Promise<void>;
     cancelCollection(sessionId: string, taskId?: string): Promise<void>;
 }
-interface Options {kernel: Kernel; repository: SessionRepository; ready(): {calls: IndependentCallService}}
+interface Options {tools?: ToolCollectorOptions; kernel: Kernel; repository: SessionRepository; ready(): {calls: IndependentCallService}}
 
-/** Collection is a published static Tool Flow. It cannot spend unmetered model tokens. */
+/** Collection runs a fixed Tool or a published static Tool Flow, without model access. */
 export class PublishedScannerCollector implements TwinCollectionPort {
     constructor(private readonly options: Options) {}
+    tools() {return this.options.tools ? collectionTools(this.options.tools.tools) : [];}
+    validate(executor: TwinCollectionExecutor): void {
+        if (executor.target.kind === 'tool') {
+            if (!this.options.tools) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');
+            validateCollectionTool(this.options.tools.tools, executor);
+        }
+    }
     async collect(request: TwinCollectionRequest, attached: (taskId: string) => Promise<void>, bind: (sessionId: string) => Promise<void>): Promise<void> {
         const started = Date.now(), identity = {sessionId: request.sessionId, connectionId: ''};
         traceAnalysis(identity, 'collection.prepare', {operationId: request.runId});
         try {
-            await this.execute(request, attached, bind);
+            if (request.executor.target.kind === 'tool') {
+                if (!this.options.tools) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');
+                await collectWithTool(this.options.tools, request, attached, bind);
+            } else await this.execute(request, attached, bind);
             traceAnalysis(identity, 'collection.completed', {operationId: request.runId, durationMs: Date.now() - started});
         } catch (error) {
             try {await this.cancelCollection(request.sessionId);} catch {
@@ -29,6 +43,7 @@ export class PublishedScannerCollector implements TwinCollectionPort {
         }
     }
     private async execute(request: TwinCollectionRequest, attached: (taskId: string) => Promise<void>, bind: (sessionId: string) => Promise<void>): Promise<void> {
+        if (request.executor.target.kind !== 'flow') throw new Error('TWIN_COLLECTION_TARGET_INVALID');
         const {repository, kernel} = this.options, calls = this.options.ready().calls;
         await repository.ensureSession(request.sessionId, 'Source collection');
         const input = {title: 'Source collection', request: {expectedSessionId: request.sessionId, expectedBranch: 'main', expectedTarget: request.executor.target,
@@ -44,7 +59,7 @@ export class PublishedScannerCollector implements TwinCollectionPort {
         const exit = await task.wait({until: 'settled', timeoutMs: 180000}), output = exit.output as TaskCallResult | undefined;
         if (exit.status !== 'succeeded' || output?.exit.status !== 'succeeded') {
             const message = output?.exit.error?.message ?? exit.error?.message ?? '';
-            const code = message.match(/\b(?:GOOGLE|TOOL_CONNECTION)_[A-Z_]+\b/)?.[0];
+            const code = message.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/)?.[0];
             throw new TwinDiagnosticError('TWIN_COLLECTION_FAILED', {message: code ?? 'Collection task did not succeed'});
         }
     }
@@ -54,11 +69,20 @@ export class PublishedScannerCollector implements TwinCollectionPort {
             throw error;
         });
         const task = taskId ? tasks.find(task => task.id === taskId) : tasks.find(task => task.program.kind === 'kernel.call');
-        if (task) await (await this.options.kernel.attachTask(sessionId, task.id)).cancel(undefined, {requestId: 'collection-cancel'});
+        if (task) {
+            const handle = await this.options.kernel.attachTask(sessionId, task.id);
+            await handle.cancel(undefined, {requestId: 'collection-cancel'}); await handle.wait({until: 'settled', timeoutMs: 180000});
+        }
     }
 }
-export function assertCollectionPlan(value: unknown): void {
+export function assertCollectionPlan(value: unknown, expected?: TwinCollectionExecutor): void {
     const task = value as {program?: {kind?: string}; input?: {initialScheduler?: {spec?: DagRunSpec}}};
+    if (expected?.target.kind === 'tool') {
+        const input = (task as {input?: {toolId?: string; toolVersion?: string; args?: unknown}}).input;
+        if (task.program?.kind !== 'kernel-adapters.tool' || input?.toolId !== expected.target.id || input?.toolVersion !== expected.target.version
+            || JSON.stringify(input?.args) !== JSON.stringify(expected.values ?? {})) throw new Error('TWIN_COLLECTION_TARGET_INVALID');
+        return;
+    }
     const graph = task.input?.initialScheduler?.spec;
     if (task.program?.kind !== 'flow.aggregate' || !graph || Object.keys(graph.functionCalls ?? {}).length
         || graph.nodes.some(node => !['builtin.tool', 'builtin.transform', 'builtin.return'].includes(node.plugin)))

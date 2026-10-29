@@ -17,3 +17,19 @@ export function scannerExecutor(value: TwinScannerExecutor | undefined): TwinSca
 export type TwinScannerInput = {kind: 'text'; text: string} | {kind: 'file'; path: string};
 
 export interface TwinWorkspaceView {id: string; name: string; kind: 'personal' | 'organization'; readOnly: boolean}
+
+export interface TwinToolTarget {kind: 'tool'; id: string; version: string; digest: string}
+export type TwinCollectionExecutor = TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>};
+export interface TwinScannerTool {
+    target: TwinToolTarget; name: string; description: string; source: 'builtin' | 'plugin' | 'mcp';
+    parameters: JsonValue;
+}
+export function collectionExecutor(value: TwinCollectionExecutor | undefined): TwinCollectionExecutor | undefined {
+    if (value === undefined) return;
+    if (value.target?.kind !== 'tool') {
+        if (value.target?.kind !== 'flow') throw new Error('TWIN_COLLECTION_TARGET_INVALID');
+        return scannerExecutor(value as TwinScannerExecutor);
+    }
+    scannerExecutor({...value, target: {...value.target, kind: 'flow'}});
+    return structuredClone(value);
+}

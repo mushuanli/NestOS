@@ -44,5 +44,5 @@ export type {ExecutableInputSource, InputSourceExecution, InputSourceReceipt} fr
 
 export {flowArgumentTokens, resolveFlowArguments, parameterSourceValue} from './vfs/flow-arguments';
 
-export {scannerExecutor} from './digital-twin/scanner';
-export type {TwinScannerExecutor, TwinScannerInput, TwinWorkspaceView} from './digital-twin/scanner';
+export {collectionExecutor, scannerExecutor} from './digital-twin/scanner';
+export type {TwinCollectionExecutor, TwinScannerTool, TwinScannerExecutor, TwinScannerInput, TwinWorkspaceView} from './digital-twin/scanner';

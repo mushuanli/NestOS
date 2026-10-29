@@ -25,7 +25,7 @@ export function createScanGuard(store: TwinScanStore): TwinScanGuardPort {
                 const source = await store.records.get<TwinSourceData>('source', scope.sourceId);
                 const settings = (await store.records.get<TwinSettings>('settings', 'pot'))!;
                 budgetUnlimited = settings.data.budgetUnlimited === true; tokenLimit = settings.data.tokenLimit;
-                const all = (await store.records.list<TwinScanPlan>('scan-plan')).filter(item => item.data.enabled && item.data.rules).map(item => item.data.rules!);
+                const all = (await store.records.list<TwinScanPlan>('scan-plan')).filter(item => item.data.enabled && item.data.mode !== 'collect' && item.data.rules).map(item => item.data.rules!);
                 if (!source?.data.enabled || !source.data.resource || !selectedRules(source.data.resource, plan.data.rules, all)
                     || (settings.data.globalExclude ?? []).some(line => matchesLine(source.data.resource!, line))
                     || settings.data.connectionId !== run.data.connectionId) throw new Error('TWIN_SCAN_PERMISSION_DENIED');

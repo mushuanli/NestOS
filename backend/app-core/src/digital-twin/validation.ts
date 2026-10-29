@@ -1,4 +1,4 @@
-import {scannerExecutor} from '@itookit/app-contracts';
+import {collectionExecutor, scannerExecutor} from '@itookit/app-contracts';
 import { userIdentity } from './identity';
 import { ruleLines, scanRules } from './scan-rules';
 import type { TwinRecordFamily } from './contracts';
@@ -67,7 +67,7 @@ function validateUsage(data: Data): void {
 }
 function validateScanRun(data: Data): void {
     validateOutputLimit(data);
-    scannerExecutor(data.collection as import('@itookit/app-contracts').TwinScannerExecutor | undefined);
+    collectionExecutor(data.collection as import('@itookit/app-contracts').TwinCollectionExecutor | undefined);
     scannerExecutor(data.executor as import('@itookit/app-contracts').TwinScannerExecutor | undefined);
     if (data.runTokenLimit !== undefined) integers(data, ['runTokenLimit']);
     if (data.budgetUnlimited !== undefined) booleans(data, ['budgetUnlimited']);
@@ -78,7 +78,7 @@ function validateScanRun(data: Data): void {
     identifiers(data.sourceIds, 10000, true); identifiers(data.completedSourceIds, 10000, true);
     integers(data, ['tokenLimit', 'reservedTokens', 'spentTokens', 'createdAt', 'startedAt', 'finishedAt', 'fence']); booleans(data, ['singleBatch']);
     oneOf(data.state, ['queued', 'running', 'succeeded', 'paused', 'failed', 'cancelled', 'interrupted']);
-    oneOf(data.trigger, ['manual', 'interval', 'changes']); oneOf(data.mode, ['analyze', 'reconcile']);
+    oneOf(data.trigger, ['manual', 'interval', 'changes', 'event']); oneOf(data.mode, ['analyze', 'reconcile', 'collect']);
     if (!Array.isArray(data.kinds) || !data.kinds.length || data.kinds.some(kind => !TWIN_KINDS.includes(kind))) invalid();
 }
 function validateManagedSource(data: Data): void {

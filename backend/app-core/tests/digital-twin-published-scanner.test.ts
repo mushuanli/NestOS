@@ -168,3 +168,70 @@ it('collects workspace evidence with a published Tool Flow before discovery and 
     expect(requests).toHaveBeenCalled();
     expect(JSON.parse(requests.mock.calls[0][1].body).max_tokens).toBe(512);
 }, 30000);
+
+it.each([false, true])('collects with a direct Tool without a Flow or model connection (organization=%s)', async organization => {
+    const collected = vi.fn();
+    const tool = buildTool({name: 'fixture.direct-collect', version: '1', inputSchema: TaskListTool.inputSchema,
+        async description() {return 'Collect direct evidence';}, async prompt() {return '';},
+        async call(_args, context) {collected(); await context.vfs!.writeFile('evidence/direct.md', text); return {data: {count: 1}};},
+        mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};}});
+    const requests = vi.fn(); vi.stubGlobal('fetch', requests);
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false,
+        digitalTwinWorkspaces: [{twinId: 'team', ownerId: 'organization:team', kind: 'organization', authorize: async () => {}}],
+        kernelPlatform: {additionalTools: [tool]}}); cleanup.push(() => runtime.dispose());
+    const twin = organization ? await runtime.digitalTwin!.openWorkspace('team') : runtime.digitalTwin!; await runtime.projects.personal();
+    expect((await twin.getSettings()).data.connectionId).toBe('');
+    const target = (await twin.collectionTools()).find(item => item.target.id === tool.name)!.target;
+    const id = await twin.saveScanRule(null, null, {name: 'Direct collector', collection: {target}, mode: 'collect', include: [], exclude: [],
+        trigger: 'event', intervalMinutes: 30, enabled: true});
+    const first = await twin.triggerScanPlan(id, 'event-a');
+    expect(await twin.triggerScanPlan(id, 'event-a')).toBe(first);
+    await twin.waitScanRun(first);
+    expect(await twin.triggerScanPlan(id, 'event-a')).toBe(first);
+    expect(collected).toHaveBeenCalledTimes(1); expect(requests).not.toHaveBeenCalled();
+    const snapshot = await twin.snapshot();
+    expect(snapshot.jobs).toHaveLength(0); expect(snapshot.memories).toHaveLength(0);
+    expect(snapshot.scans.runs.find(item => item.id === first)!.data).toMatchObject({state: 'succeeded', mode: 'collect', spentTokens: 0});
+    const tasks = await runtime.kernel.kernel.listSessionTasks('twin-collection-' + first + '-tool');
+    expect(tasks.some(task => task.program.kind === 'kernel-adapters.tool')).toBe(true);
+    expect(tasks.some(task => task.program.kind === 'flow.aggregate')).toBe(false);
+    expect((await runtime.digitalTwin!.snapshot()).scans.runs.some(item => item.id === first)).toBe(!organization);
+}, 30000);
+
+it('rechecks collection authority after acquiring the Session capability and before calling the Tool', async () => {
+    const invoked = vi.fn(async () => ({data: {count: 1}})); let allowed = true;
+    const tool = buildTool({name: 'fixture.authorized-collect', version: '1', inputSchema: TaskListTool.inputSchema, isReadOnly: () => true,
+        async description() {return 'Collect evidence';}, async prompt() {return '';}, call: invoked,
+        mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};}});
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false,
+        digitalTwinWorkspace: {twinId: 'scoped', ownerId: 'owner', authorize: async () => {if (!allowed) throw new Error('Revoked');}},
+        kernelPlatform: {additionalTools: [tool], configureSession: id => {if (id.endsWith('-tool')) allowed = false;}}});
+    cleanup.push(() => runtime.dispose()); const twin = runtime.digitalTwin!;
+    const target = (await twin.collectionTools()).find(item => item.target.id === tool.name)!.target;
+    const id = await twin.saveScanRule(null, null, {name: 'Scoped collector', collection: {target}, mode: 'collect',
+        include: [], exclude: [], intervalMinutes: 30, enabled: true, trigger: 'manual'});
+    const run = await twin.runScanPlan(id);
+    try {await expect(twin.waitScanRun(run)).rejects.toThrow('TWIN_COLLECTION_FAILED');}
+    finally {allowed = true;}
+    expect(invoked).not.toHaveBeenCalled();
+    expect((await twin.snapshot()).scans.runs.find(item => item.id === run)!.data.state).toBe('failed');
+}, 30000);
+
+it('collects and learns directly from a Tool, then skips model work for unchanged material', async () => {
+    const collected = vi.fn();
+    const tool = buildTool({name: 'fixture.collect-learn', version: '1', inputSchema: TaskListTool.inputSchema,
+        async description() {return 'Collect learning evidence';}, async prompt() {return '';},
+        async call(_args, context) {collected(); await context.vfs!.writeFile('evidence/direct-learning.md', text); return {data: {count: 1}};},
+        mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};}});
+    const {runtime, twin, requests} = await setup(false, [tool]); await runtime.projects.personal();
+    const target = (await twin.collectionTools()).find(item => item.target.id === tool.name)!.target;
+    const id = await twin.saveScanRule(null, null, {name: 'Direct learning', collection: {target}, mode: 'analyze',
+        include: ['file:**/evidence/*.md'], exclude: [], intervalMinutes: 30, trigger: 'manual', enabled: true, autoConfirm: false});
+    await twin.waitScanRun(await twin.runScanPlan(id));
+    const first = await twin.snapshot();
+    expect(first.memories).toHaveLength(1); expect(first.memories[0].data.state).toBe('candidate');
+    expect(requests).toHaveBeenCalledTimes(1);
+    await twin.waitScanRun(await twin.runScanPlan(id));
+    expect(collected).toHaveBeenCalledTimes(2); expect(requests).toHaveBeenCalledTimes(1);
+    expect((await twin.snapshot()).memories).toHaveLength(1);
+}, 30000);

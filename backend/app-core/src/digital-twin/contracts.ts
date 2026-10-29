@@ -9,7 +9,7 @@ export interface TwinIdentity {
     ownerId: string;
     incarnation: string;
     schemaVersion: 1;
-    layoutVersion: 7;
+    layoutVersion: 8;
     forgetEpoch: number;
 }
 

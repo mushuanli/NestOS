@@ -1,3 +1,5 @@
+import {collectionKey, toolFields} from './collection-fields';
+import type {TwinScannerTool} from '@itookit/app-contracts';
 import {readUtf8File} from '../files/read-text-file';
 import {escapeHTML, escapeAttr} from '@itookit/common';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
@@ -21,16 +23,17 @@ export function updateExecutorMode(form: HTMLFormElement): void {
 function parameterFields(target?: RootCallTarget, values?: TwinScannerExecutor['values'], slot = 'executor'): string {
     return renderParameterFields(target?.input?.parameters.filter(field => field.inputSource !== 'composer.text') ?? [], {mode: 'run', values, namePrefix: `scanner.${slot}.argument.`});
 }
-export function scannerFieldChange(event: Event, targets: RootCallTarget[]): boolean {
+export function scannerFieldChange(event: Event, targets: RootCallTarget[], tools: TwinScannerTool[] = []): boolean {
     const control = event.target as HTMLSelectElement, form = control.closest<HTMLFormElement>('[data-form=scanPlan]');
     if (!form) return false;
     if (control.name === 'executor' || control.name === 'collection') {
+        const tool = control.name === 'collection' && tools.find(item => collectionKey(item.target) === control.value);
         const selected = targets.find(item => key(item.target) === control.value);
-        form.querySelector(`[data-scanner-parameters="${control.name}"]`)!.innerHTML = parameterFields(selected, undefined, control.name);
+        form.querySelector(`[data-scanner-parameters="${control.name}"]`)!.innerHTML = tool ? toolFields(tool) : parameterFields(selected, undefined, control.name);
         if (control.name === 'collection' && control.value) form.querySelector<HTMLSelectElement>('[name=inputMode]')!.value = 'rules';
         updateExecutorMode(form); updateInputMode(form); return true;
     }
-    if (control.name === 'trigger' || control.name === 'enabled') {updateInputMode(form); return true;}
+    if (control.name === 'trigger' || control.name === 'enabled' || control.name === 'mode') {updateInputMode(form); return true;}
     if (control.name !== 'inputMode') return false;
     updateInputMode(form); return true;
 }
@@ -41,17 +44,30 @@ export function updateInputMode(form: HTMLFormElement): void {
     input.querySelectorAll('option').forEach(option => {option.disabled = collection && option.value !== 'rules';});
     if (collection) input.value = 'rules';
     const include = form.querySelector<HTMLTextAreaElement>('[name=include]');
-    if (include) include.required = collection;
-    const mode = input.value, trigger = form.querySelector<HTMLSelectElement>('[name=trigger]');
+    const operation = form.querySelector<HTMLSelectElement>('[name=mode]');
+    const collectOption = operation?.querySelector<HTMLOptionElement>('[value=collect]');
+    if (collectOption) collectOption.disabled = !collection;
+    if (!collection && operation?.value === 'collect') operation.value = 'analyze';
+    const collectOnly = operation?.value === 'collect';
+    if (include) include.required = collection && !collectOnly;
+    form.querySelectorAll<HTMLElement>('[data-knowledge-settings], [data-scanner-budget], [data-source-scope]').forEach(row => {
+        row.hidden = collectOnly;
+        row.querySelectorAll<HTMLInputElement>('input, select, textarea').forEach(control => {control.disabled = collectOnly;});
+    });
+    updateTriggerMode(form, collection);
+    form.querySelectorAll<HTMLElement>('[data-input-mode]').forEach(row => {row.hidden = row.dataset.inputMode !== input.value;});
+}
+function updateTriggerMode(form: HTMLFormElement, collection: boolean): void {
+    const trigger = form.querySelector<HTMLSelectElement>('[name=trigger]');
     const changes = trigger?.querySelector<HTMLOptionElement>('[value=changes]');
     if (changes) changes.disabled = collection;
     if (collection && trigger?.value === 'changes') trigger.value = 'interval';
     const interval = form.querySelector<HTMLElement>('[data-scanner-interval]');
     const run = form.querySelector<HTMLButtonElement>('[data-run-scanner]');
     if (run) run.disabled = !form.querySelector<HTMLInputElement>('[name=enabled]')?.checked;
-    if (interval) interval.hidden = trigger?.value === 'manual';
-    form.querySelectorAll<HTMLElement>('[data-input-mode]').forEach(row => {row.hidden = row.dataset.inputMode !== mode;});
+    if (interval) interval.hidden = ['manual', 'event'].includes(trigger?.value ?? 'manual');
 }
+
 export function readScannerExecutor(form: HTMLFormElement, targets: RootCallTarget[], slot: 'executor' | 'collection' = 'executor'): TwinScannerExecutor | undefined {
     const value = form.querySelector<HTMLSelectElement>(`[name=${slot}]`)!.value;
     if (!value) return;

@@ -332,3 +332,5 @@ httpd 可通过 `http.editorSwap` 装配可选 `ApplicationBackend.editorSwaps`�
 `writeSwap/readSwap/clearSwap/closeSwap` 处理本编辑器私有副本，`dispose` 仅失效句柄，正常关闭由 `closeSwap` 删除；断线不自动删掉残留文件。
 Node 的目录、权限、原子写入和 48 小时清理由可信宿主实现，原始 `EditorSwapStore` 不进入 UI 服务图。
 能力调用不使文件/会话域失效，不把每次副本写入变成工作区重载。MDX 核心仍只消费宿主回调，不解释 httpd 或宿主路径。
+
+数字分身 `collectionTools()` 投影可直接采集的固定版本 Tool 及参数 Schema；`TwinCollectionExecutor` 兼容原发布 Flow 和新 Tool 目标。`mode=collect` 只采集，不要求模型。`triggerScanPlan(planId,eventId)` 是授权事件写入端口，与入队原子保存去重回执，RPC 不自动重放；`event` 触发不参与定时扫描。`authorizeTool` 是宿主注入的通用 Effect 授权门，能力获取前后及恢复时复验，不向 UI 暴露凭据。详见 [扫描器与共享空间](design/digital-twin-scanners.md)。

@@ -1,3 +1,4 @@
+import {buildTool, TaskListTool} from '@itookit/tools';
 import {expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
 import {createApplicationRuntime} from '@itookit/app-core';
@@ -9,7 +10,11 @@ it('exposes independently authorized Twin workspace handles and scanner catalogs
     const connections = {snapshot: async () => ({types: [{id: 'fixture', name: 'Fixture', description: '',
         fields: [{name: 'token', label: 'Token', secret: true}]}], connections: [{id: 'personal', type: 'fixture', name: 'Personal', values: {}, configuredSecrets: ['token']}]}),
         save, remove: async () => {}, register() {}, resolve: async () => ({token: 'host-private-token'})};
-    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false, toolConnections: connections,
+    const invoke = vi.fn(async () => ({data: {count: 1}}));
+    const tool = buildTool({name: 'fixture.rpc-collect', version: '1', inputSchema: TaskListTool.inputSchema, isReadOnly: () => true,
+        async description() {return 'Collect fixture';}, async prompt() {return '';}, call: invoke,
+        mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};}});
+    const runtime = await createApplicationRuntime({kernelPlatform: {additionalTools: [tool]}, backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false, toolConnections: connections,
         digitalTwinWorkspaces: [{twinId: 'team', ownerId: 'org:team', name: 'Team', kind: 'organization', authorize: async () => {}}]});
     const view = await createHostedView(runtime);
     let server!: RpcPeer;
@@ -36,6 +41,15 @@ it('exposes independently authorized Twin workspace handles and scanner catalogs
         expect((await org.snapshot()).memories[0].data.content).toBe('Shared through RPC');
         expect((await personal.snapshot()).memories).toHaveLength(0);
         expect(Array.isArray(await org.scannerTargets())).toBe(true);
+        const selected = (await personal.collectionTools()).find((item: any) => item.target.id === tool.name);
+        expect(selected.parameters).toMatchObject({type: 'object'});
+        const id = await personal.saveScanRule(null, null, {name: 'RPC collector', collection: {target: selected.target}, mode: 'collect',
+            trigger: 'event', include: [], exclude: [], intervalMinutes: 30, enabled: true});
+        const run = await personal.triggerScanPlan(id, 'rpc-event');
+        expect(await personal.triggerScanPlan(id, 'rpc-event')).toBe(run); await personal.waitScanRun(run);
+        expect(invoke).toHaveBeenCalledTimes(1);
+        expect((await personal.snapshot()).scans.runs.find((item: any) => item.id === run).data.state).toBe('succeeded');
+        expect(personal.setCollector).toBeUndefined();
         await expect(personal.openWorkspace('missing')).rejects.toThrow('TWIN_WORKSPACE_ACCESS_DENIED');
     } finally {await client.close(); await server.close(); await view.close(); await runtime.dispose();}
 });

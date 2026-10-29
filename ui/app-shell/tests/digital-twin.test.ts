@@ -298,3 +298,37 @@ it('saves and runs a reviewed text scanner with its output limit and disables im
         expect((await service.snapshot()).scans.plans.find(plan => plan.data.name === 'Trial scanner')!.data.trigger).toBe('manual');
     } finally {await view.destroy(); await service.dispose(); await manager.dispose();}
 });
+
+it('saves a Tool collector through the workbench without a model, Flow, or knowledge scope', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const service = new DigitalTwinService({fs: await manager.openFileSystem('/'), reader: {sessions: async () => [], read: vi.fn()},
+        extractor: {run: vi.fn(), cancel: vi.fn(), cleanup: vi.fn()}, deleteSession: vi.fn()});
+    const tool = {name: 'Collect fixture', description: '', source: 'plugin' as const,
+        target: {kind: 'tool' as const, id: 'fixture.collect', version: '1', digest: 'digest'},
+        parameters: {type: 'object', required: ['count'], properties: {count: {type: 'integer', minimum: 1, maximum: 10}}}};
+    service.setCollector({tools: () => [tool], validate() {}, collect: vi.fn(), cancelCollection: vi.fn()});
+    const target = {kind: 'flow' as const, id: 'unused-model', version: '1', digest: 'digest'};
+    service.setScannerExecution({catalog: async () => ({entries: [{target, name: 'Unused model', input: {flowId: target.id, revision: 1, digest: target.digest, parameters: [{name: 'required', type: 'string', required: true}]}}], issues: []}), validate: async () => {}, run: vi.fn(), cancel: vi.fn(), cleanup: vi.fn()});
+    const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
+    const view = new TwinWorkbench({service, sidebar, editor, connections: async () => [], selected() {}});
+    try {
+        await view.start(); await view.openResource('/sources');
+        const form = editor.querySelector<HTMLFormElement>('[data-form=scanPlan]')!;
+        const collection = form.querySelector<HTMLSelectElement>('[name=collection]')!;
+        expect(collection.value).toBe(''); collection.selectedIndex = 0; collection.dispatchEvent(new Event('change', {bubbles: true}));
+        const executor = form.querySelector<HTMLSelectElement>('[name=executor]')!; executor.selectedIndex = 1; executor.dispatchEvent(new Event('change', {bubbles: true}));
+        const mode = form.querySelector<HTMLSelectElement>('[name=mode]')!; mode.value = 'collect'; mode.dispatchEvent(new Event('change', {bubbles: true}));
+        form.querySelector<HTMLInputElement>('[name=name]')!.value = 'Only collect';
+        form.querySelector<HTMLInputElement>('[data-scanner-parameters=collection] [data-parameter]')!.value = '3';
+        expect(form.querySelector<HTMLElement>('[data-knowledge-settings]')!.hidden).toBe(true);
+        expect(form.checkValidity()).toBe(true);
+        form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+        await vi.waitFor(async () => expect((await service.snapshot()).scans.plans).toHaveLength(1));
+        const saved = (await service.snapshot()).scans.plans[0];
+        expect(saved.data).toMatchObject({mode: 'collect', connectionId: '', collection: {target: tool.target, values: {count: 3}}, trigger: 'manual'});
+        await vi.waitFor(() => expect(editor.querySelector(`[data-form=scanPlan][data-id="${saved.id}"]`)).not.toBeNull());
+        const edited = editor.querySelector<HTMLFormElement>(`[data-form=scanPlan][data-id="${saved.id}"]`)!;
+        expect(edited.querySelector<HTMLSelectElement>('[name=collection]')!.value).toContain(tool.target.id);
+        expect(edited.querySelector<HTMLElement>('[data-knowledge-settings]')!.hidden).toBe(true);
+    } finally {await view.destroy(); await service.dispose(); await manager.dispose();}
+});

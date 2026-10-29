@@ -26,6 +26,7 @@ export interface CreateKernelRuntimeOptions {
     harnessExecution?: KernelAdaptersRuntimeOptions['harnessExecution'];
     authorizeLlm?: KernelAdaptersRuntimeOptions['authorizeLlm'];
     authorizeMedia?: KernelAdaptersRuntimeOptions['authorizeMedia'];
+    authorizeTool?: KernelAdaptersRuntimeOptions['authorizeTool'];
     contextEngineOptions?: import('@itookit/llm-context').ContextEngineOptions;
     contextGc?: RuntimeContextGcOptions | false;
     /** Override the context storage/engine ports at the host composition boundary. */
@@ -75,6 +76,7 @@ export async function createKernelRuntime(
         : createRuntimeContextGc(() => kernel, options.contextGc);
     const adapters = await createKernelAdaptersRuntime({
         harnessExecution: options.harnessExecution,
+        authorizeTool: options.authorizeTool,
         contextService: options.contextService ?? createRuntimeContextResolver(() => kernel, () => adapters.llmService, contextGc?.observe, options.contextEngineOptions),
         logger: createModuleLogger('kernel-adapters'),
         processUnavailableMessage: () => t('chatInput.command.unavailable'),

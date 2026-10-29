@@ -39,3 +39,23 @@ it('imports authorization fields locally without exposing a saved secret or muta
         await expect(importConnection(control)).rejects.toThrow();
     } finally {host.remove();}
 });
+
+it('selects a direct Tool without a Flow and keeps collection-only settings separate from knowledge processing', async () => {
+    const {collectionFields, readCollectionExecutor} = await import('../src/digital-twin/collection-fields');
+    const {updateInputMode} = await import('../src/digital-twin/scanner-fields');
+    const tool = {name: 'Fixture', description: '', source: 'plugin' as const, target: {kind: 'tool' as const, id: 'fixture.collect', version: '1', digest: 'digest'},
+        parameters: {type: 'object', required: ['count'], properties: {count: {type: 'integer', minimum: 1, maximum: 10}, name: {type: 'string'}}}};
+    const form = document.createElement('form'); form.dataset.form = 'scanPlan';
+    form.innerHTML = collectionFields([], [tool]) + '<select name="inputMode"><option value="rules">Scope</option></select><textarea name="include"></textarea><select name="mode"><option value="analyze">Analyze</option><option value="collect">Collect</option></select><div data-knowledge-settings></div><div data-scanner-budget></div>';
+    const selection = form.querySelector<HTMLSelectElement>('[name=collection]')!;
+    expect(selection.value).toBe(''); selection.selectedIndex = 0; selection.dispatchEvent(new Event('change'));
+    scannerFieldChange({target: selection} as unknown as Event, [], [tool]);
+    form.querySelector<HTMLInputElement>('[data-parameter="0"]')!.value = '3';
+    form.querySelector<HTMLInputElement>('[data-parameter="1"]')!.value = 'tool argument';
+    expect(readCollectionExecutor(form, [], [tool])).toEqual({target: tool.target, values: {count: 3, name: 'tool argument'}});
+    const mode = form.querySelector<HTMLSelectElement>('[name=mode]')!; mode.value = 'collect'; updateInputMode(form);
+    expect(form.querySelector<HTMLTextAreaElement>('[name=include]')!.required).toBe(false);
+    expect(form.querySelector<HTMLElement>('[data-knowledge-settings]')!.hidden).toBe(true);
+    form.querySelector<HTMLInputElement>('[data-parameter="0"]')!.value = '0';
+    expect(() => readCollectionExecutor(form, [], [tool])).toThrow();
+});

@@ -111,7 +111,7 @@ session:harness/codex/temporary-*
 | processing.seq | 提交/遗忘/清理的操作回执 |
 | indexes.seq | 固定分页索引与族索引 |
 
-实际记录族的文件归属以 [SeqTwinStore](../../backend/app-core/src/digital-twin/seq-twin-store.ts) 为准。当前 schema 1/layout 7；已知 layout 2/3/4/5/6 事务升级元数据并保留身份、记忆和遗忘状态，阻断旧客户端忽略规则授权。未知布局保持拒绝，不清空重建。
+实际记录族的文件归属以 [SeqTwinStore](../../backend/app-core/src/digital-twin/seq-twin-store.ts) 为准。当前 schema 1/layout 8；已知 layout 2/3/4/5/6/7 事务升级元数据并保留身份、记忆和遗忘状态，阻断旧客户端忽略规则授权。未知布局保持拒绝，不清空重建。
 
 旧指定来源计划与 CLI 命令保留兼容，旧计划保持原范围；新默认规则仅覆盖邮件。旧版本未经用户修改的 `Default` 全范围规则一次性收窄为邮件，用户自定义或修改过的规则保留。界面编辑旧计划后转换为自动规则。新规则通过 `rules` 标识，持久 sourceIds 为空，每次运行从自动来源索引解析其范围。
 
@@ -158,7 +158,7 @@ session:harness/codex/temporary-*
 
 当前扫描器触发、单次额度和宿主工作区绑定，以及尚未接入的组织管理、通用执行器、行动与周期费用账本，见 [扫描器与共享工作区实施](digital-twin-scanners.md)。
 
-扫描器的 `TwinScanRuleInput` 现在可显式设置 trigger（manual/interval/changes）、autoConfirm 和 runTokenLimit。省略字段的旧客户端保留已有设置；runTokenLimit=null 表示清除独立单次上限，0 表示禁止新付费模型调用，未设置仍受原累计预算控制。运行历史显示冻结的单次上限；该字段不是金额或周期额度。
+扫描器的 `TwinScanRuleInput` 现在可显式设置 trigger（manual/interval/changes/event）、autoConfirm 和 runTokenLimit。省略字段的旧客户端保留已有设置；runTokenLimit=null 表示清除独立单次上限，0 表示禁止新付费模型调用，未设置仍受原累计预算控制。运行历史显示冻结的单次上限；该字段不是金额或周期额度。
 
 ### 月度 token 计量
 

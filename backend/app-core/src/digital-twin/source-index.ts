@@ -33,7 +33,7 @@ export class TwinSourceIndex {
         const catalog = this.sources.reader.discover ? await this.sources.reader.discover() : null;
         if (!catalog) return;
         this.errors = catalog.errors;
-        const plans = (await this.records.list<TwinScanPlan>('scan-plan')).filter(plan => plan.data.rules);
+        const plans = (await this.records.list<TwinScanPlan>('scan-plan')).filter(plan => plan.data.rules && plan.data.mode !== 'collect');
         if (!this.sources.reader.discover || (!plans.length && !(await this.records.list<TwinSourceData>('source')).some(source => source.data.managed))) return;
         const settings = (await this.records.get<TwinSettings>('settings', 'pot'))!.data;
         const fingerprint = settings.connectionId ? await this.sources.fingerprint(settings.connectionId).catch(() => {

@@ -21,6 +21,7 @@ export function loadOverview(options: TwinWorkbenchOptions, signal: AbortSignal)
         read('connections.list', () => options.connections()),
         read('scanner.targets', () => options.service.scannerTargets?.() ?? Promise.resolve([])),
         read('twin.workspaces', () => options.service.workspaces?.() ?? Promise.resolve([])),
+        read('collection.tools', () => options.service.collectionTools?.() ?? Promise.resolve([])),
         read('source.connections', () => options.service.listSourceConnections?.() ?? Promise.resolve({types: [], connections: []})),
     ]), signal, diagnostic);
 }

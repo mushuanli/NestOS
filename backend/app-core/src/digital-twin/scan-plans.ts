@@ -1,5 +1,7 @@
+import {uniqueScanSources} from './scan-plan-sources';
 import { migrateMailDefault } from './default-rules';
 import type { TwinSourceIndex } from './source-index';
+import {sha256HexSync} from '@itookit/llm-context';
 import { randomUUID } from '@itookit/common';
 import { selectedRules } from './selection';
 import { TWIN_KINDS, type TwinSourceData, type TwinSettings } from './domain';
@@ -13,7 +15,7 @@ export class TwinScanPlans {
     async save(id: string | null, revision: string | null, input: TwinScanPlanInput): Promise<string> {
         const data = await this.input(input), current = id ? await this.store.records.get<TwinScanPlan>('scan-plan', id) : null;
         if ((id && !current) || (current?.revision ?? null) !== revision) throw new Error('TWIN_REVIEW_CONFLICT');
-        const connectionFingerprint = await this.sources.fingerprint(data.connectionId);
+        const connectionFingerprint = data.mode === 'collect' ? '' : await this.sources.fingerprint(data.connectionId);
         const sources = await this.boundSources(data.rules ? [] : data.sourceIds, data.connectionId, connectionFingerprint);
         id ??= randomUUID();
         const schedule = await this.schedule(id);
@@ -48,24 +50,26 @@ export class TwinScanPlans {
         if (!fingerprint) return [];
         const changed: Array<{ id: string; revision: string }> = [];
         for (const plan of await this.store.records.list<TwinScanPlan>('scan-plan')) {
-            if (!plan.data.rules || (plan.data.connectionId === settings.connectionId && plan.data.connectionFingerprint === fingerprint)) continue;
+            if (plan.data.mode === 'collect' || !plan.data.rules || (plan.data.connectionId === settings.connectionId && plan.data.connectionFingerprint === fingerprint)) continue;
             await this.save(plan.id, plan.revision, plan.data);
             changed.push({ id: plan.id, revision: (await this.store.records.get('scan-plan', plan.id))!.revision });
         }
         return changed;
     }
     private async input(input: TwinScanPlanInput): Promise<TwinScanPlanInput> {
+        if (input.mode === 'collect') return scanInput({...input, connectionId: '', tokenLimit: 0, sourceIds: []});
         if (!input.rules) return scanInput(input);
         const settings = (await this.store.records.get<TwinSettings>('settings', 'pot'))!.data;
         if (!settings.connectionId) throw new Error('TWIN_CONNECTION_REQUIRED');
         return scanInput({ ...input, sourceIds: [], connectionId: settings.connectionId ?? '', tokenLimit: settings.tokenLimit });
     }
     async selected(plan: TwinScanPlan): Promise<TwinDataRecord<TwinSourceData>[]> {
+        if (plan.mode === 'collect') return [];
         if (!plan.rules) return this.boundSources(plan.sourceIds, plan.connectionId, plan.connectionFingerprint);
-        const all = (await this.store.records.list<TwinScanPlan>('scan-plan')).filter(item => item.data.enabled && item.data.rules).map(item => item.data.rules!);
-        return (await this.store.records.list<TwinSourceData>('source')).filter(source => source.data.managed && source.data.enabled
+        const all = (await this.store.records.list<TwinScanPlan>('scan-plan')).filter(item => item.data.enabled && item.data.mode !== 'collect' && item.data.rules).map(item => item.data.rules!);
+        return uniqueScanSources((await this.store.records.list<TwinSourceData>('source')).filter(source => source.data.managed && source.data.enabled
             && source.data.status === 'available' && source.data.resource && selectedRules(source.data.resource, plan.rules!, all)
-            && source.data.connectionFingerprint === plan.connectionFingerprint);
+            && source.data.connectionFingerprint === plan.connectionFingerprint));
     }
     async boundSources(ids: string[], connectionId: string, fingerprint: string) {
         const sources = await Promise.all(ids.map(id => this.store.records.get<TwinSourceData>('source', id)));
@@ -79,15 +83,22 @@ export class TwinScanPlans {
             || !Number.isSafeInteger(schedule.data.nextAt) || schedule.data.nextAt < 0)) throw new Error('TWIN_INVALID_SCAN_SCHEDULE');
         return schedule;
     }
-    async enqueue(planId: string, trigger: TwinScanRun['trigger'] = 'manual', signature = '', refresh = true): Promise<string> {
+    async enqueue(planId: string, trigger: TwinScanRun['trigger'] = 'manual', signature = '', refresh = true, eventId?: string): Promise<string> {
+        if (eventId !== undefined && (typeof eventId !== 'string' || !eventId.trim() || eventId.length > 256)) throw new Error('TWIN_EVENT_INVALID');
+        const eventKey = eventId === undefined ? undefined : 'scan-event:' + sha256HexSync(JSON.stringify([planId, eventId]));
         if (refresh) await this.index?.sync();
         return retry(async () => {
             const plan = await this.store.records.get<TwinScanPlan>('scan-plan', planId);
             if (!plan?.data.enabled) throw new Error('TWIN_SCAN_PLAN_DISABLED');
-            if (await this.sources.fingerprint(plan.data.connectionId) !== plan.data.connectionFingerprint) throw new Error('TWIN_CONNECTION_CHANGED');
+            if (eventKey) {
+                if (plan.data.trigger !== 'event') throw new Error('TWIN_EVENT_TRIGGER_REQUIRED');
+                const receipt = await this.store.records.get<{runId: string}>('checkpoint', eventKey);
+                if (receipt) return receipt.data.runId;
+            }
+            if (plan.data.mode !== 'collect' && await this.sources.fingerprint(plan.data.connectionId) !== plan.data.connectionFingerprint) throw new Error('TWIN_CONNECTION_CHANGED');
             const sources = await this.selected(plan.data);
             const settings = (await this.store.records.get<TwinSettings>('settings', 'pot'))!.data;
-            return this.insert(planId, plan.revision, { ...plan.data, tokenLimit: plan.data.rules ? settings.tokenLimit : plan.data.tokenLimit, sourceIds: sources.map(source => source.id) }, trigger, false, signature, Boolean(plan.data.rules && settings.budgetUnlimited));
+            return this.insert(planId, plan.revision, { ...plan.data, tokenLimit: plan.data.rules ? settings.tokenLimit : plan.data.tokenLimit, sourceIds: sources.map(source => source.id) }, trigger, false, signature, Boolean(plan.data.rules && settings.budgetUnlimited), eventKey);
         });
     }
     async enqueueSource(id: string): Promise<string> {
@@ -99,16 +110,21 @@ export class TwinScanPlans {
             kinds: [...TWIN_KINDS], mode: 'analyze', tokenLimit: 10000000 }, 'manual', true, '', settings.budgetUnlimited === true));
     }
     private async insert(planId: string, planRevision: string, data: Pick<TwinScanPlan, 'name' | 'sourceIds' | 'connectionId' | 'connectionFingerprint' | 'kinds' | 'mode' | 'tokenLimit' | 'rules' | 'autoConfirm' | 'focus' | 'runTokenLimit' | 'executor' | 'collection' | 'maxOutputTokens'>,
-        trigger: TwinScanRun['trigger'], singleBatch: boolean, signature = '', budgetUnlimited = false): Promise<string> {
+        trigger: TwinScanRun['trigger'], singleBatch: boolean, signature = '', budgetUnlimited = false, eventKey?: string): Promise<string> {
         const queue = await this.store.queue(), active = await this.store.active();
-        const existing = active.find(run => planId ? run.data.planId === planId : !run.data.planId && run.data.sourceIds[0] === data.sourceIds[0]);
-        if (existing) return existing.id;
+        const existing = active.find(run => (!eventKey || run.data.state === 'queued') && (planId ? run.data.planId === planId : !run.data.planId && run.data.sourceIds[0] === data.sourceIds[0]));
+        if (existing) {
+            if (eventKey) await this.store.commit([write('checkpoint', eventKey, {runId: existing.id}, null)],
+                [{family: 'scan-run', id: existing.id, expectedRevision: existing.revision}, {family: 'scan-plan', id: planId, expectedRevision: planRevision}]);
+            return existing.id;
+        }
         if (queue.runIds.length >= 100) throw new Error('TWIN_SCAN_QUEUE_LIMIT');
         const id = randomUUID(), run: TwinScanRun = { ...(data.collection ? {collection: data.collection} : {}), ...(data.maxOutputTokens !== undefined ? {maxOutputTokens: data.maxOutputTokens} : {}), ...(data.executor ? {executor: data.executor} : {}), ...(data.runTokenLimit !== undefined ? {runTokenLimit: data.runTokenLimit} : {}), name: data.name, sourceIds: data.sourceIds, connectionId: data.connectionId,
             connectionFingerprint: data.connectionFingerprint, focus: data.focus ?? '', kinds: data.kinds, mode: data.mode, tokenLimit: data.tokenLimit,
             autoConfirm: data.autoConfirm, ...(data.rules ? { rules: data.rules } : {}), planId, planRevision, state: 'queued', trigger, singleBatch,
             budgetUnlimited, completedSourceIds: [], reservedTokens: 0, spentTokens: 0, createdAt: this.store.now(), startedAt: 0, finishedAt: 0, owner: '', fence: 0, error: '' };
         const writes = [write('scan-run', id, run, null), write('checkpoint', 'scan-queue', { runIds: [...queue.runIds, id] }, queue.record?.revision ?? null)];
+        if (eventKey) writes.push(write('checkpoint', eventKey, {runId: id}, null));
         if (planId) {
             const plan = (await this.store.records.get<TwinScanPlan>('scan-plan', planId))!, schedule = await this.schedule(planId);
             writes.push(write('checkpoint', scheduleId(planId), { planRevision, nextAt: this.store.now() + plan.data.intervalMinutes * 60000, signature }, schedule?.revision ?? null));

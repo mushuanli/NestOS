@@ -44,7 +44,7 @@ async function setup(kind: 'memory' | 'indexeddb') {
 }
 
 describe.each(['memory', 'indexeddb'] as const)('scan plans on %s', kind => {
-    it.each([2, 6])('upgrades previous layout %s without resetting identity, memory or forget tombstones', async layoutVersion => {
+    it.each([2, 6, 7])('upgrades previous layout %s without resetting identity, memory or forget tombstones', async layoutVersion => {
         const host = await setup(kind);
         const retained = await host.service.addMemory({ content: 'Retained during scan upgrade' });
         const forgotten = await host.service.addMemory({ content: 'Forgotten before scan upgrade' });
@@ -247,4 +247,30 @@ describe.each(['memory', 'indexeddb'] as const)('scan plans on %s', kind => {
         await other.configure({ paused: false }, (await other.snapshot()).settings.revision);
         await other.waitScanRun(run); expect((await other.snapshot()).scans.runs[0].data.state).toBe('succeeded');
     });
+});
+
+it.each(['memory', 'indexeddb'] as const)('persists event receipts and queues one follow-up for new events during a run on %s', async kind => {
+    const host = await setup(kind);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    const collect = vi.fn(async () => {await gate;});
+    host.service.setCollector({collect, cancelCollection: async () => {release();}});
+    const id = await host.service.saveScanPlan(null, null, host.input([], {mode: 'collect', trigger: 'event', connectionId: '',
+        collection: {target: {kind: 'flow', id: 'fixture', version: '1', digest: 'digest'}}}));
+    await host.service.scanOnce(); expect(collect).not.toHaveBeenCalled();
+    const [first, duplicate] = await Promise.all([host.service.triggerScanPlan(id, 'a'), host.service.triggerScanPlan(id, 'a')]);
+    expect(duplicate).toBe(first);
+    const pending = host.service.waitScanRun(first);
+    try {
+        await vi.waitFor(() => expect(collect).toHaveBeenCalledTimes(1));
+        const [second, merged] = await Promise.all([host.service.triggerScanPlan(id, 'b'), host.service.triggerScanPlan(id, 'c')]);
+        expect(second).not.toBe(first); expect(merged).toBe(second);
+        expect(await host.service.triggerScanPlan(id, 'a')).toBe(first);
+        release(); await pending; await host.service.waitScanRun(second);
+        expect(collect).toHaveBeenCalledTimes(2); expect(host.extractor.run).not.toHaveBeenCalled();
+        const reopened = host.reopen();
+        expect(await reopened.triggerScanPlan(id, 'b')).toBe(second);
+        expect((await reopened.snapshot()).scans.runs.filter(run => run.data.planId === id)).toHaveLength(2);
+        await expect(reopened.triggerScanPlan(id, '')).rejects.toThrow('TWIN_EVENT_INVALID');
+    } finally {release(); await pending;}
 });

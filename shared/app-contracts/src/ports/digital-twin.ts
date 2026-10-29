@@ -5,11 +5,12 @@ import type * as AppContracts from '../index';
 import type { TwinMemoryKind, TwinAnalysisJob, TwinSourceData, TwinMemoryData, TwinSettings, TwinSourceSpec, TwinSelectionTarget, TwinSelectionType } from '../index';
 
 export interface TwinScanRuleInput extends TwinScanRules {
+    mode?: 'analyze' | 'collect';
     input?: AppContracts.TwinScannerInput;
     executor?: AppContracts.TwinScannerExecutor;
-    trigger?: 'manual' | 'interval' | 'changes';
+    trigger?: 'manual' | 'interval' | 'changes' | 'event';
     autoConfirm?: boolean;
-    collection?: AppContracts.TwinScannerExecutor;
+    collection?: AppContracts.TwinCollectionExecutor;
     maxOutputTokens?: number;
     runTokenLimit?: number | null;
     focus?: string;
@@ -33,7 +34,7 @@ export interface TwinScanPlan extends TwinScanPlanInput {
 
 export interface TwinScanPlanInput {
     executor?: AppContracts.TwinScannerExecutor;
-    collection?: AppContracts.TwinScannerExecutor;
+    collection?: AppContracts.TwinCollectionExecutor;
     maxOutputTokens?: number;
     runTokenLimit?: number;
     rules?: TwinScanRules;
@@ -43,8 +44,8 @@ export interface TwinScanPlanInput {
     sourceIds: string[];
     connectionId: string;
     kinds: TwinMemoryKind[];
-    mode: 'analyze' | 'reconcile';
-    trigger: 'manual' | 'interval' | 'changes';
+    mode: 'analyze' | 'reconcile' | 'collect';
+    trigger: 'manual' | 'interval' | 'changes' | 'event';
     intervalMinutes: number;
     tokenLimit: number;
     enabled: boolean;
@@ -72,6 +73,8 @@ export interface DigitalTwinService {
     removeSourceConnection(id: string): Promise<void>;
     workspaces(): Promise<AppContracts.TwinWorkspaceView[]>;
     openWorkspace(id: string): Promise<DigitalTwinService>;
+    collectionTools(): Promise<AppContracts.TwinScannerTool[]>;
+    triggerScanPlan(id: string, eventId: string): Promise<string>;
     scannerTargets(): Promise<import('@itookit/llm-session/contracts').RootCallTarget[]>;
     diagnostics(): {
         initialization: string;
@@ -209,7 +212,7 @@ export interface DigitalTwinService {
 
 export interface TwinScanRun {
     executor?: AppContracts.TwinScannerExecutor;
-    collection?: AppContracts.TwinScannerExecutor;
+    collection?: AppContracts.TwinCollectionExecutor;
     maxOutputTokens?: number;
     runTokenLimit?: number;
     budgetUnlimited?: boolean;
@@ -225,9 +228,9 @@ export interface TwinScanRun {
     connectionId: string;
     connectionFingerprint: string;
     kinds: TwinMemoryKind[];
-    mode: 'analyze' | 'reconcile';
+    mode: 'analyze' | 'reconcile' | 'collect';
     state: TwinScanState;
-    trigger: 'manual' | 'interval' | 'changes';
+    trigger: 'manual' | 'interval' | 'changes' | 'event';
     singleBatch: boolean;
     tokenLimit: number;
     reservedTokens: number;

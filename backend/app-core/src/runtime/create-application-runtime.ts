@@ -314,6 +314,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             contextEngineOptions: options.contextEngineOptions,
             contextGc: { canCollectSession: id => mayCollectContext(id) },
             llmDriver,
+            authorizeTool: async (request, context) => (await executionTwin(context.sessionId))?.authorizeTool(request, context),
             authorizeLlm: async (request, context) => (await executionTwin(context.sessionId))?.authorizeLlm(request, context),
             authorizeMedia: async (request, context) => (await executionTwin(context.sessionId))?.authorizeMedia(request, context),
             storageResolver: new SessionDirectoryStorageResolver(systemFS),
@@ -473,7 +474,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             () => createConversationSystem(conversationOptions));
         for (const twin of twinServices) twin.setSourceConnections(options.toolConnections);
         if (independentCalls) for (const twin of twinServices) {
-            twin.setCollector(new PublishedScannerCollector({kernel: kernelCore, repository: sessionRepository, ready: () => ({calls: independentCalls})}));
+            twin.setCollector(new PublishedScannerCollector({kernel: kernelCore, repository: sessionRepository, ready: () => ({calls: independentCalls}),
+                tools: {kernel: kernelCore, repository: sessionRepository, tools: kernel.toolCatalog, prepareSession: prepareChildExecution}}));
             twin.setScannerExecution(new PublishedScannerExecutor({kernel: kernelCore, repository: sessionRepository,
             ready: () => ({commands: commandBus, calls: independentCalls}), exchanges: job => twin.scannerExchangeCount(job), bind: (job, sessionId) => twin.bindScanner(job, sessionId)}));
         }

@@ -64,7 +64,7 @@ export class TwinSources {
         const settings = (await this.records.get<TwinSettings>('settings', 'pot'))!.data;
         if ((settings.globalExclude ?? []).some(line => matchesLine(source.resource!, line))) return false;
         return (await this.records.list<TwinScanPlan>('scan-plan')).some(plan => plan.data.enabled
-            && plan.data.rules && matchesRules(source.resource!, plan.data.rules));
+            && plan.data.mode !== 'collect' && plan.data.rules && matchesRules(source.resource!, plan.data.rules));
     }
     private async check(source: TwinDataRecord<TwinSourceData>, verifyContent = false): Promise<void> {
         let stage = 'start'; const started = Date.now();

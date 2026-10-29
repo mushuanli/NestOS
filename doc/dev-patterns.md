@@ -159,3 +159,5 @@ Responses 请求统一发送 `input` item 数组，包括单条纯文本消息�
 `node --experimental-vm-modules scripts/check-tauri-dev-modules.mjs` 使用隔离 Vite 缓存和原生 ESM 链接检查桌面入口的静态开发模块图，不执行界面代码。缺失 default/named export 会直接失败，避免仅凭生产构建成功遗漏开发模式错误。对应回归位于 `ui/app-shell/tests/tauri-dev-modules.test.ts`。
 
 `vfsdriver-local` 的 Node SQLite 回退在 WebView 中不可运行；Tauri 通过 `createDb` 注入原生 `TauriSqlSidecarDb`。Vite 将 `better-sqlite3` 映射到显式的不可用适配器，防止开发服务器直接向浏览器发送 CommonJS 原生模块。Node 文件系统内置模块仍由生产构建外置，宿主通过 `createFs` 注入原生端口。
+
+Flow 草稿缺省 `layout` 在定义读取边界归一为 `{}`，只补展示值，不重写源文件或发布修订；新模板应声明节点位置。Flow 编辑器区分读取、接管和渲染阶段，加载失败保留可见错误码与 operationId，日志不含 Flow 正文或原始异常内容。

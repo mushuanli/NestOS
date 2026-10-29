@@ -70,6 +70,7 @@ export const en: LocaleStrings = {
     'twin.scannerRunLimit': 'Token limit per run',
     'twin.scannerRunLimitHelp': 'When blank, Agent/Flow extraction uses up to 50,000 tokens per job; built-in extraction reserves by input size. Zero blocks new calls. Total and monthly budgets still apply.',
     'initialFiles.replaceFlow': 'Exists; replace and publish',
+    'flow.editor.loadFailed': 'Unable to load the flow. Refresh to retry; if it persists, provide the error code and operation ID.',
     'flow.steps.overview': 'Workflow steps',
     'flow.steps.graph': 'Show execution graph',
     'flow.parameters.options': 'Options',

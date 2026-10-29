@@ -8,7 +8,7 @@ import { editorResourceId } from '@itookit/ui-common';
 // new chat session instance with the declared parameters filled in.
 
 import { IEditor, type EditorFactory, type EditorOptions } from '@itookit/ui-common';
-import { NAVIGATION_EVENTS } from '@itookit/common';
+import { NAVIGATION_EVENTS, randomUUID, t } from '@itookit/common';
 import { type FlowDraft } from '@itookit/llm-flow/contracts';
 import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
@@ -68,22 +68,29 @@ export class FlowsEditor extends IEditor {
         // re-mounts the editor on every selection/refresh, and auto-prompting
         // there re-opens the "Select Flow" dialog in a loop.
         const flowId = flowIdFromNodeId(this.initialNodeId);
-        if (flowId) {
-            try {
-                const draft = await this.deps.commands.execute<FlowDraft | null>(FlowCommand.DraftLoad, { id: flowId, expandScopes: true });
-                if (!draft) return;
-                if (!draft.id) {
-                    // Template file created via the VFS "+" button has an empty id;
-                    // adopt it into a valid workflow (unique id + file rename).
-                    const adopted = await this.deps.commands.execute<FlowDraft>(FlowCommand.DraftAdopt, {
-                        nodeId: this.initialNodeId,
-                        name: draft.name || flowId,
-                    });
-                    this.workbench.setDraft(adopted);
-                } else {
-                    this.workbench.setDraft(draft);
-                }
-            } catch { /* not a valid flow file — ignore */ }
+        if (flowId) await this.openInitialFlow(flowId);
+    }
+
+    private async openInitialFlow(flowId: string): Promise<void> {
+        const operationId = randomUUID(), started = performance.now();
+        let stage = 'draft.load';
+        try {
+            const draft = await this.deps.commands.execute<FlowDraft | null>(FlowCommand.DraftLoad, {id: flowId, expandScopes: true});
+            if (!draft) throw Object.assign(new Error('Flow draft is unavailable'), {code: 'FLOW_DRAFT_NOT_FOUND'});
+            stage = draft.id ? 'draft.render' : 'draft.adopt';
+            const selected = draft.id ? draft : await this.deps.commands.execute<FlowDraft>(FlowCommand.DraftAdopt, {
+                nodeId: this.initialNodeId, name: draft.name || flowId,
+            });
+            stage = 'draft.render'; this.workbench?.setDraft(selected);
+            console.info('[FlowEditor]', {operation: 'open', operationId, stage, result: 'success', durationMs: performance.now() - started});
+        } catch (error) {
+            const supplied = (error as {code?: unknown})?.code;
+            const code = typeof supplied === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(supplied) ? supplied
+                : stage === 'draft.render' ? 'FLOW_EDITOR_RENDER_FAILED' : 'FLOW_EDITOR_LOAD_FAILED';
+            console.error('[FlowEditor]', {operation: 'open', operationId, stage, result: 'failure', code,
+                errorType: error instanceof Error ? error.name : 'Unknown', durationMs: performance.now() - started});
+            const message = document.createElement('p'); message.className = 'dag-run-error'; message.setAttribute('role', 'alert');
+            message.textContent = `${t('flow.editor.loadFailed')} · ${code} · ${operationId}`; this.container?.prepend(message);
         }
     }
 

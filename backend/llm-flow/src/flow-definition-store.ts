@@ -49,7 +49,7 @@ export class FlowDefinitionStore {
         const installed = await this.store.findFile(receipt);
         if (installed && !options.restoreMissing) return null;
         const existing = await this.store.findFile(name);
-        const draft = { ...structuredClone(template), draftVersion: 1, updatedAt: Date.now() };
+        const draft = { ...structuredClone(template), layout: structuredClone(template.layout ?? {}), draftVersion: 1, updatedAt: Date.now() };
         if (!existing) await this.store.createFile(name, JSON.stringify(draft, null, 2));
         if (!installed) await this.store.createFile(receipt, JSON.stringify({ flowId: template.id, installedAt: Date.now() }));
         return existing ? null : draft;
@@ -236,7 +236,8 @@ function latestName(id: string): string {
 function parseFlowDraft(content: string | null): FlowDraft | null {
     if (!content) return null;
     try {
-        return JSON.parse(content) as FlowDraft;
+        const draft = JSON.parse(content) as FlowDraft;
+        return {...draft, layout: draft.layout ?? {}};
     } catch {
         return null;
     }

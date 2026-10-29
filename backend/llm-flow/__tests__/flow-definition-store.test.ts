@@ -63,6 +63,16 @@ function revision(number: number, name: string): FlowRevision {
 }
 
 describe('FlowDefinitionStore', () => {
+    it('reads saved drafts without layout using an empty presentation layout without rewriting the file', async () => {
+        const storage = memoryStore();
+        const source = JSON.stringify({id: 'imported', name: 'Imported', draftVersion: 4, nodes: [], edges: [], updatedAt: 1});
+        await storage.createFile('imported.flow', source);
+        const store = new FlowDefinitionStore(storage);
+        expect(await store.loadDraft('imported')).toMatchObject({id: 'imported', draftVersion: 4, layout: {}});
+        expect((await store.listDrafts())[0].layout).toEqual({});
+        expect(await storage.readFile('/imported.flow')).toBe(source);
+    });
+
     it('preserves call scope through draft save, immutable publication and archive projection', async () => {
         const store = new FlowDefinitionStore(memoryStore());
         const draft = await store.createDraft({id: 'private', name: 'Private'});

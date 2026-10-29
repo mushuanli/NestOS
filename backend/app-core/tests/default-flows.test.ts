@@ -123,3 +123,11 @@ it.each(['essay-review', 'essay-review-isolated'])('keeps existing %s files and 
     expect(await store.loadRevision(id, published.revision)).toEqual(published);
     expect(createNestosFlowLibrary().filter(flow => flow.id.startsWith('essay-review')).map(flow => flow.id)).toEqual(['essay-review']);
 });
+
+it('ships Google collection templates with visible positions for every graph node', () => {
+    const flows = createNestosFlowLibrary().filter(flow => flow.id.startsWith('google-'));
+    expect(flows).toHaveLength(2);
+    for (const flow of flows) {
+        for (const node of flow.nodes) expect(flow.layout.nodes?.[node.id]).toMatchObject({x: expect.any(Number), y: expect.any(Number)});
+    }
+});

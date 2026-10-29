@@ -71,6 +71,7 @@ export const zhCN = {
     'twin.scannerRunLimit': '单次运行 token 上限',
     'twin.scannerRunLimitHelp': '留空时，Agent/Flow 每次提取最多使用 50,000 token；内置提取按材料大小预留。0 禁止新调用，累计预算和月额度仍生效。',
     'initialFiles.replaceFlow': '已存在，将覆盖并发布',
+    'flow.editor.loadFailed': '流程加载失败，请刷新重试；如仍失败，请提供错误码和操作编号。',
     'flow.steps.overview': '流程步骤',
     'flow.steps.graph': '展开完整执行图',
     'flow.parameters.options': '业务选项',

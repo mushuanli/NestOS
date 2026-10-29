@@ -95,7 +95,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             saveDraft: draft => this.suspended || this.options.readOnly ? Promise.resolve() : this.store.saveDraft(draft),
             onDraftChange: () => this.emit('interactiveChange', undefined), onError: error => this.fail(error),
             onDiagnostic: event => log.info('chat.operation', {...event, sessionId}),
-            mountHeader: root => this.toolbar(root)};
+            mountHeader: (root, context) => this.toolbar(root, context.headerMenu)};
     }
     private announce(): void {
         const state = this.service.snapshot?.(); if (state) this.historyBranches?.update(state, !this.active);
@@ -108,7 +108,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         if (!this.active || this.closed) return;
         const state = await action(); if (state.sessionId && !this.closed) this.options.onConversationSession?.(state.sessionId);
     }
-    private toolbar(root: HTMLElement) {
+    private toolbar(root: HTMLElement, menuHost?: HTMLElement) {
         const cleanups: (() => void)[] = [];
         let information: ConversationInformation | undefined;
         const recovery = mountNativeRecovery(root, this.operations, () => this.view, () => !this.closed && this.active, id => this.receipt(id), error => this.fail(error));
@@ -118,7 +118,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             if (!mount) continue;
             const slot = document.createElement('div'); slot.className = className; if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); cleanups.push(mount(slot), () => slot.remove());
         }
-        information = this.mountMenu(root, cleanups);
+        information = this.mountMenu(root, cleanups, menuHost);
         if (this.options.hostContext?.toggleSidebar) {
             const button = document.createElement('button'); button.type = 'button';
             presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
@@ -132,22 +132,23 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             const state = await action();
             if (state.sessionId && !this.closed) this.options.onConversationSession?.(state.sessionId);
         }, error => this.fail(error));
-        this.branches.element.classList.add('llm-chat__branch'); root.append(this.branches.element);
+        this.branches.element.classList.add('llm-chat__branch'); this.branches.element.dataset.chatOverflow = ''; root.append(this.branches.element);
         const update = () => {recovery.update(); const state = this.service.snapshot?.(); if (state) {this.branches?.update(state, !this.active); information?.setSnapshot(state); this.historyBranches?.update(state, !this.active);}};
         update();
         return {update, destroy: () => {this.branches?.destroy(); cleanups.forEach(cleanup => cleanup());}};
     }
-    private mountMenu(root: HTMLElement, cleanups: (() => void)[]): ConversationInformation {
-        const menu = document.createElement('details'), summary = document.createElement('summary'), body = document.createElement('div');
+    private mountMenu(root: HTMLElement, cleanups: (() => void)[], menuHost?: HTMLElement): ConversationInformation {
+        const menu = menuHost?.parentElement as HTMLDetailsElement ?? document.createElement('details'), body = menuHost ?? document.createElement('div');
         const information = new ConversationInformation(body); cleanups.push(() => information?.destroy());
-        menu.className = CHAT_SLOT_CLASSES.menu; presentHostControl(summary, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(summary, body); root.append(menu);
+        if (!menuHost) {const summary = document.createElement('summary'); menu.className = CHAT_SLOT_CLASSES.menu;
+            presentHostControl(summary, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(summary, body); root.append(menu);}
         cleanups.push(mountExecutionDraftAction(body, this.options, () => this.view, draft => Promise.all(draft.attachments.map(async item => {
             const blob = await this.store.read(item.file, {signal: this.lifetime.signal}); return new File([blob], item.file.name, {type: item.file.mimeType});})),
             () => !this.closed && this.active && !this.options.readOnly, error => this.fail(error)));
         for (const mount of [this.options.mountWindowList, this.options.mountConversationNavigation, this.options.mountMoreMenu]) {
             if (mount) cleanups.push(mount(body));
         }
-        cleanups.push(() => menu.remove());
+        if (!menuHost) cleanups.push(() => menu.remove());
         return information;
     }
     private async receipt(operationId: string): Promise<OperationReceipt> {

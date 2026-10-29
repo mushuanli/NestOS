@@ -1,3 +1,4 @@
+import {ChatInputTemplates} from '../components/templates/ChatInputTemplates';
 import {resolveResize} from '@itookit/image-parser';
 import {t} from '@itookit/common';
 import {renderParameterFields, readParameterFields, type FormParameter} from '@itookit/llm-ui/forms';
@@ -27,19 +28,20 @@ export function chatSelectors(connections: readonly ConnectionOption[], settings
         const connection = connections.find(item => id ? item.id === id : item.isDefault);
         const choices = (['auto', 'optimal', 'standard', 'fast'] as const).flatMap(tier => {
             const model = connection?.resolvedTiers?.[tier === 'auto' ? 'optimal' : tier as 'optimal' | 'standard' | 'fast'];
-            return tier === 'auto' || model ? [{id: tier, label: tier === 'auto' ? follow.label : `${model} · ${t(`ocr.tier.${tier}`)}`}] : [];
+            return tier === 'auto' || model ? [{id: tier, label: tier === 'auto' ? model ? `${model} · ${follow.label}` : follow.label : `${model} · ${t(`ocr.tier.${tier}`)}`}] : [];
         });
         return [id, {value: settings.modelTier ?? 'auto', choices}];
     }));
-    return [{id: 'connectionId', label: t('chatInput.model'), value: settings.connectionId ?? '', choices: [follow,
+    return [{id: 'connectionId', placement: 'end', combineWith: 'modelTier', label: t('chatInput.model'), value: settings.connectionId ?? '', choices: [follow,
         ...connections.filter(item => item.enabled !== false && item.credentialsReady !== false).map(item => ({id: item.id, label: `${item.name}${item.providerName ? ' · ' + item.providerName : ''}`}))]},
         {id: 'modelTier', label: t('chatSettings.tier'), value: settings.modelTier ?? 'auto', choices: [], variants: {selectorId: 'connectionId', values: variants}},
-        ...(!settings.executionModeLocked ? [{id: 'executionMode', label: t('chatInput.executionMode.agent'), value: settings.executionMode ?? 'chat', disabled: settings.executionModeLocked,
+        ...(!settings.executionModeLocked ? [{id: 'executionMode', label: t('chatInput.executionMode.label'), value: settings.executionMode ?? 'chat', disabled: settings.executionModeLocked,
             choices: [{id: 'chat', label: t('chatInput.executionMode.chat')}, {id: 'agent', label: t('chatInput.executionMode.agent')}]}] : [])];
 }
 export function mountChatSettings(root: HTMLElement, view: () => ChatView | undefined, settings: () => ChatInputSettings, error: (error: unknown) => void) {
     const details = document.createElement('details'), summary = document.createElement('summary'), form = document.createElement('form');
-    details.className = 'llm-chat__host-menu'; details.dataset.chatSettings = ''; summary.textContent = t('chatSettings.title');
+    details.className = 'llm-chat__host-menu'; details.dataset.chatSettings = ''; summary.className = 'llm-chat__menu-action'; summary.innerHTML = ChatInputTemplates.sliderIcon();
+    const title = document.createElement('span'); title.textContent = t('chatSettings.title'); summary.append(title);
     const fields: FormParameter[] = [
         {name: 'historyLength', type: 'number', label: t('chatSettings.history'), integer: true, minimum: -1},
         {name: 'temperature', type: 'number', label: t('agent.layout.temperature'), minimum: 0, maximum: 2},

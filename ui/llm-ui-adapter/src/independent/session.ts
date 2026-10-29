@@ -50,6 +50,8 @@ export interface SessionChatBindingOptions {
     readonly inputContract?: () => ComposerInputContract | undefined;
     /** Enable the published Agent/Flow selector through the existing Session command port. */
     readonly targetSelection?: boolean;
+    readonly autoSelectFirstTarget?: boolean;
+    readonly onTargetsChanged?: (catalog: import('@itookit/llm-ui').CallTargetCatalog) => void;
     /** Offer independent calls for published targets; the host keeps all execution state. */
     readonly independentCalls?: boolean;
     readonly openChild?: (sessionId: string) => void | Promise<void>;
@@ -91,7 +93,7 @@ class SessionChatBinding {
         this.sessionId = options.session.id;
         this.branch = this.currentBranch();
         this.operations = this.createLedger(options.operations);
-        if (options.targetSelection) this.targets = new SessionCallTargets(options.commands, () => this.publish());
+        if (options.targetSelection) this.targets = new SessionCallTargets(options.commands, () => {options.onTargetsChanged?.(this.targets!.getSnapshot()); this.publish();}, options.autoSelectFirstTarget !== false);
         this.source = new ChatProjection(this.sessionId, options.onError, this.targets ? () => this.refreshTargets() : undefined);
         this.actions = {...options.history, send: (input, context) => this.send(input, context), reconcile: id => this.reconcile(id) };
         if (options.prepareSend) this.actions.prepareSend = options.prepareSend;
@@ -260,7 +262,7 @@ class SessionChatBinding {
     private selectors(): readonly SelectorView[] | undefined {
         const selectors = this.options.selectors?.() ?? [];
         if (!this.options.independentCalls || !this.targets) return selectors;
-        return [...selectors, {id: 'callMode', label: t('callable.independent.mode'), value: 'current', choices: [
+        return [...selectors, {id: 'callMode', placement: 'more', label: t('callable.independent.mode'), value: 'current', choices: [
             {id: 'current', label: t('callable.independent.current')}, {id: 'independent', label: t('callable.independent.run')}]}];
     }
     private independentTitle(operationId: string): string | undefined {

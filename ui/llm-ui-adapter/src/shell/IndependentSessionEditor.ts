@@ -1,3 +1,6 @@
+import {chatAttachmentMenu} from './chat-attachment-menu';
+import {mountChatInputMenu} from './chat-input-menu';
+import {refreshDraftTarget, restoreDraftTarget} from '../independent/restore-draft-target';
 import {mountExecutionDraftAction} from './chat-execution-draft';
 import {workspaceInputPlugins} from './workspace-input-plugins';
 import {SharedChatOcr} from './SharedChatOcr';
@@ -142,12 +145,13 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             view: () => this.view, snapshot: () => binding.source.getSnapshot(), current: () => this.binding === binding && this.current() && this.active && !this.config.readOnly,
             taskCallbacks: taskPanel.callbacks, attach: controller => taskPanel.bind(controller), changed: () => this.observeBranch(),
             selectAgent: id => this.selectAgent(id), configure: values => this.configure(values),
-            openSettings: () => {const menu = this.container.querySelector<HTMLDetailsElement>('[data-chat-settings]'); if (menu) menu.open = true;}, report: error => this.fail(error)});
+            openSettings: () => {const menu = this.container.querySelector<HTMLDetailsElement>('[data-chat-settings]'); if (menu) {const parent = menu.closest<HTMLDetailsElement>('.llm-chat__input-menu'); if (parent) parent.open = true; menu.open = true;}}, report: error => this.fail(error)});
         this.inputCommands = inputCommands; this.taskPanel = taskPanel;
         const history = this.historyActions = this.createHistory(store, () => binding);
         const binding = createSessionChatBinding({session: this.config.sessionManager, commands: this.config.commandBus!, kernel: this.config.kernel,
             history: history.actions, title: this.config.title, operations, composerCommands: {subscribe: listener => inputCommands.subscribe(listener), getSnapshot: () => inputCommands.getSnapshot(), execute: (input, context) => inputCommands.execute(input, context),
-                reconcile: async operationId => {const record = operations.getSnapshot().find(item => item.context.operationId === operationId); return record?.status === 'accepted' ? {status: 'accepted', operationId} : {status: 'unknown', operationId, message: t('chat.submission.unconfirmed')};}}, targetSelection: true, independentCalls: !this.config.readOnly, instructionQueue: true, contextSelection: true,
+                reconcile: async operationId => {const record = operations.getSnapshot().find(item => item.context.operationId === operationId); return record?.status === 'accepted' ? {status: 'accepted', operationId} : {status: 'unknown', operationId, message: t('chat.submission.unconfirmed')};}}, targetSelection: true, autoSelectFirstTarget: false,
+            onTargetsChanged: catalog => {if (this.binding === binding && !this.closed && this.active) refreshDraftTarget(this.view, catalog);}, independentCalls: !this.config.readOnly, instructionQueue: true, contextSelection: true,
             get readOnly() {return !!owner.config.readOnly;}, branch: () => this.config.sessionManager.getSnapshot?.().view?.manifest.currentBranch ?? store.branch,
             subscribeInput: listener => {this.inputListeners.add(listener); return () => {this.inputListeners.delete(listener);};},
             selectors: () => this.selectors(), executionOverrides: (input, draft) => this.overrides(input, draft),
@@ -171,12 +175,14 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             changed: () => this.observeBranch()});
     }
     private async initialDraft(store: SessionChatStore, binding: Binding): Promise<ComposerDraft> {
-        const draft = store.draft; if (draft.target) return draft;
         const groups = this.config.sessionManager.getSessions(), previous = [...groups].reverse().find(group => group.target)?.target;
-        const agentId = this.config.initialInputState?.agentId ?? store.agentId;
-        const choices = binding.source.getSnapshot().callTargets?.entries ?? [];
-        const target = previous ?? choices.find(choice => choice.target.kind === 'agent' && choice.target.id === agentId)?.target ?? choices[0]?.target;
-        return {...draft, ...(target ? {target} : {})};
+        const draft = store.draft, result = restoreDraftTarget(draft, binding.source.getSnapshot().callTargets,
+            previous, this.config.initialInputState?.agentId ?? store.agentId ?? this.initialManifest?.createdWithAgentId
+                ?? this.config.sessionManager.getSnapshot?.().view?.manifest.createdWithAgentId);
+        if (result !== draft) log.info('chat.target.restore', {operationId: randomUUID(), stage: 'restore', result: 'success',
+            sessionId: this.config.sessionId, code: 'DRAFT_TARGET_RESOLVED', durationMs: 0,
+            previousVersion: draft.target?.version ?? previous?.version, version: result.target?.version});
+        return result;
     }
     private viewOptions(store: SessionChatStore, draft: ComposerDraft): ImageChatOptions {
         const history = this.historyActions, inputCommands = this.inputCommands, taskPanel = this.taskPanel;
@@ -191,7 +197,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         const ocr = this.config.ocr ? new SharedChatOcr(this.config.ocr, () => this.view,
             (ref, signal) => images.read(ref, {signal}), failure => this.fail(failure)) : undefined;
         this.ocr = ocr;
-        return {images, plugins: workspaceInputPlugins(this.config.commandBus, {navigation: 'projects', sessionId: this.config.sessionId},
+        return {images, inputPresentation: 'host', attachmentMenu: chatAttachmentMenu(true), plugins: workspaceInputPlugins(this.config.commandBus, {navigation: 'projects', sessionId: this.config.sessionId},
             () => this.view?.getDraft().target?.id ?? 'default', this.config.sessionManager.promptHistory), attachmentActions: item => ocr?.actions(item) ?? [], setActive: active => {history?.setActive(active); ocr?.setActive(active); taskPanel?.setActive(active); if (active) void inputCommands?.restore().catch(error => this.fail(error));},
             release: () => disposeEditorResources([releaseUsage, () => history?.destroy(), () => inputCommands?.destroy(), () => taskPanel?.destroy(), () => ocr?.destroy()]),messageActions: context => history?.messageActions(context) ?? [], locale: getLocale(), initialDraft: draft, markdown: messageMarkdown(this.config, id => this.messageAnchor(id)),
             assets: createAssetProvider(undefined, undefined, this.config.assets), upload: this.config.assets ? store.upload.bind(store) : undefined,
@@ -199,7 +205,19 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
                 if (next !== inputSignature) {inputSignature = next; for (const listener of this.inputListeners) listener();}},
             onError: error => this.fail(error), onDiagnostic: event => log.info('chat.operation', {...event, sessionId: this.config.sessionId}),
             onBindingDiagnostic: event => log.info('chat.binding', {...event, sessionId: this.config.sessionId}),
-            mountHeader: root => this.toolbar(root, taskPanel)};
+            mountComposerMenu: (root, context) => {
+                const before = new Set(root.childNodes), release = mountChatSettings(root, () => this.view, () => chatSettings(this.view?.getDraft().selection, this.settings), error => this.fail(error));
+                inputCommands?.mountSkills(root);
+                const menu = mountChatInputMenu(root, {view: context.view, settings: () => chatSettings(context.view.getDraft().selection, this.settings),
+                    prompts: () => this.config.agentService.findAgent(context.view.getDraft().target?.id ?? '')?.defaultPrompts ?? [],
+                    agentId: () => context.view.getDraft().target?.kind === 'agent' ? context.view.getDraft().target?.id : undefined,
+                    configureAgent: this.config.hostContext?.navigate ? id => this.config.hostContext!.navigate({target: 'chat', resourceId: '@agent/' + encodeURIComponent(id)}) : undefined,
+                    available: () => !this.closed && this.active && !this.config.readOnly, hasFiles: !!this.config.commandBus, report: error => this.fail(error)});
+                const releaseTransfer = mountExecutionDraftAction(root, this.config, () => this.view, draft => store.files(draft.attachments.map(item => item.file), this.lifetime.signal),
+                    () => this.current() && this.active && !this.config.readOnly, error => this.fail(error));
+                const owned = [...root.childNodes].filter(node => !before.has(node));
+                return {update: () => menu.update?.(context), destroy: () => {release(); releaseTransfer(); menu.destroy(); owned.forEach(node => node.remove());}};
+            }, mountHeader: (root, context) => this.toolbar(root, taskPanel, context.headerMenu)};
     }
     private trackUsage(operations: import('@itookit/llm-ui').OperationLedger): () => void {
         const accepted = new Set(operations.getSnapshot().filter(item => item.status === 'accepted').map(item => item.context.operationId));
@@ -253,32 +271,33 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     private selectors() {
         const target = this.view?.getDraft().target ?? this.store?.draft.target;
         if (target?.kind === 'flow') return [];
-        const preferred = this.config.agentService.findAgent(target?.id ?? '')?.modelDefaults?.chat;
+        const agent = this.config.agentService.findAgent(target?.id ?? '');
+        if (agent?.execution?.kind === 'flow') return [];
+        const preferred = agent?.modelDefaults?.chat;
         const connections = preferred ? this.connections.map(item => ({...item, isDefault: item.id === preferred})) : this.connections;
-        return chatSelectors(connections, this.settings);
+        return chatSelectors(connections, chatSettings(this.view?.getDraft().selection, this.settings));
     }
-    private toolbar(root: HTMLElement, taskPanel?: SharedChatTaskPanel) {
-        const releases: (() => void)[] = [mountChatSettings(root, () => this.view, () => chatSettings(this.view?.getDraft().selection, this.settings), error => this.fail(error))], previous = new Set(root.childNodes);
-        if (taskPanel) root.append(taskPanel.element); this.inputCommands?.mountSkills(root);
+    private toolbar(root: HTMLElement, taskPanel?: SharedChatTaskPanel, menuHost?: HTMLElement) {
+        const releases: (() => void)[] = [], previous = new Set(root.childNodes);
+        if (taskPanel) root.append(taskPanel.element);
         for (const [mount, className] of [[this.config.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
             if (!mount) continue; const slot = document.createElement('div'); slot.className = className;
             if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); releases.push(mount(slot), () => slot.remove());
         }
         if (this.config.hostContext?.toggleSidebar) {const button = document.createElement('button'); button.type = 'button'; presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
             button.classList.add('llm-chat__sidebar'); button.onclick = () => this.config.hostContext!.toggleSidebar(); root.append(button);}
-        const branches = document.createElement('select'); branches.className = 'llm-chat__branch'; branches.setAttribute('aria-label', t('flow.output.branch')); root.append(branches);
+        const branches = document.createElement('select'); branches.className = 'llm-chat__branch'; branches.dataset.chatOverflow = ''; branches.setAttribute('aria-label', t('flow.output.branch')); root.append(branches);
         const refresh = async () => {const manifest = this.initialManifest ?? this.config.sessionManager.getSnapshot?.().view?.manifest ?? await this.service.getManifest(this.config.sessionId); if (this.closed || !branches.isConnected) return;
-            branches.replaceChildren(...Object.keys(manifest.branches).map(name => {const option = document.createElement('option'); option.value = name; option.textContent = name; return option;})); branches.value = this.branch;};
+            branches.replaceChildren(...Object.keys(manifest.branches).map(name => {const option = document.createElement('option'); option.value = name; option.textContent = name; return option;})); branches.value = this.branch; branches.hidden = branches.options.length <= 1;};
         void refresh().catch(error => this.fail(error));
         branches.onchange = () => {void this.switchBranch(branches.value).catch(error => {branches.value = this.branch; this.fail(error);});};
-        const menu = document.createElement('details'), label = document.createElement('summary'), body = document.createElement('div');
-        menu.className = CHAT_SLOT_CLASSES.menu; presentHostControl(label, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(label, body); root.append(menu);
+        const menu = menuHost?.parentElement as HTMLDetailsElement ?? document.createElement('details'), body = menuHost ?? document.createElement('div');
+        if (!menuHost) {const label = document.createElement('summary'); menu.className = CHAT_SLOT_CLASSES.menu;
+            presentHostControl(label, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(label, body); root.append(menu);}
         menu.dataset.chatMenu = '';
         const runs = new SessionRunsPanel(this.config.commandBus!, this.config.sessionId, body, undefined, false);
         this.sessionRunsPanel = runs; releases.push(() => runs.destroy());
-        menu.ontoggle = () => runs.setVisible(menu.open && this.active);
-        releases.push(mountExecutionDraftAction(body, this.config, () => this.view, draft => this.store!.files(draft.attachments.map(item => item.file), this.lifetime.signal),
-            () => this.current() && this.active && !this.config.readOnly, error => this.fail(error)));
+        const toggle = () => runs.setVisible(menu.open && this.active); menu.addEventListener('toggle', toggle); releases.push(() => menu.removeEventListener('toggle', toggle));
         for (const mount of [this.config.mountWindowList, this.config.mountConversationNavigation, this.config.mountMoreMenu]) {
             if (mount) releases.push(mount(body));
         }

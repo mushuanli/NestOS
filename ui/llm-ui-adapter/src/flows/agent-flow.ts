@@ -1,3 +1,4 @@
+import {expandComposerReferences} from './composer-references';
 import {ParameterSources} from './parameter-sources';
 import {resolveFlowArguments} from './flow-arguments';
 import type {ResourceScope} from '@itookit/app-contracts';
@@ -83,7 +84,11 @@ async function prepareDefinition(commands: ICommandBus, flow: FlowRevision, sign
     const command = trace.draft?.text.match(/^\/run(?:\s+([\s\S]*))?$/);
     const supplied = command ? await resolveFlowArguments(command[1] ?? '', flow.parameters ?? [], commands, scope, signal) : execution?.parameters;
     const inputFlow = command ? {...flow, parameters: flow.parameters?.map(({default: _default, ...field}) => field)} : flow;
-    const {parameters, initialFiles} = confirmedFlowInput(inputFlow, command ? {...trace.draft!, text: '', input: undefined} : trace.draft, command ? flowParameterValues(flow.parameters, supplied as Record<string, JsonValue>, flow.inputGroups) : supplied);
+    trace.stage = 'references';
+    const draft = !command && trace.draft && flow.parameters?.some(field => field.inputSource === 'composer.text')
+        ? {...trace.draft, text: await expandComposerReferences(trace.draft.text, commands, scope, signal, trace.operationId)} : trace.draft;
+    trace.stage = 'input';
+    const {parameters, initialFiles} = confirmedFlowInput(inputFlow, command ? {...trace.draft!, text: '', input: undefined} : draft, command ? flowParameterValues(flow.parameters, supplied as Record<string, JsonValue>, flow.inputGroups) : supplied);
     const sources = new ParameterSources(commands, scope, parameters);
     trace.stage = 'connections';
     const connection = await flowConnectionSelection(commands, undefined, flow.connections, execution?.connectionBindings, flow, agent);

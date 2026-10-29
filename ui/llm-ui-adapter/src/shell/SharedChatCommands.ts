@@ -121,7 +121,7 @@ export class SharedChatCommands {
         return {onSwitchAgent: id => this.options.selectAgent(id), onConnection: args => args.trim() ? this.options.configure({connectionId: args.trim() === '--reset' ? '' : args.trim()}) : this.options.openSettings(),
             onModel: model => this.selectModel(model), onHelp: () => Toast.info(this.definitions.map(item => `/${item.name}: ${item.description}`).join('\n')),
             ...(this.options.config.sessionSkills ? {getSkills: () => this.skills, onSkill: async (id: string) => {this.check(); await this.options.config.sessionSkills!.load(this.options.config.sessionId, id);},
-                onSkills: () => {if (this.skillRoot) this.skillRoot.open = true;}} : {})};
+                onSkills: () => {if (this.skillRoot) {const parent = this.skillRoot.closest<HTMLDetailsElement>('.llm-chat__input-menu'); if (parent) parent.open = true; this.skillRoot.open = true;}}} : {})};
     }
     private taskCommands(): Pick<SlashCommandCallbacks, 'onFlow' | 'onAddDirectory' | 'onSetHome' | 'onPlan' | 'onExec' | 'onCancelTask' | 'onResumeTask' | 'onApproveTask' | 'onTool'> {
         return {onFlow: args => invokeFlowText(this.options.config.commandBus!, this.options.config.sessionId, args, this.options.signal,

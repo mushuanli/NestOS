@@ -59,9 +59,9 @@ export class NativeComposerCapabilities {
     selectors(): readonly SelectorView[] | undefined {
         if (!this.models.models.length) return;
         const auto = {id: '', label: t('chatSettings.followDefault')};
-        return [{id: 'modelId', label: t('chatInput.model'), value: '', choices: [
+        return [{id: 'modelId', placement: 'end', label: t('chatInput.model'), value: '', choices: [
             {id: '', label: t('harness.followNativeSettings')}, ...this.models.models.map(model => ({id: model.id, label: model.label}))]},
-        {id: 'reasoningEffort', label: t('harness.reasoning'), value: '', choices: [auto],
+        {id: 'reasoningEffort', placement: 'more', label: t('harness.reasoning'), value: '', choices: [auto],
             variants: {selectorId: 'modelId', values: Object.fromEntries(this.models.models.map(model => [model.id,
                 {value: '', choices: [auto, ...model.reasoningEfforts.map(effort => ({id: effort.id, label: effort.label}))]}]))}}];
     }

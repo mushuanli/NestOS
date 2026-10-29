@@ -23,15 +23,20 @@ function prepare(binding: Binding, options: ImageChatOptions): Parameters<typeof
         throw new Error('Execution output and independent call renderers are reserved by the Session adapter');
     const queue = sessionQueueToolbar(binding.instructionQueue, options), calls = binding.mountCalls();
     const mounted = {...options, mountToolbar: queue.mount}; let picker: SessionContextPicker | undefined;
-    const mountToolbar: ImageChatOptions['mountToolbar'] = calls || binding.contextSelection ? (host, context) => {
+    const mountToolbar: ImageChatOptions['mountToolbar'] = calls ? (host, context) => {
         const custom = document.createElement('div'); custom.className = CHAT_SLOT_CLASSES.toolbar; host.append(custom);
         const borrowed = mounted.mountToolbar?.(custom, context);
         if (calls) host.append(calls.notices);
-        if (binding.contextSelection) picker = new SessionContextPicker(host, context, () => binding.contextScope(), query => binding.readContextOptions(query));
-        return {update: next => {borrowed?.update?.(next); picker?.update(next);},
-            destroy: async () => {picker?.destroy(); picker = undefined; try {await borrowed?.destroy();} finally {custom.remove(); calls?.notices.remove();}}};
+        return {update: next => {borrowed?.update?.(next);},
+            destroy: async () => {try {await borrowed?.destroy();} finally {custom.remove(); calls?.notices.remove();}}};
     } : mounted.mountToolbar;
-    const images = prepareImageChatOptions({...options, mountToolbar,
+    const mountComposerMenu: ImageChatOptions['mountComposerMenu'] = binding.contextSelection ? (host, context) => {
+        const borrowed = options.mountComposerMenu?.(host, context);
+        const current = picker = new SessionContextPicker(host, context, () => binding.contextScope(), query => binding.readContextOptions(query));
+        return {update: next => {borrowed?.update?.(next); current.update(next);},
+            destroy: async () => {current.destroy(); if (picker === current) picker = undefined; await borrowed?.destroy();}};
+    } : options.mountComposerMenu;
+    const images = prepareImageChatOptions({...options, mountToolbar, mountComposerMenu,
         onDraftChange: draft => {picker?.updateDraft(draft); options.onDraftChange?.(draft);},
         renderers: {...options.renderers, [flowNodeDocumentPart]: flowNodeDocumentRenderer,
             ...(calls ? {[independentCallPart]: calls.renderer} : {}), ...(binding.outputsRenderer ? {[messageOutputsPart]: binding.outputsRenderer} : {})},

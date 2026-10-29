@@ -31,7 +31,7 @@ export class SessionHistoryActions {
             ...(group.callInput?.admitted ? [{id: 'rerun-arguments', label: t('flow.rerun.title'), run: () => this.run(target, snapshot.viewId, undefined, group => this.rerun(group, target, snapshot.viewId))}] : []),
             {id: 'branch', label: t('branch.continue'), run: () => this.run(target, snapshot.viewId, undefined,
                 async group => {await this.options.commands.execute('vcs.branch.create', {branchNodeId: group.id, options: {}});})},
-            {id: 'delete', label: t('action.delete'), run: () => this.run(target, snapshot.viewId, SessionCommand.CanDelete,
+            {id: 'delete', placement: 'more', label: t('action.delete'), run: () => this.run(target, snapshot.viewId, SessionCommand.CanDelete,
                 async group => {await this.options.commands.execute(SessionCommand.DeleteMessage, {messageId: group.id, options: {deleteAssociatedResponses: true}});})},
         ];
     }

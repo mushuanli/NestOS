@@ -1,3 +1,6 @@
+import {chatAttachmentMenu} from '../chat-attachment-menu';
+import {mountChatInputMenu} from '../chat-input-menu';
+import {refreshDraftTarget, restoreDraftTarget} from '../../independent/restore-draft-target';
 import {workspaceInputPlugins} from '../workspace-input-plugins';
 import {SharedChatOcr} from '../SharedChatOcr';
 import {resolveResize} from '@itookit/image-parser';
@@ -32,6 +35,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     private source: ChatProjection;
     private readonly ledger = createOperationLedger();
     private readonly targets?: SessionCallTargets;
+    private selectorTarget?: string;
     private delegate?: IEditor;
     private prepared?: Promise<Materialized>;
     private resume?: (createEditor?: EditorFactory) => Promise<IEditor>;
@@ -60,7 +64,10 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         if (!config.sessionDraft) throw new Error('Project draft controls are required');
         this.store = new ChatDraftStore(config.sessionDraft);
         this.source = new ChatProjection(config.sessionDraft.id ?? randomUUID(), error => this.emit('error', error));
-        if (controls.commands && config.sessionDraft.executorScope !== 'remote') this.targets = new SessionCallTargets(controls.commands, () => this.publish());
+        if (controls.commands && config.sessionDraft.executorScope !== 'remote') this.targets = new SessionCallTargets(controls.commands, () => {
+            if (!this.closed && !this.transferred && this.active) refreshDraftTarget(this.view, this.targets?.getSnapshot());
+            this.publish();
+        }, false);
     }
     async init(container: HTMLElement): Promise<void> {this.container = container; await this.render();}
     async render(): Promise<void> {
@@ -82,13 +89,28 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         const ocr = this.controls.ocr ? new SharedChatOcr(this.controls.ocr, () => this.view,
             (ref, signal) => images.read(ref, {signal}), failure => this.report(failure)) : undefined;
         this.ocr = ocr;
-        return prepareImageChatOptions({plugins: workspaceInputPlugins(this.controls.commands, {navigation: 'projects', projectId: this.config.sessionDraft?.scope?.id},
+        return prepareImageChatOptions({inputPresentation: 'host', attachmentMenu: chatAttachmentMenu(true), plugins: workspaceInputPlugins(this.controls.commands, {navigation: 'projects', projectId: this.config.sessionDraft?.scope?.id},
             () => this.store.preferences(this.view?.getDraft()).agentId), attachmentActions: item => ocr?.actions(item) ?? [],
-            setActive: active => ocr?.setActive(active), release: () => ocr?.destroy(),source: this.source, operations: this.ledger, locale: getLocale(), initialDraft: this.store.draft,
+            setActive: active => ocr?.setActive(active), release: () => ocr?.destroy(),source: this.source, operations: this.ledger, locale: getLocale(), initialDraft: restoreDraftTarget(this.store.draft, this.targets?.getSnapshot(), undefined, store.preferences().agentId),
             actions: {send: async () => {throw new Error('Draft must materialize before dispatch');}, prepareSend: (input, draft) => this.prepare(input, draft),
                 reconcile: async operationId => ({status: 'unknown', operationId, message: t('chat.submission.unconfirmed')})},
             upload: this.config.sessionDraft?.attachments ? (file, options) => this.store.upload(file, options) : undefined,
             assets: {read: id => this.store.read(id)}, saveDraft: draft => this.save(draft), onDraftChange: () => this.draftChanged(),
+            mountComposerMenu: (root, context) => {
+                const release = mountChatSettings(root, () => this.view, () => this.store.preferences(this.view?.getDraft()).settings, failure => this.report(failure));
+                const actions = this.draftActions(root), menu = mountChatInputMenu(root, {view: context.view,
+                    settings: () => store.preferences(context.view.getDraft()).settings,
+                    prompts: () => this.executors.find(agent => agent.id === context.view.getDraft().target?.id)?.defaultPrompts ?? [],
+                    agentId: () => context.view.getDraft().target?.kind === 'agent' ? context.view.getDraft().target?.id : undefined,
+                    configureAgent: this.config.hostContext?.navigate ? id => this.config.hostContext!.navigate({target: 'chat', resourceId: '@agent/' + encodeURIComponent(id)}) : undefined,
+                    available: () => !this.closed && this.active && !this.transferred && !this.config.readOnly,
+                    hasFiles: !!this.controls.commands, report: error => this.report(error)});
+                return {update: () => menu.update?.(context), destroy: () => {release(); actions.destroy(); menu.destroy();}};
+            }, mountComposerStart: root => {
+                const scope = this.config.sessionDraft?.scope ? mountDraftProjectScope(root, this.config.sessionDraft.scope,
+                    () => this.flushPendingSave(), () => {const config = this.store.preferences(this.view?.getDraft() ?? this.store.draft); return {agentId: config.agentId, settings: config.settings};}) : undefined;
+                this.scope = scope; return {destroy: () => scope?.destroy()};
+            },
             mountHeader: root => this.toolbar(root), onError: error => this.report(error),
             onDiagnostic: event => log.info('chat.draft.operation', event)}, this.imageHost);
     }
@@ -100,6 +122,8 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     private selectors(): SelectorView[] {
         const preferences = this.store.preferences(this.view?.getDraft() ?? this.store.draft);
         if (this.config.sessionDraft?.executorScope === 'remote') return this.remoteSelectors(preferences.agentId);
+        const target = this.view?.getDraft().target ?? this.store.draft.target;
+        if (target?.kind === 'flow' || target?.kind === 'agent' && this.executors.find(agent => agent.id === target.id)?.execution?.kind === 'flow') return [];
         return [...(!this.targets ? [{id: 'executorId', label: t('chatInput.assistants'), value: preferences.agentId,
             choices: this.executors.map(item => ({id: item.id, label: item.name}))}] : []),
             ...chatSelectors(this.connections, preferences.settings)];
@@ -112,10 +136,10 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
             choices: this.executors.map(item => ({id: item.id, label: item.name}))}];
         if (!catalog?.models.length) return selectors;
         const current = catalog.current ?? catalog.default, models = catalog.models;
-        selectors.push({id: 'modelId', label: t('chatInput.model'), value: current?.modelId ?? models[0].id,
+        selectors.push({id: 'modelId', placement: 'end', label: t('chatInput.model'), value: current?.modelId ?? models[0].id,
             choices: [], variants: {selectorId: 'executorId', values: Object.fromEntries([...this.nativeModels].map(([id, value]) => [id,
                 {value: value.current?.modelId ?? value.default?.modelId ?? value.models[0]?.id ?? '', choices: value.models.map(model => ({id: model.id, label: model.label}))}]))}});
-        selectors.push({id: 'reasoningEffort', label: t('thinking.effort.label'), value: current?.reasoningEffort ?? '', choices: [], variants: {selectorId: 'modelId',
+        selectors.push({id: 'reasoningEffort', placement: 'more', label: t('thinking.effort.label'), value: current?.reasoningEffort ?? '', choices: [], variants: {selectorId: 'modelId',
             values: Object.fromEntries(models.map(model => [model.id, {value: current?.modelId === model.id ? current.reasoningEffort ?? model.defaultReasoningEffort ?? '' : model.defaultReasoningEffort ?? '',
                 choices: [{id: '', label: t('chatSettings.followDefault')}, ...model.reasoningEfforts]}]))}});
         return selectors;
@@ -137,6 +161,8 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     }
     private draftChanged(): void {
         this.emit('interactiveChange', undefined);
+        const target = JSON.stringify(this.view?.getDraft().target);
+        if (this.view && this.selectorTarget !== target) {this.selectorTarget = target; this.publish();}
         if (this.config.sessionDraft?.executorScope !== 'remote' || this.transferred) return;
         const selected = this.view?.getDraft().selection?.executorId;
         if (selected && !this.nativeModels.has(selected))
@@ -187,18 +213,19 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         return target;
     }
     private toolbar(root: HTMLElement) {
-        const cleanups: (() => void)[] = [mountChatSettings(root, () => this.view, () => this.store.preferences(this.view?.getDraft()).settings, failure => this.report(failure))];
+        const cleanups: (() => void)[] = [];
         if (this.config.mountCompactNavigation) cleanups.push(this.config.mountCompactNavigation(root));
-        const scope = this.config.sessionDraft?.scope ? mountDraftProjectScope(root, this.config.sessionDraft.scope,
-            () => this.flushPendingSave(), () => {const config = this.store.preferences(this.view?.getDraft() ?? this.store.draft); return {agentId: config.agentId, settings: config.settings};}) : undefined;
-        this.scope = scope;
+        return {destroy: () => cleanups.forEach(stop => stop())};
+    }
+    private draftActions(root: HTMLElement) {
+        const cleanups: (() => void)[] = [];
         const discard = document.createElement('button'); discard.type = 'button'; discard.textContent = t('project.draftDiscard');
         if (this.config.hostContext?.navigate) {
             const flows = document.createElement('button'); flows.type = 'button'; flows.dataset.action = 'open-flows'; flows.textContent = t('chatInput.target.flow');
             flows.onclick = () => {void this.openFlows().catch(error => this.report(error));}; root.append(flows); cleanups.push(() => flows.remove());
         }
         discard.onclick = () => {void this.discard().catch(error => this.report(error));}; root.append(discard);
-        return {destroy: () => {scope?.destroy(); cleanups.forEach(stop => stop()); discard.remove();}};
+        return {destroy: () => {cleanups.forEach(stop => stop()); discard.remove();}};
     }
     private async openFlows(): Promise<void> {
         if (this.closed || this.transferred || this.view.inputBusy || !this.active) return;

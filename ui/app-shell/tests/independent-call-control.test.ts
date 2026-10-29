@@ -357,6 +357,7 @@ it('offers remaining-task stop only for a supported completed root with an unset
     expect(execute.mock.calls.every(([name]) => name === IndependentCallCommand.List)).toBe(true);
 });
 it('recovers a hanging remaining-task stop through its own persistent channel after reopening', async () => {
+    vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout']});
     let saved: readonly OperationRecord[] = [], request!: IndependentCallCancelRequest;
     const view = completedCallWithRemaining(), execute = vi.fn(async (name: string, args?: any) => {
         if (name === IndependentCallCommand.List) return [view];
@@ -370,6 +371,8 @@ it('recovers a hanging remaining-task stop through its own persistent channel af
     };
     open(); await panel!.refresh(); remainingButton().click();
     await vi.waitFor(() => expect(request?.requestId).toBeTruthy());
+    // Receipt observation is polled every second; advance it without racing the assertion deadline.
+    await vi.advanceTimersByTimeAsync(1000);
     await vi.waitFor(() => expect(saved[0]?.status).toBe('accepted'));
     expect(remainingButton().hidden).toBe(true); expect(view.executionTree!.settled).toBe(false);
     expect(document.body.textContent).toContain(t('callable.independent.cancelRemaining.accepted'));

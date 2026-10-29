@@ -31,6 +31,7 @@ export class SessionContextPicker implements MountedToolbar {
         } catch {
             this.picker.invalidate(); this.picker.element.hidden = true;
             this.error.textContent = t('callable.context.invalidDraft'); this.clear.hidden = false;
+            const menu = this.error.closest<HTMLDetailsElement>('.llm-chat__input-menu'); if (menu) menu.open = true;
         }
     }
     destroy(): void {this.picker.destroy(); this.clear.onclick = null; this.clear.remove(); this.error.remove();}

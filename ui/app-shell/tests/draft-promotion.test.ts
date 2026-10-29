@@ -208,6 +208,7 @@ it.each([{observed: false, zero: false}, {observed: true, zero: false}, {observe
             config: {value: zero ? 'No parameter result' : '${param.request}'}}], edges: [], outputs: {result: {value: '${nodes.result.outputs.result}'}}};
     await f.runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
     const targetSelect = tab.panel.querySelector('[data-call-target]');
+    expect(targetSelect.selectedOptions[0]?.textContent).not.toContain('First Flow');
     await vi.waitFor(() => expect([...targetSelect.options].some((item: any) => item.textContent.includes('First Flow'))).toBe(true));
     targetSelect.value = [...targetSelect.options].find((item: any) => item.textContent.includes('First Flow')).value;
     targetSelect.dispatchEvent(new Event('change', {bubbles: true}));
@@ -218,6 +219,7 @@ it.each([{observed: false, zero: false}, {observed: true, zero: false}, {observe
     const resolve = vi.spyOn(f.runtime.agentService, 'getAgentConfig').mockRejectedValue(new Error('No Agent definition should be required'));
     tab.panel.querySelector('.llm-chat__composer button[type=submit]').click();
     await vi.waitFor(() => expect(document.querySelector('dialog form')).not.toBeNull());
+    expect(tab.panel.querySelector<HTMLElement>('.llm-chat__arguments')!.hidden).toBe(true);
     if (!zero) document.querySelector<HTMLInputElement>('dialog [data-parameter="1"]')!.value = '7';
     document.querySelector('dialog form')!.dispatchEvent(new Event('submit', {cancelable: true}));
     await vi.waitFor(async () => {

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import {SessionCommand, type RootTargetCatalog} from '@itookit/llm-session/contracts';
 import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
 import {createApplicationRuntime} from '@itookit/app-core';
@@ -30,6 +31,13 @@ async function fixture() {
 }
 it('switches branch drafts through one ChatView and releases only the replaced host presentation', async () => {
     const f = await fixture(); expect(f.input.value).toBe('Main draft');
+    expect(f.root.querySelector('.llm-chat__header [data-chat-settings]')).toBeNull();
+    expect(f.root.querySelector('.llm-chat__input-menu [data-chat-settings]')).not.toBeNull();
+    expect(f.root.querySelector('.llm-chat__input-menu .workspace-context')).not.toBeNull();
+    expect(f.root.querySelector('.llm-chat__input-menu [data-selector-id=callMode]')).not.toBeNull();
+    expect(f.root.querySelector('[data-selector-id=modelTier]')).toBeNull();
+    expect(f.root.querySelector('[data-input-action=websearch]')).not.toBeNull();
+    expect(f.root.querySelector('[data-input-action=help]')).not.toBeNull();
     f.editor.setText('Edited main draft'); await f.editor.flushPendingSave(); f.input.focus(); f.change('review');
     await vi.waitFor(() => expect(f.input.value).toBe('Review draft'));
     expect(f.root.querySelector('.llm-chat__input')).toBe(f.input); expect(f.root.querySelector('.llm-chat__history')).toBe(f.history);
@@ -87,4 +95,37 @@ it('restores edits made through the legacy editor instead of its stale structure
     expect(root.querySelector<HTMLTextAreaElement>('.llm-chat__input')!.value).toBe('Edited through legacy UI');
     await editor.flushPendingSave();
     expect((await f.runtime.sessionRepository.getUIState(f.id))?.branchDrafts?.main?.inputText).toBe('Edited through legacy UI');
+});
+
+it('opens a redeployed Session with the current Agent version and preserves the unsent draft', async () => {
+    const f = await fixture(); await f.editor.destroy();
+    const catalog = await f.services.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets);
+    const target = catalog.entries.find(entry => entry.target.kind === 'agent' && !entry.input)!.target;
+    await f.runtime.sessionRepository.updateUIState(f.id, {branchDrafts: {main: {inputText: 'Unsent before deployment', inputTarget: {...target, version: 'before-deployment', digest: 'before-deployment'}}}});
+    const root = document.createElement('div'); document.body.append(root);
+    const editor = new IndependentSessionEditor(root, {sessionId: f.id, target: {kind: 'session', sessionId: f.id, branch: 'main'},
+        sessionRepository: f.services.sessionRepository, sessionManager: f.services.sessionManager,
+        commandBus: f.services.commandBus, agentService: f.services.agentService});
+    cleanup.push(() => editor.destroy()); await editor.init(root);
+    expect(root.querySelector<HTMLTextAreaElement>('.llm-chat__input')!.value).toBe('Unsent before deployment');
+    const select = root.querySelector<HTMLSelectElement>('[data-call-target]')!;
+    expect(JSON.parse(select.value)).toEqual([target.kind, target.id, target.version, target.digest]);
+    expect(root.querySelector('.llm-chat__validation')!.textContent).toBe('');
+    await editor.flushPendingSave();
+    expect((await f.runtime.sessionRepository.getUIState(f.id))?.branchDrafts?.main?.inputText).toBe('Unsent before deployment');
+});
+
+it('refreshes an unconfirmed target when its catalog changes after opening, keeping input and operation identity intact', async () => {
+    const f = await fixture(), execute = f.services.commandBus.execute.bind(f.services.commandBus);
+    const catalog = await execute<RootTargetCatalog>(SessionCommand.ListTargets);
+    const select = f.root.querySelector<HTMLSelectElement>('[data-call-target]')!, selected = JSON.parse(select.value);
+    const next = {...catalog, entries: catalog.entries.map(entry => entry.target.kind === selected[0] && entry.target.id === selected[1]
+        ? {...entry, target: {...entry.target, version: 'after-refresh', digest: 'after-refresh'}} : entry)};
+    const calls = vi.spyOn(f.services.commandBus, 'execute').mockImplementation(async (name, args) => name === SessionCommand.ListTargets ? next : execute(name, args));
+    f.editor.setText('New unsent text'); f.input.focus();
+    f.root.querySelector<HTMLButtonElement>('[data-chat-action=refresh]')!.click();
+    await vi.waitFor(() => expect(JSON.parse(select.value)[2]).toBe('after-refresh'));
+    expect(f.root.querySelector('.llm-chat__input')).toBe(f.input); expect(f.input.value).toBe('New unsent text'); expect(document.activeElement).toBe(f.input);
+    expect(f.root.querySelector('.llm-chat__validation')!.textContent).toBe('');
+    expect(calls.mock.calls.some(([name]) => name === SessionCommand.Submit || name === SessionCommand.Send)).toBe(false);
 });

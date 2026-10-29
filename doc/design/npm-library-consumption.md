@@ -98,6 +98,8 @@ pnpm dev
 
 安装前的 `scripts/check-workspace.mjs` 检查源码是否齐全及消费方协议；`--installed` 进一步检查实际链接。源码缺失会明确失败。目录存在与否不再触发 npm/source 切换，旧自动改写和反向迁移脚本已删除。
 
+同一检查还校验内部 peer 供给：任何包把 `@itookit/*` 声明为 peer（未标记 optional）时，必须至少有一个 `apps/*` 在自己的依赖中以 `workspace:*` 提供它，否则直接报错并指出应补的包与声明形式。这条守卫针对的是 pnpm 的盲区——peer 缺口只在真正执行解析时输出 WARN，锁文件已是最新时 `pnpm install` 会跳过解析而完全不报，缺口会拖到 `httpd:build` 的 `pnpm deploy` 才暴露。
+
 ## 可选 npm 构建
 
 ```bash

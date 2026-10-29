@@ -50,13 +50,34 @@ function dependencyErrors(pkg, packages, installed, snapshot) {
     });
 }
 
+function localNames(pkg) {
+    return Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.optionalDependencies });
+}
+
+/**
+ * Internal peers must be provided by some host app. pnpm only reports the gap while resolving,
+ * so an up-to-date lockfile hides a peer that no application declares.
+ */
+function peerErrors(packages) {
+    const names = new Set(packages.map(pkg => pkg.name));
+    const provided = new Set(packages.filter(pkg => pkg.group === 'apps').flatMap(localNames));
+    const missing = new Map();
+    for (const pkg of packages) for (const peer of Object.keys(pkg.peerDependencies ?? {})) {
+        if (!peer.startsWith('@itookit/') || !names.has(peer) || provided.has(peer)) continue;
+        if (pkg.peerDependenciesMeta?.[peer]?.optional) continue;
+        missing.set(peer, [...(missing.get(peer) ?? []), pkg.name]);
+    }
+    return [...missing].map(([peer, decliners]) =>
+        `${peer}: peer of ${decliners.join(', ')} is provided by no app; declare "${peer}": "workspace:*" in the apps that consume them`);
+}
+
 export function checkWorkspace(repository, { catalog = libraries, installed = false, snapshot = state.readSelection(repository) } = {}) {
     const packages = workspacePackages(repository, { includeLibraries: !snapshot });
     const file = resolve(repository, 'package.json');
     if (existsSync(file)) packages.push({ ...JSON.parse(readFileSync(file, 'utf8')), directory: repository, group: 'root' });
     const duplicates = packages.filter((pkg, index) => packages.findIndex(other => other.name === pkg.name) !== index);
     return [...(snapshot ? [] : sourceErrors(repository, catalog)), ...duplicates.map(pkg => `Duplicate workspace package: ${pkg.name}`),
-        ...packages.flatMap(pkg => dependencyErrors(pkg, packages, installed, snapshot))];
+        ...peerErrors(packages), ...packages.flatMap(pkg => dependencyErrors(pkg, packages, installed, snapshot))];
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

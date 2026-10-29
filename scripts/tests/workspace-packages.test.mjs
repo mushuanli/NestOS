@@ -46,3 +46,27 @@ test('applications must declare workspace dependencies and installed links resol
     assert.deepEqual(checkWorkspace(root, { catalog }), []);
     assert.match(checkWorkspace(root, { catalog, installed: true })[0], /cannot resolve/);
 });
+
+test('internal peers are reported when no application provides them', t => {
+    const root = fixture(t), settings = (extra = {}) => ({ name: '@itookit/app-settings', peerDependencies: { '@itookit/ui-common': 'workspace:*' }, ...extra });
+    packageAt(root, 'ui', 'ui-common', { name: '@itookit/ui-common' });
+    packageAt(root, 'ui', 'app-settings', settings());
+    packageAt(root, 'apps', 'web-app', { name: 'nestos-web', dependencies: { '@itookit/app-settings': 'workspace:*' } });
+    assert.match(checkWorkspace(root, { catalog: [] })[0], /@itookit\/ui-common: peer of @itookit\/app-settings is provided by no app/);
+    packageAt(root, 'ui', 'app-settings', settings({ peerDependenciesMeta: { '@itookit/ui-common': { optional: true } } }));
+    assert.deepEqual(checkWorkspace(root, { catalog: [] }), []);
+    packageAt(root, 'ui', 'app-settings', { name: '@itookit/app-settings', peerDependencies: { react: '^19.0.0' } });
+    assert.deepEqual(checkWorkspace(root, { catalog: [] }), []);
+});
+
+test('a host that declares the peer satisfies every declaring package once', t => {
+    const root = fixture(t), peers = { '@itookit/ui-common': 'workspace:*' };
+    packageAt(root, 'ui', 'ui-common', { name: '@itookit/ui-common' });
+    packageAt(root, 'ui', 'app-settings', { name: '@itookit/app-settings', peerDependencies: peers });
+    packageAt(root, 'ui', 'app-shell', { name: '@itookit/app-shell', peerDependencies: peers });
+    packageAt(root, 'apps', 'http-app', { name: '@itookit/http-app', dependencies: {
+        '@itookit/app-settings': 'workspace:*', '@itookit/app-shell': 'workspace:*' } });
+    assert.match(checkWorkspace(root, { catalog: [] }).join('\n'), /@itookit\/ui-common: peer of @itookit\/app-settings, @itookit\/app-shell is provided by no app/);
+    packageAt(root, 'apps', 'web-app', { name: 'nestos-web', dependencies: { '@itookit/ui-common': 'workspace:*' } });
+    assert.deepEqual(checkWorkspace(root, { catalog: [] }), []);
+});

@@ -246,10 +246,11 @@ export class ProjectRemoteMountService {
             && JSON.stringify(previous.headers) === JSON.stringify(server.headers);
         if (!before || !after || before.endpoint !== after.endpoint && !canReaddressConnection(before, after, legacyCredentialUnchanged)
             || before.username !== after.username || before.credentialRef !== after.credentialRef || before.anonymous !== after.anonymous
+            || !before.authorization && !!after.authorization && !canReaddressConnection(before, after, legacyCredentialUnchanged)
             || !!before.authorization && before.authorization.principalId !== after.authorization?.principalId
             || !!before.serverId && before.serverId !== after.serverId)
             throw new FSError('EBUSY', 'Referenced nestos-node connection cannot be retargeted or disabled');
-        if (before.endpoint !== after.endpoint || JSON.stringify(previous.auth) !== JSON.stringify(server.auth) || previous.apiKey !== server.apiKey)
+        if (before.endpoint !== after.endpoint || JSON.stringify(before.authorization) !== JSON.stringify(after.authorization) || JSON.stringify(previous.auth) !== JSON.stringify(server.auth) || previous.apiKey !== server.apiKey)
             for (const id of this.connectionProjects(server.id)) await this.beforeChange(id);
     }
     private recoversMCP(server: MCPServer, previous: MCPServer, after: RemoteFileSystemConfig): boolean {
@@ -303,15 +304,39 @@ export class ProjectRemoteMountService {
     }
     async refreshMCPConnections(): Promise<void> {
         if (!this.mcpConnections || this.closed) return;
-        const before = new Map(this.connections().map(item => [item.id,JSON.stringify([item.endpoint,item.username,item.credentialRef,item.anonymous,item.authorization])]));
+        const previous = this.connections();
+        const before = new Map(previous.map(item => [item.id,JSON.stringify([item.endpoint,item.username,item.credentialRef,item.anonymous,item.authorization])]));
         await this.mcpConnections.refresh();
+        const upgraded = await this.upgradeLegacyGrants(previous);
         for (const projectId of Object.keys(this.catalog.projects)) {
-            const mounts = this.list(projectId).filter(mount => mount.connectionId && before.get(mount.connectionId)
-                !== (() => { const next = this.connections().find(item => item.id === mount.connectionId); return next ? JSON.stringify([next.endpoint,next.username,next.credentialRef,next.anonymous,next.authorization]) : undefined; })());
+            const mounts = this.list(projectId).filter(mount => mount.connectionId && (upgraded.has(projectId) || before.get(mount.connectionId)
+                !== (() => { const next = this.connections().find(item => item.id === mount.connectionId); return next ? JSON.stringify([next.endpoint,next.username,next.credentialRef,next.anonymous,next.authorization]) : undefined; })()));
             for (const mount of mounts) await this.releaseSource(mount.mountId);
             if (mounts.length) await this.changed(projectId);
         }
         for (const listener of this.listeners) listener();
+    }
+    private async upgradeLegacyGrants(previous: RemoteFileSystemConfig[]): Promise<Set<string>> {
+        const started = Date.now(), operationId = randomUUID(), projects = {...this.catalog.projects};
+        let count = 0; const upgraded = new Set<string>();
+        for (const [projectId, mounts] of Object.entries(projects)) projects[projectId] = mounts.map(mount => {
+            if (mount.authorization || !mount.connectionId) return mount;
+            const before = previous.find(item => item.id === mount.connectionId);
+            const after = this.connections().find(item => item.id === mount.connectionId);
+            if (!legacyGrantMatches(mount, before, after)) return mount;
+            count++; upgraded.add(projectId);
+            return {...mount, authorization: structuredClone(after!.authorization)};
+        });
+        if (!count) return upgraded;
+        try {
+            await this.persist({...this.catalog, projects});
+            remoteLog.info('project.mount.authorization.upgrade', {operationId, stage: 'persist', result: 'success', count, durationMs: Date.now() - started});
+            return upgraded;
+        } catch (error) {
+            remoteLog.warn('project.mount.authorization.upgrade', {operationId, stage: 'persist', result: 'failure', count,
+                code: error instanceof FSError ? error.code : 'GRANT_UPGRADE_FAILED', durationMs: Date.now() - started});
+            throw error;
+        }
     }
     setMCPCredential(reference: string, password: string): void | (() => void) { return this.provider.setCredential(reference,password); }
     async discoverMCP(endpoint: string, username: string | undefined, credentialRef: string, options?: OperationOptions) {
@@ -732,4 +757,11 @@ function validateMount(mount: ProjectRemoteMount): void {
     const url = new URL(mount.endpoint);
     if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash
         || !/^[a-zA-Z0-9_-]+$/.test(mount.alias)) throw new FSError('EINVAL', 'Invalid remote connection');
+}
+
+/** Only the implicit legacy owner on the same node and credential may acquire an ACL snapshot. */
+function legacyGrantMatches(mount: ProjectRemoteMount, before?: RemoteFileSystemConfig, after?: RemoteFileSystemConfig): boolean {
+    if (!before || !after || mount.authorization || after.authorization?.principalId !== 'owner') return false;
+    return canReaddressConnection(before, after, true) && [before, mount].every(item => item.credentialRef === after.credentialRef
+        && item.username === after.username && item.serverId === after.serverId && !!item.anonymous === !!after.anonymous);
 }

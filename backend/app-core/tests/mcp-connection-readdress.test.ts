@@ -1,8 +1,9 @@
 import { expect, it, vi } from 'vitest';
-import { createFileSystemSource, MemoryBackend } from '@itookit/vfs-core';
+import { createFileSystemSource, FSError, MemoryBackend } from '@itookit/vfs-core';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { NESTOS_NODE_EXTENSION } from '../src/projects/mcp-remote-connections';
 import { canReaddressConnection, type RemoteFileSystemConfig } from '../src/projects/remote-connections';
+import { RemoteMountStore } from '../src/projects/remote-mount-store';
 import { mockNestOSNodeDiscovery } from './helpers/mcp-discovery';
 
 const authorization = { principalId: 'owner', anonymous: false, revision: 'a'.repeat(64) };
@@ -89,14 +90,17 @@ it('moves a legacy connection to loopback using its existing credential and newl
         await f.runtime.agentService.saveMCPServer({ ...f.configured, endpoint: 'http://127.0.0.1:8787/mcp' });
         expect(f.remote.connection('node')).toMatchObject({ endpoint: 'http://127.0.0.1:8787', authorization });
         expect(f.remote.findRemoteProject('node', '/docs')).toBe(f.project.project.id);
+        expect(f.remote.list(f.project.project.id)[0].authorization).toEqual(authorization);
+        const persisted = await new RemoteMountStore(await f.runtime.vfs.openFileSystem('/')).load();
+        expect(persisted?.projects[f.project.project.id][0].authorization).toEqual(authorization);
     } finally { await f.dispose(); }
 });
 
-it('refuses changing the credential during a legacy address migration', async () => {
+it.each(['http://127.0.0.1:8787/mcp', 'http://files.test:8787/mcp'])('refuses changing the credential during a legacy identity upgrade: %s', async endpoint => {
     const f = await fixture(true);
     try {
         f.descriptor.authorization = authorization;
-        await expect(f.runtime.agentService.saveMCPServer({ ...f.configured, endpoint: 'http://127.0.0.1:8787/mcp', apiKey: 'replacement-credential' }))
+        await expect(f.runtime.agentService.saveMCPServer({ ...f.configured, endpoint, apiKey: 'replacement-credential' }))
             .rejects.toMatchObject({ code: 'EBUSY' });
         expect(f.remote.connection('node').endpoint).toBe(original.endpoint);
     } finally { await f.dispose(); }
@@ -114,4 +118,20 @@ it.each(['node', 'principal', 'revision', 'missing-authorization', 'unreachable'
         expect(f.remote.connection('node').endpoint).toBe(original.endpoint);
         expect((await f.runtime.agentService.getMCPServers()).find(server => server.id === 'node')?.endpoint).toBe(f.configured.endpoint);
     } finally { await f.dispose(); }
+});
+
+it('retries a failed legacy grant persistence without losing the project or retaining its old file view', async () => {
+    const f = await fixture(true), files = await f.runtime.projects.openFiles(f.project.path);
+    const save = vi.spyOn(RemoteMountStore.prototype, 'save').mockRejectedValueOnce(new FSError('EIO', 'Fixture storage failure'));
+    try {
+        f.descriptor.authorization = authorization;
+        await expect(f.runtime.agentService.saveMCPServer({...f.configured, endpoint: 'http://127.0.0.1:8787/mcp'})).rejects.toThrow();
+        expect(f.remote.list(f.project.project.id)[0].authorization).toBeUndefined();
+        await f.remote.refreshMCPConnections();
+        expect(f.remote.findRemoteProject('node', '/docs')).toBe(f.project.project.id);
+        expect(f.remote.list(f.project.project.id)[0].authorization).toEqual(authorization);
+        expect(f.disposed).toHaveBeenCalledWith(original.endpoint);
+        const persisted = await new RemoteMountStore(await f.runtime.vfs.openFileSystem('/')).load();
+        expect(persisted?.projects[f.project.project.id][0].authorization).toEqual(authorization);
+    } finally {save.mockRestore(); await files.dispose(); await f.dispose();}
 });

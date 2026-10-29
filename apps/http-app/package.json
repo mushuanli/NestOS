@@ -20,6 +20,7 @@
     "@itookit/app-shell": "workspace:*",
     "@itookit/llm-ui-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
+    "@itookit/ui-common": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@itookit/nestos-node-driver": "workspace:*",
     "@itookit/vfsdriver-local": "workspace:*",

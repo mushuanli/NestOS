@@ -201,9 +201,15 @@ importers:
       '@itookit/llm-ui-adapter':
         specifier: workspace:*
         version: link:../../ui/llm-ui-adapter
+      '@itookit/mdx-adapter':
+        specifier: workspace:*
+        version: link:../../ui/mdx-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../../ui/ui-common
       '@itookit/vfs-ui':
         specifier: workspace:*
         version: link:../../libraries/vfs-ui
@@ -274,6 +280,9 @@ importers:
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../node-host
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../../ui/ui-common
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -399,6 +408,9 @@ importers:
       '@itookit/llm-ui-adapter':
         specifier: workspace:*
         version: link:../../ui/llm-ui-adapter
+      '@itookit/mdx-adapter':
+        specifier: workspace:*
+        version: link:../../ui/mdx-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
@@ -408,6 +420,9 @@ importers:
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../../ui/ui-common
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -514,6 +529,9 @@ importers:
       '@itookit/llm-ui-adapter':
         specifier: workspace:*
         version: link:../../ui/llm-ui-adapter
+      '@itookit/mdx-adapter':
+        specifier: workspace:*
+        version: link:../../ui/mdx-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
@@ -526,6 +544,9 @@ importers:
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../../ui/ui-common
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core

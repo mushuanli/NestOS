@@ -43,22 +43,24 @@ export async function saveMaterials(items, args, context, service) {
     const root = args.directory.replace(/\/$/, '');
     if (!root || root.split('/').some(part => part === '..' || part.startsWith('.')) || root.includes('\\')) throw fail('GOOGLE_DIRECTORY_INVALID');
     const scope = hash(JSON.stringify([service, args.connection, args.sourceKey ?? 'default', service === 'gmail' ? '' : args.calendarId])).slice(0, 24);
-    const directory = root + '/' + service + '-' + scope, manifest = directory + '/.sources.json';
+    const extension = args.resource === 'mail' ? 'email' : 'md';
+    const directory = args.resource ? root + '/' + args.connection + '/' + args.resource + '/' + (args.sourceKey ?? 'default') + (service === 'calendar' ? '-' + scope : '') : root + '/' + service + '-' + scope;
+    const manifest = directory + '/.sources.json';
     const previous = await readManifest(context.vfs, manifest);
     const files = items.map(item => ({key: hash(item.id), content: item.content}));
     if (files.some(file => Buffer.byteLength(file.content) > 128 * 1024)
         || files.reduce((size, file) => size + Buffer.byteLength(file.content), 0) > 4 * 1024 * 1024) throw fail('GOOGLE_MATERIAL_LIMIT');
     const current = new Set(files.map(file => file.key));
     try {
-        for (const file of files) {context.signal?.throwIfAborted(); await context.vfs.writeFile(directory + '/' + file.key + '.md', file.content);}
+        for (const file of files) {context.signal?.throwIfAborted(); await context.vfs.writeFile(directory + '/' + file.key + '.' + extension, file.content);}
         for (const id of previous.filter(id => !current.has(id))) {
             context.signal?.throwIfAborted();
-            await context.vfs.writeFile(directory + '/' + id + '.md', 'Source unavailable in the latest complete collection. No supported personal facts.');
+            await context.vfs.writeFile(directory + '/' + id + '.' + extension, 'Source unavailable in the latest complete collection. No supported personal facts.');
         }
         await context.vfs.writeFile(manifest, JSON.stringify([...current]));
     } catch {throw fail(context.signal?.aborted ? 'GOOGLE_CANCELLED' : 'GOOGLE_SOURCE_WRITE_FAILED');}
     return {count: files.length, removed: previous.filter(id => !current.has(id)).length, directory,
-        include: ['file:' + directory + '/*.md'], complete: true};
+        include: ['file:' + directory + '/*.' + extension], complete: true};
 }
 
 async function readManifest(vfs, manifest) {

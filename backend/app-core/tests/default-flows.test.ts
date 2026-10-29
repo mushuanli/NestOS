@@ -105,9 +105,9 @@ it('uses one essay template and one Anki entry while preserving explicitly insta
     await store.installBuiltinDraft(external);
     await seedDefaultFlows(store);
     expect((await store.listDrafts()).map(draft => draft.id).sort()).toEqual([
-        'anki-generate', 'essay-review', 'external-workflow', 'google-calendar-collect', 'google-gmail-collect',
+        'anki-generate', 'essay-review', 'external-workflow',
     ]);
-    expect(createNestosFlowLibrary().map(draft => draft.id)).toEqual(['essay-review', 'anki-generate', 'google-gmail-collect', 'google-calendar-collect']);
+    expect(createNestosFlowLibrary().map(draft => draft.id)).toEqual(['essay-review', 'anki-generate']);
     expect(createNestosFlowDrawers()).toEqual([]);
     await seedDefaultFlows(new FlowDefinitionStore(storage));
     expect(await store.loadDraft(external.id)).toMatchObject({ name: external.name });
@@ -122,12 +122,4 @@ it.each(['essay-review', 'essay-review-isolated'])('keeps existing %s files and 
     expect(await store.loadDraft(id)).toEqual(installed);
     expect(await store.loadRevision(id, published.revision)).toEqual(published);
     expect(createNestosFlowLibrary().filter(flow => flow.id.startsWith('essay-review')).map(flow => flow.id)).toEqual(['essay-review']);
-});
-
-it('ships Google collection templates with visible positions for every graph node', () => {
-    const flows = createNestosFlowLibrary().filter(flow => flow.id.startsWith('google-'));
-    expect(flows).toHaveLength(2);
-    for (const flow of flows) {
-        for (const node of flow.nodes) expect(flow.layout.nodes?.[node.id]).toMatchObject({x: expect.any(Number), y: expect.any(Number)});
-    }
 });

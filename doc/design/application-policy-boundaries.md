@@ -81,6 +81,10 @@ C4Component
 
 Agent 的 `execution.kind: flow` 引用内部注册 Flow 的 ID 和可选修订号，不依赖源码目录，也不要求 Flow 反向定义 Agent。宿主注入实际插件目录和资源观察端口，派生 `availability`；删除文件后禁用新调用，恢复并发布后重新核对，状态不写回 Agent 源文件。默认跟随最新发布，未发布编辑不影响已发布调用；参数表单每次读取所选修订的签名。Agent 归档携带所引用的发布 Flow 和跨文件依赖，内部局部函数身份保留。执行、队列冻结、提示词与恢复均复用通用 Flow/Kernel，详见[调用契约](flow-invocation-composition.md#agent-引用内部-flow)。
 
+## 工具包贡献与用户连接
+
+外部功能的连接字段和 Flow 归工具包维护。manifest.flows 声明包内资源，宿主验证已注册版本和内容指纹，通过 ToolPackages.installFlows 复用恢复与发布；应用内置目录不再承载新增厂商采集流程。ToolPackages.connections 暴露通用用户配置，秘密解析仅在宿主绑定的 ToolConnectionAccess 中提供。资源写入仍走已授权文件端口；完整 OAuth 与资源目标绑定的已实现/待实现边界见[外部功能扩展](function-extensions.md)。
+
 ## 配置写操作
 
 运行时创建唯一 `runtime.configuration`，设置页面与工具箱共用它。

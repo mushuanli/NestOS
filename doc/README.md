@@ -64,3 +64,5 @@
 产品改名、三个 repo 对应关系、旧配置兼容和 httpd swap 开关见 [NestOS 命名与迁移](nestos-rename.md)。
 
 - [文件引用与 Flow 输入标准](design/resource-references.md)：笔记目录迁移、导航和项目引用语法及分层。
+
+外部工具的配置、流程资源、用户认证与资源发布边界见[外部功能扩展](design/function-extensions.md)。

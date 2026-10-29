@@ -25,8 +25,8 @@ it('binds shared Google tool code to each user’s private connection and worksp
             const tools = await loadNodeToolModules(JSON.stringify([module]), user.connections);
             await user.connections.save({id: 'personal', type: 'google-workspace', name: 'Personal', values: {
                 clientId: 'client', clientSecret: user.name + '-secret', refreshToken: user.name + '-token'}});
-            const tool = tools.find(tool => tool.name === 'google.gmail.collect')!;
-            await tool.call(tool.inputSchema.parse({connection: 'personal', directory: 'imports/google'}), {
+            const tool = tools.find(tool => tool.name === 'google.collect')!;
+            await tool.call(tool.inputSchema.parse({resource: 'mail', connection: 'personal', directory: 'imports/mail'}), {
                 operationId: 'collect-' + user.name, onProgress: async (value: {message: string}) => {logs.push(value.message);},
                 vfs: {readFile: async (file: string) => {
                     if (!user.files.has(file)) throw Object.assign(new Error('Missing'), {code: 'ENOENT'});
@@ -35,6 +35,7 @@ it('binds shared Google tool code to each user’s private connection and worksp
             } as never);
         }
         expect([...users[0].files.values()].join('')).toContain('alice private message');
+        expect([...users[0].files.keys()].some(file => file.startsWith('imports/mail/personal/mail/default/') && file.endsWith('.email'))).toBe(true);
         expect([...users[0].files.values()].join('')).not.toContain('bob private message');
         expect([...users[1].files.values()].join('')).toContain('bob private message');
         expect([...users[1].files.values()].join('')).not.toContain('alice private message');

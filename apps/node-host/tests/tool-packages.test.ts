@@ -37,6 +37,21 @@ async function fixture({id = 'fixture', version = '0.1.0', binary = true, root: 
     }};
 }
 async function executable(file: string): Promise<void> {await writeFile(file, '#!/bin/sh\nexit 0\n'); await chmod(file, 0o755);}
+it('imports only registered fingerprinted Flow resources and keeps business definitions in their package', async () => {
+    const f = await fixture();
+    await mkdir(path.join(f.packageRoot, 'flows'));
+    const template = {id: 'external-import', name: 'External import', draftVersion: 1, nodes: [], edges: [], updatedAt: 0};
+    await writeFile(path.join(f.packageRoot, 'flows', 'import.flow'), JSON.stringify(template));
+    await writeFile(path.join(f.packageRoot, 'nestos-tool.json'), JSON.stringify({...f.manifest, flows: ['flows/import.flow']}));
+    const manager = f.manager(); await manager.initialize(); manager.bind(await runtime());
+    expect(await manager.list()).toMatchObject([{flowCount: 1, status: 'available'}]);
+    await expect(manager.flowTemplates('fixture', '0.1.0')).rejects.toThrow('Register this package version');
+    await manager.ensure([{id: f.toolId, version: '1'}]);
+    expect(await manager.flowTemplates('fixture', '0.1.0')).toEqual([{...template, layout: {}}]);
+    await expect(manager.flowTemplates('../fixture', '0.1.0')).rejects.toThrow();
+    const restarted = f.manager(); await restarted.initialize();
+    expect(await restarted.flowTemplates('fixture', '0.1.0')).toEqual([{...template, layout: {}}]);
+});
 async function runtime(tools: import('@itookit/tools').Tool[] = []) {
     const instance = await createKernelAdaptersRuntime({llmDriver: {} as IDeviceDriver, additionalTools: tools});
     cleanups.push(() => instance.dispose()); return instance;

@@ -1,6 +1,6 @@
 {
-  "id": "google-calendar-collect",
-  "name": "Google Calendar 日程采集",
+  "id": "google-gmail-collect",
+  "name": "Gmail 邮件采集",
   "draftVersion": 1,
   "updatedAt": 0,
   "parameters": [
@@ -18,8 +18,8 @@
       "label": "保存来源目录",
       "type": "string",
       "required": true,
-      "default": "imports/google",
-      "description": "保存到当前执行工作区的目录。扫描范围应包含该目录。",
+      "default": "imports/mail",
+      "description": "当前用户授权的资源保存目录；账号目录由工具按连接标识隔离。",
       "role": "option"
     },
     {
@@ -34,35 +34,13 @@
       "integer": true
     },
     {
-      "name": "calendarId",
-      "label": "日历",
+      "name": "query",
+      "label": "邮件范围",
       "type": "string",
       "required": true,
-      "default": "primary",
-      "description": "primary 表示当前账号主日历；也可填写有读取权限的日历 ID。",
+      "default": "newer_than:30d -in:trash -in:spam",
+      "description": "Gmail 搜索语法，例如 newer_than:7d label:work。完整读取范围内的邮件，不修改邮箱。",
       "role": "option"
-    },
-    {
-      "name": "pastDays",
-      "label": "回看天数",
-      "type": "number",
-      "default": 7,
-      "description": "相对于采集当天，0–180。",
-      "role": "option",
-      "minimum": 0,
-      "maximum": 180,
-      "integer": true
-    },
-    {
-      "name": "futureDays",
-      "label": "未来天数",
-      "type": "number",
-      "default": 30,
-      "description": "相对于采集当天，1–180。包含全天日程、重复事件实例和取消状态。",
-      "role": "option",
-      "minimum": 1,
-      "maximum": 180,
-      "integer": true
     },
     {
       "name": "sourceKey",
@@ -85,20 +63,19 @@
       "pluginVersion": "1.0.0",
       "inputs": {},
       "capabilities": [
-        "google.calendar.collect"
+        "google.collect"
       ],
       "config": {
-        "toolId": "google.calendar.collect",
+        "toolId": "google.collect",
         "toolVersion": "1",
         "approval": "none",
         "args": {
           "connection": "${param.connection}",
           "directory": "${param.directory}",
           "maxItems": "${param.maxItems}",
-          "calendarId": "${param.calendarId}",
-          "pastDays": "${param.pastDays}",
-          "futureDays": "${param.futureDays}",
-          "sourceKey": "${param.sourceKey}"
+          "query": "${param.query}",
+          "sourceKey": "${param.sourceKey}",
+          "resource": "mail"
         }
       }
     }

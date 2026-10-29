@@ -31,3 +31,5 @@ httpd 仅在 http.editorSwap=true 时装配 EditorSwapStore，默认 ~/swap；�
 - v15 的 ViewUpdateReads 按浏览器视图隔离大通知读取，超过 64 KiB 的包不直接进入 SSE；32 项 / 32 MiB / 60 秒有界保留，释放视图清空。updates-read 只读取原准备结果，认证、clientId 和协议检查保持；缺失标记视图过期。审计不得包含正文。
 
 - runtime/tool-connections 按用户私有 authDir 保存外部工具连接，目录 0700、文件 0600；Tool 工厂接收用户绑定的 register/resolve，RPC 仅提供脱敏列表及保存/删除，禁止通过模型参数或全局环境账号选择用户。组织空间不共享个人凭据。
+
+- 工具包 manifest.flows 是包内相对路径声明，随工具代码计入快照指纹；读取只接受已注册精确版本，不执行工具工厂。工具面板通过通用 installFlows 入口安装和发布资源；业务 Flow 留在外部包。

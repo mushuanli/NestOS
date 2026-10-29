@@ -198,3 +198,5 @@ HTTP 视图恢复通过 AppHandle.captureRecovery/suspendForRecovery 和工作�
 LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原有 ViewRefresh 调度按 1/2/4/8/15 秒退避重试；隐藏时暂停，销毁取消重试；已删除的身份结束刷新，单个 Task 缺失不阻止其他 Task 投影，暂时读取失败不得丢失最终完成事件。
 
 工作台智能体侧栏的更多菜单复用管理服务提供配置、重命名与删除；重命名只改显示名称，保留 Agent ID，删除前确认且不删除已有会话。远程 Agent 只提供配置入口，不在本地重命名或删除。失败保留列表并显示具体原因，日志只含身份、操作阶段、结果和耗时。正文 `::@` 的默认目标读取来源 Session 分支的目标/Agent，再回退 default；候选可见性由公开目录和 exposure 决定，禁止按测试名称过滤。
+
+工具包面板通过通用 installFlows 安装扩展携带的流程，configuration/tool-connections 渲染外部 Schema 声明的用户连接字段。该表单不包含厂商分支，秘密只提交不回填；授权文件只在本地读取。数字分身仅保留同一表单的快捷入口。

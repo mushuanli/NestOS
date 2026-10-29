@@ -1,12 +1,17 @@
 import {flowToolDependencyIssues} from '@itookit/llm-flow/contracts';
-import type {FlowToolDependency, ToolDependencyResolver, ToolDependencyResult, ToolDependencyState, ToolPackages} from '@itookit/app-contracts/services';
+import type {FlowToolDependency, ToolDependencyResolver, ToolDependencyResult, ToolDependencyState, ToolPackages, ToolConnections} from '@itookit/app-contracts/services';
 import type {IToolService} from '@itookit/tools/contracts';
 
 type Catalog = Pick<IToolService, 'getToolMeta'>;
 
 /** Application adapters accept identities; only the host knows module and executable locations. */
 export class FlowToolPackages implements ToolPackages {
-    constructor(private readonly catalog: Catalog, private readonly resolver?: ToolDependencyResolver) {}
+    constructor(private readonly catalog: Catalog, private readonly resolver?: ToolDependencyResolver, readonly connections?: ToolConnections,
+        private readonly restoreFlows?: (templates: import('@itookit/llm-flow/contracts').FlowDraft[]) => Promise<number>) {}
+    async installFlows(packageId: string, version: string): Promise<number> {
+        if (!this.resolver?.flowTemplates || !this.restoreFlows) throw new Error('TOOL_PACKAGE_RESOURCES_UNAVAILABLE');
+        return this.restoreFlows(await this.resolver.flowTemplates(packageId, version));
+    }
     list() {return this.resolver?.list?.() ?? Promise.resolve([]);}
     async ensure(dependencies: FlowToolDependency[]): Promise<ToolDependencyResult> {
         if (flowToolDependencyIssues(dependencies).length) throw Object.assign(new Error('Invalid tool dependency request'), {code: 'FLOW_TOOL_DEPENDENCY_INVALID'});

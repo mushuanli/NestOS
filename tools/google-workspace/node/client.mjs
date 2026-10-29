@@ -2,6 +2,8 @@ export const connectionType = {
     id: 'google-workspace', name: 'Google：Gmail / Calendar',
     description: '使用自己的 Google OAuth 连接。邮件需 gmail.readonly，日历需 calendar.events.readonly。凭据仅保存于当前用户的私有目录。',
     fields: [
+        {name: 'mailDirectory', label: '邮件保存目录', description: '留空使用 imports/mail；目录沿用现有工作区文件授权。每个连接保存到独立账号目录。'},
+        {name: 'calendarDirectory', label: '日历保存目录', description: '留空使用 imports/calendar；目录沿用现有工作区文件授权。'},
         {name: 'clientId', label: 'OAuth Client ID', required: true},
         {name: 'clientSecret', label: 'OAuth Client Secret', secret: true, required: true},
         {name: 'refreshToken', label: 'Refresh Token', secret: true, required: true,
@@ -59,6 +61,7 @@ export async function googleClient(connections, id, signal, fetcher = fetch) {
         if (!['https://gmail.googleapis.com', 'https://www.googleapis.com'].includes(new URL(url).origin)) throw fail('GOOGLE_ENDPOINT_INVALID');
         return jsonRequest(fetcher, url, {headers: {Authorization: 'Bearer ' + token.access_token}, signal}, stage);
     };
+    request.destinations = {mail: values.mailDirectory || 'imports/mail', calendar: values.calendarDirectory || 'imports/calendar'};
     request.verifyConnection = async () => {
         const current = await connections.resolve(id, connectionType.id);
         if (['clientId', 'clientSecret', 'refreshToken'].some(field => current[field] !== values[field])) throw fail('GOOGLE_CONNECTION_CHANGED');

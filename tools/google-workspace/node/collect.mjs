@@ -8,6 +8,7 @@ export async function collectGoogle(service, args, context, connections, fetcher
     try {
         const signal = AbortSignal.any([context.signal ?? new AbortController().signal, AbortSignal.timeout(120000)]);
         const client = await googleClient(connections, args.connection, signal, fetcher);
+        if (!args.directory) args = {...args, directory: client.destinations[args.resource]};
         stage = 'fetch';
         const items = service === 'gmail' ? await mails(client, args, signal) : await events(client, args, signal);
         stage = 'connection-check'; await client.verifyConnection();

@@ -1,4 +1,5 @@
 import {PublishedScannerCollector} from '../digital-twin/scanner-collector';
+import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {recoverFlowSchedulers} from './flow-scheduler-recovery';
 import {bindTwinWorkspaces} from '../digital-twin/workspaces';
 import {PublishedScannerExecutor} from '../digital-twin/scanner-executor';
@@ -476,7 +477,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             twin.setScannerExecution(new PublishedScannerExecutor({kernel: kernelCore, repository: sessionRepository,
             ready: () => ({commands: commandBus, calls: independentCalls}), exchanges: job => twin.scannerExchangeCount(job), bind: (job, sessionId) => twin.bindScanner(job, sessionId)}));
         }
-        flowInstallations = new FlowInstallationService(commandBus, new FlowToolPackages(kernel.toolCatalog, options.toolDependencies));
+        flowInstallations = new FlowInstallationService(commandBus, new FlowToolPackages(kernel.toolCatalog, options.toolDependencies, options.toolConnections,
+            templates => commandBus.execute<number>(FlowLibraryCommand.Restore, {templates})));
         const installations = flowInstallations;
         cleanupFns.push(() => installations.close());
         const conversationViews = new ConversationViews();

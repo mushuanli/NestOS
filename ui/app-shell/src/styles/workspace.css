@@ -617,3 +617,9 @@
 .workbench-tabs__error > button { margin-inline-start: 8px; min-height: 36px; }
 .workbench-filters__trigger[hidden] { display: none; }
 .workbench-filters__trigger--icon { width: 44px; min-width: 44px; padding: 8px; }
+
+.tool-connections { margin-block: 16px; padding: 16px; border: 1px solid var(--mm-border-color, #e2e8f0); border-radius: 8px; }
+.tool-connections__form { display: grid; gap: 12px; margin-block: 16px; }
+.tool-connections__form label { display: flex; flex-direction: column; gap: 6px; }
+.tool-connections__form input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px; font: inherit; }
+.tool-connections__help { color: var(--text-secondary, #666); font-size: 13px; }

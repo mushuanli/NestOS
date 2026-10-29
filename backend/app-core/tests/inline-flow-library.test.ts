@@ -27,7 +27,7 @@ it('restores and publishes one standalone definition without installing its inli
     expect(revision.functions?.[0].functions?.map(flow => flow.id)).toEqual(['inner']);
     expect(revision.dependencyLocks?.invoke).toMatchObject({ flowId: 'helper', digest: expect.any(String) });
     const drafts = await runtime.commandBus.execute<FlowDraft[]>(FlowCommand.DraftList, {});
-    expect(drafts.map(flow => flow.id).sort()).toEqual(['anki-generate', 'essay-review', 'google-calendar-collect', 'google-gmail-collect', 'standalone']);
+    expect(drafts.map(flow => flow.id).sort()).toEqual(['anki-generate', 'essay-review', 'standalone']);
     expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, { id: 'helper' })).toBeNull();
     expect(await runtime.commandBus.execute(FlowLibraryCommand.Restore, { templates: [template] })).toBe(0);
 });

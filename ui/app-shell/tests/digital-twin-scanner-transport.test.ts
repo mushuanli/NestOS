@@ -5,12 +5,12 @@ import {RpcPeer, installViewProjections} from '@itookit/app-transport/applicatio
 import {createHostedView} from '@itookit/node-host/http';
 
 it('exposes independently authorized Twin workspace handles and scanner catalogs through RPC', async () => {
-    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false,
-        digitalTwinWorkspaces: [{twinId: 'team', ownerId: 'org:team', name: 'Team', kind: 'organization', authorize: async () => {}}]});
     const save = vi.fn(async () => {});
-    runtime.digitalTwin!.setSourceConnections({snapshot: async () => ({types: [{id: 'fixture', name: 'Fixture', description: '',
+    const connections = {snapshot: async () => ({types: [{id: 'fixture', name: 'Fixture', description: '',
         fields: [{name: 'token', label: 'Token', secret: true}]}], connections: [{id: 'personal', type: 'fixture', name: 'Personal', values: {}, configuredSecrets: ['token']}]}),
-        save, remove: async () => {}});
+        save, remove: async () => {}, register() {}, resolve: async () => ({token: 'host-private-token'})};
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false, toolConnections: connections,
+        digitalTwinWorkspaces: [{twinId: 'team', ownerId: 'org:team', name: 'Team', kind: 'organization', authorize: async () => {}}]});
     const view = await createHostedView(runtime);
     let server!: RpcPeer;
     const client = new RpcPeer('client', call => server.handle(call), console.error, installViewProjections);
@@ -18,6 +18,13 @@ it('exposes independently authorized Twin workspace handles and scanner catalogs
     try {
         const root = client.decode(await server.expose(view.root)); client.applyUpdates(await server.refresh());
         const personal = root.services.digitalTwin;
+        const toolbox = await root.backend.toolboxView();
+        expect(toolbox.resources.toolPackages.installFlows).toBeTypeOf('function');
+        const accountPort = toolbox.resources.toolPackages.connections;
+        expect((await accountPort.snapshot()).connections[0].configuredSecrets).toEqual(['token']);
+        expect(accountPort.resolve).toBeUndefined(); expect(accountPort.register).toBeUndefined();
+        await accountPort.save({id: 'personal', type: 'fixture', name: 'Personal', values: {token: 'from-tool-panel'}});
+        expect(save).toHaveBeenCalledWith({id: 'personal', type: 'fixture', name: 'Personal', values: {token: 'from-tool-panel'}});
         expect((await personal.listSourceConnections()).connections[0]).toMatchObject({values: {}, configuredSecrets: ['token']});
         await personal.saveSourceConnection({id: 'personal', type: 'fixture', name: 'Personal', values: {token: 'private-token'}});
         expect(save).toHaveBeenCalledWith({id: 'personal', type: 'fixture', name: 'Personal', values: {token: 'private-token'}});

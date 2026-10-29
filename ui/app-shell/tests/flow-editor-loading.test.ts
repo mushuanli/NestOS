@@ -2,11 +2,12 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {FlowDefinitionStore, type FlowStore} from '@itookit/llm-flow';
 import {FlowCommand} from '@itookit/llm-flow/contracts';
-import calendar from '../../../backend/app-core/src/presets/google-calendar-collect.json';
-import gmail from '../../../backend/app-core/src/presets/google-gmail-collect.json';
 import {FlowsEditor} from '../../llm-ui-adapter/src/components/FlowsEditor';
 import {DagWorkbench} from '../../llm-ui-adapter/src/components/DagWorkbench';
 
+const calendar = {id: 'collection-a', name: 'Collection', draftVersion: 1, updatedAt: 0, layout: {}, edges: [],
+    nodes: [{id: 'collect', name: 'Collect', plugin: 'builtin.tool', pluginVersion: '1.0.0', inputs: {}, config: {toolId: 'fixture.collect', toolVersion: '1', args: {}}}]};
+const gmail = {...calendar, id: 'collection-b'};
 const editors: FlowsEditor[] = [];
 afterEach(async () => {for (const editor of editors.splice(0)) await editor.destroy(); vi.restoreAllMocks(); document.body.replaceChildren();});
 
@@ -29,7 +30,7 @@ it('reports render failures with safe diagnostics instead of silently leaving an
     vi.spyOn(DagWorkbench.prototype, 'setDraft').mockImplementation(() => {throw new Error('private source text and token');});
     const execute = vi.fn(async (command: string) => command === FlowCommand.Presentations ? [] : calendar);
     const root = document.createElement('div'); document.body.append(root);
-    const editor = new FlowsEditor({commands: {execute} as never}, '/google-calendar-collect.flow'); editors.push(editor);
+    const editor = new FlowsEditor({commands: {execute} as never}, '/collection-a.flow'); editors.push(editor);
     await editor.init(root);
     expect(root.querySelector('[role=alert]')?.textContent).toContain('FLOW_EDITOR_RENDER_FAILED');
     expect(log).toHaveBeenCalledWith('[FlowEditor]', expect.objectContaining({stage: 'draft.render', result: 'failure', code: 'FLOW_EDITOR_RENDER_FAILED', operationId: expect.any(String)}));

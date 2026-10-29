@@ -18,6 +18,21 @@ function setup(controls: {toolPackages?: ToolPackages; flowInstallations?: FlowI
 }
 
 const available: ToolPackageInfo = {id: 'external-package', name: '<img src=x>', version: '1.2.0', status: 'available', tools: [{id: 'document.inspect', version: '2'}]};
+it('installs package-owned workflows through a trusted identity and configures user connections in the tool panel', async () => {
+    const installFlows = vi.fn(async () => 1), save = vi.fn(async () => {});
+    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', flowCount: 1}], ensure: vi.fn(), installFlows,
+        connections: {snapshot: async () => ({types: [{id: 'external', name: 'External service', description: '', fields: [{name: 'key', label: 'Key', secret: true, required: true}]}], connections: []}), save, remove: vi.fn()}}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-flows]')).not.toBeNull());
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.click();
+    await vi.waitFor(() => expect(installFlows).toHaveBeenCalledWith(available.id, available.version));
+    await vi.waitFor(() => expect(f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(false));
+    const form = f.dialog.querySelector<HTMLFormElement>('[data-form=sourceConnection]')!;
+    form.querySelector<HTMLInputElement>('[name=id]')!.value = 'personal'; form.querySelector<HTMLInputElement>('[name=name]')!.value = 'My service';
+    form.querySelector<HTMLInputElement>('[name=key]')!.value = 'private-key';
+    form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+    await vi.waitFor(() => expect(save).toHaveBeenCalledWith({id: 'personal', type: 'external', name: 'My service', values: {key: 'private-key'}}));
+    await vi.waitFor(() => expect(f.dialog.querySelector<HTMLInputElement>('[name=key]')!.value).toBe(''));
+});
 
 it('registers only catalog tool identities, reports the actual result and ignores duplicate clicks', async () => {
     let release!: (value: {tools: Array<{id: string; status: 'ready'}>}) => void;

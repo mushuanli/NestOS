@@ -1,4 +1,4 @@
-import {sourceConnectionSettings, importConnection, type SourceConnections} from './source-connections';
+import {sourceConnectionSettings, importConnection, type SourceConnections} from '../configuration/tool-connections';
 import {scannerFieldChange, updateExecutorMode, updateInputMode, readScannerExecutor, readScannerFile} from './scanner-fields';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
 import { memoryInput } from './memory-input';

@@ -2,6 +2,7 @@ import {readFile, readdir, realpath, stat} from 'node:fs/promises';
 import path from 'node:path';
 
 export interface ToolPackageManifest {
+    flows?: string[];
     format: 1; id: string; version: string; name?: string; description?: string;
     module: string; files: string[]; tools: Array<{id: string; version?: string}>;
     executables: Array<{env: string; command: string; default: string}>;
@@ -28,6 +29,7 @@ export async function readToolPackage(root: string): Promise<ToolPackageSource> 
     const item = data as Record<string, unknown>;
     if (item.format !== 1 || !Array.isArray(item.tools) || !item.tools.length) throw packageError('TOOL_PACKAGE_MANIFEST_INVALID', 'Unsupported or empty tool package manifest');
     const manifest: ToolPackageManifest = {format: 1, id: packageIdentity(item.id, 'id'), version: packageIdentity(item.version, 'version'),
+        ...(item.flows === undefined ? {} : {flows: relativeEntries(item.flows)}),
         module: packageRelative(item.module), files: relativeEntries(item.files), tools: toolEntries(item.tools), executables: executableEntries(item.executables),
         ...(typeof item.name === 'string' ? {name: item.name} : {}), ...(typeof item.description === 'string' ? {description: item.description} : {})};
     return {root: await realpath(root), manifest};

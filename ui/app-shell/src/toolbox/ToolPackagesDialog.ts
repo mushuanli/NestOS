@@ -1,5 +1,6 @@
 import {createModuleLogger, escapeHTML, randomUUID, t, type LocaleKey} from '@itookit/common';
 import type {FlowInstallationReport, FlowInstallations, ToolPackageInfo, ToolPackages} from '@itookit/app-contracts/services';
+import {sourceConnectionSettings, importConnection, type SourceConnections} from '../configuration/tool-connections';
 
 interface PackageControls {toolPackages?: ToolPackages; flowInstallations?: FlowInstallations}
 const log = createModuleLogger('tool-package-ui');
@@ -15,6 +16,7 @@ class ToolPackagesDialog {
     private readonly body = document.createElement('div');
     private packages: ToolPackageInfo[] = [];
     private flows: FlowInstallationReport[] = [];
+    private connectionState: SourceConnections = {types: [], connections: []};
     private busy = false;
     private disposed = false;
     private error = '';
@@ -30,6 +32,13 @@ class ToolPackagesDialog {
         const close = document.createElement('button'); close.type = 'button'; close.textContent = t('action.close'); close.onclick = () => this.dialog.close();
         header.append(title, close); this.dialog.append(header, this.body); document.body.append(this.dialog);
         this.body.onclick = event => this.click(event); this.dialog.showModal(); void this.refresh();
+        this.body.onsubmit = event => {event.preventDefault(); const form = event.target as HTMLFormElement; if (form.dataset.form === 'sourceConnection') void this.saveConnection(form);};
+        this.body.onchange = event => {
+            const input = event.target;
+            if (input instanceof HTMLInputElement && input.name === 'connectionImport') void importConnection(input).catch(() => {
+                if (!this.disposed) this.body.querySelector('[role=alert]')!.textContent = t('toolbox.connections.connectionImportInvalid');
+            });
+        };
         return new Promise(resolve => {
             const abort = () => this.dialog.close(); signal?.addEventListener('abort', abort, {once: true});
             this.dialog.addEventListener('close', () => {
@@ -47,6 +56,15 @@ class ToolPackagesDialog {
         if (packageId) {const item = this.packages.find(item => item.id === packageId); if (item) void this.register(item);}
         if (target.dataset.flowCheck) void this.flowAction(target.dataset.flowCheck, false);
         if (target.dataset.flowEnsure) void this.flowAction(target.dataset.flowEnsure, true);
+        if (target.dataset.packageFlows) {
+            const item = this.packages.find(item => item.id === target.dataset.packageFlows && item.version === target.dataset.packageVersion);
+            if (item) void this.run('tool.resources.install', async () => {
+                await this.controls.toolPackages?.installFlows?.(item.id, item.version); await this.readState(); if (!this.disposed) await this.changed();
+            });
+        }
+        if (target.dataset.action === 'removeSourceConnection') void this.run('tool.connection.remove', async () => {
+            await this.controls.toolPackages?.connections?.remove(target.dataset.id!); await this.readState();
+        });
     }
 
     private async refresh(): Promise<void> {
@@ -54,12 +72,20 @@ class ToolPackagesDialog {
     }
 
     private async readState(): Promise<void> {
-        const results = await Promise.allSettled([this.controls.toolPackages?.list() ?? [], this.controls.flowInstallations?.list() ?? []]);
+        const results = await Promise.allSettled([this.controls.toolPackages?.list() ?? [], this.controls.flowInstallations?.list() ?? [],
+            this.controls.toolPackages?.connections?.snapshot() ?? {types: [], connections: []}]);
         if (this.disposed) return;
-        const [packages, flows] = results;
+        const [packages, flows, connections] = results;
         if (packages.status === 'fulfilled') this.packages = packages.value;
         if (flows.status === 'fulfilled') this.flows = flows.value;
+        if (connections.status === 'fulfilled') this.connectionState = connections.value;
         this.error = [this.error, ...results.flatMap(result => result.status === 'rejected' ? [reason(result.reason)] : [])].filter(Boolean).join('；');
+    }
+
+    private async saveConnection(form: HTMLFormElement): Promise<void> {
+        const data = new FormData(form), input = {id: String(data.get('id') ?? ''), type: form.dataset.type!, name: String(data.get('name') ?? ''),
+            values: Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('[data-connection-field]')].map(field => [field.name, field.value]))};
+        await this.run('tool.connection.save', async () => {await this.controls.toolPackages?.connections?.save(input); await this.readState();});
     }
 
     private async register(item: ToolPackageInfo): Promise<void> {
@@ -102,13 +128,15 @@ class ToolPackagesDialog {
             <span role="status">${this.busy ? escapeHTML(label('loading')) : ''}</span></div>
             <p class="tool-packages-dialog__error" role="alert">${escapeHTML(this.error)}</p>
             <section class="tool-packages-dialog__section">${this.packages.length ? this.packages.map(item => packageRow(item, this.busy)).join('') : `<p>${escapeHTML(label('empty'))}</p>`}</section>
+            ${this.controls.toolPackages?.connections ? sourceConnectionSettings(this.connectionState) : ''}
             ${this.controls.flowInstallations ? `<section class="tool-packages-dialog__section"><h3>${escapeHTML(label('flows'))}</h3>${this.flows.map(item => flowRow(item, this.busy)).join('')}</section>` : ''}`;
         this.body.scrollTop = scroll;
     }
 }
 
 function packageRow(item: ToolPackageInfo, busy: boolean): string {
-    const action = item.status === 'available' || item.status === 'failed' ? `<button type="button" data-package-ensure="${escapeHTML(item.id)}" ${busy ? 'disabled' : ''}>${escapeHTML(label(item.status === 'failed' ? 'retry' : 'register'))}</button>` : '';
+    const action = (item.status === 'available' || item.status === 'failed' ? `<button type="button" data-package-ensure="${escapeHTML(item.id)}" ${busy ? 'disabled' : ''}>${escapeHTML(label(item.status === 'failed' ? 'retry' : 'register'))}</button>` : '')
+        + (item.flowCount && item.status === 'registered' ? `<button type="button" data-package-flows="${escapeHTML(item.id)}" data-package-version="${escapeHTML(item.version)}" ${busy ? 'disabled' : ''}>${escapeHTML(label('installFlows'))} (${item.flowCount})</button>` : '');
     return `<article class="tool-packages-dialog__item" data-package-id="${escapeHTML(item.id)}"><div class="tool-packages-dialog__item-header">
         <strong>${escapeHTML(item.name || item.id)}</strong><span>${escapeHTML(item.version)}</span><span data-package-status>${escapeHTML(label(item.status))}</span></div>
         ${item.description ? `<p>${escapeHTML(item.description)}</p>` : ''}

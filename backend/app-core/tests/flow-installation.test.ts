@@ -80,3 +80,20 @@ it('recovers dependency details and retries without rewriting existing system re
     expect(await f.runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'anki-generate'})).toEqual(published);
     expect(await f.runtime.commandBus.execute(FlowCommand.DraftLoad, {id: 'anki-generate'})).toEqual(before);
 });
+
+it('installs extension-owned workflow resources through the generic package port and preserves user edits', async () => {
+    const definition: FlowDraft = {id: 'external-resource' as never, name: 'External resource', draftVersion: 1, layout: {}, updatedAt: 0, edges: [], parameters: [],
+        nodes: [{id: 'result' as never, name: 'Result', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: 'external'}}]};
+    const read = vi.fn(async (_id: string, _version: string) => [definition]);
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), digitalTwinAutoStart: false,
+        toolDependencies: {ensure: async () => ({tools: []}), flowTemplates: read}});
+    cleanup.push(() => runtime.dispose());
+    expect(await runtime.toolPackages.installFlows!('external-package', '1.0.0')).toBe(1);
+    expect(read).toHaveBeenCalledWith('external-package', '1.0.0');
+    const draft = await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: definition.id});
+    const revision = await runtime.commandBus.execute<FlowRevision>(FlowCommand.RevisionGet, {id: definition.id});
+    expect(revision).toBeTruthy();
+    await runtime.commandBus.execute(FlowCommand.DraftSave, {draft: {...draft, name: 'User edit'}, expectedDraftVersion: draft.draftVersion});
+    expect(await runtime.toolPackages.installFlows!('external-package', '1.0.0')).toBe(0);
+    expect((await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: definition.id})).name).toBe('User edit');
+});

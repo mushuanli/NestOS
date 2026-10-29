@@ -91,3 +91,22 @@ test('refuses to publish fetched evidence if the user changes the connection dur
     await assert.rejects(collectGoogle('gmail', args, f.context, f.connections, f.fetcher), /GOOGLE_CONNECTION_CHANGED/);
     assert.equal(f.files.size, 0); assert.doesNotMatch(f.logs.join(''), /replacement-refresh|original-refresh/);
 });
+
+test('publishes mail as account-scoped email files and leaves calendar material as separate files', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]}) : Response.json(message('a')));
+    const result = await collectGoogle('gmail', {...args, resource: 'mail'}, f.context, f.connections, f.fetcher);
+    assert.equal(result.directory, 'evidence/google/personal/mail/default');
+    assert.ok([...f.files.keys()].some(file => file.endsWith('.email')));
+    assert.equal(result.include[0], 'file:evidence/google/personal/mail/default/*.email');
+});
+test('ships workflows inside the extension with visible graph layouts and one resource-discriminated tool', async () => {
+    const {readFile} = await import('node:fs/promises');
+    const manifest = JSON.parse(await readFile(new URL('../nestos-tool.json', import.meta.url), 'utf8'));
+    assert.equal(manifest.flows.length, 2);
+    for (const file of manifest.flows) {
+        const flow = JSON.parse(await readFile(new URL('../' + file, import.meta.url), 'utf8'));
+        assert.equal(flow.nodes[0].config.toolId, 'google.collect');
+        assert.ok(['mail', 'calendar'].includes(flow.nodes[0].config.args.resource));
+        assert.ok(flow.layout.nodes.collect);
+    }
+});

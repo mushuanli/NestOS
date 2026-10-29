@@ -8,6 +8,7 @@ export interface ToolDependencyState extends FlowToolDependency {
 }
 export interface ToolDependencyResult {tools: ToolDependencyState[]}
 export interface ToolPackageInfo {
+    flowCount?: number;
     id: string;
     name?: string;
     version: string;
@@ -17,11 +18,15 @@ export interface ToolPackageInfo {
     code?: string;
     reason?: string;
 }
+export type ToolPackageFlow = import('@itookit/llm-flow/contracts').FlowDraft;
 export interface ToolDependencyResolver {
+    flowTemplates?(packageId: string, version: string): Promise<ToolPackageFlow[]>;
     ensure(dependencies: readonly FlowToolDependency[]): Promise<ToolDependencyResult>;
     list?(): Promise<ToolPackageInfo[]>;
 }
 export interface ToolPackages {
+    readonly connections?: import('./tool-connections').ToolConnections;
+    installFlows?(packageId: string, version: string): Promise<number>;
     list(): Promise<ToolPackageInfo[]>;
     ensure(dependencies: FlowToolDependency[]): Promise<ToolDependencyResult>;
 }

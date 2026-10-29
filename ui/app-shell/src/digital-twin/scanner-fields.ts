@@ -1,3 +1,4 @@
+import {readUtf8File} from '../files/read-text-file';
 import {escapeHTML, escapeAttr} from '@itookit/common';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
 import type {TwinScannerExecutor} from '@itookit/app-contracts';
@@ -64,9 +65,5 @@ export function readScannerExecutor(form: HTMLFormElement, targets: RootCallTarg
 
 export async function readScannerFile(file: File): Promise<string> {
     if (file.size > 128 * 1024) throw new Error(label('scannerUploadInvalid'));
-    const bytes = typeof file.arrayBuffer === 'function' ? await file.arrayBuffer() : await new Promise<ArrayBuffer>((resolve, reject) => {
-        const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = () => reject(new Error(label('scannerUploadInvalid'))); reader.readAsArrayBuffer(file);
-    });
-    return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+    return readUtf8File(file);
 }

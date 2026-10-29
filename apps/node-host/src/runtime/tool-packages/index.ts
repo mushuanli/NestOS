@@ -10,6 +10,7 @@ import {packageFiles, packageFingerprint, resolvePackageExecutables} from './fil
 import {restoreToolPackage, stageToolPackage, type InstalledToolPackage} from './install';
 import {readToolPackageRegistry, withToolPackageRegistry, writeToolPackageRegistry, type RegisteredToolPackage} from './store';
 import {activatePackageEnvironment} from './environment';
+import {readPackageFlows} from './flows';
 
 const log = createModuleLogger('tool-packages');
 interface Registrar {registerTools(tools: Tool[]): Promise<void>; toolCatalog: {getToolMeta(id: string): ToolMeta | undefined};}
@@ -57,6 +58,14 @@ export class NodeToolPackages implements ToolDependencyResolver {
     }
 
     initialTools(): Tool[] {return [...this.installed.values()].flatMap(item => item.tools);}
+    async flowTemplates(packageId: string, version: string) {
+        packageIdentity(packageId, 'id'); packageIdentity(version, 'version'); await this.tail;
+        const installed = this.installed.get(packageId);
+        if (!installed || installed.registration.version !== version) throw packageError('TOOL_PACKAGE_NOT_REGISTERED', 'Register this package version before installing its workflows');
+        if (await packageFingerprint(installed.source, await packageFiles(installed.source, installed.registration.bindings)) !== installed.registration.fingerprint)
+            throw packageError('TOOL_PACKAGE_CONTENT_CONFLICT', 'Installed package resources differ from their registration');
+        return readPackageFlows(installed.source);
+    }
     bind(registrar: Registrar): void {
         for (const installed of this.installed.values()) this.activate(installed);
         this.registrar = registrar;
@@ -158,6 +167,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
     private async packageInfo(source: ToolPackageSource): Promise<ToolPackageInfo> {
         const {id, version, name, description, tools} = source.manifest;
         const result: ToolPackageInfo = {id, version, name, description, tools: tools.map(tool => ({...tool})), status: 'available'};
+        if (source.manifest.flows?.length) result.flowCount = source.manifest.flows.length;
         const failure = this.failures.get(id);
         if (failure) return {...result, status: 'failed', ...failure};
         if (this.installed.get(id)?.registration.version === version) {

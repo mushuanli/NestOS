@@ -291,3 +291,10 @@ cargo build --offline --features tauri/custom-protocol --manifest-path apps/taur
 - 初始文件恢复：设置 → 文件系统/系统恢复提供折叠、默认全选的文件清单，支持 demo.md 与两份作文 Flow 的选择性恢复；只补缺失、保留修改、逐文件反馈，写入当前宿主文件系统。
 
 2026-10-20 增量：通用 image.process Tool、浏览器/Node 配方引擎、原图与派生资产、单图回执恢复及发送时解析已接通；Flow 源码检查 API、编辑器诊断和 CLI validate 同步落地。验证入口及当前资产保留策略见 [图片处理](design/flow-image-processing.md) 和 [Flow API](llm-flow-api.md#用户定义-flow-的源码检查)。
+
+
+## 通用功能扩展机制
+
+- 已实现：可信工具包的 Flow 资源声明与安装、工具面板中的用户连接配置、按用户隔离的凭据端口；业务采集 Flow 移出应用内置目录。
+- 待实现：通用 OAuth 授权主机与权限增量交互；ResourceTarget 注册、用户绑定和受限发布句柄；邮件等功能模块的实体存储与导航投影；显式工具包升级/卸载事务。
+- 邮件当前是文件工作区，账号目录隔离不等于完整多邮箱同步 UI；不得通过扩大文件授权或内置厂商分支补齐。边界见[外部功能扩展](design/function-extensions.md)。

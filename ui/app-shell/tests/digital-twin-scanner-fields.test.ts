@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {expect, it} from 'vitest';
 import {executorFields, readScannerExecutor, scannerFieldChange, readScannerFile} from '../src/digital-twin/scanner-fields';
-import {sourceConnectionSettings, importConnection} from '../src/digital-twin/source-connections';
+import {sourceConnectionSettings, importConnection} from '../src/configuration/tool-connections';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
 const targets: RootCallTarget[] = [{target: {kind: 'flow', id: 'reader', version: '1', digest: 'digest'}, name: 'Reader',
     input: {flowId: 'reader', revision: 1, digest: 'digest', parameters: [{name: 'body', type: 'string', inputSource: 'composer.text'},

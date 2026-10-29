@@ -28,6 +28,7 @@ export class SessionExecution {
     }
     refresh(): Promise<void> {
         if (!this.usable()) return Promise.resolve();
+        if (!this.roots().size) {clearTimeout(this.timer); if (this.tasks.length) {this.tasks = []; this.changed();} return Promise.resolve();}
         return this.reading ??= this.read().finally(() => {this.reading = undefined;});
     }
     private async read(): Promise<void> {

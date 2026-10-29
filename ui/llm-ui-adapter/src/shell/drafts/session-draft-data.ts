@@ -13,7 +13,7 @@ interface LegacyDraft { version: 1; config: IChatInputConfig; files: (Omit<Draft
 /** Binary storage belongs to the host; JSON contains only composer state and opaque references. */
 export class DraftDataCodec {
     private readonly files: DraftFilesCodec;
-    constructor(attachments?: AttachmentPort) {this.files = new DraftFilesCodec(attachments);}
+    constructor(attachments?: AttachmentPort, files?: DraftFilesCodec) {this.files = files ?? new DraftFilesCodec(attachments);}
     async encode(config: IChatInputConfig, files: File[]): Promise<string> {
         const snapshot = structuredClone(config);
         if (snapshot.draftToken !== undefined && !validDraftToken(snapshot.draftToken))

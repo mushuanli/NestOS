@@ -1,3 +1,4 @@
+import {chatFollowups} from './chat-followups';
 import { parseDirectoryCommand } from './directory-command';
 import { isRootCallable } from '@itookit/llm-flow/contracts';
 // @file: llm-ui/shell/SlashCommandRouter.ts
@@ -145,7 +146,7 @@ function commonSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCommandCa
             }).catch(() => { });
         },
         onContinue: () => {
-            sendFollowUp(deps, 'Please continue from where you left off.');
+            sendFollowUp(deps, chatFollowups.continue);
         },
         onReedit: async () => {
             const sessions = await deps.commands.execute<SessionGroup[]>(SessionCommand.GetSessions);
@@ -252,16 +253,16 @@ function kernelskillsSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCom
 function refineSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCommandCallbacks, "onShorter" | "onLonger" | "onSimplify" | "onSummarize"> {
     return {
         onShorter: () => {
-            sendFollowUp(deps, 'Please make your last response more concise and to the point. Keep only the essential information.');
+            sendFollowUp(deps, chatFollowups.shorter);
         },
         onLonger: () => {
-            sendFollowUp(deps, 'Please elaborate on your last response with more details, examples, and explanations.');
+            sendFollowUp(deps, chatFollowups.longer);
         },
         onSimplify: () => {
-            sendFollowUp(deps, 'Please explain your last response in simpler terms, as if explaining to someone unfamiliar with the topic.');
+            sendFollowUp(deps, chatFollowups.simplify);
         },
         onSummarize: () => {
-            sendFollowUp(deps, 'Please provide a concise summary of our entire conversation so far, highlighting the key points and conclusions.');
+            sendFollowUp(deps, chatFollowups.summarize);
         }
     };
 }

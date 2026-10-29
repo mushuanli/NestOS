@@ -302,7 +302,7 @@ export class ConversationRunCoordinator {
         const sessionId = execution.task.sessionId;
         const rootNodeId = execution.rootNodeId;
 
-        this.forwardStreamEvent(event, sessionId, rootNodeId, streamedOutput);
+        this.forwardStreamEvent(event, execution, streamedOutput);
         if (this.forwardCitationEvent(event, sessionId, rootNodeId)) return;
         this.forwardToolEvent(event, execution, toolCalls);
 
@@ -312,17 +312,19 @@ export class ConversationRunCoordinator {
     /** Project stream:content / stream:thinking into message:updated deltas. */
     private forwardStreamEvent(
         event: AgentEvent,
-        sessionId: string,
-        rootNodeId: string,
+        execution: ConversationExecution,
         streamedOutput: { output: boolean; history?: FlowHistory },
     ): void {
+        const sessionId = execution.task.sessionId, rootNodeId = execution.rootNodeId;
         if (event.type === 'stream:content') {
+            execution.state.appendToNode(rootNodeId, event.delta, 'output');
             streamedOutput.output = true;
             this.options.eventBus.emitSession(sessionId, {
                 type: 'message:updated',
                 payload: { messageId: rootNodeId, delta: event.delta, field: 'output' },
             });
         } else if (event.type === 'stream:thinking') {
+            execution.state.appendToNode(rootNodeId, event.delta, 'thought');
             this.options.eventBus.emitSession(sessionId, {
                 type: 'message:updated',
                 payload: { messageId: rootNodeId, delta: event.delta, field: 'thought' },
@@ -351,6 +353,10 @@ export class ConversationRunCoordinator {
             captureToolCall(toolCalls, event.call);
         } else if (event.type === 'tool:success' || event.type === 'tool:error') {
             recordToolResult(toolCalls, event.call);
+            this.ensureToolNode(execution, event.call, event.type === 'tool:success' ? 'success' : 'failed');
+            if (event.type === 'tool:success') execution.state.updateNodeOutput(event.call.toolId, event.call.result ?? '');
+            else execution.state.updateNodeError(event.call.toolId, event.call.error);
+            execution.state.updateNodeStatus(event.call.toolId, event.type === 'tool:success' ? 'success' : 'failed');
         }
     }
 
@@ -359,7 +365,7 @@ export class ConversationRunCoordinator {
         call: ToolCallInfo,
         status: NodeStatus,
     ): void {
-        if (execution.state.hasNode(call.toolId)) return;
+        if (execution.state.hasNode(call.toolId)) {execution.state.updateNodeStatus(call.toolId, status); return;}
         const node: ExecutionNode = {
             id: call.toolId,
             parentId: execution.rootNodeId,
@@ -411,6 +417,7 @@ export class ConversationRunCoordinator {
         // live execution node created at `tool:running` would stay RUNNING forever. Settle the
         // still-in-flight calls the same way a real tool error would.
         for (const event of unsettledToolErrors(toolCalls, failure ?? `Task ${status}`)) {
+            this.forwardToolEvent(event, execution, toolCalls);
             this.options.eventBus.emitSession(execution.task.sessionId, event);
         }
     }

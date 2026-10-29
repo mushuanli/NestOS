@@ -84,17 +84,20 @@ it.each(['start', 'chat', 'notes', 'session'])('mounts the complete common shell
     const startup = { calls: metrics.calls - before.calls, requests: metrics.requests - before.requests, callbacks: metrics.callbacks - before.callbacks,
         responseBytes: metrics.bytes - before.bytes, inProcessMs: Math.round(performance.now() - started) };
     console.log('[HTTP startup metrics]', startup);
-    expect(startup.requests).toBeLessThanOrEqual(slug === 'session' ? 5 : slug === 'chat' ? 9 : 13); expect(startup.responseBytes).toBeLessThan(slug === 'session' ? 350000 : 64000);
+    // Published target metadata and independent-call receipts each require one additional bounded read.
+    expect(startup.requests).toBeLessThanOrEqual(slug === 'session' ? 7 : slug === 'chat' ? 9 : 13); expect(startup.responseBytes).toBeLessThan(slug === 'session' ? 350000 : 64000);
     console.log('[HTTP startup methods]', calls);
     if (slug === 'session') {
         expect(loaded).toHaveLength(1);
+        expect(calls['execute:session.targets.list']).toBe(1); expect(calls['execute:session.calls.list']).toBe(1);
+        for (const method of ['listSessionTasks', 'execute:session.context.options', 'getManifest']) expect(calls[method]).toBeUndefined();
         console.log('[HTTP Session ready]', loaded);
         console.log('[HTTP Session request groups]', requestGroups);
         expect(calls.openView).toBe(1); expect(calls.observeView).toBe(1);
         for (const method of ['workbenchView', 'openSessionView', 'activate', 'readUiDocuments']) expect(calls[method]).toBeUndefined();
         for (const method of ['getConnections', 'getDefaultConnection', 'getSystemPrompt', 'execute:session.get-snapshot'])
             expect(calls[method]).toBeUndefined();
-        expect(document.querySelector('.llm-input')).not.toBeNull();
+        expect(document.querySelector('.llm-chat__composer')).not.toBeNull();
         await vi.waitFor(() => expect(calls.navigation).toBeGreaterThanOrEqual(1));
         while (pendingRequests.size) await Promise.all([...pendingRequests]);
         expect(calls.openSession).toBeUndefined(); expect(calls.getShared).toBeUndefined();
@@ -126,12 +129,12 @@ it.each(['start', 'chat', 'notes', 'session'])('mounts the complete common shell
         expect(calls.workbenchView).toBeUndefined(); expect(calls.toolboxView).toBeUndefined();
         expect(location.hash).toBe(route);
         expect(document.getElementById('notes-workspace')?.classList.contains('active')).toBe(true);
-        expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-input')).toBeNull();
+        expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-chat__composer')).toBeNull();
         for (const method of ['settings', 'ocr', 'prepareConfiguration', 'prepareSession', 'acquireFiles']) expect(calls[method]).toBeUndefined();
         const joined = app.navigate('chat'); releaseWorkbench(); await joined;
         expect(calls.workbenchView).toBe(1);
         await app.navigate('toolbox'); expect(calls.toolboxView).toBe(1);
-        expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-input')).toBeNull();
+        expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-chat__composer')).toBeNull();
     }
     for (const workspace of WORKSPACES) expect(document.getElementById(workspace.elementId)).not.toBeNull();
     for (const slug of WORKSPACES.map(workspace => workspace.slug)) await app.navigate(slug);
@@ -142,7 +145,7 @@ it.each(['start', 'chat', 'notes', 'session'])('mounts the complete common shell
     console.log('[HTTP open Session methods]', calls);
     expect(calls.openSessionView).toBe(1); expect(calls.activate).toBe(1);
     expect(calls.prepareSession).toBeUndefined(); expect(calls.acquireFiles).toBeUndefined(); expect(calls.fixedWorkspace).toBeUndefined();
-    expect(document.querySelector('.llm-input')).not.toBeNull();
+    expect(document.querySelector('.llm-chat__composer')).not.toBeNull();
     const second = await root.services.projects.sessions.create('Second HTTP conversation', null);
     await app.navigate('chat', second); expect(root.services.sessionManager.getSnapshot().sessionId).toBe(second);
     await app.navigate('chat', id); expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);

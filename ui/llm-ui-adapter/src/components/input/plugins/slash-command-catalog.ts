@@ -283,7 +283,7 @@ function switchCommand(cb: SlashCommandCallbacks): SlashCommandDef {
         hasArgs: true,
         argsPlaceholder: '<branch-name>',
         execute: (args) => { if (args)
-            cb.onSwitchBranch(args); },
+            return cb.onSwitchBranch(args); },
     };
 }
 function branchPrevCommand(cb: SlashCommandCallbacks): SlashCommandDef {
@@ -343,7 +343,7 @@ function branchDeleteCommand(cb: SlashCommandCallbacks): SlashCommandDef {
         hasArgs: true,
         argsPlaceholder: '<branch-name>',
         execute: (args) => { if (args)
-            cb.onDeleteBranch(args); },
+            return cb.onDeleteBranch(args); },
     };
 }
 function agentCommand(cb: SlashCommandCallbacks): SlashCommandDef {
@@ -356,7 +356,7 @@ function agentCommand(cb: SlashCommandCallbacks): SlashCommandDef {
         hasArgs: true,
         argsPlaceholder: '<agent-id>',
         execute: (args) => { if (args)
-            cb.onSwitchAgent(args); },
+            return cb.onSwitchAgent(args); },
     };
 }
 function connectionCommand(cb: SlashCommandCallbacks): SlashCommandDef {
@@ -376,7 +376,7 @@ function modelCommand(cb: SlashCommandCallbacks): SlashCommandDef {
         hasArgs: true,
         argsPlaceholder: '<model-id>',
         execute: (args) => { if (args)
-            cb.onModel(args); },
+            return cb.onModel(args); },
     };
 }
 function helpCommand(cb: SlashCommandCallbacks): SlashCommandDef {
@@ -425,7 +425,7 @@ function skillsCommand(cb: SlashCommandCallbacks, hint: (name: string) => void):
                 hint('skills');
                 return;
             }
-            cb.onSkills();
+            return cb.onSkills();
         },
     };
 }
@@ -443,7 +443,7 @@ function toolsCommand(cb: SlashCommandCallbacks, hint: (name: string) => void): 
                 hint('tools');
                 return;
             }
-            cb.onTools();
+            return cb.onTools();
         },
     };
 }

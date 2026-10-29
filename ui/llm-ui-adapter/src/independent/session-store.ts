@@ -1,3 +1,5 @@
+import {StoredChatImages} from './stored-chat-images';
+import type {ImageAssetMetadata} from './image-editing';
 import {createOperationLedger, type AttachmentRef, type ComposerDraft, type OperationLedger} from '@itookit/llm-ui';
 import type {ConversationUIState, ISessionRepository} from '@itookit/llm-session/contracts';
 import {createModuleLogger, randomUUID} from '@itookit/common';
@@ -11,9 +13,10 @@ import {validDraftToken} from '../domain/draft-file-identity';
 import {readInputContextDraft} from '../domain/context-draft';
 import {canonicalJson} from '../utils/canonical-json';
 
-type StoredBranch = BranchDraft & {inputView?: {version: 1; draft: ComposerDraft}};
+type StoredBranch = BranchDraft & {inputImageMetadata?: Record<string, ImageAssetMetadata>; inputView?: {version: 1; draft: ComposerDraft}};
 /** Keep the existing branch draft and CAS conflict boundary while replacing its renderer. */
 export class SessionChatStore {
+    readonly images: StoredChatImages;
     private readonly persistence: DraftPersistence;
     private tail: Promise<void> = Promise.resolve();
     private raw?: ConversationUIState;
@@ -21,14 +24,18 @@ export class SessionChatStore {
     private suspended = false;
     private constructor(private repository: ISessionRepository, readonly sessionId: string, readonly branch: string, readonly assets: AssetService) {
         this.persistence = new DraftPersistence(repository);
+        this.images = new StoredChatImages({upload: (file, options) => this.upload(file, options), read: async (ref, {signal}) => {
+            signal.throwIfAborted(); const bytes = await assets.draftFiles().read(ref.id); signal.throwIfAborted(); return new Blob([bytes], {type: ref.mimeType});
+        }});
     }
-    static async open(repository: ISessionRepository, sessionId: string, branch: string, assets: AssetService): Promise<SessionChatStore> {
+    static async open(repository: ISessionRepository, sessionId: string, branch: string, assets: AssetService, initial?: {uiState?: ConversationUIState}): Promise<SessionChatStore> {
         const store = new SessionChatStore(repository, sessionId, branch, assets);
         const operationId = randomUUID(), started = Date.now(); let stage = 'read';
         try {
-            store.raw = await repository.getUIState(sessionId) ?? undefined; stage = 'restore';
+            store.raw = initial ? structuredClone(initial.uiState) : await repository.getUIState(sessionId) ?? undefined; stage = 'restore';
             store.persistence.observe(sessionId, branch, store.raw);
-            store.saved = restore(readBranchDraft(store.raw, branch) as StoredBranch | undefined);
+            const stored = readBranchDraft(store.raw, branch) as StoredBranch | undefined;
+            store.saved = restore(stored); store.images.restore(stored?.inputImageMetadata, readDraftFiles(stored?.inputFiles ?? []));
             reportRestore(operationId, sessionId, branch, stage, started); return store;
         } catch (error) {
             const raw = (error as {code?: unknown})?.code;
@@ -38,6 +45,7 @@ export class SessionChatStore {
             throw Object.assign(new Error(error instanceof Error ? error.message : String(error), {cause: error}), {code});
         }
     }
+    get agentId(): string | undefined {return readBranchDraft(this.raw, this.branch)?.inputAgentId;}
     get draft(): ComposerDraft {return structuredClone(this.saved);}
     ledger(): OperationLedger {
         return createOperationLedger({initial: this.raw?.operationRecords as unknown as import('@itookit/llm-ui').OperationRecord[] | undefined,
@@ -53,7 +61,8 @@ export class SessionChatStore {
                 inputTarget: isTargetRef(captured.target) ? captured.target : undefined,
                 inputArguments: captured.input ? JSON.parse(JSON.stringify(captured.input)) : undefined,
                 inputContext: captured.context?.value == null ? undefined : structuredClone(captured.context.value),
-                inputFiles: captured.attachments.map(item => ({id: item.file.id, name: item.file.name, type: item.file.mimeType ?? '', lastModified: 0, fileId: item.id})),
+                inputImageMetadata: this.images.snapshot(),
+                inputFiles: JSON.parse(JSON.stringify(this.images.records(captured.attachments.map(item => ({id: item.file.id, name: item.file.name, type: item.file.mimeType ?? '', lastModified: 0, fileId: item.id}))))),
                 inputView: {version: 1, draft: captured}};
             const patch = {branchDrafts: {[this.branch]: branch}};
             await this.persistence.save(this.sessionId, this.branch, patch);

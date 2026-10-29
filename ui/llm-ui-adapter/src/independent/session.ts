@@ -26,12 +26,13 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly history?: Pick<ConversationActions, 'edit' | 'retry'>;
     readonly prepareSend?: ConversationActions['prepareSend'];
     readonly resolveSubmission?: (operationId: string) => SessionSubmission | undefined;
     readonly openOutputs?: (taskId: string) => void | Promise<void>;
     readonly prepareRequest?: (request: SubmissionRequest, input: ChatSubmission) => Promise<SubmissionRequest>;
     readonly prepareAttachments?: (input: ChatSubmission, operationId: string) => Promise<NonNullable<SubmissionRequest['attachments']>>;
-    readonly executionOverrides?: (input: ChatSubmission) => SubmissionRequest['overrides'];
+    readonly executionOverrides?: (input: ChatSubmission, draft?: import('@itookit/llm-ui').ComposerDraft) => SubmissionRequest['overrides'];
     readonly kernel?: import('@itookit/durable-kernel/contracts').EditorTaskControlPlane;
     readonly readOnly?: boolean;
     readonly instructionQueue?: boolean;
@@ -82,6 +83,7 @@ class SessionChatBinding {
     private closed = false;
     private active = true;
     private presentation?: SessionCallPresentation;
+    private presentationMounted = false;
     private execution?: SessionExecution;
     private admissionTimer?: ReturnType<typeof setTimeout>;
     private readonly targets?: SessionCallTargets;
@@ -91,7 +93,7 @@ class SessionChatBinding {
         this.operations = this.createLedger(options.operations);
         if (options.targetSelection) this.targets = new SessionCallTargets(options.commands, () => this.publish());
         this.source = new ChatProjection(this.sessionId, options.onError, this.targets ? () => this.refreshTargets() : undefined);
-        this.actions = { send: (input, context) => this.send(input, context), reconcile: id => this.reconcile(id) };
+        this.actions = {...options.history, send: (input, context) => this.send(input, context), reconcile: id => this.reconcile(id) };
         if (options.prepareSend) this.actions.prepareSend = options.prepareSend;
         if (options.kernel) {
             this.execution = new SessionExecution(options.kernel, this.sessionId, () => options.session.getSessions(),
@@ -127,7 +129,7 @@ class SessionChatBinding {
             if (input.context !== undefined && (!this.options.contextSelection || !input.target))
                 throw Object.assign(new Error('Context selection requires a published target and host support'), {code: 'CONTEXT_SELECTION_UNAVAILABLE'});
             if (!input?.target) return ledger.register(record);
-            let request = this.targetRequest(input, record.context.operationId);
+            let request = this.targetRequest(input, record.context.operationId, record.draft);
             if (this.options.prepareRequest) request = await this.options.prepareRequest(request, input);
             if (request.expectedSessionId !== this.sessionId || request.expectedBranch !== this.branch || request.submission?.id !== record.context.operationId)
                 throw new Error('Prepared submission identity differs from the frozen view');
@@ -156,8 +158,12 @@ class SessionChatBinding {
         this.observeQueue(this.options.session.getSnapshot?.().instructionQueue);
         const groups = this.options.session.getSessions();
         const projected = groups.flatMap(group => splitUserMessages(group, projectGroup(group, this.operations, this.confirmed, this.sessionId, !!this.options.openOutputs)));
-        const messages = this.presentation?.merge(projected, groups) ?? projected;
-        this.source.publish({ title: this.options.title ?? this.options.session.getSnapshot?.().view?.manifest.title ?? '',
+        const messages = (this.presentation?.merge(projected, groups) ?? projected).map(message => ({...message,
+            allowed: this.options.history && !this.options.readOnly && groups.some(group => group.id === message.id || `${group.id}:input:${(group.inputMessages?.length ?? 1) - 1}` === message.id) ? [
+                ...(message.role === 'user' && !groups.find(group => group.id === message.id || `${group.id}:input:${(group.inputMessages?.length ?? 1) - 1}` === message.id)?.callInput?.admitted && this.options.history.edit ? ['edit' as const] : []),
+                ...(this.options.history.retry ? ['retry' as const] : []),
+            ] : []}));
+        this.source.publish({ title: this.options.session.getSnapshot?.().view?.manifest.title ?? this.options.title ?? '',
             messages, interactions: this.execution?.interactions ?? [], selectors: this.selectors(), commands: this.options.composerCommands?.getSnapshot(),
             inputContract: this.options.inputContract?.(), loading: false,
             ...(this.targets ? {callTargets: this.targets.getSnapshot()} : {}),
@@ -166,7 +172,8 @@ class SessionChatBinding {
             executionRef: this.execution?.executionRef,
             execution: this.execution?.interactions.length ? 'waiting-input' : this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false,
             allowed: this.options.readOnly ? [] : ['send', ...(this.execution?.executionRef ? ['cancel' as const] : []),
-                ...(this.execution?.interactions.some(item => item.kind !== 'unsupported') ? ['respond' as const] : []), ...(this.options.composerCommands ? ['command' as const] : [])] });
+                ...(this.execution?.interactions.some(item => item.kind !== 'unsupported') ? ['respond' as const] : []), ...(this.options.composerCommands ? ['command' as const] : []),
+                ...(this.options.history?.edit ? ['edit' as const] : []), ...(this.options.history?.retry ? ['retry' as const] : [])] });
         for (const message of messages) if (message.submissionId && !this.confirmed.has(message.submissionId)) {
             void this.check(message.submissionId).then(accepted => { if (accepted) this.publish(); }).catch(error => this.options.onError?.(error));
         }
@@ -281,7 +288,7 @@ class SessionChatBinding {
             if (this.current() && this.active) this.publish();
         } finally {this.scheduleIndependentAdmission();}
     }
-    setActive(active: boolean): void {this.active = active; this.execution?.setActive(active); this.admissionChecks.clear(); this.presentation?.setActive(active && this.current()); this.scheduleIndependentAdmission();}
+    setActive(active: boolean): void {if (this.active === active) return; this.active = active; this.execution?.setActive(active); this.admissionChecks.clear(); this.presentation?.setActive(active && this.current()); this.scheduleIndependentAdmission();}
     private frozenRequest(operationId: string): SubmissionRequest {
         const record = this.options.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
@@ -291,7 +298,7 @@ class SessionChatBinding {
             throw Object.assign(new Error('Frozen submission context is unavailable'), {code: 'SUBMISSION_CONTEXT_MISSING'});
         return structuredClone(request);
     }
-    private targetRequest(input: ChatSubmission, operationId: string): import('@itookit/llm-session/contracts').SubmissionRequest {
+    private targetRequest(input: ChatSubmission, operationId: string, draft?: import('@itookit/llm-ui').ComposerDraft): import('@itookit/llm-session/contracts').SubmissionRequest {
         const target = input.target!;
         if (!isTargetRef(target)) throw Object.assign(new Error('Invalid frozen call target'), {code: 'SUBMISSION_TARGET_INVALID'});
         const context = prepareInputContextDraft(input.context, {sessionId: this.sessionId, branchId: this.branch, target});
@@ -299,7 +306,7 @@ class SessionChatBinding {
             values: structuredClone(input.input?.values ?? {})} as FlowCallSource;
         return {expectedSessionId: this.sessionId, expectedBranch: this.branch, target: {kind: target.kind, id: target.id, version: target.version}, expectedTarget: {...target}, source,
             attachments: input.attachments.map(file => ({name: file.name, type: file.mimeType ?? '', path: file.id})),
-            ...(input.input || context || this.options.executionOverrides ? {overrides: {...this.options.executionOverrides?.(input), ...(context ? {harnessConversation: context.selection} : {}),
+            ...(input.input || context || this.options.executionOverrides ? {overrides: {...this.options.executionOverrides?.(input, draft), ...(context ? {harnessConversation: context.selection} : {}),
                 ...(input.input ? {flowExpectedSignature: {...input.input.signature,
                     id: input.input.signature.id as import('@itookit/llm-flow/contracts').FlowId}} : {})}} : {}), submission: this.submission(operationId)};
     }
@@ -338,7 +345,7 @@ class SessionChatBinding {
         this.closed = true; this.execution?.dispose(); this.presentation?.destroy(); clearTimeout(this.admissionTimer); this.releases.forEach(release => release());
         this.targets?.dispose();
     }
-    async refreshTargets(): Promise<void> {await this.targets?.refreshCurrent(); await this.presentation?.refresh();}
+    async refreshTargets(force = true): Promise<void> {if (force) {await this.targets?.refreshCurrent(); await this.presentation?.refresh();} else await this.targets?.refresh();}
     get outputsRenderer() {return this.options.openOutputs ? outputRenderer(async taskId => {if (this.current() && this.active) await this.options.openOutputs!(taskId);}) : undefined;}
     get instructionQueue() {
         if (!this.options.instructionQueue) return undefined;
@@ -349,18 +356,21 @@ class SessionChatBinding {
     get contextSelection(): boolean {return !!this.options.contextSelection;}
     contextScope() {return this.current() && this.branch ? {sessionId: this.sessionId, branchId: this.branch} : undefined;}
     readContextOptions(query: ContextOptionsQuery): Promise<ContextOptionsPage> {return this.options.commands.execute(SessionCommand.ContextOptions, query);}
-    mountCalls(): SessionCallPresentation | undefined {
-        if (!this.options.independentCalls || !this.branch || this.closed || this.options.readOnly) return;
-        if (this.presentation) throw new Error('The Session binding already owns a call presentation');
+    prepareCalls(): void {
+        if (this.presentation || !this.options.independentCalls || !this.branch || this.closed || this.options.readOnly) return;
         clearTimeout(this.admissionTimer);
         this.presentation = new SessionCallPresentation(this.options.commands, this.sessionId, () => this.branch!, this.operations,
             () => this.publish(), this.options.openChild, this.options.interactionDrafts);
         if (!this.active || !this.current()) this.presentation.setActive(false);
+    }
+    mountCalls(): SessionCallPresentation | undefined {
+        if (this.presentationMounted) throw new Error('The Session binding already owns a call presentation');
+        this.prepareCalls(); this.presentationMounted = !!this.presentation;
         return this.presentation;
     }
     releaseCalls(presentation?: SessionCallPresentation): void {
         if (!presentation || this.presentation !== presentation) return;
-        presentation.destroy(); this.presentation = undefined; this.publish(); this.scheduleIndependentAdmission();
+        presentation.destroy(); this.presentation = undefined; this.presentationMounted = false; this.publish(); this.scheduleIndependentAdmission();
     }
 }
 function validInputContract(input: ChatSubmission, contract?: ComposerInputContract): boolean {

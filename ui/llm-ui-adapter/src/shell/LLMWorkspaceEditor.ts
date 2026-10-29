@@ -12,12 +12,11 @@ import {readInputContextDraft} from '../domain/context-draft';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
-import type { EditorTaskControlPlane } from '@itookit/durable-kernel/contracts';
 import type { SessionViewPort } from '@itookit/llm-session/contracts';
 import { acquireConnectionOptions } from './connection-options-cache';
 import { rerunSession } from './rerun-session';
 import { t } from '@itookit/common';
-import { bindWorkspaceInput, type WorkspaceHandoff } from './drafts/workspace-handoff';
+import { bindWorkspaceInput } from './drafts/workspace-handoff';
 import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
 import { InvocationPanel } from '../flows/InvocationPanel';
@@ -30,7 +29,7 @@ import {rerunSessionFlow} from '../flows/rerun-flow';
 import { promptFlowParameters } from '../components/FlowParameterForm';
 // @file: llm-ui/shell/LLMWorkspaceEditor.ts
 
-import { IEditor, EditorOptions, EditorHostContext, EditorEvent, EditorEventMap, EditorEventCallback, CollapseExpandResult, Toast } from '@itookit/ui-common';
+import { IEditor, EditorHostContext, EditorEvent, EditorEventMap, EditorEventCallback, CollapseExpandResult, Toast } from '@itookit/ui-common';
 import { EventBus } from '@itookit/vfs-core';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { EventEnvelope, InteractionRequest, JsonValue } from '@itookit/durable-kernel/contracts';
@@ -44,7 +43,6 @@ import type { IStatusPresenter } from '../domain/ports/IStatusPresenter';
 import type { IBranchPresenter } from '../domain/ports/IBranchPresenter';
 import type { IEditorEventBus } from '../domain/events';
 import type { IBranchStore } from '../domain/ports/IBranchStore';
-import type { IPrivilegedCommandService } from '../domain/ports/IPrivilegedCommandService';
 
 // Services
 import { SessionService, StateService, AssetService, BranchStore, BranchService, NavDataBuilder, FileSearchService } from '../services';
@@ -77,7 +75,7 @@ import {
 } from './AgentProvider';
 import { promptInterruptedRun } from './InterruptedRunPrompt';
 import { bindSkillRefresh } from './skill-refresh';
-import { measureSessionLoad, type SessionLoadMetrics } from './load-metrics';
+import { measureSessionLoad } from './load-metrics';
 import { buildSlashCallbacks } from './SlashCommandRouter';
 
 // Infrastructure
@@ -103,30 +101,8 @@ interface InitialSessionData {
 }
 
 
-export interface LLMEditorOptions extends EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission, import('../services/SessionService').SessionLoadResult> {
-    handoff?: WorkspaceHandoff;
-    readTaskAttachment?: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;
-    configuration?: import('@itookit/kernel-adapters/contracts').ChatConfigurationView;
-    sessionId: string;
-    sessionRepository: ISessionRepository;
-    sessionManager: SessionViewPort;
-    defaultHarnessToolIds?: readonly string[];
-    agentService: IAgentConfigService;
-    initialInputState?: { text?: string; agentId?: string };
-    /** Host-owned OCR capability and configuration. */
-    ocr?: import('@itookit/ui-common').OcrControls;
-    /**
-     * Conversation command bus returned by initializeConversationSystem().
-     * 所有高层操作通过 commands.execute('session.*') / 'vcs.*' 调用。
-     */
-    commandBus?: ICommandBus;
-    /** Host task control and restoration port. */
-    kernel?: EditorTaskControlPlane;
-    /** Application service for durable privileged slash commands. */
-    privilegedCommands?: IPrivilegedCommandService;
-    sessionSkills?: import('@itookit/tools/contracts').SessionSkillControls;
-    onLoadMetrics?: (metrics: SessionLoadMetrics) => void;
-}
+export type {LLMEditorOptions} from './session-editor-options';
+import type {LLMEditorOptions} from './session-editor-options';
 
 /**
  * LLM 工作区编辑器 — Shell / Composition Root

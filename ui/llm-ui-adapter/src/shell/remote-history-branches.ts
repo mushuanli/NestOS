@@ -1,3 +1,4 @@
+import type {MessageAction} from '@itookit/llm-ui';
 import {ACTION_ICONS, escapeHTML, t} from '@itookit/common';
 import {Modal, type ConversationControls, type ConversationSnapshot, type EditorOptions} from '@itookit/ui-common';
 import {remoteBranchTargets} from './remote-rounds';
@@ -32,6 +33,12 @@ export class RemoteHistoryBranches {
             button.title = t(this.support() === 'none' ? 'branch.unsupported' : 'branch.continue'); button.setAttribute('aria-label', button.title);
             button.setAttribute('aria-disabled', String(working || !snapshot.canFork || this.support() === 'none'));
         }
+    }
+    actions(messageId: string): MessageAction[] {
+        const target = remoteBranchTargets(this.snapshot?.messages ?? []).find(item => item.messageId === messageId);
+        if (!target || this.options.readOnly) return [];
+        return [{id: 'branch', label: t(this.support() === 'none' ? 'branch.unsupported' : 'branch.continue'),
+            disabled: this.working || !this.snapshot?.canFork || this.support() === 'none', run: () => this.create(target.id)}];
     }
     private support(): 'none' | 'latest' | 'turn' {
         return this.snapshot?.forkSupport ?? (this.controls.forkAt ? 'turn' : this.controls.fork ? 'latest' : 'none');

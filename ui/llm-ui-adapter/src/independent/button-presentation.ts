@@ -1,13 +1,14 @@
 import {ACTION_ICONS, CHAT_ICONS} from '@itookit/common';
+import {LayoutTemplates} from '../components/templates/LayoutTemplates';
 import {ChatInputTemplates} from '../components/templates/ChatInputTemplates';
 
 /** Reuse the product's existing icons without coupling the standalone view to NestOS. */
 export function presentChatButton(node: HTMLButtonElement, action: string): void {
     const icons: Readonly<Record<string, string>> = {
-        refresh: ACTION_ICONS.refreshView, prompts: ACTION_ICONS.promptList,
+        collapse: LayoutTemplates.collapseIcon(), collapseMessage: LayoutTemplates.collapseIcon(), refresh: ACTION_ICONS.refreshView, prompts: ACTION_ICONS.promptList,
         close: ACTION_ICONS.close, preview: ACTION_ICONS.wordWrap,
         search: CHAT_ICONS.search, copy: CHAT_ICONS.copy, edit: CHAT_ICONS.edit,
-        retry: ACTION_ICONS.rerun, send: ChatInputTemplates.sendIcon(),
+        retry: ACTION_ICONS.rerun, branch: ACTION_ICONS.branch, delete: ACTION_ICONS.delete, send: ChatInputTemplates.sendIcon(),
         attach: ChatInputTemplates.addIcon(), cancel: ChatInputTemplates.stopIcon(),
         print: '<i class="fas fa-print" aria-hidden="true"></i>',
     };

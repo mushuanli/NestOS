@@ -15,9 +15,9 @@ export class SessionRunsPanel {
     private active = true;
     private closed = false;
     constructor(private commands: ICommandBus, private sessionId: string, container: HTMLElement,
-        private onRuns?: () => void) {
+        private onRuns?: () => void, initiallyActive = true) {
         this.root.className = 'llm-session-runs'; this.root.hidden = true; container.append(this.root);
-        void this.refresh();
+        this.active = initiallyActive; if (initiallyActive) void this.refresh();
     }
     async refresh(): Promise<void> {
         if (!this.active || this.closed) return;

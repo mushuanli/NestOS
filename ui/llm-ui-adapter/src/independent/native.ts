@@ -27,6 +27,7 @@ export interface NativeChatBindingOptions {
     readonly readOnly?: boolean;
     readonly images?: ImageEditingHost;
     readonly conversationId: string;
+    readonly reservedNativeCommands?: readonly string[];
     readonly commandProviders?: readonly NativeCommandProvider[];
     readonly controls: ConversationControls;
     readonly operations: OperationLedger;
@@ -41,7 +42,8 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
     let closed = false, generation = 0, native: NativeSnapshot | undefined;
     const capabilities = new NativeComposerCapabilities(options.controls, options.onError);
     const contributions = (state: NativeSnapshot) => options.commandProviders?.map(provider => ({source: provider.source, commands: provider.commands(state)})) ?? [];
-    const commands = (state: NativeSnapshot) => capabilities.compose(state, contributions(state));
+    const commands = (state: NativeSnapshot) => capabilities.compose(state, contributions(state)).filter(command =>
+        command.source.id !== 'harness' || !options.reservedNativeCommands?.includes(command.name));
     const requests = new Map<string, { encoded: string; revision: number }>();
     const publish = (state: NativeSnapshot) => {
         if (closed) return;
@@ -54,7 +56,8 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             interactions: state.requests.map(request => interaction(request, requests)),
             loading: false, executionRef: state.observation?.activeTurnId ?? undefined, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
             connection: state.disconnected ? 'offline' : 'online', hasEarlier: state.hasEarlier ?? false,
-            allowed: options.readOnly ? [] : [...(nativeCanSubmit(state, options.controls) ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
+            allowed: options.readOnly ? [] : [...(nativeCanSubmit(state, options.controls) && !options.operations.getSnapshot().some(record => record.conversationId === options.conversationId
+                    && ['unknown', 'submitting'].includes(record.status) && (record.input as {protocol?: string} | null)?.protocol === 'legacy-composer-v1') ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
                 ...(state.canInterrupt && state.sessionId && state.observation?.activeTurnId && options.controls.reconcileControl ? ['cancel' as const] : []),
                 ...(catalog.some(command => !command.disabled) ? ['command' as const] : [])] });
     };
@@ -248,6 +251,9 @@ function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): C
     return {...images, setActive: value => {
         queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value); options.setActive?.(value);
     }};
+}
+export async function adoptNativeChatView(view: ChatView, binding: NativeBinding, options: ImageChatOptions = {}): Promise<ChatView> {
+    await view.replaceBinding(prepareNativeView(binding, options)); return view;
 }
 export async function createNativeChatView(container: HTMLElement, binding: NativeBinding, options: ImageChatOptions = {}): Promise<NativeChatView> {
     return createChatView(container, prepareNativeView(binding, options));

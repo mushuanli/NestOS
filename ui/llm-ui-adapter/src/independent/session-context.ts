@@ -16,7 +16,7 @@ export class SessionContextPicker implements MountedToolbar {
         this.clear.textContent = t('callable.context.clear'); this.clear.onclick = () => {if (this.active) this.view.setContext(null);};
         host.append(this.error, this.clear);
         this.picker = new WorkspaceContextPicker(host, () => this.active ? read : undefined, value => {if (this.active) this.view.setContext(value ? JSON.parse(JSON.stringify(value)) as JsonValue : null);},
-            () => this.view.getDraft().context?.revision ?? 0);
+            () => this.view.getDraft().context?.revision ?? 0, false);
         this.update(context);
     }
     setActive(active: boolean): void {this.active = active; this.picker.invalidate(); this.updateDraft(this.view.getDraft());}

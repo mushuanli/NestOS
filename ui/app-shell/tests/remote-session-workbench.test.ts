@@ -115,9 +115,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(create()?.getAttribute('aria-label')).toBe(t('project.createSession'));
         create()!.click();
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('draft:' + project.project.id));
-        activePanel().querySelector<HTMLButtonElement>('.llm-input__agent-trigger')!.click();
-        expect(document.querySelector('.llm-popup--visible')?.textContent).toContain(t('harness.remoteAgents'));
-        expect(document.querySelector('.llm-popup--visible')?.textContent).toContain('codex'); document.body.click();
+        expect(activePanel().querySelector('[data-selector-id=executorId]')?.textContent).toContain('codex');
         expect(activePanel().querySelector('[data-execution-target]')).toBeNull();
         expect(peer.create).not.toHaveBeenCalled(); expect(peer.turn).not.toHaveBeenCalled();
         await workbench.openResource(profilePath, {preserveProject: true});
@@ -167,7 +165,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(selector.value).toBe('/');
         expect(factory.mock.calls.at(-1)![1].conversation).toBeDefined();expect(peer.resume).not.toHaveBeenCalled();
         const collapsed = sidebar.classList.contains('is-collapsed');
-        const toggle = activePanel().querySelectorAll<HTMLButtonElement>('#llm-btn-sidebar')[0]!;
+        const toggle = activePanel().querySelectorAll<HTMLButtonElement>('.llm-chat__sidebar')[0]!;
         expect(toggle.hidden).toBe(false); toggle.click();
         await vi.waitFor(() => expect(sidebar.classList.contains('is-collapsed')).toBe(!collapsed));
         toggle.click(); await vi.waitFor(() => expect(sidebar.classList.contains('is-collapsed')).toBe(collapsed));
@@ -192,15 +190,15 @@ it('browses mounted native history pages, opens their conversations and routes a
         const before=(await runtime.sessionRepository.list()).length;
         await workbench.startSessionDraft(remotePath, undefined, remoteId);
         const shell = workbench as any, draftTab = shell.tabs.current, draftEditor = shell.editor;
-        const mount = draftTab.panel.querySelector('.session-editor-mount'), textarea = mount.querySelector('.llm-input__textarea');
-        const history = mount.querySelector('#llm-ui-history'), uuid = mount.dataset.conversationId;
+        const mount = draftTab.panel.querySelector('.session-editor-mount'), textarea = mount.querySelector('.llm-chat__input');
+        const history = mount.querySelector('.llm-chat__history'), uuid = mount.dataset.conversationId;
         const composer = await runtime.projects.drafts.open(project.project.id, folder);
         expect(uuid).toBe(composer.id);
         let accept!: () => void;
         const delayed = new Promise<void>(resolve => {accept = resolve;});
         vi.mocked(peer.turn).mockImplementationOnce(async () => {await delayed; return {turnId: 't'};});
         textarea.value = 'remote task'; textarea.dispatchEvent(new Event('input', {bubbles: true}));
-        mount.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.click();
+        mount.querySelector<HTMLButtonElement>('.llm-chat__composer button[type=submit]')!.click();
         try {
             await vi.waitFor(() => expect(peer.turn).toHaveBeenCalledOnce());
             expect(workbench.getActiveResourceId()).toBe('draft:' + project.project.id);
@@ -210,7 +208,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         const promoted = remoteSessionPath(project.path, 'codex', 'new-native');
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(promoted));
         expect(shell.tabs.current).toBe(draftTab); expect(shell.editor).toBe(draftEditor);
-        expect(mount.querySelector('.llm-input__textarea')).toBe(textarea); expect(mount.querySelector('#llm-ui-history')).toBe(history);
+        expect(mount.querySelector('.llm-chat__input')).toBe(textarea); expect(mount.querySelector('.llm-chat__history')).toBe(history);
         expect(textarea.value).toBe('Next remote message'); expect(textarea.selectionStart).toBe(4);
         expect(document.activeElement).toBe(textarea); expect(draftTab.conversationId).toBe(uuid);
         expect(mount.querySelector('.llm-draft-scope')).toBeNull();
@@ -221,7 +219,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         await workbench.openResource(promoted);
         expect(shell.tabs.current.conversationId).toBe(uuid);
         expect(activePanel().querySelector<HTMLElement>('.session-editor-mount')!.dataset.conversationId).toBe(uuid);
-        expect(activePanel().querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.value).toBe('Next remote message');
+        expect(activePanel().querySelector<HTMLTextAreaElement>('.llm-chat__input')!.value).toBe('Next remote message');
         vi.mocked(peer.create).mockImplementationOnce(async () => {const session={...native,id:'second-native'};sessionList.push(session);return {session};});
         await controls.send(remoteId,'another task');expect(peer.create).toHaveBeenCalledTimes(2);
         expect(peer.turn).toHaveBeenLastCalledWith('codex','second-native','another task',expect.anything());
@@ -245,9 +243,13 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(activePanel().querySelector(`[data-resource-id="${profilePath}/@new"]`)).toBeNull();
         await vi.waitFor(() => expect(sidebarCreate.disabled).toBe(true));
         await workbench.openResource(nativePath);
-        expect(activePanel().querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
+        const readOnlyInput = activePanel().querySelector<HTMLTextAreaElement>('.llm-chat__input')!;
+        readOnlyInput.value = 'Unsent permission probe'; readOnlyInput.dispatchEvent(new Event('input', {bubbles: true}));
+        expect(activePanel().querySelector<HTMLButtonElement>('.llm-chat__composer button[type=submit]')!.disabled).toBe(true);
         await remountAs('rw'); await workbench.openResource(nativePath);
-        expect(activePanel().querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(false);
+        const writableInput = activePanel().querySelector<HTMLTextAreaElement>('.llm-chat__input')!;
+        writableInput.value = 'Unsent permission probe'; writableInput.dispatchEvent(new Event('input', {bubbles: true}));
+        await vi.waitFor(() => expect(activePanel().querySelector<HTMLButtonElement>('.llm-chat__composer button[type=submit]')!.disabled).toBe(false));
         (await menu()).querySelector<HTMLButtonElement>('[data-action="unmount-project"]')!.click();
         await vi.waitFor(() => expect(document.querySelector('dialog')?.textContent).toContain('远端目录'));
         document.querySelector('dialog form')!.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));

@@ -50,12 +50,12 @@ it('shows the first-paint skeleton while a real HTTPS opening is pending, then m
     const app = await initApp({...root, workspaces: WORKSPACES, defaultSlug: 'start', startPage: true, ui: createBrowserUI(root.flowLibrary)});
     releases.push(() => app.destroy());
     await client.peer.whenIdle();
-    expect(document.querySelector('.llm-input')).not.toBeNull();
+    expect(document.querySelector('.llm-chat__composer')).not.toBeNull();
     expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
     expect(document.body.hasAttribute('data-app-starting')).toBe(false);
     expect(getComputedStyle(document.getElementById('app-initial-view')!).display).toBe('none');
     for (const method of ['openView', 'workbenchView', 'activate', 'observeView', 'update']) expect(operations).not.toContain(method);
-    const input = document.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+    const input = document.querySelector<HTMLTextAreaElement>('.llm-chat__input')!;
     input.value = 'Unsent input inserted without an event'; input.setSelectionRange(5, 10);
     document.querySelector<HTMLElement>('#llm-workspace .mm-layout')!.dataset.mobileView = 'list';
     let recovery: ReturnType<typeof app.captureRecovery> | undefined;
@@ -65,8 +65,8 @@ it('shows the first-paint skeleton while a real HTTPS opening is pending, then m
     const nextRoot = await replacement.start({initialView: initialViewRequest(INITIAL_CHAT_DOCUMENTS, id)});
     const recovered = await initApp({...nextRoot, recovery, workspaces: WORKSPACES, defaultSlug: 'start', startPage: true, ui: createBrowserUI(nextRoot.flowLibrary)});
     releases.push(() => recovered.destroy());
-    expect(document.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.value).toBe('Unsent input inserted without an event');
-    expect(document.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.selectionStart).toBe(5);
+    expect(document.querySelector<HTMLTextAreaElement>('.llm-chat__input')!.value).toBe('Unsent input inserted without an event');
+    expect(document.querySelector<HTMLTextAreaElement>('.llm-chat__input')!.selectionStart).toBe(5);
     expect(document.querySelector<HTMLElement>('#llm-workspace .mm-layout')!.dataset.mobileView).toBe('list');
     expect(nextRoot.services.sessionManager.getSessions()).toHaveLength(0);
     console.log('[HTTPS shell handshake operations]', operations);

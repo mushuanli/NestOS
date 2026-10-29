@@ -30,7 +30,7 @@ export class WorkspaceContextPicker {
     private candidate?: InputContextDraft['selection'];
     private readonly clicked = (event: Event) => this.click(event);
     constructor(host: HTMLElement, private readonly read: () => ContextOptionsPort | undefined, private readonly changed: (value?: InputContextDraft) => void,
-        private readonly revisionFloor: () => number = () => 0) {
+        private readonly revisionFloor: () => number = () => 0, private readonly eager = true) {
         this.element.className = 'workspace-context'; this.element.addEventListener('click', this.clicked); host.append(this.element);
     }
     update(state: ContextPickerState): void {
@@ -42,7 +42,7 @@ export class WorkspaceContextPicker {
         this.revision = Math.max(this.revision, state.draft?.revision ?? 0);
         this.state = structuredClone(state);
         if (changed) {this.scopeKey = key; this.invalidate(); if (discover) this.page = undefined; this.expanded = false; this.verified = undefined;}
-        this.render(); if (changed && discover && this.query()) void this.load();
+        this.render(); if (this.eager && changed && discover && this.query()) void this.load();
     }
     invalidate(): void {++this.generation; ++this.sequence; this.loading = false; this.candidate = undefined; this.error = undefined; this.sources = []; this.checkpoints = []; this.bindingId = undefined;}
     destroy(): void {this.closed = true; this.invalidate(); this.element.removeEventListener('click', this.clicked); this.element.remove();}

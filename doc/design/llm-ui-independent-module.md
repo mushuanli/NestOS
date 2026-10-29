@@ -1,6 +1,6 @@
 # llm-ui 独立模块与协作接口设计
 
-状态：已建立独立包与宿主适配边界，现有产品编辑器保留兼容入口。日期：2026-10-17。
+状态：默认 Session、项目草稿及支持持久草稿端口的原生会话已接入共享 ChatView；旧宿主保留显式兼容入口。日期：2026-10-29。
 
 `@itookit/llm-ui` 是原生 DOM 的 LLM 界面库，**同时包含 Chat 和 Flow 功能**，唯一直接运行时依赖为 `@itookit/mdxeditor`。Flow 通过同一包的 `/flow` 子入口按需加载，不建立单独的 Flow UI 包。
 
@@ -12,13 +12,13 @@ NestOS 的 Session、Task、Flow 执行、VFS、配置和权限由 `@itookit/llm
 C4Component
     title Chat 与 Flow 的模块职责
     Component(app, "Web / Tauri / HTTP", "组合根", "装配端口并持有台账")
-    Component(compat, "llm-ui-adapter/chat", "NestOS UI", "现有产品编辑器兼容入口")
+    Component(compat, "llm-ui-adapter/chat", "NestOS UI", "默认产品工厂与旧宿主兼容入口")
     Component(binding, "llm-ui-adapter/independent", "展示适配", "Session 与原生会话投影")
     Component(ui, "libraries/llm-ui", "原生 DOM", "通用 Chat 与按需 Flow")
     Component(mdx, "mdxeditor", "Markdown", "受控渲染")
     Component(ports, "宿主注入端口", "公开契约", "命令、观察与持久提交核对")
     Component(backend, "llm-session / 执行与存储", "后端", "接纳证据、授权与执行")
-    Rel(app, compat, "装配现有产品入口")
+    Rel(app, compat, "装配默认产品入口")
     Rel(app, binding, "装配独立视图入口")
     Rel(binding, ui, "展示")
     Rel(ui, mdx, "渲染")
@@ -34,9 +34,9 @@ C4Component
 | 独立 llm-ui | 根入口 createChatView、createOperationLedger | 聊天展示、已加载内容搜索与定位、草稿附件、消息操作、交互卡片、提及候选、选择器和扩展 |
 | 独立 llm-ui | /flow 的 createFlowView | 节点与端口、连线、检查器、布局、运行状态及输出 |
 | NestOS 适配 | llm-ui-adapter/independent | Session 与原生会话投影到同一 ChatView |
-| NestOS 兼容入口 | llm-ui-adapter/chat、/conversation、/settings、/startup | 保留完整产品编辑器、Flow 业务表单、菜单、项目草稿与设置接线 |
+| NestOS 产品入口 | llm-ui-adapter/chat、/conversation、/settings、/startup | 共享 ChatView 的产品外壳、旧宿主兼容、Flow 业务表单及菜单与设置接线 |
 
-现有 Web/Tauri/HTTP 的产品编辑器改从适配包导入，保留原来的产品行为。兼容工厂目前仍使用原业务编辑器；新的 Session/native 绑定提供独立 ChatView 接入，不宣称所有产品插槽都已经迁入通用组件。复杂 NestOS Flow 配置也保留在适配层，通用 Flow 通过宿主描述字段或检查器接入。
+现有 Web/Tauri/HTTP 的产品编辑器改从适配包导入，保留原来的产品行为。默认工厂使用 IndependentSessionEditor、ChatDraftEditor 与 IndependentConversationEditor，输入与消息视图由共享 ChatView 提供；业务命令、任务、OCR、图片元数据和持久化仍由适配层提供。复杂 NestOS Flow 配置也保留在适配层，通用 Flow 通过宿主描述字段或检查器接入。
 
 原生会话的诊断展示也归适配层：ConversationInformation 将已有快照中的被动状态、累计 token 和宿主估价收进「更多 → 会话信息」，说明外部运行观察范围及估价与实际账单的区别；不读取定价目录、不发探测请求。基础字段与本地 SessionFamilyActions 统一为创建时间、最后活动，复用相同文案与 ui-common.setTimePresentation 时间展示；缺失值显示「暂无记录」，不以页面刷新时间替代远端活动。运行和等待保留标题栏指标，离线、错误、缺口与未知回执保留直接提示。详情更新只修改自身文本，不替换历史或输入 DOM；销毁释放弹层。
 
@@ -48,7 +48,7 @@ C4Component
 
 历史滚动共用独立库 `ScrollController`；输入共用 `shouldSubmitMessage` 与 `resizeMessageInput`。原生和 Session 产品编辑器通过既有 HistoryView/ChatInput 消费这些规则，独立 ChatView 也直接消费。原 common 转导出已删除，消费者直接从独立库公开入口导入。输入、气泡、标题栏与目录的默认外观归独立库，adapter 只保留宿主控件样式及主题/图标注入。
 
-这不表示产品已全部迁入 ChatView：默认工厂仍使用兼容编辑器，项目草稿仍通过 WorkspaceHandoff 原位转正。切换默认入口前必须接齐草稿转正、历史编辑/分支、配置通知及恢复能力，并验证首次提交期间输入 DOM、焦点、Session UUID 和 operationId 稳定；不能通过重建输入框或静默回退到另一套视图绕过这些要求。独立库可操作预览见 [chat-preview.html](../../libraries/llm-ui/examples/chat-preview.html)。
+项目草稿通过 RetainedWorkspaceHandoff 转交同一个 ChatView，首次提交复用草稿 UUID、输入 DOM、焦点与稳定 operationId。正式 Session 切换分支仍使用 replaceBinding；原生会话支持持久草稿端口时走同一视图。工厂初始化失败清理所有已获得的资源，不能通过重建输入或静默换另一套视图掩盖失败。独立库可操作预览见 [chat-preview.html](../../libraries/llm-ui/examples/chat-preview.html)。
 
 ### 1.2 保留视图与绑定替换
 
@@ -60,7 +60,9 @@ Session/native 适配分别提供 `replaceSessionChatBinding(view, ...)` / `repl
 
 绑定的 `setActive` 与 `release` 是独立库正式契约。库在安装、隐藏、替换失败及退役时管理生命周期，旧订阅和展示插槽清理完成后恰好释放一次。适配层仅提供绑定工厂及替换函数，不覆写 ChatView 的公共方法；共享连接仍归宿主。
 
-此阶段尚未更换默认 Chat 工厂，也未将项目 SessionDraftEditor 的 WorkspaceHandoff 切换到独立 ChatView；草稿转正、完整历史操作和配置接线仍需后续迁移与验收。
+ChatView 的 captureRecovery/restoreRecovery 保存真实 textarea 中尚未触发 input 事件的文字、选择区及焦点；恢复核对 conversationId。上传、图片编辑与绑定准备期间拒绝捕获；OCR 审阅由宿主阻止恢复。Session/native 的宿主保存端口在 suspendForRecovery 后停止旧视图的写入。
+
+旧原生宿主缺少 readComposerDraft/saveComposerDraft/putComposerAsset/readComposerAsset 时，或存在没有可恢复冻结标记的旧 pending 提交时，显式使用 RemoteConversationEditor；日志区分 LEGACY_HOST_DRAFT_PORTS 与 LEGACY_SUBMISSION_RECOVERY。已有可解码 remoteSubmission 的操作保留原 operationId，只查回执；不自动重发。RetainedWorkspaceHandoff 不允许回退到旧视图。旧 WorkspaceHandoff 调用方仍由旧编辑器消费。
 
 ### 1.3 机制迁移与剩余工作
 
@@ -76,9 +78,24 @@ Session/native 适配分别提供 `replaceSessionChatBinding(view, ...)` / `repl
 | SchemaForm | /forms 的递归布局；叶字段和 ParameterForm 共用渲染/读取 | Flow 表达式接受策略与业务文案 |
 | DOM 缓存与基础设施 | DOMCache、滚动、尺寸、事件和定时器 | EventBatchProcessor 的 Session 事件接线 |
 
-仍未完成的是默认产品工厂切到 ChatView：完整历史编辑/分支、配置与权限控件、项目草稿 WorkspaceHandoff 需要逐项对齐后再切换。ChatInputView、SessionRenderer、DagWorkbench 仍承载这些产品职责，不能仅因行数多就整体删除。当前没有 appendDelta 公共事实通道。
+默认产品路径已切换，仍保留的旧实现及删除条件如下：
+
+- RemoteConversationEditor/ChatInputView/SessionRenderer：旧宿主端口与旧 WorkspaceHandoff 的兼容链；所有宿主具备持久草稿和恢复端口、旧入口消费者移除后才能删除。
+- LLMWorkspaceEditor/SessionDraftEditor：兼容导出与直接导入的旧产品回归仍在使用；默认工厂已不导入其实时实现。不能用删除回归或批量修改断言代替验收。
+- DagWorkbench：Flow 的业务编辑、表达式、发布与运行接线；画布及表单已共用库机制，不能整体移入通用库。
+- 宿主全局搜索与消息导航、旧历史操作的所有边缘行为仍需逐项验收；共享 ChatView 内的搜索、目录、定位、折叠及打印已接通。多段用户输入只给最后一段整体编辑/重试，防止误改其他输入；已确认 Flow 参数提供独立参数重跑入口。
+
+当前没有 appendDelta 公共事实通道。后端在发送流式与工具通知前更新实时 SessionState，快照与兼容事件观察获得同一状态。工具未知退出码不推断为成功；TTY 只展示有界结果。图片交接同时保留处理结果、原图、编辑参数及逻辑附件身份。
+
+HTTP 默认首屏新增公开目标目录与独立调用回执各一次读取，因此请求预算由原来的 5 增加至 7；回归同时要求两项各恰好一次，并禁止重复 getManifest、空会话 listSessionTasks 及未打开的上下文目录读取。独立运行列表移入更多菜单后按需读取。此预算变化不是队列容量扩容，也不改变 SSE 内容策略。
 
 传输缓存不等于每次全量发送：SessionHistory 保留最多 8 个 scope，RpcPeer 按缓存基线产生差分。八个 scope 各 350,000 字符的回归覆盖轮换与追加，每次增量要求小于 4 KiB；这验证传输量，不代表进程堆峰值压测。4 Mi 单位是缓存淘汰预算，单个当前历史可能超过它；大型准备包转 HTTP 读取。ViewUpdateReads 的条数上限为 32，但所有条目合计受 MAX_BODY_BYTES（32 MiB）限制，并非 32 × 32 MiB；TTL 为 60 秒。初始读取和大量内容变化仍需传输实际内容，不保证小包。
+
+### 1.4 本批验收与限制（2026-10-29）
+
+共享库 169 项、适配层 349 项、默认入口定向回归 34 项及后端通知/观察回归 11 项通过；共享库和适配层构建、工作区类型检查、docs/styles/UUID 检查通过。默认入口回归覆盖本地/RPC Flow 首次提交、保留视图、分支草稿、远程浏览、HTTP 首屏及刷新恢复。
+
+全量 app-shell 仍未通过：本次运行 1439 项通过、27 项失败、30 项跳过，并有 11 个未处理错误。使用 0c6c173b 导出的应用/适配源码及当前库依赖，已复现此前 24 个失败；独立调用控制用例还存在波动，整包压力下旧编辑器 A→B→A 性能用例发生超时，定向运行通过。后端全量仍有已在同基线复现的 CALL_EXECUTION_MODE_CONFLICT/CALL_PREPARATION_UNAVAILABLE 断言失败。不能将定向迁移验收等同于全仓测试通过，也不能据此删除全部旧控制器；这些问题继续单独归因和修复。
 
 ## 2 协作方式
 
@@ -240,9 +257,9 @@ destroy 返回同一 Promise，先阻止本地新工作，再解绑并清理全�
 
 构建执行 check-llm-ui-entrypoints，边界检查禁止独立源码及类型导入其他包。目录、公共契约和宿主集成同步记录于 [包结构](../pkgstructure.md)、[前后端模块边界](frontend-backend-modules.md)、[接口契约](../interface-contracts.md)、[集成链](../integration-chains.md)与[事件流](../event-flows.md)。
 
-## 9 产品流程收敛方案（2026-10-18，待实施）
+## 9 产品流程收敛方案（2026-10-18 设计，2026-10-29 默认入口迁移）
 
-本节是架构方案。当前已修复绑定前登记失效、订阅相互替换的问题，并补充真实 Kernel → RPC → 页面回归。提交目标已从可编辑偏好中分离并持久冻结；控制器创建改为显式工厂注入，移除全局 WeakMap 交接注册。产品仍使用既有编辑器控制器，统一 ChatView 和完整单一快照路径的迁移尚未完成。
+本节是架构方案。当前已修复绑定前登记失效、订阅相互替换的问题，并补充真实 Kernel → RPC → 页面回归。提交目标已从可编辑偏好中分离并持久冻结；控制器创建改为显式工厂注入，移除全局 WeakMap 交接注册。默认工厂现已使用统一 ChatView；旧宿主及直接导入的旧控制器仍保留兼容，验收与剩余条件见 §1.1–§1.3。
 
 ### 9.1 问题与证据
 
@@ -252,7 +269,7 @@ destroy 返回同一 Promise，先阻止本地新工作，再解绑并清理全�
 
 此前另一个缺陷是草稿控制器销毁时清空共享历史容器，导致正式控制器持有脱离 DOM 的消息节点。两者是不同缺陷，但共同暴露出控制器、可变当前会话、观察和 DOM 的多重所有权。
 
-产品工厂仍选择 SessionDraftEditor / LLMWorkspaceEditor / RemoteConversationEditor；独立 ChatView 的固定 source、snapshot 契约尚未覆盖产品全部行为。独立包已经建立，不等于产品迁移完成。
+设计时产品工厂选择 SessionDraftEditor / LLMWorkspaceEditor / RemoteConversationEditor。当前默认入口已选择共享 ChatView 的产品外壳；RemoteConversationEditor 仅在明确兼容条件下按需加载。剩余旧控制器及宿主边缘行为仍需逐项迁移与验收，不能把默认路径切换等同于所有旧代码均可删除。
 
 ### 9.2 C4 组件目标
 

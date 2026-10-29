@@ -1,12 +1,13 @@
+import {IndependentSessionEditor} from './shell/IndependentSessionEditor';
+import {ChatDraftEditor} from './shell/drafts/ChatDraftEditor';
 import {createConversationEditor} from './conversation';
-import { SessionDraftEditor } from './shell/drafts/SessionDraftEditor';
-import type {WorkspaceHandoff} from './shell/drafts/workspace-handoff';
+import type {RetainedWorkspaceHandoff} from './shell/drafts/workspace-handoff';
 import { normalizeEditorOptions } from '@itookit/ui-common';
 // @file: llm-ui/index.ts
 
 import './styles/index.css';
 
-import { LLMWorkspaceEditor, LLMEditorOptions } from './shell/LLMWorkspaceEditor';
+import type { LLMEditorOptions } from './shell/session-editor-options';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { IAgentConfigService } from '@itookit/kernel-adapters/contracts';
 import { IEditor } from '@itookit/ui-common';
@@ -66,15 +67,15 @@ export const createLLMFactory = (
     // 防止外部框架在短时间内对同一 sessionId 重复调用 factory
     const pendingByContainer = new WeakMap<HTMLElement, Map<string, Promise<IEditor>>>();
 
-    const createEditor = async (container: HTMLElement, options: EditorOptions, handoff?: WorkspaceHandoff): Promise<IEditor> => {
+    const createEditor = async (container: HTMLElement, options: EditorOptions, handoff?: RetainedWorkspaceHandoff): Promise<IEditor> => {
         const chatOptions = normalizeEditorOptions(options as EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission, import('./services/SessionService').SessionLoadResult>);
         if (options.conversation) {
-            return createConversationEditor(container, options.conversation, options, handoff);
+            return createConversationEditor(container, options.conversation, options, handoff, deps.ocr);
         }
         if (options.sessionDraft) {
-            const draft = new SessionDraftEditor(container, agentService, chatOptions, deps.ocr, createEditor,
-                { commands: deps.commandBus, configuration: deps.configuration });
-            await draft.init(container); return draft;
+            const editor = new ChatDraftEditor(container, agentService, chatOptions, createEditor,
+                {commands: deps.commandBus, configuration: deps.configuration, ocr: deps.ocr});
+            try {await editor.init(container); return editor;} catch (error) {try {await editor.destroy();} catch (cleanup) {throw new AggregateError([error, cleanup], 'Draft initialization and cleanup failed');} throw error;}
         }
         let pendingCreations = pendingByContainer.get(container);
         if (!pendingCreations) { pendingCreations = new Map(); pendingByContainer.set(container, pendingCreations); }
@@ -96,7 +97,6 @@ export const createLLMFactory = (
         if (!sessionManager) throw new Error('Chat editor requires an injected session view');
         const editorOptions: LLMEditorOptions = {
             ...chatOptions,
-            handoff,
             agentService,
             sessionId,
             sessionRepository: engine,
@@ -116,7 +116,7 @@ export const createLLMFactory = (
         const createPromise = (async () => {
             let editor: IEditor | undefined;
             try {
-                editor = new LLMWorkspaceEditor(container, editorOptions);
+                editor = new IndependentSessionEditor(container, editorOptions, handoff);
                 await editor.init(container, options.initialContent);
                 return editor;
             } catch (e) {

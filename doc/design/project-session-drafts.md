@@ -33,9 +33,10 @@ app-shell/src/projects/project-draft-editor.ts
 ui-common/src/interfaces/SessionDraftControls.ts
   SessionDraftControls               UI 与宿主之间的独立契约
 llm-ui-adapter/src/shell/drafts/
-  SessionDraftEditor.ts              普通空会话布局和输入交互
+  ChatDraftEditor.ts                 共享 ChatView 草稿、同视图转正与宿主接线
+  ChatDraftStore.ts                  结构化草稿、附件及图片元数据的兼容持久化
   session-draft-data.ts              UI 配置、附件引用序列化和旧 base64 迁移
-  draft-save-queue.ts                写入排序、失败状态与 flush
+  draft-save-queue.ts                旧编辑器兼容保存队列；新输入使用 ChatView.flushDraft
 vfs-ui/src/contracts/options.ts
   DirectoryAction                   导航动作声明，不参与文件生命周期
 vfs-ui/src/utils/fixed-entry.ts

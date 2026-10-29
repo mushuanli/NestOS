@@ -237,14 +237,12 @@ it('persists Agent and Connection changes to the original Session before disposa
 it('releases layout and shared connection subscriptions after factory initialization fails', async () => {
     const f = await fixture(), container = document.createElement('div');
     const unsubscribe = vi.fn(); f.agents.onChange = () => unsubscribe;
-    const removeListener = vi.spyOn(container, 'removeEventListener');
     const failure = new Error('Bind failed'); f.bind.mockRejectedValueOnce(failure);
     const factory = createLLMFactory(f.agents as never, { sessionManager: f.sessions,
         sessionRepository: f.repository, commandBus: f.commandBus });
     await expect(factory(container, { target: { kind: 'session', sessionId: f.id } })).rejects.toBe(failure);
     expect(container.innerHTML).toBe('');
     expect(unsubscribe).toHaveBeenCalledOnce();
-    expect(removeListener).toHaveBeenCalledWith('click', expect.any(Function));
 });
 
 it('continues disposal after save failure and returns the same destruction promise', async () => {

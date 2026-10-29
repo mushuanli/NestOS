@@ -6,5 +6,7 @@ export function mountConversationSource(container: HTMLElement, kind: string, la
     badge.title = label ?? source.label; badge.setAttribute('aria-label', badge.title);
     const icon = document.createElement('span'); icon.innerHTML = source.icon; icon.setAttribute('aria-hidden', 'true');
     badge.append(icon, document.createTextNode(label ?? source.label));
-    container.querySelector('.llm-workspace-titlebar__left')?.after(badge);
+    const legacy = container.querySelector('.llm-workspace-titlebar__left');
+    if (legacy) legacy.after(badge);
+    else (container.matches('.llm-chat__header') ? container : container.querySelector('.llm-chat__header'))?.append(badge);
 }

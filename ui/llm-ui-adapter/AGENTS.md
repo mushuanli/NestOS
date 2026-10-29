@@ -8,7 +8,7 @@ NativeCommandOutput 在原命令消息锚点展示截断预览和按需完整读
 
 项目草稿的 `selectDraftAgent` 命令只切换明确指定且仍可用的智能体，沿用 ChatInput 的配置通知与保存队列，保留文字、附件和模型偏好；不创建正式 Session、不发送内容。工作台快捷入口消费此命令，项目选择和资源列表不进入聊天组件。
 
-本包承接 NestOS 的 Session、Task、原生会话、配置和权限接线，保留原业务编辑器兼容入口。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
+默认 chat 工厂使用 IndependentSessionEditor/ChatDraftEditor，具备持久草稿端口的原生会话使用 IndependentConversationEditor，三者共用独立 ChatView。旧原生宿主或不可恢复的旧 pending 提交显式使用 RemoteConversationEditor；LLMWorkspaceEditor/SessionDraftEditor 仅保留兼容导出与旧消费者。本包承接 NestOS 的 Session、Task、原生会话、配置和权限接线。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
 
 提问目录的视图、交互和 CSS 统一由独立 llm-ui 的 PromptNavigator 提供；本包 components/PromptNavigator 只投影产品文案、图标、历史身份及 reveal 回调。滚动、尺寸追踪、定时器、事件清理和 DOMCache 直接从独立库公开入口导入；components/common 只保留业务 EventBatchProcessor。ChatInput 的回车与高度规则复用 shouldSubmitMessage/resizeMessageInput；不要在适配层复制通用规则。独立 ChatView 的默认外观归 llm-ui，styles/independent-chat.css 仅补宿主自行创建的控件。
 
@@ -42,7 +42,7 @@ HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已�
 
 原生会话的被动运行状态、累计 token 和估算费用收进标题栏「更多 → 会话信息」，由 ConversationInformation 消费已有快照，不额外请求或改变执行状态。基础信息与本地会话统一为创建时间、最后活动，复用 project 字段文案及 ui-common.setTimePresentation；远端缺失时间显示「暂无记录」，不以页面刷新时间代替。详情说明未加载与外部活动不可见的含义，区分累计用量、正文长度和实际账单；金额通常保留两位小数，非零分以下估算保留必要精度。运行和等待状态保留标题栏指标，错误、离线、历史缺口及未知回执继续在正文显示；打开或更新详情不重建历史和输入，关闭编辑器清理弹层。回归见 app-shell 的 remote-conversation-editor、session-toolbar 与本包 conversation-usage。
 
-原生远程 harness 会话经 `ConversationControls` 注入，复用 `LayoutTemplates`、`HistoryView`/`SessionRenderer`和 `ChatInput`，不另写历史卡片和 textarea。`RemoteConversationEditor` 仅适配原生分页、分支、审批、回执和草稿；`remote-rounds` 按原生 turnId 投影每轮独立的用户 MDx 与响应 MDx，保留请求数组、全部智能体回复及思考。用户数组的文字项由 contentParts 保留边界，展示和复制时用 `\n\n---\n\n` 分隔；单条文本内部换行不拆项。工具显示名称、操作、首个非空命令行（最多 240 个字符）和目标路径，不展示完整参数、后续代码或输出；智能体正文的代码块继续使用共享折叠控件。仅去除 submitted 乐观消息的原生回显，不按文本去重真实请求。时间使用原生毫秒时间，未知时间留空；branchName 独立于会话标题。缺少 turnId 的旧数据按用户消息边界投影。更早历史由顶部加载入口或明确的定位请求按需逐页读取，不自动补齐全部历史；失败保留提示与手动重试入口，不随通知或轮询重复请求。宿主提供订阅时读取本地快照，缺少订阅才使用轮询回退。快照更新保留 MDx 实例。原生历史只读，隐藏未声明的本地编辑/重生成功能；发送与中断直达远程控制端口，不调用本地 Session 或 Kernel。
+原生远程 harness 会话经 `ConversationControls` 注入；现代端口默认共用 ChatView，旧宿主兼容链仍复用 LayoutTemplates、HistoryView/SessionRenderer 和 ChatInput。`RemoteConversationEditor` 仅适配原生分页、分支、审批、回执和草稿；`remote-rounds` 按原生 turnId 投影每轮独立的用户 MDx 与响应 MDx，保留请求数组、全部智能体回复及思考。用户数组的文字项由 contentParts 保留边界，展示和复制时用 `\n\n---\n\n` 分隔；单条文本内部换行不拆项。工具显示名称、操作、首个非空命令行（最多 240 个字符）和目标路径，不展示完整参数、后续代码或输出；智能体正文的代码块继续使用共享折叠控件。仅去除 submitted 乐观消息的原生回显，不按文本去重真实请求。时间使用原生毫秒时间，未知时间留空；branchName 独立于会话标题。缺少 turnId 的旧数据按用户消息边界投影。更早历史由顶部加载入口或明确的定位请求按需逐页读取，不自动补齐全部历史；失败保留提示与手动重试入口，不随通知或轮询重复请求。宿主提供订阅时读取本地快照，缺少订阅才使用轮询回退。快照更新保留 MDx 实例。原生历史只读，隐藏未声明的本地编辑/重生成功能；发送与中断直达远程控制端口，不调用本地 Session 或 Kernel。
 
 原生会话标题栏复用 EventBinder 的响应式菜单与事件、StatusIndicatorView、BranchIndicatorTemplates、FloatingNavPanel 和 LLMPrintService。侧栏按钮由宿主 toggleSidebar 决定可用性，与原生执行能力无关。ConversationHistoryNavigation 消费渲染后的轮次，不调用本地 Session 命令；导航只读模式保留复制、滚动和折叠，移除上下文修改、历史删除及轮次分支操作。原生分支切换使用 ID，名称只作显示；创建入口收进共享下拉列表。打印通过带 literalHtml 扩展的 MDxRenderer 保留屏幕上的 HTML 字面显示策略。
 

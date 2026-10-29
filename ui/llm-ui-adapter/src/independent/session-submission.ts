@@ -25,8 +25,9 @@ export async function prepareSessionChatRequest(options: {
             : agent ? await prepareAgentFlow(commands, agent, signal, draft) : null;
         signal.throwIfAborted();
         if (!prepared) throw Object.assign(new Error('Flow input preparation was cancelled or its Agent is unavailable'), {code: 'FLOW_INPUT_CANCELLED'});
-        return {...request, source: {kind: 'arguments', value: prepared.flowParameters}, presentation: {text: draft.text},
-            attachments: [], overrides: {...request.overrides, ...prepared}};
+        const {flowParameters, ...overrides} = prepared;
+        return {...request, source: {kind: 'arguments', value: flowParameters}, presentation: {text: draft.text},
+            attachments: [], overrides: {...request.overrides, ...overrides}};
     }
     const attachments = (await new AssetService(options.assets).prepareUpload(files, request.submission!.id)).files;
     signal.throwIfAborted();

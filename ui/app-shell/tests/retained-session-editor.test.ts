@@ -34,7 +34,7 @@ it('switches branch drafts through one ChatView and releases only the replaced h
     await vi.waitFor(() => expect(f.input.value).toBe('Review draft'));
     expect(f.root.querySelector('.llm-chat__input')).toBe(f.input); expect(f.root.querySelector('.llm-chat__history')).toBe(f.history);
     expect(document.activeElement).toBe(f.input); expect(f.released).toHaveBeenCalledOnce();
-    expect(f.root.querySelectorAll('.llm-chat__branch')).toHaveLength(1); expect(f.root.querySelectorAll('.llm-chat__host-menu')).toHaveLength(1);
+    expect(f.root.querySelectorAll('.llm-chat__branch')).toHaveLength(1); expect(f.root.querySelectorAll('.llm-chat__host-menu:not([data-chat-settings])')).toHaveLength(1);
     expect(f.root.querySelectorAll('.workspace-context')).toHaveLength(1); expect(f.root.querySelectorAll('.llm-session-runs')).toHaveLength(1);
     f.editor.setText('Edited review draft'); await f.editor.flushPendingSave(); f.change('main');
     await vi.waitFor(() => expect(f.input.value).toBe('Edited main draft'));

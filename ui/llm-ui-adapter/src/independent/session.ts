@@ -36,6 +36,7 @@ export interface SessionChatBindingOptions {
     readonly kernel?: import('@itookit/durable-kernel/contracts').EditorTaskControlPlane;
     readonly readOnly?: boolean;
     readonly instructionQueue?: boolean;
+    readonly structuredInputDialog?: boolean;
     readonly contextSelection?: boolean;
     readonly interactionDrafts?: InteractionDraftStorage;
     readonly images?: ImageEditingHost;
@@ -99,7 +100,7 @@ class SessionChatBinding {
         if (options.prepareSend) this.actions.prepareSend = options.prepareSend;
         if (options.kernel) {
             this.execution = new SessionExecution(options.kernel, this.sessionId, () => options.session.getSessions(),
-                () => this.current() && !options.readOnly, () => this.publish(), error => options.onError?.(error));
+                () => this.current() && !options.readOnly, () => this.publish(), error => options.onError?.(error), options.structuredInputDialog);
             const allowed = (context: OperationContext) => !options.readOnly && this.active && this.current() && context.viewId === this.source.getSnapshot().viewId;
             this.actions.cancel = (ref, context) => allowed(context) ? this.execution!.cancel(ref, context) : Promise.resolve(rejected(context, 'STALE_VIEW', 'Execution control unavailable'));
             this.actions.respond = (input, context) => allowed(context) ? this.execution!.respond(input, context) : Promise.resolve(rejected(context, 'STALE_VIEW', 'Interaction control unavailable'));
@@ -172,7 +173,8 @@ class SessionChatBinding {
             operationReceipts: this.operations.getSnapshot().filter(record => record.conversationId === this.sessionId && record.kind === 'send'
                 && this.queued.has(record.context.operationId)).map(record => ({status: 'accepted', operationId: record.context.operationId})),
             executionRef: this.execution?.executionRef,
-            execution: this.execution?.interactions.length ? 'waiting-input' : this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false,
+            submissionMode: this.execution?.running || this.options.session.isGenerating() ? 'queue' : 'send',
+            execution: this.execution?.waiting ? 'waiting-input' : this.execution?.running || this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false,
             allowed: this.options.readOnly ? [] : ['send', ...(this.execution?.executionRef ? ['cancel' as const] : []),
                 ...(this.execution?.interactions.some(item => item.kind !== 'unsupported') ? ['respond' as const] : []), ...(this.options.composerCommands ? ['command' as const] : []),
                 ...(this.options.history?.edit ? ['edit' as const] : []), ...(this.options.history?.retry ? ['retry' as const] : [])] });
@@ -419,7 +421,8 @@ function projectGroup(group: SessionGroup, ledger: OperationLedger, confirmed: R
 function projectNode(node?: ExecutionNode): MessagePart[] {
     if (!node) return [];
     if (node.data.metaInfo?.flowInteraction || node.children?.some(child => child.data.metaInfo?.flowInteraction))
-        return [...(node.children ?? []).flatMap(projectNode), flowNodeDocument(node)];
+        return [...(node.children ?? []).flatMap(projectNode),
+            ...(node.data.thought ? [{id: `${node.id}-thought`, kind: 'reasoning' as const, text: node.data.thought}] : []), flowNodeDocument(node)];
     const parts: MessagePart[] = [];
     if (node.executorType === 'tool') parts.push({ id: node.id, kind: 'tool', name: node.name,
         summary: node.data.toolCall?.name ?? node.name, detail: node.data.error ?? node.data.output,

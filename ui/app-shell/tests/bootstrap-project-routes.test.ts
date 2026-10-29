@@ -179,3 +179,13 @@ describe('saved project routes at bootstrap', () => {
         } finally { await app.destroy(); await f.dispose(); }
     });
 });
+
+it.each(['chat', 'workbench'])('opens legacy and canonical workspace links through the Workbench route: %s', async slug => {
+    const f = await fixture(); history.replaceState(null, '', '#/' + slug + '/%2F');
+    const app = await f.start({workspaces: [{...workspace, slug: 'workbench', title: 'Workbench'}], defaultSlug: 'workbench'});
+    try {
+        expect(document.querySelector('.workbench-directory')).not.toBeNull();
+        expect(parseWorkspaceHash(location.hash, 'workbench')).toEqual({slug: 'workbench', resource: '/'});
+        await app.navigate('chat'); expect(parseWorkspaceHash(location.hash, 'workbench').slug).toBe('workbench');
+    } finally {await app.destroy(); await f.dispose();}
+});

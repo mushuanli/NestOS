@@ -1654,6 +1654,7 @@ export const zhCN = {
     'flow.editor.variables': '插入变量',
     'flow.editor.preview': '预览任务提示词',
     'flow.editor.inherited': '公共调用配置继承自：',
+    'flow.editor.openInput': '填写当前步骤',
     'flow.editor.submit': '提交输入',
     'flow.library.recoveryHint': '补回缺失的初始工作流，保留已有文件和修改。外部工作流请从其定义文件重新导入。',
     'flow.function.selectorHint': '调用当前文件的内联函数或已发布工作流，运行前展开为同一个任务图。',

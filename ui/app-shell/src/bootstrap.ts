@@ -88,6 +88,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     };
 
     workspaces.forEach(registerWorkspaceRoute);
+    const workbench = workspaces.find(workspace => workspace.type === 'chat');
+    if (workbench) {routeMap.chat ??= workbench.elementId; routeMap.workbench ??= workbench.elementId;}
     for (const workspace of workspaces) {const root = document.getElementById(workspace.elementId); if (root) root.inert = false;}
     if (options.startPage) { routeMap[START_PAGE_SLUG] = START_PAGE_ID; reverseRouteMap[START_PAGE_ID] = START_PAGE_SLUG; }
     const toolboxId = workspaces.find(ws => ws.type === 'toolbox')?.elementId;

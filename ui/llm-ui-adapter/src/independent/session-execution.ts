@@ -1,3 +1,4 @@
+import {taskInputParameters} from '../flows/task-input-parameters';
 import {createModuleLogger, t} from '@itookit/common';
 import type {EditorTaskControlPlane, InteractionRecord, JsonValue, TaskRecord} from '@itookit/durable-kernel/contracts';
 import type {ConversationActions, InteractionView, OperationContext, OperationLedger, OperationReceipt} from '@itookit/llm-ui';
@@ -14,7 +15,7 @@ export class SessionExecution {
     private active = true;
     private closed = false;
     constructor(private kernel: EditorTaskControlPlane, private sessionId: string, private groups: () => readonly SessionGroup[],
-        private current: () => boolean, private changed: () => void, private failed: (error: unknown) => void) {}
+        private current: () => boolean, private changed: () => void, private failed: (error: unknown) => void, private readonly structuredInputDialog = false) {}
     private roots(): Set<string> {return new Set(this.groups().flatMap(group => group.execution ? [group.execution.taskId] : []));}
     private owns(task: TaskRecord): boolean {const roots = this.roots(); return task.sessionId === this.sessionId && (roots.has(task.id) || roots.has(task.rootTaskId));}
     private usable(): boolean {return !this.closed && this.active && this.current();}
@@ -22,9 +23,11 @@ export class SessionExecution {
         const roots = this.roots(), task = [...this.tasks].reverse().find(task => roots.has(task.id) && !terminal(task));
         return task ? JSON.stringify([task.id, task.control?.epoch ?? 0]) : undefined;
     }
+    get running(): boolean {return this.tasks.some(task => !terminal(task) && this.owns(task));}
+    get waiting(): boolean {return this.tasks.some(task => !terminal(task) && this.owns(task) && Object.values(task.interactions).some(item => item.status === 'pending'));}
     get interactions(): InteractionView[] {
         return this.tasks.filter(task => !terminal(task) && this.owns(task)).flatMap(task => Object.values(task.interactions)
-            .filter(request => request.status === 'pending').map(request => projectInteraction(task.id, request)));
+            .filter(request => request.status === 'pending' && !(this.structuredInputDialog && taskInputParameters(request))).map(request => projectInteraction(task.id, request)));
     }
     refresh(): Promise<void> {
         if (!this.usable()) return Promise.resolve();

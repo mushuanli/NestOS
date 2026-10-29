@@ -1,3 +1,4 @@
+import {isHttpBuildSource} from './build-source-policy.mjs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
@@ -8,7 +9,11 @@ import state from './local-library-state.mjs';
 import { preparedSnapshot } from './local-library-plan.mjs';
 
 const run = (command, args, cwd, env = process.env) => execFileSync(command, args, {cwd, env, stdio: 'inherit'});
-const inputsAt = root => sourceFiles(root).filter(file => !file.startsWith('libraries/'));
+const inputsAt = root => {
+    const files = sourceFiles(root);
+    const toolPackages = new Set(files.filter(file => /^tools\/[^/]+\/package\.json$/.test(file)).map(file => file.slice(0, -'/package.json'.length)));
+    return files.filter(file => isHttpBuildSource(file, toolPackages));
+};
 /** Keep the existing release fence and report paths, never source contents. */
 export function captureSourceGuard(root, inputs = inputsAt(root)) {
     const fingerprint = sourceFingerprint(root, inputs);

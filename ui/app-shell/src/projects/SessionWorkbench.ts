@@ -425,7 +425,6 @@ export class SessionWorkbench implements WorkspaceController {
             toolbar: 'full', hideGitignored: false,
             searchPlaceholder: t(this.projects ? 'project.searchContents' : 'project.search'), showFileExtensions: true,
             readOnly: false, activateDirectories: true, autoSelectFirst: !this.projects, defaultUiSettings: { sortBy: 'lastModified' },
-            doubleClickActivation: node => !!node.metadata.custom.projectId,
             compareItems: compareSessionEntries,
             restoreExpandedDirectory: isExpandableDirectory,
             deferExpansion: true,

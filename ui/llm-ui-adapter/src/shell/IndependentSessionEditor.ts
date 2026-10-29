@@ -140,7 +140,8 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     }
     private createBinding(store: SessionChatStore, signal: AbortSignal): Binding {
         const owner = this, operations = store.ledger();
-        const taskPanel = new SharedChatTaskPanel(error => this.fail(error));
+        const taskPanel = new SharedChatTaskPanel(error => this.fail(error), this.config.commandBus!, task =>
+            this.config.sessionManager.getSessions().some(group => group.execution?.taskId === task.id || group.execution?.taskId === task.rootTaskId));
         const inputCommands = new SharedChatCommands({config: this.config, session: this.config.sessionManager, operations, signal,
             view: () => this.view, snapshot: () => binding.source.getSnapshot(), current: () => this.binding === binding && this.current() && this.active && !this.config.readOnly,
             taskCallbacks: taskPanel.callbacks, attach: controller => taskPanel.bind(controller), changed: () => this.observeBranch(),
@@ -150,7 +151,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         const history = this.historyActions = this.createHistory(store, () => binding);
         const binding = createSessionChatBinding({session: this.config.sessionManager, commands: this.config.commandBus!, kernel: this.config.kernel,
             history: history.actions, title: this.config.title, operations, composerCommands: {subscribe: listener => inputCommands.subscribe(listener), getSnapshot: () => inputCommands.getSnapshot(), execute: (input, context) => inputCommands.execute(input, context),
-                reconcile: async operationId => {const record = operations.getSnapshot().find(item => item.context.operationId === operationId); return record?.status === 'accepted' ? {status: 'accepted', operationId} : {status: 'unknown', operationId, message: t('chat.submission.unconfirmed')};}}, targetSelection: true, autoSelectFirstTarget: false,
+                reconcile: async operationId => {const record = operations.getSnapshot().find(item => item.context.operationId === operationId); return record?.status === 'accepted' ? {status: 'accepted', operationId} : {status: 'unknown', operationId, message: t('chat.submission.unconfirmed')};}}, targetSelection: true, autoSelectFirstTarget: false, structuredInputDialog: true,
             onTargetsChanged: catalog => {if (this.binding === binding && !this.closed && this.active) refreshDraftTarget(this.view, catalog);}, independentCalls: !this.config.readOnly, instructionQueue: true, contextSelection: true,
             get readOnly() {return !!owner.config.readOnly;}, branch: () => this.config.sessionManager.getSnapshot?.().view?.manifest.currentBranch ?? store.branch,
             subscribeInput: listener => {this.inputListeners.add(listener); return () => {this.inputListeners.delete(listener);};},

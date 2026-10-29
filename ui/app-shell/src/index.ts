@@ -6,7 +6,7 @@ import './styles/digital-twin.css';
 export { initApp } from './bootstrap';
 export { windowSessionLeaseToken } from './session-owner';
 export type { SessionMountRecord, FilesRecord } from '@itookit/app-contracts/services';
-export { WS_SETTINGS, WS_CHAT, WS_TOOLBOX, WS_TWIN, WS_AGENTS, WS_NOTES, WS_PROJECTS, WS_EMAILS, WS_PRIVATE, WS_SKILLS, WS_FLOWS, WS_HOME, createWsMount } from './workspaces/index';
+export { WS_SETTINGS, WS_WORKBENCH, WS_CHAT, WS_TOOLBOX, WS_TWIN, WS_AGENTS, WS_NOTES, WS_PROJECTS, WS_EMAILS, WS_PRIVATE, WS_SKILLS, WS_FLOWS, WS_HOME, createWsMount } from './workspaces/index';
 export type {
     AppOptions,
     BootWorkspaceParts,

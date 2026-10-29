@@ -27,12 +27,12 @@ export const WS_SETTINGS: WorkspaceConfig = {
     mentionAble: false,
 };
 
-export const WS_CHAT: WorkspaceConfig = {
+export const WS_WORKBENCH: WorkspaceConfig = {
     elementId: 'llm-workspace',
     workspaceName: 'chats',
-    slug: 'chat',
+    slug: 'workbench',
     type: 'chat',
-    title: 'AI Sessions',
+    title: 'Workbench',
     supportedFileTypes: [],
     syncEnabled: true,
     mentionScope: ['*'],
@@ -40,6 +40,9 @@ export const WS_CHAT: WorkspaceConfig = {
     plugins: [],
     aiEnabled: false,
 };
+
+/** Compatibility export for hosts using the historical workspace constant. */
+export const WS_CHAT = WS_WORKBENCH;
 
 export const WS_AGENTS: WorkspaceConfig = {
     elementId: 'agent-workspace',

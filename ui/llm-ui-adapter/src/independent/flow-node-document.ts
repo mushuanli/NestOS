@@ -11,7 +11,6 @@ type FlowNodeDocument = {title: string; text: string}
 export function flowNodeDocument(node: ExecutionNode): MessagePart {
     const sections: string[] = [];
     if (node.data.input !== undefined) sections.push(`## ${t('flow.invoke.inputs')}\n\n${flowRequestMarkdown(node.data.input)}`);
-    if (node.data.thought) sections.push(node.data.thought);
     if (node.data.output) sections.push(node.data.output);
     if (node.data.error) sections.push(node.data.error);
     return {id: node.id, kind: 'extension', type: flowNodeDocumentPart,

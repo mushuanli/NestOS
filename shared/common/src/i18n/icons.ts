@@ -245,6 +245,7 @@ export const VFS_TOOLBAR_ICONS = {
 const toolboxIcon = (shape: string): string => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg>`;
 /** Quiet outline controls for conversation content and its composer. */
 export const CHAT_ICONS = {
+    enqueue: toolboxIcon('<path d="M4 5h10M4 11h10M4 17h6M19 10v10m-4-4 4 4 4-4"/>'),
     camera: toolboxIcon('<path d="M3 7h4l2-3h6l2 3h4v14H3Z"/><circle cx="12" cy="13" r="4"/>'),
     copy: toolboxIcon('<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>'),
     edit: toolboxIcon('<path d="m15 4 5 5M4 20l5-1L21 7a3.5 3.5 0 0 0-5-5L4 14l-1 7z"/>'),

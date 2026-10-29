@@ -1,3 +1,4 @@
+import {isTestSource} from './build-source-policy.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -7,7 +8,7 @@ import state from './local-library-state.mjs';
 export const excluded = new Set(['node_modules', 'dist', '.git', 'target', 'coverage', '.vite', 'release']);
 export function sourceHash(directory, digest = createHash('sha256'), prefix = '') {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-        if (excluded.has(entry.name)) continue;
+        if (excluded.has(entry.name) || isTestSource(prefix + '/' + entry.name)) continue;
         const file = join(directory, entry.name), name = prefix + '/' + entry.name;
         digest.update(name + '\0');
         if (entry.isDirectory()) sourceHash(file, digest, name);
@@ -21,7 +22,7 @@ export function sourceHash(directory, digest = createHash('sha256'), prefix = ''
 export function buildHash(root) {
     const digest = createHash('sha256');
     for (const file of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'tsconfig.base.json',
-        'scripts/library-artifacts.mjs', 'scripts/npm-libraries.mjs', 'scripts/local-library-build.mjs', 'scripts/local-library-plan.mjs']) {
+        'scripts/library-artifacts.mjs', 'scripts/npm-libraries.mjs', 'scripts/build-source-policy.mjs', 'scripts/local-library-build.mjs', 'scripts/local-library-plan.mjs']) {
         digest.update(file + '\0'); digest.update(readFileSync(join(root, file))); digest.update('\0');
     }
     return digest.digest('hex');

@@ -1653,6 +1653,7 @@ export const en: LocaleStrings = {
     'flow.editor.variables': 'Insert variable',
     'flow.editor.preview': 'Preview task prompt',
     'flow.editor.inherited': 'Invocation defaults inherited from:',
+    'flow.editor.openInput': 'Fill in current step',
     'flow.editor.submit': 'Submit input',
     'flow.library.recoveryHint': 'Restore missing initial workflows while preserving existing files and edits. Reimport external workflows from their definition files.',
     'flow.function.selectorHint': 'Call an inline function from this file or a published workflow. Calls expand into the same task graph before execution.',

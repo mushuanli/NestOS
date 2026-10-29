@@ -84,7 +84,7 @@ test('captures source bytes independently and detects edits during a release bui
 });
 
 test('release and development isolate logs, credentials, ports and development data', () => {
-    const env = { XDG_CONFIG_HOME: '/tmp/nestos-config' };
+    const env = { XDG_CONFIG_HOME: '/tmp/nestos-config', NESTOS_HTTPD_LOG_DIR: '/var/log/nestos' };
     const release = runtimePaths('release', env), development = runtimePaths('dev', env);
     assert.equal(release.runtime, '/var/log/nestos/httpd.runtime.log');
     assert.equal(release.audit, '/var/log/nestos/httpd.audit.jsonl');

@@ -9,12 +9,13 @@ export function presentChatButton(node: HTMLButtonElement, action: string): void
         close: ACTION_ICONS.close, preview: ACTION_ICONS.wordWrap,
         more: CHAT_ICONS.more, search: CHAT_ICONS.search, copy: CHAT_ICONS.copy, edit: CHAT_ICONS.edit,
         retry: ACTION_ICONS.rerun, 'rerun-arguments': ACTION_ICONS.rerun, branch: ACTION_ICONS.branch, delete: ACTION_ICONS.delete, send: ChatInputTemplates.sendIcon(),
-        attach: ChatInputTemplates.addIcon(), cancel: ChatInputTemplates.stopIcon(),
+        queue: CHAT_ICONS.enqueue, attach: ChatInputTemplates.addIcon(), cancel: ChatInputTemplates.stopIcon(),
         print: '<i class="fas fa-print" aria-hidden="true"></i>',
     };
     const icon = icons[action]; if (!icon) return;
     node.innerHTML = icon;
     node.classList.add('llm-workspace-titlebar__btn');
+    if (action === 'queue') node.classList.add('llm-input__btn', 'llm-input__btn--send');
     if (action === 'send' || action === 'attach') node.classList.add('llm-input__btn', `llm-input__btn--${action}`);
     if (action === 'cancel') node.classList.add('llm-input__btn--stop');
 }

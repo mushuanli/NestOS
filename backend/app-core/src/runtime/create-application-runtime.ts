@@ -1,3 +1,4 @@
+import {recoverFlowSchedulers} from './flow-scheduler-recovery';
 import {bindTwinWorkspaces} from '../digital-twin/workspaces';
 import {PublishedScannerExecutor} from '../digital-twin/scanner-executor';
 import {migrateNotes} from './migrate-notes';
@@ -487,6 +488,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         cleanupFns.push(() => conversationContexts.close());
         await startup.schedule(policy.invocations, 'instructions.recover', async () => {
             await initializeProjects();
+            cleanupFns.push(await recoverFlowSchedulers(kernel.kernel, commandBus, id => recovery.acquireLater(id)));
             await recoverInstructionQueues(instructionQueueSessions, kernel.kernel, conversationContexts);
         });
 

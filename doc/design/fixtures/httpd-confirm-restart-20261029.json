@@ -1,0 +1,1073 @@
+{
+  "schemaVersion": 1,
+  "status": "passed-after-fix",
+  "deployedVersion": "20261029T095550-908678c7-dirty",
+  "sameVersionWithinEachStopRestart": true,
+  "manuallyInvokedRunResume": false,
+  "sourceRebuildDuringEachTest": false,
+  "noModelOrExternalBusinessCalls": true,
+  "cases": [
+    {
+      "case": "normal-stop",
+      "signal": "SIGTERM",
+      "version": "20261029T093448-908678c7-dirty",
+      "status": "passed",
+      "sessionId": "node-01M63GX9P7YRDHNS0DSHSM28XA",
+      "rootTaskId": "task_414b7ef9-1a70-473a-a182-84383369e4ae",
+      "steps": 120,
+      "timeline": [
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:27.736Z",
+          "stage": "created",
+          "sessionId": "node-01M63GX9P7YRDHNS0DSHSM28XA",
+          "rootId": "task_414b7ef9-1a70-473a-a182-84383369e4ae",
+          "flowId": "restart-proof-9a52ec3b",
+          "steps": 120,
+          "version": "20261029T093448-908678c7-dirty"
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:28.698Z",
+          "stage": "confirmed.before-stop",
+          "inputId": "task_e96748e2-d80c-48f0-a24c-89c4ec93f268",
+          "interaction": "resolved",
+          "rootStatus": "waiting",
+          "completedSteps": 0
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:28.699Z",
+          "stage": "stop.sent",
+          "pid": 2251342,
+          "signal": "SIGTERM"
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:34.211Z",
+          "stage": "stopped",
+          "pid": 2251342
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:34.219Z",
+          "stage": "restart.spawned",
+          "pid": 2280241,
+          "version": "20261029T093448-908678c7-dirty"
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:37.848Z",
+          "stage": "ready",
+          "version": "20261029T093448-908678c7-dirty"
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:38.046Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 11,
+          "totalStepTasks": 11
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:39.136Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 12,
+          "totalStepTasks": 12
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:40.264Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 13,
+          "totalStepTasks": 13
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:41.325Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 14,
+          "totalStepTasks": 15
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:42.368Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 16,
+          "totalStepTasks": 16
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:43.533Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 18,
+          "totalStepTasks": 18
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:44.590Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 19,
+          "totalStepTasks": 20
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:45.639Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 21,
+          "totalStepTasks": 21
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:46.772Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 23,
+          "totalStepTasks": 23
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:48.003Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 25,
+          "totalStepTasks": 25
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:49.100Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 26,
+          "totalStepTasks": 26
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:50.260Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 28,
+          "totalStepTasks": 28
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:51.408Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 30,
+          "totalStepTasks": 30
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:52.497Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 32,
+          "totalStepTasks": 32
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:53.541Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 33,
+          "totalStepTasks": 34
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:54.642Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 35,
+          "totalStepTasks": 35
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:55.805Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 37,
+          "totalStepTasks": 37
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:56.870Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 38,
+          "totalStepTasks": 39
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:58.005Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 40,
+          "totalStepTasks": 40
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:47:59.073Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 42,
+          "totalStepTasks": 42
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:00.138Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 44,
+          "totalStepTasks": 44
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:01.229Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 45,
+          "totalStepTasks": 45
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:02.280Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 47,
+          "totalStepTasks": 47
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:03.346Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 49,
+          "totalStepTasks": 49
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:04.422Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 50,
+          "totalStepTasks": 51
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:05.554Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 52,
+          "totalStepTasks": 52
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:06.722Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 54,
+          "totalStepTasks": 54
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:07.906Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 56,
+          "totalStepTasks": 56
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:09.048Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 57,
+          "totalStepTasks": 57
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:10.155Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 59,
+          "totalStepTasks": 59
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:11.245Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 61,
+          "totalStepTasks": 61
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:12.376Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 62,
+          "totalStepTasks": 62
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:13.450Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 64,
+          "totalStepTasks": 64
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:14.516Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 66,
+          "totalStepTasks": 66
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:15.643Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 67,
+          "totalStepTasks": 67
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:16.705Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 68,
+          "totalStepTasks": 68
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:17.865Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 70,
+          "totalStepTasks": 70
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:18.974Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 72,
+          "totalStepTasks": 72
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:20.130Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 73,
+          "totalStepTasks": 73
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:21.305Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 75,
+          "totalStepTasks": 75
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:22.410Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 77,
+          "totalStepTasks": 77
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:23.459Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 78,
+          "totalStepTasks": 78
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:24.528Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 80,
+          "totalStepTasks": 80
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:25.579Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 81,
+          "totalStepTasks": 81
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:26.704Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 83,
+          "totalStepTasks": 83
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:27.834Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 85,
+          "totalStepTasks": 85
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:28.895Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 86,
+          "totalStepTasks": 86
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:30.102Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 88,
+          "totalStepTasks": 88
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:31.305Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 90,
+          "totalStepTasks": 90
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:32.455Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 92,
+          "totalStepTasks": 92
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:33.614Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 93,
+          "totalStepTasks": 93
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:34.727Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 95,
+          "totalStepTasks": 95
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:35.785Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 96,
+          "totalStepTasks": 96
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:36.875Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 98,
+          "totalStepTasks": 98
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:38.010Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 100,
+          "totalStepTasks": 100
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:39.174Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 101,
+          "totalStepTasks": 101
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:40.267Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 103,
+          "totalStepTasks": 103
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:41.382Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 105,
+          "totalStepTasks": 105
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:42.467Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 106,
+          "totalStepTasks": 106
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:43.646Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 108,
+          "totalStepTasks": 108
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:44.799Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 110,
+          "totalStepTasks": 110
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:45.976Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 111,
+          "totalStepTasks": 111
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:47.141Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 112,
+          "totalStepTasks": 112
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:48.242Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 114,
+          "totalStepTasks": 114
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:49.408Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 116,
+          "totalStepTasks": 116
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:50.496Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 117,
+          "totalStepTasks": 117
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:51.635Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 119,
+          "totalStepTasks": 119
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:52.879Z",
+          "stage": "observe",
+          "rootStatus": "ready",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:54.016Z",
+          "stage": "observe",
+          "rootStatus": "running",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:55.153Z",
+          "stage": "observe",
+          "rootStatus": "ready",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:56.276Z",
+          "stage": "observe",
+          "rootStatus": "running",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:48:57.402Z",
+          "stage": "observe",
+          "rootStatus": "ready",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:49:01.976Z",
+          "stage": "observe",
+          "rootStatus": "running",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:49:04.300Z",
+          "stage": "observe",
+          "rootStatus": "ready",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:49:10.051Z",
+          "stage": "observe",
+          "rootStatus": "succeeded",
+          "completedSteps": 120,
+          "totalStepTasks": 120
+        },
+        {
+          "operationId": "9a52ec3b-c817-4cba-986b-4d211e6fd858",
+          "time": "2026-10-29T09:49:10.052Z",
+          "stage": "passed",
+          "sessionId": "node-01M63GX9P7YRDHNS0DSHSM28XA",
+          "rootId": "task_414b7ef9-1a70-473a-a182-84383369e4ae",
+          "inputId": "task_e96748e2-d80c-48f0-a24c-89c4ec93f268",
+          "completedSteps": 120,
+          "eachStepExecutedOnce": true,
+          "confirmationPreserved": true,
+          "manualResume": false
+        }
+      ],
+      "procedureSha256": "091bd8f18cce1f6fb3b52b2d34b4f1ea26ee8ab2c0f1624718bf29aa487f7508"
+    },
+    {
+      "case": "hard-stop-baseline",
+      "signal": "SIGKILL",
+      "version": "20261029T093448-908678c7-dirty",
+      "status": "failed",
+      "sessionId": "node-01M63H7HQG13VM27TNS4BMCB3Q",
+      "rootTaskId": "task_35599738-a9a6-4cd7-9477-e8ea18295f44",
+      "steps": 30,
+      "timeline": [
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:03.663Z",
+          "stage": "created",
+          "sessionId": "node-01M63H7HQG13VM27TNS4BMCB3Q",
+          "rootId": "task_35599738-a9a6-4cd7-9477-e8ea18295f44",
+          "flowId": "restart-proof-8b281b90",
+          "steps": 30,
+          "version": "20261029T093448-908678c7-dirty"
+        },
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:04.628Z",
+          "stage": "confirmed.before-stop",
+          "inputId": "task_316c12c8-368b-44f7-8d8a-0c40b20a4ff8",
+          "interaction": "resolved",
+          "rootStatus": "waiting",
+          "completedSteps": 0
+        },
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:04.628Z",
+          "stage": "stop.sent",
+          "pid": 2280241,
+          "signal": "SIGKILL"
+        },
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:04.729Z",
+          "stage": "stopped",
+          "pid": 2280241
+        },
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:04.737Z",
+          "stage": "restart.spawned",
+          "pid": 2289161,
+          "version": "20261029T093448-908678c7-dirty"
+        },
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:06.308Z",
+          "stage": "ready",
+          "version": "20261029T093448-908678c7-dirty"
+        },
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:06.546Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 0,
+          "totalStepTasks": 0
+        },
+        {
+          "operationId": "8b281b90-6e01-44d5-9d5b-87c19972f7ba",
+          "time": "2026-10-29T09:53:57.312Z",
+          "stage": "failed",
+          "code": "FLOW_DID_NOT_AUTO_RESUME",
+          "name": "Error",
+          "sessionId": "node-01M63H7HQG13VM27TNS4BMCB3Q",
+          "rootId": "task_35599738-a9a6-4cd7-9477-e8ea18295f44"
+        }
+      ],
+      "procedureSha256": "c721b6356e19a82637a7b9b90b0e4d7c386ce08a345494d0bb8780a0d93809b6"
+    },
+    {
+      "case": "hard-stop-fixed",
+      "signal": "SIGKILL",
+      "version": "20261029T095550-908678c7-dirty",
+      "status": "passed",
+      "sessionId": "node-01M63HHGAEBMXSNC9A7EHWAK72",
+      "rootTaskId": "task_8f5d3a1e-377f-4f39-a2fd-c4413db66547",
+      "steps": 30,
+      "timeline": [
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:58:29.877Z",
+          "stage": "created",
+          "sessionId": "node-01M63HHGAEBMXSNC9A7EHWAK72",
+          "rootId": "task_8f5d3a1e-377f-4f39-a2fd-c4413db66547",
+          "flowId": "restart-proof-e906c42e",
+          "steps": 30,
+          "version": "20261029T095550-908678c7-dirty"
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:58:30.897Z",
+          "stage": "confirmed.before-stop",
+          "inputId": "task_d698b325-d198-48f6-a190-5cc676083f4f",
+          "interaction": "resolved",
+          "rootStatus": "waiting",
+          "completedSteps": 0
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:58:30.897Z",
+          "stage": "stop.sent",
+          "pid": 2297056,
+          "signal": "SIGKILL"
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:58:30.998Z",
+          "stage": "stopped",
+          "pid": 2297056
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:58:31.005Z",
+          "stage": "restart.spawned",
+          "pid": 2298406,
+          "version": "20261029T095550-908678c7-dirty"
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:58:32.580Z",
+          "stage": "ready",
+          "version": "20261029T095550-908678c7-dirty"
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:58:32.902Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 0,
+          "totalStepTasks": 0
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:33.848Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 1,
+          "totalStepTasks": 1
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:35.008Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 3,
+          "totalStepTasks": 3
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:36.174Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 4,
+          "totalStepTasks": 4
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:37.339Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 6,
+          "totalStepTasks": 6
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:38.381Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 7,
+          "totalStepTasks": 7
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:39.456Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 8,
+          "totalStepTasks": 9
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:40.621Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 10,
+          "totalStepTasks": 10
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:41.779Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 12,
+          "totalStepTasks": 12
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:42.868Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 13,
+          "totalStepTasks": 13
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:43.908Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 14,
+          "totalStepTasks": 14
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:44.925Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 15,
+          "totalStepTasks": 15
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:45.972Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 17,
+          "totalStepTasks": 17
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:47.019Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 18,
+          "totalStepTasks": 18
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:48.209Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 20,
+          "totalStepTasks": 20
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:49.363Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 21,
+          "totalStepTasks": 21
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:50.560Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 22,
+          "totalStepTasks": 22
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:51.688Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 23,
+          "totalStepTasks": 23
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:52.749Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 24,
+          "totalStepTasks": 25
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:53.833Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 26,
+          "totalStepTasks": 26
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:54.910Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 27,
+          "totalStepTasks": 27
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:56.068Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 29,
+          "totalStepTasks": 29
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:57.167Z",
+          "stage": "observe",
+          "rootStatus": "waiting",
+          "completedSteps": 30,
+          "totalStepTasks": 30
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T09:59:58.276Z",
+          "stage": "observe",
+          "rootStatus": "ready",
+          "completedSteps": 30,
+          "totalStepTasks": 30
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T10:00:01.603Z",
+          "stage": "observe",
+          "rootStatus": "succeeded",
+          "completedSteps": 30,
+          "totalStepTasks": 30
+        },
+        {
+          "operationId": "e906c42e-22af-4d57-bab0-9f5bb41b0976",
+          "time": "2026-10-29T10:00:01.603Z",
+          "stage": "passed",
+          "sessionId": "node-01M63HHGAEBMXSNC9A7EHWAK72",
+          "rootId": "task_8f5d3a1e-377f-4f39-a2fd-c4413db66547",
+          "inputId": "task_d698b325-d198-48f6-a190-5cc676083f4f",
+          "completedSteps": 30,
+          "eachStepExecutedOnce": true,
+          "confirmationPreserved": true,
+          "manualResume": false
+        }
+      ],
+      "procedureSha256": "cb8ad358dffc2ff09cb9d3a2508d982d55071b6be3d109ae12f386ee3efe8b67"
+    }
+  ],
+  "finalReadOnlyChecks": [
+    {
+      "name": "x1-httpd-restart-proof",
+      "sessionId": "node-01M63GX9P7YRDHNS0DSHSM28XA",
+      "rootId": "task_414b7ef9-1a70-473a-a182-84383369e4ae",
+      "rootStatus": "succeeded",
+      "steps": 120,
+      "succeeded": 120,
+      "duplicateNodes": 0,
+      "confirmations": [
+        {
+          "id": "task_e96748e2-d80c-48f0-a24c-89c4ec93f268",
+          "status": "resolved"
+        }
+      ]
+    },
+    {
+      "name": "x1-httpd-kill-restart-proof",
+      "sessionId": "node-01M63H7HQG13VM27TNS4BMCB3Q",
+      "rootId": "task_35599738-a9a6-4cd7-9477-e8ea18295f44",
+      "rootStatus": "succeeded",
+      "steps": 30,
+      "succeeded": 30,
+      "duplicateNodes": 0,
+      "confirmations": [
+        {
+          "id": "task_316c12c8-368b-44f7-8d8a-0c40b20a4ff8",
+          "status": "resolved"
+        }
+      ]
+    },
+    {
+      "name": "x1-httpd-kill-restart-fixed-proof",
+      "sessionId": "node-01M63HHGAEBMXSNC9A7EHWAK72",
+      "rootId": "task_8f5d3a1e-377f-4f39-a2fd-c4413db66547",
+      "rootStatus": "succeeded",
+      "steps": 30,
+      "succeeded": 30,
+      "duplicateNodes": 0,
+      "confirmations": [
+        {
+          "id": "task_d698b325-d198-48f6-a190-5cc676083f4f",
+          "status": "resolved"
+        }
+      ]
+    }
+  ],
+  "recoveryWait": "Hard-stop recovery waited approximately 61 seconds after readiness for the prior Session writer lease; polling continued without taking a live lease.",
+  "serviceLeftRunning": true,
+  "verificationScope": "Uniqueness of durable logical Task records and preservation of the original input receipt; the fixture makes no model calls or external business changes."
+}

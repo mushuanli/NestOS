@@ -282,10 +282,9 @@ it('keeps project selection separate from entry and exposes creation only in its
         const createSession = () => sidebar.querySelector<HTMLButtonElement>('.workbench-project-navigation__create')!;
         expect(selector.value).toBe('/'); expect(createProject().hidden).toBe(false); expect(createSession().hidden).toBe(true);
         const row = () => sidebar.querySelector<HTMLElement>(`[data-item-id="${path}"] .vfs-directory-item__header`)!;
-        row().click(); await Promise.resolve(); expect(selector.value).toBe('/'); expect(workbench.getActiveResourceId()).toBeNull();
-        await workbench.refresh(); expect(selector.value).toBe('/');
-        row().dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        row().click();
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(path));
+        expect(main.querySelector('.workbench-directory')).not.toBeNull();
         expect(selector.value).toBe(path); expect(createProject().hidden).toBe(true); expect(createSession().hidden).toBe(false);
         expect(selector.querySelector('[value="@new-project"]')).toBeNull();
         await workbench.openResource('/'); expect(selector.value).toBe('/');

@@ -70,6 +70,8 @@ export const WS_NOTES: WorkspaceConfig = {
     syncEnabled: true,
     mentionAble: true,
     aiEnabled: true,
+    // Spaced-repetition clozes ship enabled for notes only; other workspaces keep plain editing.
+    plugins: ['cloze:cloze'],
 };
 
 export const WS_PROJECTS: WorkspaceConfig = {

@@ -4,6 +4,7 @@ import {recoverFlowSchedulers} from './flow-scheduler-recovery';
 import {bindTwinWorkspaces} from '../digital-twin/workspaces';
 import {PublishedScannerExecutor} from '../digital-twin/scanner-executor';
 import {migrateNotes} from './migrate-notes';
+import {trackNotesCloze} from '../vfs/cloze-lifecycle';
 import {createSessionTaskCallAuthority} from '../session/task-call-authority';
 import {renewSessionWriteLease} from '../kernel/session-lease';
 import {FlowInstallationService} from '../configuration/flow-installation';
@@ -198,6 +199,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             vfs.openFileSystem('/home/admin/.config/nestos/prompt-history'),
         ]));
         await traceBoot('notes.migrate', () => migrateNotes(homeFiles));
+        cleanupFns.push(trackNotesCloze(await vfs.openFileSystem(workspaceRoot('notes'))));
         const agentService   = new VFSAgentService(agentFiles, llmDriver, { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot });
         cleanupFns.push(() => agentService.dispose());
         const projectSync = options.sync ? new ProjectSyncService(options.sync.provider, options.sync.coordinator) : undefined;

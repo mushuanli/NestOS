@@ -64,15 +64,33 @@ export class EngineMetadataStore implements ScopedPersistenceStore {
         this.scheduleFlush();
     }
 
+    /** Enumerate this plugin's keys so plugins can load per-key state instead of one blob. */
+    async entries(prefix = ''): Promise<Array<[string, unknown]>> {
+        if (this.isDestroyed) return [];
+        try {
+            const node = await this.engine.driver.getNode(this.nodeId);
+            if (!node) return [];
+            const pluginData = node.metadata?.[this.getMetaKey()];
+            const merged = new Map(Object.entries(isPluginData(pluginData) ? pluginData : {}));
+            for (const [key, value] of this.pendingUpdates) {
+                if (value === undefined) merged.delete(key); else merged.set(key, value);
+            }
+            return [...merged].filter(([key]) => key.startsWith(prefix));
+        } catch (error) {
+            console.warn(`[EngineMetadataStore] Enumerate failed:`, error);
+            return [];
+        }
+    }
+
     private scheduleFlush(): void {
         if (this.isDestroyed || this.flushTimer) return;
         this.flushTimer = window.setTimeout(() => {
             this.flushTimer = null;
-            this.flush();
+            void this.flush().catch(() => {});
         }, 100);
     }
 
-    private async flush(): Promise<void> {
+    async flush(): Promise<void> {
         if (this.isDestroyed || this.pendingUpdates.size === 0) return;
         if (this.flushPromise) {
             await this.flushPromise;
@@ -101,7 +119,8 @@ export class EngineMetadataStore implements ScopedPersistenceStore {
                 });
                 this.pendingUpdates.clear();
             } catch (error) {
-                console.error('[EngineMetadataStore] Flush failed:', error);
+                console.error('[EngineMetadataStore] Flush failed:', { code: (error as { code?: string })?.code ?? 'METADATA_WRITE_FAILED' });
+                throw error;
             } finally {
                 this.flushPromise = null;
             }

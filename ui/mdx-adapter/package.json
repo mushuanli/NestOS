@@ -43,6 +43,7 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
+    "@itookit/app-contracts": "workspace:*",
     "@itookit/common": "workspace:*",
     "@itookit/ui-common": "workspace:*",
     "@itookit/vfs-core": "workspace:*"

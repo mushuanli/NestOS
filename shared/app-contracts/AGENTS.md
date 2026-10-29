@@ -37,3 +37,5 @@ ToolboxInventory 的 capabilityTags 是不含凭据的派生能力列表，confi
 session/artifacts 提供已提交执行产物的纯 DTO 和 ArtifactCommand；引用固定 Session/Task、输出选择和摘要。app.artifacts.list/read 与 session.artifact.get 必须分类为只读，不能因在途提交的写屏障而阻塞。契约不导出资产读取器、Kernel 服务或 DOM。
 
 InputAssetCommand.ImportFile/Inspect 为通用文件上传及只读核对端口，InputFileIdentity 固定 uploadId/name/MIME/bytes/SHA-256；Inspect 不携带正文且归只读传输分类。20 MiB 是宿主上传上限，不能宣称为 Harness 原生附件能力。
+
+`presets/cloze-storage.ts` 只定义笔记共享复习存储的位置与文档路径 key 编解码；不包含调度算法、卡片格式或 I/O。

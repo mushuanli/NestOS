@@ -1604,6 +1604,9 @@ importers:
 
   ui/mdx-adapter:
     dependencies:
+      '@itookit/app-contracts':
+        specifier: workspace:*
+        version: link:../../shared/app-contracts
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common

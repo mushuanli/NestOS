@@ -42,3 +42,5 @@ FileSystemView 是带独立 dispose 的文件能力，RPC 通过独立类型显�
 - v15 的 Session 历史按 Session/分支分别保留有界基线，回到旧会话与自己的最新基线比较；大于 64 KiB 的数组补丁整段同步。超过 64 KiB 的 SSE 通知只带 updatesRead，客户端按序通过认证的 updates-read 读取准备好的响应，禁止重执行绑定或写命令。准备区失效按视图过期恢复，不静默漏过补丁。
 
 - v15 的字符串补丁支持 append/splice，splice 使用经过范围校验的 UTF-16 索引并保留版本前置条件；中间小修改不重传完整正文，数组补丁超过 64 KiB 时整段替换。
+
+ISeqFileOperations 显式公开 setEntry/setEntries/deleteEntry 写操作，供授权文件视图保存插件状态；保留 files/settings 失效域和服务端路径权限检查。真实 RPC 回归见 http-app 的 cloze-storage-rpc。

@@ -3,7 +3,7 @@ import { createMDxEditor as createEditor, defaultEditorFactory as createDefaultE
     type MDxEditor, type PluginConfig, type MDxEditorFactoryConfig } from '@itookit/mdxeditor';
 import { t } from '@itookit/common';
 import { installNavigationButtonPresentation, editorFilePath, normalizeEditorOptions, type EditorOptions } from '@itookit/ui-common';
-import { EngineMetadataStore } from './metadata-store';
+import { createAdapterStore } from './srs-store';
 import { createAssetProvider } from './assets';
 import { createDocumentHost } from './document-host';
 import { AssetManagerPlugin } from './asset-manager.plugin';
@@ -22,6 +22,9 @@ function isPluginConfig(value: unknown): value is PluginConfig {
     return typeof value === 'object' && value !== null && ('name' in value || 'install' in value);
 }
 
+/** More-menu order for the document editor; only order is declared, buttons stay core-owned. */
+const MORE_MENU_ORDER = ['copy-content', 'print-action', 'save-action', 'ai-action', 'toggle-line-wrapping', 'asset-manager'];
+
 function pluginDefaults(options: MDxAdapterOptions, path?: string, getPath: () => string | undefined = () => path): Record<string, Record<string, any> | undefined> {
     const defaults: Record<string, Record<string, any> | undefined> = {};
     for (const [key, value] of Object.entries(options.defaultPluginOptions ?? {})) {
@@ -38,17 +41,11 @@ function pluginDefaults(options: MDxAdapterOptions, path?: string, getPath: () =
         onSidebarToggle: titlebar.onSidebarToggle ?? (options.hostContext ? () => options.hostContext!.toggleSidebar() : undefined),
         saveCallback: async (editor: MDxEditor) => { await editor.save(); },
         overflowActions: titlebar.overflowActions ?? true,
+        // Public ordering contract: the panel keeps its buttons, the host only declares order.
+        actionOrder: titlebar.actionOrder ?? MORE_MENU_ORDER,
         mountMoreMenu: (container: HTMLElement, editor: MDxEditor) => {
             const provided = typeof titlebar.mountMoreMenu === 'function' ? titlebar.mountMoreMenu(container, editor) : undefined;
             const file = mountFileMenu(container, editor, options, getPath);
-            const panel = container.parentElement;
-            const sequence = ['[data-button-id="copy-content"]', '[data-button-id="print-action"]', '[data-file-refresh]',
-                '[data-button-id="save-action"]', '[data-button-id="ai-action"]', '[data-file-info]',
-                '[data-button-id="toggle-line-wrapping"]', '[data-button-id="asset-manager"]'];
-            for (const selector of sequence) {
-                const button = panel?.querySelector(selector);
-                if (button) panel!.insertBefore(button, container);
-            }
             return () => {file(); if (typeof provided === 'function') provided();};
         },
         presentButton: (id: string, button: HTMLButtonElement) => {
@@ -86,7 +83,7 @@ export function adaptEditorOptions(options: MDxAdapterOptions): MDxEditorFactory
         readOnly: options.readOnly, plugins, defaultPluginOptions: defaults, host, assets, translate: key => t(key as Parameters<typeof t>[0]),
         onSave: options.onSave ?? (path && options.hostContext?.saveContent
             ? content => options.hostContext!.saveContent!(path!, content) : undefined),
-        storeFactory: options.files && path ? plugin => new EngineMetadataStore(options.files!.fs, path!, plugin) : undefined,
+        storeFactory: options.files && path ? plugin => createAdapterStore(options.files!.fs, path!, plugin) : undefined,
     };
 }
 

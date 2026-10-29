@@ -8,4 +8,5 @@ export { DefaultPrintService } from './print';
 export { LLMPrintService } from './conversation-print';
 export type { PrintOptions, PrintService } from '@itookit/mdxeditor';
 export { EngineMetadataStore } from './metadata-store';
+export { SeqFileStore, createAdapterStore } from './srs-store';
 export { AssetManagerPlugin } from './asset-manager.plugin';

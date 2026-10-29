@@ -45,7 +45,11 @@ async function fixture(model = false, bind = true, wait = false) {
     };
     const submit = (call: IndependentCallInput) => runtime.commandBus.execute<IndependentCallReceipt>(IndependentCallCommand.Submit, call);
     const inspect = (call: IndependentCallInput) => runtime.commandBus.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, call);
-    return {runtime, parent, input, submit, inspect, prompts, backend};
+    // List projects the execution target for both queued Agents and prepared Flows.
+    const executionOf = async (call: IndependentCallInput) =>
+        (await runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: parent}))
+            .find(view => view.input.request.submission?.id === call.request.submission?.id)?.receipt.execution;
+    return {runtime, parent, input, submit, inspect, executionOf, prompts, backend};
 }
 
 it.each(['agent', 'flow'] as const)('routes an independent %s to its own Session without rebinding or queuing the parent', async kind => {
@@ -57,9 +61,11 @@ it.each(['agent', 'flow'] as const)('routes an independent %s to its own Session
         const rounds = (await f.runtime.sessionRepository.readHistoryChain(first.executionSessionId!)).rounds;
         expect(rounds).toHaveLength(1); expect(rounds[0].status).toBe('completed');
     }, {timeout: 10000});
-    const observed = await f.inspect(input);
-    expect(observed.execution?.invocation?.invocationId).toBeTruthy();
-    expect(observed.execution?.taskId).toBeTruthy();
+    const observed = await f.inspect(input), executed = await f.executionOf(input);
+    if (kind === 'flow') {expect(observed.execution).toBeUndefined(); expect(observed.callerExecution).toBeTruthy();}
+    else expect(observed.execution).toEqual(executed);
+    expect(executed?.invocation?.invocationId).toBeTruthy();
+    expect(executed?.taskId).toBeTruthy();
     expect(await f.submit(input)).toEqual(observed);
     expect((await f.runtime.sessionRepository.getManifest(first.executionSessionId!)).parentSessionId).toBe(f.parent);
     expect((await f.runtime.sessionRepository.readHistoryChain(f.parent)).rounds).toEqual([]);
@@ -137,7 +143,7 @@ it('runs a direct model Agent in a child without implicitly inheriting parent co
     await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(child.executionSessionId!)).rounds[0]?.status).toBe('completed'));
     expect(f.prompts).toHaveLength(2); expect(f.prompts[0]).toContain('PARENT_PRIVATE_HISTORY');
     expect(f.prompts[1]).toContain('Run separately'); expect(f.prompts[1]).not.toContain('PARENT_PRIVATE_HISTORY');
-    expect((await f.inspect(f.input('model-child'))).execution?.invocation?.invocationId).toBeTruthy();
+    expect((await f.executionOf(f.input('model-child')))?.invocation?.invocationId).toBeTruthy();
 }, 15000);
 
 it('prepares execution storage for an explicit caller without requiring a bound UI view', async () => {
@@ -237,7 +243,7 @@ it('projects a real pause request without treating the running model Effect as s
     vi.stubGlobal('fetch', fetch);
     const receipt = await f.submit(input);
     let taskId = '';
-    await vi.waitFor(async () => {taskId = (await f.inspect(input)).execution?.taskId ?? ''; expect(taskId).not.toBe(''); expect(fetch).toHaveBeenCalled();});
+    await vi.waitFor(async () => {taskId = (await f.executionOf(input))?.taskId ?? ''; expect(taskId).not.toBe(''); expect(fetch).toHaveBeenCalled();});
     const kernel = f.runtime.kernel.kernel;
     try {
         await kernel.controlTask(receipt.executionSessionId!, taskId, 'pause', {requestId: 'pause-observation', expectedEpoch: 0});
@@ -253,10 +259,13 @@ it('projects a real pause request without treating the running model Effect as s
 
 
 async function controlQuery(f: Awaited<ReturnType<typeof fixture>>, input: IndependentCallInput, requestId = 'cancel-call') {
-    let receipt: IndependentCallReceipt | undefined;
-    await vi.waitFor(async () => {receipt = await f.inspect(input); expect(receipt.execution?.taskId).toBeTruthy();});
+    let receipt: IndependentCallReceipt | undefined, execution: {taskId: string} | undefined;
+    await vi.waitFor(async () => {
+        receipt = await f.inspect(input); execution = (await f.executionOf(input)) as {taskId: string} | undefined;
+        expect(execution?.taskId).toBeTruthy();
+    });
     return {sessionId: f.parent, branchId: 'main', callId: input.request.submission!.id,
-        executionSessionId: receipt!.executionSessionId!, taskId: receipt!.execution!.taskId, requestId};
+        executionSessionId: receipt!.executionSessionId!, taskId: execution!.taskId, requestId};
 }
 
 it.each(['agent', 'flow'] as const)('cancels only the routed independent %s and cold-reads its original admission', async kind => {

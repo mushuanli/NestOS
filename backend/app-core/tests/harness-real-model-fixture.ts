@@ -32,7 +32,7 @@ export function reviewInstruction(target: string): string {
         + 'Review the code statically; do not execute commands, change files, or exploit anything. '
         + 'If another tool is denied, continue using Read for these fixture files; do all arithmetic and reasoning without a shell. '
         + 'Return one compact JSON object with nonce (the entire challenge.txt content trimmed), '
-        + 'findings (objects with symbol, cwe in CWE-NNN format, and short evidence), and safeFunctions (function names). '
+        + 'findings (objects with the exact keys symbol, cwe, evidence; cwe uses CWE-NNN format and evidence is a short string), and safeFunctions (function names). '
         + 'Distinguish unsafe user-input interpolation from parameterized SQL or subprocess argument arrays. '
         + 'Report only the vulnerable function as a finding and the safe counterpart under safeFunctions.';
 }
@@ -51,6 +51,7 @@ export function verifyReview(text: string, nonce: string, kind: 'sql' | 'shell')
     expect(review.nonce).toBe(nonce);
     expect(review.findings).toHaveLength(1); expect(review.findings[0]).toMatchObject({ symbol });
     expect(Number(review.findings[0].cwe.match(/^CWE-(\d+)$/)?.[1])).toBe(cweId);
+    expect(review.findings[0].evidence).toEqual(expect.any(String));
     expect(review.findings[0].evidence.length).toBeGreaterThan(5); expect(review.safeFunctions).toContain(safe);
     return review;
 }

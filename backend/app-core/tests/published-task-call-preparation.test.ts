@@ -145,14 +145,23 @@ it('enforces local exposure even when the caller supplies an exact published ide
     input.request.expectedTarget = local.target; input.request.target = {kind: 'agent', id: local.target.id, version: local.target.version};
     await expect(runtime.independentCalls!.prepareTaskCall(input, {maxDepth: 3})).rejects.toHaveProperty('code', 'CALLABLE_LOCAL_ONLY');
 });
-it('does not compile a published Flow implementation into a bare Task and bypass its workspace lifecycle', async () => {
+it('prepares a published Flow implementation as an aggregate with its graph and workspace lifecycle', async () => {
     const {runtime, parent, definition} = await fixture();
     await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [{id: 'implementation', name: 'Implementation', draftVersion: 1, updatedAt: 0,
         layout: {}, nodes: [{id: 'value', name: 'Value', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: 'Done'}}], edges: []}]});
     await publish(runtime, {...definition, execution: {kind: 'flow', flowId: 'implementation', revision: 1}});
     const input = await request(runtime, parent);
-    await expect(runtime.independentCalls!.prepareTaskCall(input, {maxDepth: 3})).rejects.toHaveProperty('code', 'CALL_GRAPH_PREPARATION_REQUIRED');
+    await expect(runtime.independentCalls!.prepareTaskCall(input, {maxDepth: 3})).rejects.toHaveProperty('code', 'FLOW_INPUT_UNBOUND');
     expect(await runtime.independentCalls!.inspectPreparedTaskCall(input)).toBeUndefined();
+    const corrected = await request(runtime, parent, 'bound-flow');
+    corrected.request.source = {kind: 'arguments', value: {}};
+    const ready = await runtime.independentCalls!.prepareTaskCall(corrected, {maxDepth: 3});
+    expect(ready.plan.task).toMatchObject({program: {kind: 'flow.aggregate', version: '1'},
+        labels: {kind: 'flow-root', invocationId: ready.invocation.invocationId},
+        input: {initialWorkspacePending: 1, initialWorkspaceResource: 1, initialScheduler: expect.any(Object)}});
+    expect(await runtime.independentCalls!.inspectPreparedTaskCall(corrected)).toEqual(ready);
+    expect(await runtime.kernel.kernel.listSessionTasks(ready.executionSessionId)).toEqual([]);
+    expect(await runtime.sessionRepository.listHistory(ready.executionSessionId)).toEqual([]);
 });
 it('reports actual Kernel acceptance and target through the existing call commands before history is written', async () => {
     const {runtime, parent} = await fixture(), input = await request(runtime, parent);

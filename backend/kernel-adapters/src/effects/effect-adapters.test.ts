@@ -7,7 +7,7 @@ import { BashEffectAdapter } from './bash-effect';
 import { SkillLoadEffectAdapter } from './skill-load-effect';
 
 describe('KernelAdapters Effect adapters', () => {
-    it('logs execution identity and the original error without dumping tool arguments', async () => {
+    it('logs execution identity and a classified failure without dumping tool arguments', async () => {
         const log = vi.fn();
         const logger = { debug() {}, info() {}, warn() {}, error: log };
         const failure = new Error('File view was cancelled');
@@ -15,7 +15,10 @@ describe('KernelAdapters Effect adapters', () => {
             const service = toolService(async () => { throw failure; });
             const request = { resourceHandleId: 'tool-handle', toolId: 'Glob', cwd: '/workspace', args: { secret: 'private-input' } };
             await expect(new ToolCallEffectAdapter(service, undefined, undefined, [], logger).execute(request, context('tool'))).rejects.toBe(failure);
-            expect(log).toHaveBeenCalledWith('[tool.call] Execution failed', expect.objectContaining({ toolId: 'Glob', cwd: '/workspace', error: failure }));
+            // Structured diagnostics: operation/stage/result plus a stable category, correlatable by operationId.
+            expect(log).toHaveBeenCalledWith('Tool execution failed', expect.objectContaining({
+                operation: 'tool.call', stage: 'execute', result: 'failure',
+                toolId: 'Glob', cancelled: false, errorCategory: 'TOOL_INVOCATION_ERROR' }));
             expect(JSON.stringify(log.mock.calls)).not.toContain('private-input');
             await expect(new BashEffectAdapter(service, logger).execute({ resourceHandleId: 'process-handle', command: 'private-command' }, context('process'))).rejects.toBe(failure);
             expect(log.mock.calls.at(-1)?.[0]).toBe('[process.exec] Execution failed');

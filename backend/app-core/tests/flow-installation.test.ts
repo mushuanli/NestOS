@@ -72,9 +72,11 @@ it('returns missing and version failure details and rejects executable paths in 
 it('recovers dependency details and retries without rewriting existing system resources', async () => {
     const f = await setup(), client = createApplicationClient(bindLocalApplicationServices(f.runtime)); cleanup.push(() => client.close());
     const initial = await client.backend.initialFiles(), before = await f.runtime.commandBus.execute(FlowCommand.DraftLoad, {id: 'anki-generate'});
-    const [result] = await initial.restore(['flow:anki-generate']);
-    expect(result.status).toBe('preserved'); expect(result.dependencies?.tools.map(tool => tool.id)).toContain('anki.package');
+    const published = await f.runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'anki-generate'});
     const reports = await initial.prepareDependencies(['flow:anki-generate']);
     expect(reports).toHaveLength(1); expect(reports[0].status).toBe('missingTools');
+    expect(reports[0].tools.map(tool => tool.id)).toContain('anki.package');
+    expect(await initial.prepareDependencies(['flow:anki-generate'])).toEqual(reports);
+    expect(await f.runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'anki-generate'})).toEqual(published);
     expect(await f.runtime.commandBus.execute(FlowCommand.DraftLoad, {id: 'anki-generate'})).toEqual(before);
 });

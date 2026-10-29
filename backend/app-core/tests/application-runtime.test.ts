@@ -20,8 +20,8 @@ describe('application infrastructure', () => {
         try {
             expect(infrastructure.vfs.devices.isFrozen()).toBe(true);
             // The scratch mount and host mounts are both reachable from the root view.
-            for (const path of ['/run', '/extra', '/home/admin/chats', '/home/admin/.config']) {
-                expect(await infrastructure.systemFS.driver.getNode(path)).not.toBeNull();
+            for (const path of ['/run', '/extra', '/home/admin/notes', '/home/admin/projects', '/home/admin/.config']) {
+                expect(await infrastructure.systemFS.driver.getNode(path), `Missing infrastructure directory: ${path}`).not.toBeNull();
             }
             expect(infrastructure.llmDriver).toBeDefined();
             // `logIO` reports and resets the public counters.

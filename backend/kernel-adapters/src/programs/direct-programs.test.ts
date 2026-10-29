@@ -7,7 +7,9 @@ it('keeps direct Tool and media Tasks waiting when dependency events arrive befo
     const dependency = { type: 'task-exited', taskId: 'upstream', exit: { status: 'succeeded', output: {} } } as TaskInputEvent;
     const tool = new ToolProgram();
     const toolState = tool.init({ toolId: 'convert', toolVersion: '1', args: {}, allowedToolIds: ['convert'], approval: 'none' }).state;
-    expect(tool.reduce(toolState, dependency).next).toEqual({ type: 'wait', on: { type: 'signal', id: 'capabilities' } });
+    // Tool waits on unresolved bindings together with the capability grant; media has no bindings yet.
+    expect(tool.reduce(toolState, dependency).next).toEqual({
+        type: 'wait', on: { type: 'all', waits: [{ type: 'signal', id: 'capabilities' }] } });
     const media = new MediaProgram();
     const mediaState = media.init({ connectionId: 'images', request: { operation: 'image.generate', model: 'fixture', prompt: 'square', format: 'png' } }).state;
     expect(media.reduce(mediaState, dependency).next).toEqual({ type: 'wait', on: { type: 'signal', id: 'capabilities' } });

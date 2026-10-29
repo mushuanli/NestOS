@@ -1,6 +1,6 @@
 {
   "name": "nestos",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "NestOS: the NestOS HTTPS workspace for AI chat, agents, flows, Markdown documents and project files.",
   "type": "module",
   "bin": {

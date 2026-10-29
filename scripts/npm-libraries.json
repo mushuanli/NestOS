@@ -44,7 +44,7 @@
   {
     "directory": "mdxeditor",
     "name": "@itookit/mdxeditor",
-    "version": "0.5.9",
+    "version": "0.5.11",
     "workspace": true
   },
   {

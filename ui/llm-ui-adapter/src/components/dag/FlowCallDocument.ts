@@ -13,8 +13,10 @@ export class FlowCallDocument {
     private generation = 0;
     private readonly detail = document.createElement('button');
     private readonly body = document.createElement('div');
+    private readonly retry = document.createElement('button');
     constructor(private root: HTMLElement, private commands: ICommandBus) {
-        this.detail.type = 'button'; this.detail.textContent = t('flow.invoke.details'); root.append(this.body, this.detail);
+        this.retry.dataset.flowResultRetry = ''; this.retry.type = 'button'; this.retry.hidden = true; this.retry.textContent = t('flow.document.retry');
+        this.detail.type = 'button'; this.detail.textContent = t('flow.invoke.details'); root.append(this.body, this.detail, this.retry);
     }
     update(call: IndependentCallView): void {
         const {executionSessionId, execution} = call.receipt;
@@ -28,7 +30,7 @@ export class FlowCallDocument {
         void this.read(call, executionSessionId, execution.taskId, ++this.generation);
     }
     private async read(call: IndependentCallView, sessionId: string, taskId: string, generation: number): Promise<void> {
-        const started = Date.now();
+        const started = Date.now(); this.retry.hidden = true;
         try {
             const snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId, taskId});
             if (generation !== this.generation || this.abort.signal.aborted) return;
@@ -39,7 +41,8 @@ export class FlowCallDocument {
             this.render(call, this.result);
         } catch (error) {
             if (generation !== this.generation || this.abort.signal.aborted) return;
-            this.key = ''; this.render(call, `${call.summary ?? ''}\n\n${t('flow.document.failed')}`);
+            this.retry.hidden = false; this.retry.onclick = () => {if (!this.abort.signal.aborted) void this.read(call, sessionId, taskId, ++this.generation);};
+            this.render(call, `${call.summary ?? ''}\n\n${t('flow.document.failed')}`);
             createModuleLogger('flow-call-document').warn('flow.call.read', {operationId: call.receipt.operationId,
                 sessionId, taskId, stage: 'result', result: 'failure', code: 'FLOW_CALL_RESULT_READ_FAILED', durationMs: Date.now() - started});
         }

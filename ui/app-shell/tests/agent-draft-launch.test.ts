@@ -17,7 +17,7 @@ it('selects the launch agent in an existing draft without replacing text, attach
         await editor.init(host); await editor.commands.selectDraftAgent('writer');
         const saved = JSON.parse(save.mock.calls.at(-1)![0]);
         expect(saved.config).toMatchObject({text: input.config.text, agentId: 'writer'});
-        expect(saved.files).toEqual(input.files); expect(put).not.toHaveBeenCalled(); expect(materialize).not.toHaveBeenCalled();
+        expect(saved.files).toMatchObject(input.files); expect(saved.files[0]).toMatchObject({bytes: 15, sha256: expect.stringMatching(/^[a-f0-9]{64}$/)}); expect(put).not.toHaveBeenCalled(); expect(materialize).not.toHaveBeenCalled();
         await expect(editor.commands.selectDraftAgent('missing')).rejects.toThrow();
         expect(JSON.parse(save.mock.calls.at(-1)![0]).config.agentId).toBe('writer');
     } finally {await editor.destroy(); document.body.replaceChildren(); vi.unstubAllGlobals();}

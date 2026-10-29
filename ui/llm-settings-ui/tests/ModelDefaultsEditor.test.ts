@@ -235,3 +235,16 @@ it('recovers other settings when OCR initially failed to read and becomes availa
     expect(next.root.querySelector<HTMLSelectElement>('[name=ocr-connection]')!.value).toBe('vision');
     expect(ocr.controls.saveSettings).not.toHaveBeenCalled(); expect(next.service.setModelDefault).not.toHaveBeenCalled(); await next.editor.destroy();
 });
+
+it('preserves an eventless selection when provider metadata changes before recovery capture', async () => {
+    const f = fixture(); f.defaults({}); await f.editor.init(f.root);
+    f.root.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!.value = 'chat';
+    f.provider.name = 'Updated provider catalog'; await f.editor.render();
+    expect(f.root.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!.value).toBe('chat');
+    expect(f.root.querySelector('[data-default-selection=chat] [data-model-config]')?.getAttribute('data-model-config')).toBe('/connections/chat');
+    expect(f.editor.isDirty()).toBe(true); expect(f.service.setModelDefault).not.toHaveBeenCalled();
+    const state = f.editor.captureRecovery(); f.editor.suspendForRecovery(); await f.editor.destroy(); f.root.remove();
+    const next = fixture(); next.defaults({}); await next.editor.init(next.root); next.editor.restoreRecovery(state);
+    expect(next.root.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!.value).toBe('chat');
+    await next.editor.destroy();
+});

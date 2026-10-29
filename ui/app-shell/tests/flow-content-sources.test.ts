@@ -1,3 +1,4 @@
+import {promptInvocation} from '../../llm-ui-adapter/src/flows/prompt-invocation';
 import {Toast} from '@itookit/ui-common';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -17,6 +18,8 @@ beforeEach(() => {
     transfer = {id: 'transfer', sessionId: 's', captureId: 'capture', branch: 'main', head: 'round-1', createdAt: 2,
         selection: {kind: 'latest'}, messageIds: ['m2'], value: 'Reply'};
     execute = vi.fn(async (command, input) => {
+        if (command === SessionCommand.ListTargets) return {entries: [{name: 'Flow', target: {kind: 'flow', id: 'f', version: '1', digest: 'published'}}], issues: []};
+        if (command === FlowCommand.RevisionGet) return {id: 'f', name: 'Flow', revision: 1, digest: 'published', parameters: [{name: 'text', type: 'string', required: true}]};
         if (command === FlowCommand.DraftList) return [{id: 'f', name: 'Flow'}];
         if (command === FlowCommand.DraftLoad) return {id: 'f', name: 'Flow', draftVersion: 1, parameters: [{name: 'text', type: 'string', required: true}]};
         if (command === SessionCommand.GetConnections) return {connections: []};
@@ -115,14 +118,12 @@ it('creates a named child with an explicitly selected initial material', async (
 
 it('does not launch after cancellation while the flow revision is being prepared', async () => {
     let finish!: (value: unknown) => void;
-    const original = execute.getMockImplementation()!;
-    execute.mockImplementation(async (command, input) => command === FlowCommand.RevisionCreate
-        ? new Promise(resolve => { finish = resolve; }) : original(command, input));
-    const pending = invokeFlowText(commands, 's', 'f {"text":"prepared input"}');
+    const pending = promptInvocation({commands, sessionId: 's', name: 'Flow', fields: [{name: 'text', type: 'string', required: true, default: 'prepared input'}],
+        connection: {connections: [], onChange() {}}, revision: () => new Promise(resolve => {finish = resolve;})});
     await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
     submit(); await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
     document.querySelector<HTMLButtonElement>('[data-cancel]')!.click(); expect(await pending).toBe(false);
-    finish({revision: {id: 'f', revision: 1}}); await Promise.resolve(); await Promise.resolve();
+    finish({id: 'f', revision: 1, digest: 'published'}); await Promise.resolve(); await Promise.resolve();
     expect(execute.mock.calls.some(([command]) => command === FlowInvocationCommand.Invoke || command === ContentTransferCommand.CreateChild)).toBe(false);
 });
 

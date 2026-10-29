@@ -2181,6 +2181,7 @@ export const en: LocaleStrings = {
     'branch.delete': 'Delete branch',
     'branch.deleteCurrentHint': 'Switch to another branch before deleting the current branch',
     'flow.output.unlinked': 'Not linked to a chat branch',
+    'flow.document.retry': 'Read result again',
     'flow.document.failed': 'Unable to display content. Reopen to try again.',
     'flow.runs.standalone': 'Standalone runs ({count})',
     'flow.runs.separateHint': 'Each entry is a separate execution. Later success does not replace earlier failures.',

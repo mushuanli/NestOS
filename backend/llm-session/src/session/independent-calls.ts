@@ -65,7 +65,8 @@ export class IndependentCallService {
             const saved = await this.readRoute(identity.sessionId, identity.id);
             const route = saved && this.match(saved.value, identity.digest);
             progress.stage = 'policy';
-            const policy = route ? route.kernelPreparation?.policy : await this.options.taskCallPolicy?.(input.request);
+            const policy = await this.options.taskCallPolicy?.(input.request);
+            if (route) assertIndependentPreparationMode(route.kernelPreparation, policy);
             if (!policy) {progress.stage = 'legacy-queue'; return this.submitWithGuard(input);}
             progress.stage = 'prepare'; await this.prepareTaskCall(input, policy);
             progress.stage = 'kernel-submit';

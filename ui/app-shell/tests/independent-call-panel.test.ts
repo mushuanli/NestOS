@@ -31,7 +31,7 @@ it('releases a suspended submit through matching durable admission and opens the
     await panel.refresh(); expect(await sending).toBe('call');
     expect(ctx.observeInstructions).not.toHaveBeenCalled(); expect(ctx.reconcileSubmission).not.toHaveBeenCalled();
     expect(document.querySelector('[data-output]')!.textContent).toBe('<unsafe>Done</unsafe>'); expect(document.querySelector('unsafe')).toBeNull();
-    document.querySelector('button')!.click(); expect(openChild).toHaveBeenCalledWith('child');
+    document.querySelector<HTMLButtonElement>('[data-open-child]')!.click(); expect(openChild).toHaveBeenCalledWith('child');
     expect(execute.mock.calls.filter(([command]) => command === IndependentCallCommand.Submit)).toHaveLength(1);
 });
 
@@ -128,7 +128,7 @@ async function artifactFixture() {
 
 it('reads child artifacts on demand and keeps previews through parent-card polling', async () => {
     const f = await artifactFixture();
-    expect(f.execute).toHaveBeenCalledTimes(1);
+    expect(f.execute.mock.calls.filter(([command]) => command === IndependentCallCommand.List)).toHaveLength(1);
     document.querySelector<HTMLButtonElement>('[data-artifacts-load]')!.click();
     await vi.waitFor(() => expect(document.querySelector('[data-artifact-preview]')).not.toBeNull());
     expect(f.execute).toHaveBeenCalledWith(ArtifactCommand.List, {sessionId: 'child', taskId: 'actual-task', offset: 0, limit: 20});
@@ -187,7 +187,7 @@ it('keeps observing cleanup after the Round completes instead of declaring all r
     await panel.refresh();
     expect(document.querySelector('[data-execution-state]')!.textContent).toContain('1');
     expect(document.querySelector('[data-independent-call] header [role=status]')!.textContent).toBe('已完成');
-    await vi.advanceTimersByTimeAsync(1000); expect(execute).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000); expect(execute.mock.calls.filter(([command]) => command === IndependentCallCommand.List)).toHaveLength(2);
     call.executionState.settled = true; call.executionState.stopped = true; call.executionState.activeOperations = 0;
     await panel.refresh();
     expect(document.querySelector('[data-execution-state]')!.textContent).toBe('');

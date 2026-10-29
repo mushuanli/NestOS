@@ -84,3 +84,17 @@ it('rejects an empty execution Session without silently retargeting a control to
     await expect(f.open().controls.run({...input, executionSessionId: ''}, send)).rejects.toThrow('execution Session is invalid');
     expect(send).not.toHaveBeenCalled(); expect(f.saved()).toEqual([]);
 });
+
+it('recovers a lost child cancellation by its original identity without reissuing the write', async () => {
+    const f = fixture(), first = f.open(), cancellation = {...input, action: 'cancel' as const, executionSessionId: 'child'};
+    const send = vi.fn(async () => {throw new Error('Cancellation response lost');});
+    await expect(first.controls.run(cancellation, send)).rejects.toThrow('response lost');
+    const id = f.saved()[0].context.operationId, second = f.open();
+    f.execute.mockResolvedValue({requestId: id, taskId: 'root', expectedEpoch: 6, status: 'cancelled'});
+    await expect(second.controls.reconcile(id)).rejects.toThrow('identity mismatch');
+    expect(f.saved()[0].status).toBe('unknown');
+    f.execute.mockResolvedValue({requestId: id, taskId: 'root', expectedEpoch: 7, status: 'cancelled'});
+    await second.controls.reconcile(id);
+    expect(f.execute).toHaveBeenLastCalledWith(FlowCommand.RunCancellationReceipt, {sessionId: 'child', taskId: 'root', requestId: id});
+    expect(f.saved()[0].status).toBe('accepted'); expect(send).toHaveBeenCalledOnce();
+});

@@ -1,3 +1,4 @@
+import {runInNewContext} from 'node:vm';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {sha256Hex} from '@itookit/common';
@@ -131,4 +132,15 @@ it('records safe stage and identity diagnostics and preserves results when the d
     diagnostics.debug.mockImplementationOnce(() => {throw new Error('Sink unavailable');});
     const records = await new DraftFilesCodec(store.port).encode([file]); expect(records[0].bytes).toBe(11);
     expect(diagnostics.debug.mock.calls.at(-1)![1]).toMatchObject({result: 'success', operationId: draftFileId(file)});
+});
+
+
+it('accepts genuine cross-realm binary drafts while rejecting lookalike objects', async () => {
+    const bytes = runInNewContext('new Uint8Array([102, 105, 108, 101]).buffer') as ArrayBuffer;
+    expect(bytes instanceof ArrayBuffer).toBe(false);
+    const record = {id: 'remote', name: 'remote.txt', type: 'text/plain', lastModified: 0, bytes: 4, sha256: await sha256Hex(new Uint8Array([102, 105, 108, 101]))};
+    const codec = new DraftFilesCodec({put: vi.fn(), read: async () => bytes});
+    const [file] = await codec.decode([record]); expect(new TextDecoder().decode(await fileBytes(file))).toBe('file');
+    await expect(new DraftFilesCodec({put: vi.fn(), read: async () => ({byteLength: 4, [Symbol.toStringTag]: 'ArrayBuffer'}) as ArrayBuffer}).decode([record]))
+        .rejects.toMatchObject({code: 'DRAFT_FILE_INTEGRITY'});
 });

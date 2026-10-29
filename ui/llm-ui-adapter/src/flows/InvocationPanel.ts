@@ -209,7 +209,7 @@ export class InvocationPanel {
         this.button(actions, 'flow.invoke.details', () => this.details(call));
         if (terminal(task.status)) this.button(actions, 'flow.invoke.repeat', () => this.repeat(call));
         else {
-            this.button(actions, 'flow.invoke.cancel', () => this.control(call, FlowCommand.RunCancel));
+            this.button(actions, 'flow.invoke.cancel', async () => {await this.runControl(call, 'cancel', task.control?.epoch ?? 0);});
             if (control.canReattach) this.button(actions, 'flow.invoke.reattach', () => this.control(call, FlowCommand.RunResume));
             if (control.canRelease) this.button(actions, releaseLabel(control), () => this.setPaused(call, false, task.control!.epoch));
             else if (control.canWithdraw) this.button(actions, 'flow.invoke.withdrawPause', () => this.withdrawPause(call, task.control!.epoch));
@@ -226,7 +226,7 @@ export class InvocationPanel {
         this.recordRecovery(call, result);
     }
 
-    private runControl(call: FlowInvocationRecord, action: 'pause' | 'resume' | 'withdraw', epoch: number): Promise<PauseResult | undefined> {
+    private runControl(call: FlowInvocationRecord, action: 'pause' | 'resume' | 'withdraw' | 'cancel', epoch: number): Promise<PauseResult | undefined> {
         const signal = this.viewAbort.signal;
         return new FlowRunControl(this.commands, call.executionSessionId ?? this.sessionId, this.controlOperations).execute(call.rootTaskId!, action, epoch,
             () => !this.abort.signal.aborted && !signal.aborted && this.visible);
@@ -249,7 +249,7 @@ export class InvocationPanel {
         for (const record of this.controlOperations.pending(call.rootTaskId!, call.executionSessionId ?? this.sessionId)) {
             const row = document.createElement('div'); host.append(row);
             const action = (record.input as {action: string}).action;
-            row.append(t(action === 'pause' ? 'flow.invoke.pause' : action === 'resume' ? 'flow.invoke.continue' : 'flow.invoke.withdrawPause') + ' · ');
+            row.append(t(action === 'cancel' ? 'flow.invoke.cancel' : action === 'pause' ? 'flow.invoke.pause' : action === 'resume' ? 'flow.invoke.continue' : 'flow.invoke.withdrawPause') + ' · ');
             const button = this.button(row, 'flow.invoke.reconcileControl', async () => {await this.controlOperations.reconcile(record.context.operationId);});
             button.dataset.controlReconcile = record.context.operationId;
         }

@@ -20,7 +20,8 @@ export class FlowRunControl {
                 const snapshot = await this.prepare(taskId, action, expectedEpoch, current);
                 if (!snapshot || !current()) return false;
                 const args = {taskId, requestId, expectedEpoch};
-                result = action === 'withdraw'
+                if (action === 'cancel') await this.commands.execute(FlowCommand.RunCancel, {...args, sessionId: this.sessionId});
+                else result = action === 'withdraw'
                     ? await this.commands.execute(FlowCommand.RunPauseWithdraw, args)
                     : await this.commands.execute(FlowCommand.RunGoalUpdate, {...args, goal: {status: action === 'pause' ? 'paused' : 'active'}});
                 controlDiagnostic(action, requestId, started); return true;
@@ -34,7 +35,7 @@ export class FlowRunControl {
         let snapshot = await read();
         if (!current()) return;
         this.assertAction(snapshot, action, epoch);
-        if (action !== 'pause' && snapshot.attachedFromStorage && !invocationControl(snapshot).externalHold) {
+        if (action !== 'pause' && action !== 'cancel' && snapshot.attachedFromStorage && !invocationControl(snapshot).externalHold) {
             await this.commands.execute(FlowCommand.RunResume, {taskId, sessionId: this.sessionId});
             if (!current()) return;
             snapshot = await read();

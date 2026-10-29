@@ -48,8 +48,10 @@ export class DraftFilesCodec {
     private async decodeRaw(stored: DraftFileBase): Promise<File> {
         const started = Date.now(); let stage = 'asset-read';
         try {
-            const data = await this.storage().read(stored.id); stage = 'integrity';
-            if (!(data instanceof ArrayBuffer)) throw invalid('DRAFT_FILE_INTEGRITY');
+            const received = await this.storage().read(stored.id); stage = 'integrity';
+            let data: ArrayBuffer;
+            try {data = ArrayBuffer.prototype.slice.call(received, 0);}
+            catch {throw invalid('DRAFT_FILE_INTEGRITY');}
             const sha256 = await sha256Hex(data);
             if (stored.sha256 !== undefined && (sha256 !== stored.sha256 || data.byteLength !== stored.bytes)) throw invalid('DRAFT_FILE_INTEGRITY');
             const file = new File([data], stored.name, stored), fileId = stored.fileId ?? (validDraftToken(stored.id) ? stored.id : draftFileId(file));

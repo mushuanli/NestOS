@@ -1,3 +1,4 @@
+import {createEditorSwapFactory} from '../src/browser/editor-swap';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {IDBFactory} from 'fake-indexeddb';
@@ -92,15 +93,20 @@ it('advances the recovery base after an acknowledged save so later offline edits
     expect(next.mount.querySelector('.file-recovery')).toBeNull();
 });
 
-it('keeps the pre-refresh backup separate from the active draft and follows rename before another backup', async () => {
-    let configured: any; const events = new Map<string, () => void>();
-    const factory = vi.fn(async (_mount, options) => {configured = options; return {on: (name, changed) => {events.set(name,changed);return()=>{};},
-        getText: () => 'Loaded', setText() {}, isDirty: () => false, destroy: async()=>{}, updateNodeId() {}};});
-    const editor = await createRecoverableFileEditor(factory as never,document.createElement('div'),{target:{kind:'file',path:'/old.md'},initialContent:'Loaded',
-        hostContext:{reloadContent:async()=>{}} as any},'documents'); cleanup.push(()=>editor.destroy());
-    await configured.hostContext.reloadRecovery.preserve('Unsaved before refresh');
-    events.get('contentLoaded')!();
-    expect((await new FileRecoveryStore('documents','/old.md','reload-backup').read())?.text).toBe('Unsaved before refresh');
+it('keeps the HTTP swap separate from the active recovery draft and retains its file identity on rename', async () => {
+    let configured: any, backup = ''; const events = new Map<string, () => void>();
+    const closeSwap = vi.fn(async () => {}), openEditorSwap = vi.fn(async () => ({writeSwap: async (content: string) => {backup = content;},
+        readSwap: async () => ({content: backup, savedAt: 1}), clearSwap: async () => {backup = '';}, closeSwap}));
+    const factory = vi.fn(async (_mount, options) => {configured = options; return {on: (name, changed) => {events.set(name, changed); return () => {};},
+        getText: () => 'Loaded', setText() {}, isDirty: () => false, destroy: async () => {}, updateNodeId() {}};});
+    const wrapped = createEditorSwapFactory(factory as never, {editorSwaps: {openEditorSwap}} as never);
+    const editor = await createRecoverableFileEditor(wrapped, document.createElement('div'), {target: {kind: 'file', path: '/old.md'}, initialContent: 'Loaded',
+        files: {fs: {}}, hostContext: {reloadContent: async () => {}}} as any, 'documents'); cleanup.push(() => editor.destroy());
+    await configured.hostContext.reloadRecovery.preserve('Unsaved before refresh'); events.get('contentLoaded')!();
+    expect(await configured.hostContext.reloadRecovery.read()).toEqual({content: 'Unsaved before refresh', savedAt: 1});
+    expect(await new FileRecoveryStore('documents', '/old.md').read()).toBeUndefined();
     editor.updateNodeId!('/new.md'); await configured.hostContext.reloadRecovery.preserve('Another draft');
-    expect((await new FileRecoveryStore('documents','/new.md','reload-backup').read())?.text).toBe('Another draft');
+    expect(backup).toBe('Another draft'); expect(openEditorSwap).toHaveBeenCalledOnce();
+    expect(openEditorSwap).toHaveBeenCalledWith({files: {}, path: '/old.md'});
+    await editor.destroy(); expect(closeSwap).toHaveBeenCalledOnce();
 });

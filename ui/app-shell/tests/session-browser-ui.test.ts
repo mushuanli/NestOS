@@ -119,7 +119,7 @@ it('routes a real vfs-ui tree to chat, Task history and the Session mapped file 
         expect(main.querySelector<HTMLElement>('[data-stop-state]')!.hidden).toBe(true);
         await workbench.openResource(`/${id}/files/workspace/note.md`);
         const options = (file.mock.calls as unknown as Array<[HTMLElement, any]>)[0][1];
-        expect(options.target).toEqual({ kind: 'file', path: '/workspace/note.md' });
+        expect(options.target).toEqual({ kind: 'file', path: '/workspace/note.md', sessionId: id });
         expect(options.files.cwd).toBe('/workspace'); expect(options.initialContent).toBe('mapped text');
         // L4 wiring: opening a file mounts matching Skill globs for this Session only.
         expect(sessionSkills.mountByGlob).toHaveBeenCalledWith(id, '/workspace/note.md');

@@ -227,3 +227,5 @@ Flow 参数表单按 inputGroups 声明展示关系：oneOf 仅提交单选来�
 Flow 参数 presentation.group 与连接 presentation.group 按声明合并显示；visibleWhen 只控制可见性，不清除参数值。条件连接依据 requiredWhen 隐藏，打开相关开关后显现；隐藏字段/连接的错误仍展开所属设置组。presentation.contentSource=false 的配置字段不显示文件/工具/Flow 内容来源入口。展示规则不按预设名称或业务字段分支。
 
 输入插件注册与候选使用库 InputPluginRegistry/PopupPanel，适配层只扩展业务上下文。折叠、TTY、SchemaForm 与 GraphCanvas 均复用独立库；Flow 表达式、repeat 路由、Agent 徽标和执行授权保留在本包。绑定的 setActive/release 交由 ChatView 管理，禁止覆写实例方法包装生命周期。
+
+Flow InvocationPanel 的取消与暂停共用持久 ControlOperations；取消携带实际执行 Session、requestId 与 expectedEpoch，核对使用原 RunCancellationReceipt，不能先恢复执行再取消。FlowCallDocument 终态结果读取失败保留失败状态，仅显式重试，不随父卡片轮询重复读取。DraftFilesCodec 对跨执行环境的 ArrayBuffer 使用内部品牌校验，仍校验资源摘要、大小及稳定附件身份。

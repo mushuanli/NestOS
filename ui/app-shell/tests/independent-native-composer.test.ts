@@ -26,7 +26,8 @@ it('routes an actual independent composer selection through the binding and repl
         choose('modelId', 'native'); choose('reasoningEffort', 'high'); view.setText('/verify');
         await expect(view.submit()).rejects.toThrow('同名');
         const command = binding.source.getSnapshot().commands!.find(command => command.source.id === 'harness')!;
-        [...host.querySelectorAll<HTMLButtonElement>('[data-command-id]')].find(row => row.dataset.commandId === command.id)!.click();
+        const candidates = [...document.querySelectorAll<HTMLElement>('[data-chat-commands] [role=option]')];
+        const index = binding.source.getSnapshot().commands!.findIndex(row => row.id === command.id); candidates[index].click();
         expect(controls.command).not.toHaveBeenCalled(); await view.submit();
         expect(controls.command).toHaveBeenCalledWith('verify', '', {modelId: 'native', reasoningEffort: 'high'}, '/verify ', expect.any(String));
         expect(controls.send).not.toHaveBeenCalled(); expect(local).not.toHaveBeenCalled(); expect(view.getDraft().text).toBe('');

@@ -1040,7 +1040,8 @@ export class ChatInput implements IChatInputPresenter {
         if (independent && (!this.options.onIndependentSend || !this.config.target || this.config.context || this.config.agentId.startsWith('remote:')
             || isCommandInput(this.textarea.value.trim()) || isDirectCommandInput(this.textarea.value.trim()))) {Toast.error(t('callable.independent.unsupported')); return;}
         if (!this.inputAvailable() || this.checkingConnection || this.submitting > 0 && !this.independentQueryAvailable()) return;
-        if (!await this.selectFlowCommand()) return;
+        if (this.options.flowCommandSelectsTarget && !this.config.agentId.startsWith('remote:')
+            && /^\/flow\s/.test(this.textarea.value.trim()) && !await this.selectFlowCommand()) return;
         const text = this.textarea.value.trim();
         if (/^\/run(?:\s|$)/.test(text) && !this.agentFlow()) {Toast.error(t('flow.source.selectFlow')); return;}
         const unavailable = this.targetIssue();

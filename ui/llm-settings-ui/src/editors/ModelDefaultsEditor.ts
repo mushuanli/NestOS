@@ -34,6 +34,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
             const [connections, defaults] = await Promise.all([this.service.getConnections(), this.service.getModelDefaults()]);
             if (this.closed || generation !== this.generation) return;
             if (this.readFailed) { this.container.querySelector('[data-defaults-result]')?.replaceChildren(); this.readFailed = false; }
+            const edits = this.selectionEdits();
             this.connections = connections; this.defaults = defaults; this.providers = this.service.getProviders();
             this.pricing = this.service.getPricingConfig?.();
             const fingerprint = JSON.stringify([defaults, this.pricing, connections.map(({ id, name, providerId, enabled, credentialsReady, hasApiKey, model, tiers, protocol, baseURL }) => ({ id, name, providerId, enabled, credentialsReady, hasApiKey, model, tiers, protocol, baseURL })),
@@ -42,7 +43,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
             this.fingerprint = fingerprint;
             this.clearListeners();
             this.container.innerHTML = `<section class="model-defaults"><h2>${t('modelDefaults.title')}</h2>
-                <p class="model-defaults__description">${this.description()}</p>${MODEL_OPERATIONS.map(operation => this.row(operation)).join('')}
+                <p class="model-defaults__description">${this.description()}</p>${MODEL_OPERATIONS.map(operation => this.row(operation, edits.get(operation) ?? defaults[operation])).join('')}
                 ${this.ocr ? '<section data-ocr-default></section>' : ''}
                 <p role="status" data-defaults-result></p></section>`;
             this.bind();
@@ -75,25 +76,33 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
             host.insertAdjacentHTML('beforeend', this.connectionLink(id));
     }
 
-    private row(operation: ModelOperation): string {
-        const selected = this.defaults[operation], current = this.connections.find(item => item.id === selected);
+    private row(operation: ModelOperation, selected: string | undefined): string {
+        const current = this.connections.find(item => item.id === selected);
         const candidates = this.connections.filter(item => modelForOperation(item, this.provider(item), operation));
         const options = candidates.sort((a, b) => Number(!available(a)) - Number(!available(b)) || a.name.localeCompare(b.name))
             .map(item => `<option value="${escapeAttr(item.id)}" ${item.id === selected ? 'selected' : ''} ${available(item) ? '' : 'disabled'}>${escapeHTML(this.label(item))}${available(item) ? '' : ` · ${escapeHTML(unavailableReason(item))}`}</option>`).join('');
         const missing = selected && !candidates.some(item => item.id === selected)
             ? `<option selected value="${escapeAttr(selected)}">${escapeHTML(t('connection.unavailable', { id: selected }))}</option>` : '';
-        const status = this.selectionStatus(operation, current);
+        const status = this.selectionStatus(operation, current, selected);
         return `<section class="model-defaults__row" data-purpose="${operation}"><label for="default-${operation}">${purposeLabel(operation)}</label>
             <div class="model-defaults__selection" data-default-selection="${operation}"><select id="default-${operation}" class="settings-form__select" data-default-operation="${operation}"><option value="">${t('modelDefaults.unset')}</option>${missing}${options}</select>${current ? this.connectionLink(current.id) : ''}</div>
             <div class="model-defaults__model" data-default-model="${operation}">${this.modelInfo(operation, current)}</div>
             ${status ? `<p class="model-defaults__status">${status}</p>` : ''}</section>`;
     }
 
-    private selectionStatus(operation: ModelOperation, current?: ConnectionMeta): string {
-        if (!this.defaults[operation]) return t('modelDefaults.notConfigured');
+    private selectionStatus(operation: ModelOperation, current: ConnectionMeta | undefined, selected: string | undefined): string {
+        if (!selected) return t('modelDefaults.notConfigured');
         if (!current) return t('modelDefaults.incompatible');
         if (!available(current)) return unavailableReason(current);
         return modelForOperation(current, this.provider(current), operation) ? '' : t('modelDefaults.incompatible');
+    }
+    private selectionEdits(): Map<ModelOperation, string> {
+        const edits = new Map<ModelOperation, string>();
+        for (const select of this.container.querySelectorAll<HTMLSelectElement>('[data-default-operation]')) {
+            const operation = select.dataset.defaultOperation as ModelOperation;
+            if (select.value !== (this.defaults[operation] ?? '')) edits.set(operation, select.value);
+        }
+        return edits;
     }
     private label(connection: ConnectionMeta): string {
         const provider = this.provider(connection);
@@ -193,7 +202,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
         super.suspendForRecovery();
     }
     async flushPendingSave(): Promise<void> { await Promise.all([this.pending, this.ocrForm?.flushPendingSave()]); }
-    isDirty(): boolean { return !!this.pending || !!this.ocrForm?.isDirty() || super.isDirty(); }
+    isDirty(): boolean { return this.selectionEdits().size > 0 || !!this.pending || !!this.ocrForm?.isDirty() || super.isDirty(); }
     async navigateToAnchor(anchor: string): Promise<void> {
         if (anchor === 'ocr') { this.ocrContainer.querySelector('select')?.focus(); this.ocrContainer.scrollIntoView?.({ block: 'nearest' }); return; }
         const select = [...this.container.querySelectorAll<HTMLSelectElement>('[data-default-operation]')].find(select => select.dataset.defaultOperation === anchor);

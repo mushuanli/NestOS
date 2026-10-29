@@ -18,7 +18,8 @@ it('carries package management, installation reports, import results and recover
         const report = await toolbox.resources.flowInstallations.check('anki-generate');
         expect(report.status).toBe('missingTools'); expect(report.tools.some((tool: {id: string}) => tool.id === 'anki.package')).toBe(true);
         const initial = await root.backend.initialFiles(), [result] = await initial.restore(['flow:anki-generate']);
-        expect(result.status).toBe('preserved'); expect(result.dependencies.status).toBe('missingTools');
+        expect(result.status).toBe('restored');
+        expect(result.dependencies.status).toBe('missingTools');
         expect((await initial.prepareDependencies(['flow:anki-generate']))[0].flowId).toBe('anki-generate');
         const data = {id: 'imported', name: 'Imported', draftVersion: 1, updatedAt: 0, layout: {}, edges: [],
             toolDependencies: [{id: 'fixture.unregistered', version: '1'}], nodes: [{id: 'value', name: 'Value', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: 'Ready'}}]};

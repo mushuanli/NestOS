@@ -1,10 +1,10 @@
 import {sha256HexSync} from '@itookit/common';
 import type {OperationLedger, OperationRecord, OperationReceipt} from '@itookit/llm-ui';
-import type {TaskControlReceipt} from '@itookit/durable-kernel/contracts';
+import type {TaskControlReceipt, TaskCancellationReceipt} from '@itookit/durable-kernel/contracts';
 import {FlowCommand} from '@itookit/llm-flow/contracts';
 import type {ICommandBus} from '@itookit/llm-session/contracts';
 
-export interface ControlInput {executionSessionId?: string; protocol: 'flow-control-v1'; taskId: string; action: 'pause' | 'resume' | 'withdraw'; expectedEpoch: number}
+export interface ControlInput {executionSessionId?: string; protocol: 'flow-control-v1'; taskId: string; action: 'pause' | 'resume' | 'withdraw' | 'cancel'; expectedEpoch: number}
 
 /** The existing UI ledger owns pending requests; Kernel receipts own admission facts. */
 export class ControlOperations {
@@ -46,6 +46,7 @@ export class ControlOperations {
         const record = this.ledger.getSnapshot().find(row => row.context.operationId === operationId);
         if (!record || !this.owns(record)) throw new Error('Flow control request is unavailable');
         const input = record.input as unknown as ControlInput;
+        if (input.action === 'cancel') return this.reconcileCancellation(operationId, input);
         const receipt = await this.commands.execute<TaskControlReceipt | undefined>(FlowCommand.RunControlReceipt,
             {sessionId: input.executionSessionId ?? this.sessionId, taskId: input.taskId, requestId: operationId});
         const action = input.action === 'resume' ? 'run' : input.action === 'withdraw' ? 'withdraw-pause' : 'pause';
@@ -55,10 +56,19 @@ export class ControlOperations {
             : {operationId, status: 'unknown', message: 'No retained control receipt; no command was sent'};
         await this.ledger.settle(result); return result;
     }
+    private async reconcileCancellation(operationId: string, input: ControlInput): Promise<OperationReceipt> {
+        const receipt = await this.commands.execute<TaskCancellationReceipt | undefined>(FlowCommand.RunCancellationReceipt,
+            {sessionId: input.executionSessionId ?? this.sessionId, taskId: input.taskId, requestId: operationId});
+        if (receipt && (receipt.requestId !== operationId || receipt.taskId !== input.taskId || receipt.expectedEpoch !== input.expectedEpoch))
+            throw new Error('Cancellation receipt identity mismatch');
+        const result: OperationReceipt = receipt ? {operationId, status: 'accepted'}
+            : {operationId, status: 'unknown', message: 'No retained cancellation receipt; no command was sent'};
+        await this.ledger.settle(result); return result;
+    }
     private owns(record: OperationRecord): boolean {
         const input = record.input as unknown as Partial<ControlInput> | null;
         return record.kind === 'command' && record.conversationId === this.sessionId && input?.protocol === 'flow-control-v1'
-            && typeof input.taskId === 'string' && !!input.taskId && ['pause', 'resume', 'withdraw'].includes(input.action ?? '')
+            && typeof input.taskId === 'string' && !!input.taskId && ['pause', 'resume', 'withdraw', 'cancel'].includes(input.action ?? '')
             && (input.executionSessionId === undefined || typeof input.executionSessionId === 'string' && !!input.executionSessionId)
             && Number.isSafeInteger(input.expectedEpoch) && input.expectedEpoch! >= 0;
     }

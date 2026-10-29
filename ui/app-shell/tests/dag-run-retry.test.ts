@@ -53,8 +53,9 @@ it('reuses a failed retry request identity while its owning Run remains unfinish
     expect(calls[0][1]).toMatchObject({ sessionId: 'session', taskId: 'root', targetTaskId: 'original' });
     expect(root.querySelector('[data-task-id="retry"]')?.textContent).toContain('original');
     expect(root.querySelector('[data-run-retry="retry"]')).toBeNull();
-    expect(vi.getTimerCount()).toBe(1);
-    workbench.destroy();
+    const reads = () => execute.mock.calls.filter(([name]) => name === 'dag.run.get').length;
+    const beforePoll = reads(); await vi.advanceTimersByTimeAsync(1000); expect(reads()).toBe(beforePoll + 1);
+    workbench.destroy(); const stopped = reads(); await vi.advanceTimersByTimeAsync(5000); expect(reads()).toBe(stopped);
 });
 
 it('disables duplicate requests while a retry response is pending', async () => {

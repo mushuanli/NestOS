@@ -33,6 +33,7 @@ it('queries a hanging cancellation independently and restores it without dispatc
     };
     open(); await panel!.refresh(); button().click();
     await vi.waitFor(() => expect(request?.requestId).toBeTruthy());
+    await vi.waitFor(() => expect(button().disabled).toBe(false)); button().click();
     await vi.waitFor(() => expect(saved[0]?.status).toBe('accepted'));
     expect(button().hidden).toBe(true); expect(document.body.textContent).not.toContain('已停止');
     panel!.destroy(); document.body.replaceChildren(); open(); await panel!.refresh();

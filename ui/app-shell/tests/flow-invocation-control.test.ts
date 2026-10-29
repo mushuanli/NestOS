@@ -45,7 +45,7 @@ it('shows a pending pause while a native effect runs and keeps cancellation inde
     expect(button('flow.invoke.continue')).toBeUndefined(); expect(button('flow.invoke.reattach')).toBeUndefined();
     expect(button('flow.invoke.withdrawPause')).toBeDefined(); expect(button('flow.invoke.cancel')!.disabled).toBe(false);
     button('flow.invoke.cancel')!.click();
-    await vi.waitFor(() => expect(f.execute).toHaveBeenCalledWith(FlowCommand.RunCancel, {taskId: 'root', sessionId: 'session'}));
+    await vi.waitFor(() => expect(f.execute).toHaveBeenCalledWith(FlowCommand.RunCancel, {taskId: 'root', sessionId: 'session', expectedEpoch: 7, requestId: expect.stringMatching(/^flow-control:[a-f0-9]{64}$/)}));
     expect(f.execute.mock.calls.some(([name]) => name === FlowCommand.RunGoalUpdate)).toBe(false);
 });
 
@@ -263,7 +263,7 @@ it('keeps cancellation available while a pause request is still awaiting its rep
         ? new Promise(resolve => {release = resolve;}) : base(command, input));
     button('flow.invoke.pause')!.click(); await vi.waitFor(() => expect(release).toBeTypeOf('function'));
     button('flow.invoke.cancel')!.click();
-    await vi.waitFor(() => expect(f.execute).toHaveBeenCalledWith(FlowCommand.RunCancel, {taskId: 'root', sessionId: 'session'}));
+    await vi.waitFor(() => expect(f.execute).toHaveBeenCalledWith(FlowCommand.RunCancel, {taskId: 'root', sessionId: 'session', expectedEpoch: 0, requestId: expect.stringMatching(/^flow-control:[a-f0-9]{64}$/)}));
     release({});
 });
 

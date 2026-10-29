@@ -47,9 +47,16 @@ beforeEach(async () => {
     commands.register(SessionCommand.GetConnections, async () => ({ connections: [] }));
     commands.register(SessionCommand.CheckFlowConnections, async () => ({valid: true}));
     new DagCommandService({ kernel, plugins, flowStore: store }).register(commands);
+    const latest = await store.loadDraft('review');
+    const {revision} = await commands.execute<any>(FlowCommand.RevisionCreate, {draftId: 'review', expectedDraftVersion: latest!.draftVersion});
+    commands.register(SessionCommand.ListTargets, async () => ({entries: [{name: 'Review', target: {kind: 'flow', id: revision.id, version: String(revision.revision), digest: revision.digest}}], issues: []}));
     const sessionFiles = await manager.openFileSystem('/session-data');
     repository = new SessionRepository(sessionFiles); await repository.init(); await repository.ensureSession('s', 'Parent');
     kernel.registerStorageResolver(new SessionDirectoryStorageResolver(sessionFiles));
+    commands.register(SessionCommand.FlowBranchExecutions, async args => {
+        const manifest = await repository.getManifest((args as {sessionId: string}).sessionId);
+        return {currentBranch: manifest.currentBranch, branches: Object.keys(manifest.branches).map(name => ({name, taskIds: []}))};
+    });
     const transfers = new ContentTransferService({kernel, repository, commands});
     new FlowInvocationService(kernel, store, commands, undefined, undefined, undefined, undefined, undefined, transfers).register();
 });
@@ -88,7 +95,7 @@ it('shows resolved arguments and starts a separate linked Invocation when the us
 it('calls a Flow twice through the input form, restores both cards, and routes replies independently', async () => {
     for (const text of ['First', 'Second']) {
         const pending = invokeFlowText(commands, 's', `review ${JSON.stringify({ text })}`);
-        await vi.waitFor(() => expect(document.querySelector('dialog textarea')?.textContent).toBe(text));
+        await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('dialog [data-parameter="0"]')?.value).toBe(text));
         submit(); expect(await pending).toBe(true);
     }
     panel = new InvocationPanel(commands, 's', document.body, vi.fn());
@@ -131,7 +138,7 @@ it('does not launch on cancellation and preserves slash text on a rejected call'
     document.querySelector<HTMLButtonElement>('[data-cancel]')!.click(); expect(await pending).toBe(false);
     expect(await commands.execute(FlowCommand.RunList, { sessionId: 's' })).toEqual([]);
     const setText = vi.fn(), plugin = new SlashCommandPlugin({ onFlow: async () => false } as never);
-    plugin.activate({ setText, focus: vi.fn(), getText: () => '/flow review' } as never);
+    plugin.activate({textarea: document.createElement('textarea'), container: document.body, setText, focus: vi.fn(), getText: () => '/flow review'} as never);
     expect(plugin.onBeforeSend('/flow review')).toBe(false);
     await Promise.resolve(); expect(setText).not.toHaveBeenCalled(); plugin.deactivate();
 });

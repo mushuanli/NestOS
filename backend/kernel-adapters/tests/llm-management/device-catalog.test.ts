@@ -1,12 +1,14 @@
 import {expect, it} from 'vitest';
-import {createLlmDeviceCatalog, supportsLlmProvider} from '../src';
-import {completeModelDeclaration, resolveModelReferencePrice} from '../src/contracts';
+import {createLlmDeviceCatalog} from '../../src/llm-management/catalogs';
+import {completeModelDeclaration, resolveModelReferencePrice} from '../../src/contracts';
 
 it('provides an independent support snapshot including every builtin provider and its pricing mode', () => {
     const first = createLlmDeviceCatalog(), second = createLlmDeviceCatalog();
     expect(Object.keys(first.providers).sort()).toEqual(Object.keys(first.pricing.reference_catalog!.providers).sort());
-    for (const id of Object.keys(first.providers)) expect(supportsLlmProvider(id)).toBe(true);
-    expect(supportsLlmProvider('__proto__')).toBe(false); expect(supportsLlmProvider('missing')).toBe(false);
+    expect(Object.keys(first.providers).sort()).toEqual(
+        ['anthropic', 'chatgpt', 'cloudapi', 'codex', 'custom', 'deepseek', 'doubao-speech', 'gemini', 'openai', 'openrouter', 'volcengine']);
+    expect(Object.hasOwn(first.providers, '__proto__')).toBe(false);
+    expect(first.providers).not.toHaveProperty('missing');
     first.providers.deepseek.name = 'Edited'; first.pricing.reference_catalog!.providers.deepseek.models[0].rates[0].input = 999;
     first.providerReferences['doubao-speech'].voices[0].name = 'Edited';
     expect(second.providers.deepseek.name).not.toBe('Edited');

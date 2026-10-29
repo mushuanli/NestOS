@@ -6,7 +6,7 @@ import { workspacePackages, sourceExports } from './workspace-packages.mjs';
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
 const frontend = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'llm-settings-ui', 'mdx-adapter', 'ui-common', 'vfs-ui', 'image-parser', 'mdxeditor'];
-const backend = ['app-core', 'llm-context', 'llm-session', 'llm-flow', 'llm-tasks', 'durable-kernel', 'kernel-adapters', 'device-llm', 'tools', 'device-tty', 'sanbox', 'sync-adapters'];
+const backend = ['app-core', 'llm-context', 'llm-session', 'llm-flow', 'llm-tasks', 'durable-kernel', 'kernel-adapters', 'tools', 'device-tty', 'sanbox', 'sync-adapters'];
 const shared = ['app-contracts', 'common', 'app-transport'];
 
 /** Inspect emitted imports, including lazy imports, without relying on tree shaking. */
@@ -95,7 +95,8 @@ export function moduleRole(path, root = repository) {
         if (name === 'vfs-core') return 'shared';
         if (name === 'durable-kernel') return tail === 'contracts.ts' ? 'shared' : 'backend';
         if (name === 'device-tty') return tail === 'contracts.ts' ? 'shared' : 'backend';
-        if (name === 'driver-llm' && (tail === 'contracts.ts' || tail.startsWith('types/'))) return 'shared';
+        // Metering is pure bucket arithmetic over declared types: no client, transport or I/O.
+        if (name === 'driver-llm' && (tail === 'contracts.ts' || tail.startsWith('types/') || tail.startsWith('metering/'))) return 'shared';
         if (['driver-llm', 'nestos-node-driver', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
         return undefined;
     }

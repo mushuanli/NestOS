@@ -1,8 +1,8 @@
-import { resolvePricingEntry, type ModelPricingConfig, type PricingBasis } from '@itookit/device-llm/contracts';
+import { resolvePricingEntry, type ModelPricingConfig, type PricingBasis } from './pricing';
+import type { MeteredTokens } from '@itookit/driver-llm/contracts';
 
-export interface MeteredTokens {
-    inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number;
-}
+/** Bucket shape is owned by driver-llm metering so the meter and the rate table cannot drift. */
+export type { MeteredTokens };
 export interface MeteredUsage {
     complete: boolean; revision: string; totals: MeteredTokens;
     entries: ReadonlyArray<{id: string; providerId: string | null; modelId: string | null; tokens: MeteredTokens}>;

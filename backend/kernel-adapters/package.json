@@ -100,8 +100,7 @@
     "@itookit/llm-context": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/core": "2.0.0",
-    "js-yaml": "^4.1.1",
-    "@itookit/device-llm": "workspace:*"
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
     "@types/node": "20.19.25",

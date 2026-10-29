@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { LLMDeviceDriver } from '../../src/llm-management/device/llm-device-driver';
-import {createLlmDeviceCatalog} from '@itookit/device-llm';
+import {createLlmDeviceCatalog} from '../../src/llm-management/catalogs';
 const {providers: LLM_PROVIDERS} = createLlmDeviceCatalog();
 import { fromLLMProvider, toLLMProvider, fromConnectionDef, toRuntimeConnection } from '../../src/llm-management/constants/llm-loader';
 import { isProvider } from '../../src/llm-management/device/argument-validation';

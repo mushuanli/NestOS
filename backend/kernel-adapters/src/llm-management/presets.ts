@@ -1,5 +1,5 @@
 import { CONST_CONFIG_VERSION, DEFAULT_CONNECTIONS, DEFAULT_AGENTS } from './constants';
-import {createLlmDeviceCatalog} from '@itookit/device-llm';
+import {createLlmDeviceCatalog} from './catalogs';
 import { snapshotLlmPresets, type LlmManagementPresets, type ProviderConnectionPolicy } from './contracts/presets';
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
 

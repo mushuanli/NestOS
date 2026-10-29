@@ -1,6 +1,6 @@
 import {expect, it} from 'vitest';
-import {completeModelDeclaration} from '@itookit/device-llm/contracts';
-import {createLlmDeviceCatalog} from '@itookit/device-llm';
+import {completeModelDeclaration} from '../../src/contracts';
+import {createLlmDeviceCatalog} from '../../src/llm-management/catalogs';
 const volcengineImageModels = createLlmDeviceCatalog().providers.volcengine.models.filter(model => model.category === 'image');
 import {requireMediaCapabilities} from '@itookit/driver-llm/contracts';
 

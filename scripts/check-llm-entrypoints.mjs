@@ -31,6 +31,10 @@ for (const format of ['js', 'cjs']) {
     assert.doesNotMatch([...host.values()].join('\n'), /hostFactory|registerMCPStdioHost|snapshotMCPStdioHost/, `${format}: host bridges must remain instance scoped`);
     assert.doesNotMatch([...core.values()].join('\n'), /hostFactory|registerMCPStdioHost|snapshotMCPStdioHost/,
         `${format}: core must not load the legacy host registry`);
+    const contracts = graph(`contracts.${format}`);
+    assert.doesNotMatch([...contracts.values()].join('\n'),
+        /LLM_PROVIDERS|MODEL_PRICING|DOUBAO_SPEECH_REFERENCE|MODEL_PRICE_CATALOG|@itookit\/vfs-core/,
+        `${format}: contracts entry must not load product catalogs, price snapshots or VFS`);
 }
 const manifest = JSON.parse(readFileSync(new URL('../backend/kernel-adapters/package.json', import.meta.url), 'utf8'));
 assert.ok(!manifest.exports['./llm'] && !manifest.publishConfig.exports['./llm'], 'Legacy LLM aggregate must not be exported');

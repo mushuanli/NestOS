@@ -2,7 +2,7 @@ import { validateLLMIoctlArgument, isConnection, isStoredProvider, isMCPServer, 
 import { snapshotMCPConnectionOptions, type MCPConnectionOptions } from '../contracts/mcp-transport';
 import type { ProviderConnectionTestParams } from '@itookit/driver-llm/contracts';
 import { listProviderModels } from '@itookit/driver-llm';
-import {completeModelDeclaration} from '@itookit/device-llm/contracts';
+import {completeModelDeclaration} from '../contracts/model-declarations';
 import { ProviderAuthorization } from './provider-authorization';
 import type { ProviderAuthorizationHost } from '../contracts/provider-authorization';
 // @file: kernel-adapters/llm-management/device/llm-device-driver.ts
@@ -119,7 +119,7 @@ type SessionState = LLMSessionState | MCPSessionState | SkillSessionState;
 
 // ─── Shell Runner interface ──────────────────────────────────────────────────
 //
-// 执行环境隔离层。device-llm 运行在浏览器环境，不能直接访问 child_process。
+// 执行环境隔离层。llm-management 运行在浏览器环境，不能直接访问 child_process。
 // 不同宿主环境注入各自的实现：
 //   - 浏览器:    不注入 → shell skills 返回"不支持"提示
 //   - Tauri:     TauriShellRunner（@tauri-apps/plugin-shell）
@@ -888,7 +888,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     getProviderDefaults(): Record<string, LLMProvider> {
         return structuredClone(this.presets.providers);
     }
-    getProviderReferences(): Record<string, import('@itookit/device-llm/contracts').ProviderApiReference> {
+    getProviderReferences(): Record<string, import('../contracts/provider-reference').ProviderApiReference> {
         return structuredClone(this.presets.providerReferences ?? {});
     }
 

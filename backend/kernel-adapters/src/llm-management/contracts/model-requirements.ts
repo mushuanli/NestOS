@@ -1,6 +1,6 @@
 import { requireMediaCapabilities, resolveModelProtocol, type ConnectionMeta, type LLMProvider } from '@itookit/driver-llm/contracts';
 import { hasConnectionCredentials } from './connection';
-import {assertModelOutputFormats, type ModelOutputFormat} from '@itookit/device-llm/contracts';
+import {assertModelOutputFormats, type ModelOutputFormat} from './model-output-formats';
 export interface ModelRequirements { operation: string; inputModalities?: string[]; outputModalities?: string[]; features?: string[]; responseFormats?: ModelOutputFormat[] }
 export interface ModelConnectionSnapshot { providerId: string; modelId: string; protocol?: string; requirements?: ModelRequirements; mediaEndpoint?: string }
 /** Match implemented operations and affirmative model capabilities, without paid probes. */

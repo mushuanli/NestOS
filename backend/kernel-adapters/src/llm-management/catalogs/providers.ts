@@ -1,7 +1,7 @@
 /** LLM device support: provider protocols, models, capabilities and initial ledger rates. */
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
-import { createDoubaoSpeechProvider } from './catalogs/doubao-speech';
-import {volcengineImageModels} from './catalogs/volcengine-images';
+import { createDoubaoSpeechProvider } from './doubao-speech';
+import {volcengineImageModels} from './volcengine-images';
 
 // ─── 定价常量（每百万 token，USD）───────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ const P = {
 // 此常量同时作为 pricing.json 不存在时的编译期 fallback，
 // 以及首次启动时写入 /llm/pricing.json 的默认内容。
 
-import type { ModelPricingEntry } from './contracts';
+import type { ModelPricingEntry } from '../contracts/pricing';
 
 export const MODEL_PRICING: ModelPricingEntry[] = [
     {

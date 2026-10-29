@@ -8,9 +8,9 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import { snapshotLlmPresets, type LlmManagementPresets } from '../contracts/presets';
 import { loadPricingConfig, writePricingConfig, applyPricingToModel } from '../constants/pricing';
 import type { ModelPricingConfig } from '../constants/pricing';
-import { ensureProviderPricing } from '@itookit/device-llm/contracts';
+import { ensureProviderPricing } from '../contracts/pricing';
 import { VFSHelpers } from './vfs-helpers';
-import {completeModelDeclaration} from '@itookit/device-llm/contracts';
+import {completeModelDeclaration} from '../contracts/model-declarations';
 
 const PROVIDERS_DIR = '/llm/.providers';
 

@@ -6,7 +6,7 @@ pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应�
 | 目录 | 模块 |
 |---|---|
 | `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common |
-| `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、device-llm、tools、sanbox、sync-adapters |
+| `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters |
 | `shared/` | app-contracts、common、app-transport |
 | `libraries/` | driver-llm、nestos-node-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser、durable-kernel、device-tty |
 | `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
@@ -31,7 +31,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/llm-flow` | DAG 编排：`DurableFlowExecutor`（route/loop/spawn/compensate/on_failure/budget）、内置插件、Flow programs、环检测（`findCycles`）、FlowDefinitionStore。 |
 | `@itookit/llm-session` | 用户可见的会话语义 + 持久化：SessionManager、Round/Branch、SessionRepository（会话资产）、FlowEngine（Flow 定义存储）、RoundLog、SessionEventBus、UI projections。依赖 llm-flow。 |
 | `@itookit/kernel-adapters` | Kernel 能力适配器：Effect、Exec/ApprovedEffect 程序与运行时装配；`/llm` 子入口提供 VFS 模型设备、配置、费用、Skill 和 MCP 管理。 |
-| `@itookit/device-llm` | LLM device 支持目录：内置 Provider、模型能力、接口资料与价格；根入口返回独立快照，/contracts 提供不加载目录的纯契约；仅依赖 driver-llm。 |
+| kernel-adapters `catalogs/` | LLM 设备支持目录：内置 Provider、模型能力、接口资料与价格；只经可选 `/llm/presets` 入口加载并返回独立快照，`/contracts` 提供不加载目录的纯契约。 |
 | `@itookit/driver-llm` | 独立模型通信：OpenAI/Responses/Anthropic/Gemini/Codex、SSE、取消与注入式网络/日志/重试；通信消息契约归本包，源码与发布产物不依赖其他 itookit 包；独立仓库 `mushuanli/driver-llm`。 |
 | `@itookit/device-tty` | 独立 Node TTY 驱动：pipe / node-pty 交互会话，拥有 /contracts；tools/contracts 兼容转发，唯一直接运行依赖 node-pty。 |
 | `@itookit/sanbox` | Seatbelt / Bubblewrap 策略与启动计划；根入口平台无关，`/node` 负责真实路径与启动探测，`native/` Rust crate 已接入 Tauri Session/Flow Bash，见 [系统沙箱](design/system-sandbox.md)。 |

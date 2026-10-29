@@ -130,7 +130,7 @@ export type InitialAgentDef = AgentDefinition & {
 /**
  * VFS 持久化 Skill 配置。
  * LLMSkill 现在是 SkillDefinition 的类型别名，两者统一为同一类型。
- * 旧格式数据（扁平 command/endpoint/parameters 字段）由 device-llm 读取时迁移。
+ * 旧格式数据（扁平 command/endpoint/parameters 字段）由 llm-management 读取时迁移。
  */
 export type LLMSkill = SkillDefinition;
 
@@ -191,9 +191,9 @@ export interface IConnectionService extends IConnectionReader, Partial<ProviderA
     /** 返回所有内置 Provider 目录（含模型列表、baseURL 等） */
     getProviderDefaults(): Record<string, LLMProvider>;
     /** Documentation metadata is read-only and never carries credentials. */
-    getProviderReferences?(): Record<string, import('@itookit/device-llm/contracts').ProviderApiReference>;
+    getProviderReferences?(): Record<string, import('./provider-reference').ProviderApiReference>;
     /** Optional pricing metadata for connection and model choices. */
-    getPricingConfig?(): import('@itookit/device-llm/contracts').ModelPricingConfig;
+    getPricingConfig?(): import('./pricing').ModelPricingConfig;
     /** 保存 Provider 到 VFS（新建或更新，含 apiKey） */
     saveProvider(provider: LLMProvider): Promise<void>;
     /** 删除用户自定义 Provider（内置 Provider 不可删除） */
@@ -245,17 +245,17 @@ export interface ILLMManagementService extends IConnectionService {
         };
     }): Promise<void>;
     /** 将 pricing 配置写入 VFS /llm/pricing.json（供 .llm 导入使用） */
-    writePricing(config: import('@itookit/device-llm/contracts').ModelPricingConfig): Promise<void>;
+    writePricing(config: import('./pricing').ModelPricingConfig): Promise<void>;
     /** 查询 cost.seq 记录，支持可选的时间范围和 provider 过滤（O(n) 遍历） */
     queryCosts(filter?: {
         dateFrom?: string;   // YYYY-MM-DD
         dateTo?: string;     // YYYY-MM-DD
         providerId?: string;
-    }): Promise<import('@itookit/device-llm/contracts').CostRecord[]>;
+    }): Promise<import('./pricing').CostRecord[]>;
     /** 返回当前加载的 pricing 快照（从内存读取，同步） */
-    getPricingConfig(): import('@itookit/device-llm/contracts').ModelPricingConfig;
+    getPricingConfig(): import('./pricing').ModelPricingConfig;
     /** 返回内置默认定价表（编译时常量 MODEL_PRICING，用于恢复出厂设置） */
-    getPricingDefaults(): import('@itookit/device-llm/contracts').ModelPricingConfig;
+    getPricingDefaults(): import('./pricing').ModelPricingConfig;
 
     // ── Defaults metadata ─────────────────────────────────────────
     /** 返回当前配置数据版本号，用于增量同步默认数据 */

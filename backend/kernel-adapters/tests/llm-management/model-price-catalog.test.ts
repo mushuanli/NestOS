@@ -1,8 +1,8 @@
 import {expect, it} from 'vitest';
-import {createLlmDeviceCatalog} from '@itookit/device-llm';
+import {createLlmDeviceCatalog} from '../../src/llm-management/catalogs';
 const {providers: LLM_PROVIDERS, pricing: {reference_catalog: catalog}} = createLlmDeviceCatalog();
 const MODEL_PRICE_CATALOG = catalog!;
-import {resolveModelReferencePrice} from '@itookit/device-llm/contracts';
+import {resolveModelReferencePrice} from '../../src/contracts';
 import {createNestosLlmPresets} from '../../src/llm-management/presets';
 import {ProviderManager} from '../../src/llm-management/device/provider-manager';
 

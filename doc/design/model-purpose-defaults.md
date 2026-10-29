@@ -44,7 +44,7 @@ Provider 使用 modelsPath:false 声明不提供在线模型目录；豆包语�
 
 目录字段及厂家格式归 `driver-llm/src/providers/`：`catalog-capabilities.ts` 处理通用声明，`catalog-ark.ts` 转换火山 Ark 的 `modalities`、`features`、`token_limits` 和显式 embedding 任务类型。Seedream 按输出模态归为 image，Seedance 归为 video，缺失字段继续保持未知；设置表单不能在保存时将未知用途写成 chat。刷新可修正旧目录中的错误分类，并保留厂商未返回的操作配置。
 
-目录能力与可执行操作分开：`media/` 负责已实现的厂家调用协议，`device-llm` 支持目录负责有文档依据的模型格式、尺寸、音色等约束。接口只返回模态时，不凭模型名称捏造 `operations`。图片生成已有 `volcengine-images`，豆包 TTS 已有 `doubao-speech`；当前没有视频生成执行协议，video 分类不代表可以生成视频。新增厂家时同时核对目录字段、鉴权、请求/响应、约束与错误码。目录日志记录图片/视频数量、未知能力及媒体操作声明数量，便于区分识别问题和执行能力缺失。
+目录能力与可执行操作分开：`media/` 负责已实现的厂家调用协议，kernel-adapters 的 `llm-management/catalogs/` 支持目录负责有文档依据的模型格式、尺寸、音色等约束。接口只返回模态时，不凭模型名称捏造 `operations`。图片生成已有 `volcengine-images`，豆包 TTS 已有 `doubao-speech`；当前没有视频生成执行协议，video 分类不代表可以生成视频。新增厂家时同时核对目录字段、鉴权、请求/响应、约束与错误码。目录日志记录图片/视频数量、未知能力及媒体操作声明数量，便于区分识别问题和执行能力缺失。
 
 ## 解析与稳定性
 

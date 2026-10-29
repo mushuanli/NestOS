@@ -1,5 +1,11 @@
 /** Configuration contracts and pure policies; no adapter runtime initialization. */
-export * from '@itookit/device-llm/contracts';
+export * from './llm-management/contracts/model-price-catalog';
+export * from './llm-management/contracts/provider-reference';
+export * from './llm-management/contracts/pricing';
+export * from './llm-management/contracts/model-declarations';
+export {modelOutputFormats, assertModelOutputFormats} from './llm-management/contracts/model-output-formats';
+export type {ModelOutputFormat} from './llm-management/contracts/model-output-formats';
+export type {LlmDeviceCatalog} from './llm-management/contracts/device-catalog';
 export * from './llm-management/contracts/agent';
 export type {AgentRevisionContent, AgentPublishedRevision, AgentPublishRequest, AgentPublicationStatus} from './llm-management/contracts/agent-publication';
 export {publishedAgentDefinition} from './llm-management/contracts/agent-publication';

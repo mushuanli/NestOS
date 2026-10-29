@@ -315,7 +315,7 @@ Web 与 Tauri 共用工作台导航、创建对话框和小屏幕列表／内容
 
 ## 公共通信与宿主适配
 
-`driver-llm` 发布产物不依赖内部包；消息声明从 llm-context 内联，通信类型和纯协议函数通过 `/contracts` 提供。`kernel-adapters/llm` 保留 LLMDeviceDriver、LLM_IOCTL、VFS 配置和 MCP/Skill 管理，宿主从 /llm/core 与 /llm/presets 显式接入，设置页使用 /llm/config。旧 device-llm 已拆分；执行、编排、会话契约已按能力归属整理。
+`driver-llm` 发布产物不依赖内部包；消息声明从 llm-context 内联，通信类型和纯协议函数通过 `/contracts` 提供。`kernel-adapters/llm` 保留 LLMDeviceDriver、LLM_IOCTL、VFS 配置和 MCP/Skill 管理，宿主从 /llm/core 与 /llm/presets 显式接入，设置页使用 /llm/config。设备支持目录在 kernel-adapters 的 `llm-management/catalogs/`，只经 /llm/presets 进入，`/contracts` 不加载它；执行、编排、会话契约已按能力归属整理。
 
 Tool/TTY 执行契约归 tools/contracts，模型通信与流式事件归 driver-llm/contracts；Agent、连接管理、恢复和定价归 kernel-adapters/contracts，入口只包含契约与纯策略，不初始化适配器。适配层不依赖 Tasks、Flow 或 Session。Prompt 库 DTO 归 tools/contracts，任务配置保留类型转发。
 
@@ -344,7 +344,7 @@ NestOS 默认工具授权已从 kernel-adapters/contracts 与 llm-session/contra
 
 DirectAgentPolicy 从 ApplicationRuntimeOptions 经 ConversationSystemOptions、SessionManager、SessionRunCoordinator 传到 ConversationRunCoordinator，实例内冻结。显式 Agent 附加提示参与 Context 装配和预算计算，maxExchanges 固定到持久 Task；普通 Chat/Flow 不消费该提示。NestOS 默认指令留在 app-core JSON 预设，SessionViewPort 可暴露只读策略供 UI 显示实际上限。
 
-设置 UI 的配置解析/导出已改为 kernel-adapters/llm/config，Tauri 桥通过 /llm/mcp-host 创建本地 transport 工厂，经 ApplicationRuntimeOptions.mcp 注入驱动；设置 UI 通过服务 supportsMCPStdio() 查询同一实例能力。机制核心不读取全局桥，旧 /llm 聚合入口已移除。composeLlmPresets 纯合并模型目录并显式选择冲突策略，不写 VFS、不修改全局预设，驱动只消费注入的快照；Provider 支持目录通过 device-llm 的 createLlmDeviceCatalog 注入，旧全局 registerLLMConfig 已移除。
+设置 UI 的配置解析/导出已改为 kernel-adapters/llm/config，Tauri 桥通过 /llm/mcp-host 创建本地 transport 工厂，经 ApplicationRuntimeOptions.mcp 注入驱动；设置 UI 通过服务 supportsMCPStdio() 查询同一实例能力。机制核心不读取全局桥，旧 /llm 聚合入口已移除。composeLlmPresets 纯合并模型目录并显式选择冲突策略，不写 VFS、不修改全局预设，驱动只消费注入的快照；Provider 支持目录通过 /llm/presets 的 createLlmDeviceCatalog 注入，旧全局 registerLLMConfig 已移除。
 
 执行策略收尾：DirectAgentPolicy.llmRetry/toolTimeoutMs 冻结到显式 Agent Task；Flow 从节点或 Flow defaults 接入相同参数。Tasks 取消重试次数的固定 3 次上限，工具超时可覆盖且跨持久恢复保持一致。MCP 日志和客户端身份由实例选项注入，机制默认空日志及 mcp-client 身份，app-core 提供 NestOS 身份与日志。driver-llm 的连接测试要求调用方模型或注入目录；Codex 缺省不覆盖宿主模型。
 

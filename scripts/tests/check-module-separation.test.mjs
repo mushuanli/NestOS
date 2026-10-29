@@ -52,6 +52,7 @@ test('domain contracts and codecs are shared while host factories and independen
     assert.equal(moduleRole('/repo/libraries/device-tty/src/contracts.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/device-tty/src/index.ts', '/repo'), 'backend');
     assert.equal(moduleRole('/repo/libraries/driver-llm/src/types/provider.ts', '/repo'), 'shared');
+    assert.equal(moduleRole('/repo/libraries/driver-llm/src/metering/meter.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/image-parser/src/processing.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/image-parser/src/processor.ts', '/repo'), 'frontend');
     assert.equal(moduleRole('/repo/tools/image-tools/src/node.ts', '/repo'), 'backend');

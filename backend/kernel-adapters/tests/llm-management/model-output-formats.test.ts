@@ -1,5 +1,5 @@
 import {expect, it} from 'vitest';
-import {assertModelOutputFormats, modelOutputFormats} from './model-output-formats';
+import {assertModelOutputFormats, modelOutputFormats} from '../../src/llm-management/contracts/model-output-formats';
 
 it('intersects selected protocols with an affirmative structured-output model declaration', () => {
     const model = {id: 'fixture', supportsStructuredOutput: true};

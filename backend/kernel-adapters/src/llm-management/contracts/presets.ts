@@ -1,10 +1,10 @@
 import type { LLMProvider, LLMConnection } from '@itookit/driver-llm/contracts';
 import type { InitialAgentDef } from './agent';
 import type { DefaultConnectionDef } from './connection';
-import type { ModelPricingConfig } from '@itookit/device-llm/contracts';
+import type { ModelPricingConfig } from './pricing';
 
 export interface LlmManagementPresets {
-    providerReferences?: Record<string, import('@itookit/device-llm/contracts').ProviderApiReference>;
+    providerReferences?: Record<string, import('./provider-reference').ProviderApiReference>;
     version: number;
     providers: Record<string, LLMProvider>;
     connections: DefaultConnectionDef[];

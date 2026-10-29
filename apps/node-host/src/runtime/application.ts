@@ -11,6 +11,7 @@ import {NodeToolPackages, type NodeToolPackageOptions} from './tool-packages';
 import {BUILTIN_TOOLS} from '@itookit/tools';
 
 export interface NodeApplicationOptions {
+    authorizationRedirectUri?: string;
     toolPackages?: NodeToolPackageOptions;
     createFs?: () => import('@itookit/vfsdriver-local').IFsOps;
     root: string; sidecar: string; authDir: string; auditFile: string;
@@ -20,11 +21,14 @@ export interface NodeApplicationHost {runtime: ApplicationRuntime; audit: AuditP
 /** Node capabilities are shared by local CLI and HTTP; application policy stays in app-core. */
 export async function openNodeApplication(options: NodeApplicationOptions): Promise<NodeApplicationHost> {
     const resources = await openHostRuntime(options);
+    let connections: NodeToolConnections | undefined;
     try {
-        const runtime = await createNodeRuntime(resources.backend, resources.root, {...options.runtime, providerAuthorization: resources.authorization, toolConnections: new NodeToolConnections(path.join(options.authDir, 'tool-connections'))}, options.toolPackages);
+        connections = new NodeToolConnections(path.join(options.authDir, 'tool-connections'), {redirectUri: options.authorizationRedirectUri});
+        const ownedConnections = connections;
+        const runtime = await createNodeRuntime(resources.backend, resources.root, {...options.runtime, providerAuthorization: resources.authorization, toolConnections: connections}, options.toolPackages);
         let closing: Promise<void> | undefined;
-        return {runtime, audit: resources.audit, close: () => closing ??= closeHostResources([resources.close, () => runtime.dispose()])};
-    } catch (error) { await resources.close(); throw error; }
+        return {runtime, audit: resources.audit, close: () => closing ??= closeHostResources([resources.close, () => ownedConnections.close(), () => runtime.dispose()])};
+    } catch (error) { await connections?.close(); await resources.close(); throw error; }
 }
 
 /** Backend ownership remains with the resource host; this factory never closes borrowed storage. */

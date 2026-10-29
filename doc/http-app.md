@@ -27,6 +27,8 @@ HTTP 配置优先读取启动目录下的 `nestos.json`，不存在时使用原 
 
 单用户启动会输出 ANSI **红色加粗**的 `【单用户模式：admin】` 提示，并写入 `server.mode` 审计事件；提示即使在日志重定向时也保留样式控制码。
 
+外部工具包的网页 OAuth 授权可配置 `http.publicOrigin`，例如 `https://nestos.example.com:2000`。它必须是无路径的 HTTPS origin，回调固定为 `/api/tool-connections/callback`，需在供应商客户端中登记完整地址，并由授权浏览器携带本用户的客户端证书访问。未配置时可继续使用私有凭据文件导入，界面禁用网页授权。协议和隔离细节见[外部功能扩展](design/function-extensions.md)。
+
 ## mTLS 多用户与可迁移 home
 
 在启动目录的 `nestos.json` 中配置用户目录和证书映射：

@@ -22,12 +22,12 @@ export function configurationFilePath(directory: string): string {
 }
 
 interface NodeProfileSettings extends NestOSProfileSettings {
-    http?: {certDir?: string; authDir?: string; usersDir?: string; mtls?: {clients?: unknown}; editorSwap?: boolean; swapDir?: string};
+    http?: {certDir?: string; authDir?: string; usersDir?: string; publicOrigin?: string; mtls?: {clients?: unknown}; editorSwap?: boolean; swapDir?: string};
 }
 
 /** Configured paths are relative to the config directory; explicit flags are relative to cwd. */
 export async function resolveHttpDirectories(configDir: string, cwd: string,
-    overrides: {certDir?: string; authDir?: string; usersDir?: string} = {}, mode = 'standalone'): Promise<{certDir: string; authDir: string; usersDir?: string; certificateClients?: () => Promise<unknown>; editorSwap: {enabled: boolean; directory: string}}> {
+    overrides: {certDir?: string; authDir?: string; usersDir?: string} = {}, mode = 'standalone'): Promise<{certDir: string; authDir: string; usersDir?: string; authorizationRedirectUri?: string; certificateClients?: () => Promise<unknown>; editorSwap: {enabled: boolean; directory: string}}> {
     const settings = await readSettings(configDir), http = settings.http;
     if (http !== undefined && (!http || typeof http !== 'object' || Array.isArray(http)))
         throw new Error('Expected http to be an object in nestos.json');
@@ -41,6 +41,7 @@ export async function resolveHttpDirectories(configDir: string, cwd: string,
     if (http?.swapDir !== undefined && (typeof http.swapDir !== 'string' || !http.swapDir.trim())) throw new Error('Expected http.swapDir to be a non-empty path');
     const swapDir = http?.swapDir ?? path.join(homedir(), 'swap');
     return {
+        authorizationRedirectUri: http?.publicOrigin === undefined ? undefined : authorizationRedirect(http.publicOrigin),
         usersDir: overrides.usersDir !== undefined ? path.resolve(cwd, overrides.usersDir) : http?.usersDir ? path.resolve(configDir, http.usersDir) : undefined,
         certificateClients: http?.mtls !== undefined ? () => readCertificateClients(configDir) : undefined,
         editorSwap: {enabled: http?.editorSwap === true, directory: swapDir === '~' ? homedir()
@@ -49,6 +50,15 @@ export async function resolveHttpDirectories(configDir: string, cwd: string,
         authDir: overrides.authDir !== undefined ? path.resolve(cwd, overrides.authDir)
             : mode === 'release' || mode === 'dev' ? path.join(authBase, mode) : authBase,
     };
+}
+
+function authorizationRedirect(origin: unknown): string {
+    try {
+        if (typeof origin !== 'string') throw new Error();
+        const url = new URL(origin);
+        if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error();
+        return new URL('/api/tool-connections/callback', url).href;
+    } catch {throw new Error('Expected http.publicOrigin to be an HTTPS origin in nestos.json');}
 }
 
 /** Resolve the shared profile, retaining explicit command-line root overrides. */

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
-import type {FlowInstallationReport, FlowInstallations, ToolPackageInfo, ToolPackages} from '@itookit/app-contracts/services';
+import type {FlowInstallationReport, FlowInstallations, ToolPackageInfo, ToolPackages, ToolConnectionType, ToolAuthorizationView} from '@itookit/app-contracts/services';
 import {showToolPackages} from '../src/toolbox/ToolPackagesDialog';
 
 const opened: Promise<void>[] = [];
@@ -18,6 +18,28 @@ function setup(controls: {toolPackages?: ToolPackages; flowInstallations?: FlowI
 }
 
 const available: ToolPackageInfo = {id: 'external-package', name: '<img src=x>', version: '1.2.0', status: 'available', tools: [{id: 'document.inspect', version: '2'}]};
+it('uses declared permission groups and host callbacks, polls completion and stops polling when closed', async () => {
+    const type: ToolConnectionType = {id: 'external', name: 'External', description: '', fields: [{name: 'client', label: 'Client', required: true}],
+        authorization: {kind: 'oauth2', authorizationEndpoint: 'https://auth.fixture.invalid', tokenEndpoint: 'https://auth.fixture.invalid/token',
+            clientIdField: 'client', refreshTokenField: 'refresh', permissionGroups: [{id: 'mail', label: 'Mail', scopes: ['read:mail']}, {id: 'events', label: 'Events', scopes: ['read:events']}]}};
+    let operation: ToolAuthorizationView | undefined;
+    const beginAuthorization = vi.fn(async (_id, _groups, operationId) => operation = {operationId, connectionId: 'personal', status: 'pending', expiresAt: Date.now() + 60000, url: 'https://auth.fixture.invalid/authorize'} as ToolAuthorizationView);
+    const authorizationStatus = vi.fn(async () => operation = {...operation!, status: 'authorized'});
+    const save = vi.fn(async () => {});
+    const f = setup({toolPackages: {list: async () => [], ensure: vi.fn(), connections: {save, remove: vi.fn(), beginAuthorization, authorizationStatus,
+        snapshot: async () => ({types: [type], connections: [{id: 'personal', type: 'external', name: 'Personal', values: {client: 'client'}, configuredSecrets: [],
+            authorization: {scopes: [], connected: operation?.status === 'authorized', operation}}], authorizationRedirectUri: 'https://app.fixture.invalid/api/tool-connections/callback'})}}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-auth-begin]')).not.toBeNull());
+    f.dialog.querySelector<HTMLInputElement>('[data-auth-group][value=events]')!.checked = false;
+    f.dialog.querySelector<HTMLButtonElement>('[data-auth-begin]')!.click();
+    await vi.waitFor(() => expect(beginAuthorization).toHaveBeenCalledWith('personal', ['mail'], expect.any(String)));
+    expect(save.mock.invocationCallOrder[0]).toBeLessThan(beginAuthorization.mock.invocationCallOrder[0]);
+    await vi.waitFor(() => expect(f.dialog.querySelector('a[href="https://auth.fixture.invalid/authorize"]')).not.toBeNull());
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-authorization-status]')!.textContent).toContain('授权成功'), {timeout: 2500});
+    expect(f.dialog.querySelector('[data-auth-revoke]')).not.toBeNull();
+    f.dialog.close(); const count = authorizationStatus.mock.calls.length;
+    await new Promise(resolve => setTimeout(resolve, 1100)); expect(authorizationStatus).toHaveBeenCalledTimes(count);
+});
 it('installs package-owned workflows through a trusted identity and configures user connections in the tool panel', async () => {
     const installFlows = vi.fn(async () => 1), save = vi.fn(async () => {});
     const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', flowCount: 1}], ensure: vi.fn(), installFlows,

@@ -1,12 +1,19 @@
 export const connectionType = {
     id: 'google-workspace', name: 'Google：Gmail / Calendar',
     description: '使用自己的 Google OAuth 连接。邮件需 gmail.readonly，日历需 calendar.events.readonly。凭据仅保存于当前用户的私有目录。',
+    authorization: {
+        kind: 'oauth2', authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth', tokenEndpoint: 'https://oauth2.googleapis.com/token',
+        revocationEndpoint: 'https://oauth2.googleapis.com/revoke', clientIdField: 'clientId', clientSecretField: 'clientSecret', refreshTokenField: 'refreshToken',
+        permissionGroups: [{id: 'mail', label: '读取邮件', scopes: ['https://www.googleapis.com/auth/gmail.readonly']},
+            {id: 'calendar', label: '读取日程', scopes: ['https://www.googleapis.com/auth/calendar.events.readonly']}],
+        authorizationParameters: {access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true'},
+    },
     fields: [
         {name: 'mailDirectory', label: '邮件保存目录', description: '留空使用 imports/mail；目录沿用现有工作区文件授权。每个连接保存到独立账号目录。'},
         {name: 'calendarDirectory', label: '日历保存目录', description: '留空使用 imports/calendar；目录沿用现有工作区文件授权。'},
         {name: 'clientId', label: 'OAuth Client ID', required: true},
         {name: 'clientSecret', label: 'OAuth Client Secret', secret: true, required: true},
-        {name: 'refreshToken', label: 'Refresh Token', secret: true, required: true,
+        {name: 'refreshToken', label: 'Refresh Token（兼容导入，可留空）', secret: true,
             description: '通过工具包的 authorize.mjs 完成 Google 账号授权后填写；留空保留已保存的凭据。'},
     ],
 };
@@ -52,14 +59,21 @@ async function readResponse(response, stage) {
 
 export async function googleClient(connections, id, signal, fetcher = fetch) {
     if (!connections) throw fail('GOOGLE_USER_CONNECTIONS_UNAVAILABLE');
-    const values = await connections.resolve(id, connectionType.id);
+    let values = await connections.resolve(id, connectionType.id);
+    if (connections.accessToken) {
+        const access = await connections.accessToken(id, connectionType.id); values = await connections.resolve(id, connectionType.id);
+        return authenticatedRequest(connections, id, values, access, signal, fetcher);
+    }
     if (!values.clientId || !values.clientSecret || !values.refreshToken) throw fail('GOOGLE_CREDENTIALS_REQUIRED');
     const token = await jsonRequest(fetcher, 'https://oauth2.googleapis.com/token', {method: 'POST', signal,
         body: new URLSearchParams({client_id: values.clientId, client_secret: values.clientSecret, refresh_token: values.refreshToken, grant_type: 'refresh_token'})}, 'AUTH');
     if (typeof token.access_token !== 'string' || !token.access_token) throw fail('GOOGLE_AUTH_INVALID_RESPONSE');
+    return authenticatedRequest(connections, id, values, token.access_token, signal, fetcher);
+}
+function authenticatedRequest(connections, id, values, accessToken, signal, fetcher) {
     const request = async (url, stage) => {
         if (!['https://gmail.googleapis.com', 'https://www.googleapis.com'].includes(new URL(url).origin)) throw fail('GOOGLE_ENDPOINT_INVALID');
-        return jsonRequest(fetcher, url, {headers: {Authorization: 'Bearer ' + token.access_token}, signal}, stage);
+        return jsonRequest(fetcher, url, {headers: {Authorization: 'Bearer ' + accessToken}, signal}, stage);
     };
     request.destinations = {mail: values.mailDirectory || 'imports/mail', calendar: values.calendarDirectory || 'imports/calendar'};
     request.verifyConnection = async () => {

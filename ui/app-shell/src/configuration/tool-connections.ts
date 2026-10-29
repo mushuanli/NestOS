@@ -5,15 +5,15 @@ const label = (key: string) => t(`toolbox.connections.${key}` as LocaleKey);
 const button = (action: string, title: string, id: string) => `<button type="button" data-action="${escapeAttr(action)}" data-id="${escapeAttr(id)}">${escapeHTML(label(title))}</button>`;
 export type SourceConnections = Awaited<ReturnType<ToolConnections['snapshot']>>;
 
-export function sourceConnectionSettings(snapshot: SourceConnections): string {
+export function sourceConnectionSettings(snapshot: SourceConnections, authorization = false): string {
     return `<details class="tool-connections"><summary>${escapeHTML(label('sourceConnections'))}</summary>
         <p class="tool-connections__help">${escapeHTML(label('sourceConnectionsHelp'))}</p>
         ${snapshot.types.length ? snapshot.types.map(type => `<section><h4>${escapeHTML(type.name)}</h4><p>${escapeHTML(type.description)}</p>
-            ${snapshot.connections.filter(connection => connection.type === type.id).map(connection => connectionForm(type, connection)).join('')}
+            ${snapshot.connections.filter(connection => connection.type === type.id).map(connection => connectionForm(type, connection, authorization, snapshot.authorizationRedirectUri)).join('')}
             <details><summary>${escapeHTML(label('addSourceConnection'))}</summary>${connectionForm(type)}</details></section>`).join('')
             : `<p>${escapeHTML(label('sourceConnectionsUnavailable'))}</p>`}</details>`;
 }
-function connectionForm(type: ToolConnectionType, connection?: ToolConnectionView): string {
+function connectionForm(type: ToolConnectionType, connection?: ToolConnectionView, authorization = false, redirect?: string): string {
     return `<form class="tool-connections__form" data-form="sourceConnection" data-id="${escapeAttr(connection?.id ?? 'new:' + type.id)}" data-type="${escapeAttr(type.id)}">
         <label>${escapeHTML(label('connectionAlias'))}<input name="id" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}" required value="${escapeAttr(connection?.id ?? '')}"${connection ? ' readonly' : ''}></label>
         <label>${escapeHTML(label('sourceConnectionName'))}<input name="name" maxlength="200" required value="${escapeAttr(connection?.name ?? '')}"></label>
@@ -21,7 +21,24 @@ function connectionForm(type: ToolConnectionType, connection?: ToolConnectionVie
             value="${escapeAttr(connection?.values[field.name] ?? '')}"${field.required && !connection?.configuredSecrets.includes(field.name) ? ' required' : ''}
             ${connection?.configuredSecrets.includes(field.name) ? `placeholder="${escapeAttr(label('secretConfigured'))}"` : ''}>${field.description ? `<small>${escapeHTML(field.description)}</small>` : ''}</label>`).join('')}
         <label>${escapeHTML(label('importConnection'))}<input type="file" name="connectionImport" accept=".json,application/json"></label>
-        <button type="submit">${escapeHTML(label('save'))}</button>${connection ? button('removeSourceConnection', 'removeSourceConnection', connection.id) : ''}</form>`;
+        <button type="submit">${escapeHTML(label('save'))}</button>${connection ? button('removeSourceConnection', 'removeSourceConnection', connection.id) : ''}
+        ${authorization && type.authorization && connection ? authorizationFields(type, connection, redirect) : ''}</form>`;
+}
+function authorizationFields(type: ToolConnectionType, connection: ToolConnectionView, redirect?: string): string {
+    const auth = type.authorization!, operation = connection.authorization?.operation;
+    return `<fieldset><legend>${escapeHTML(label('authorization'))}</legend>
+        ${redirect ? `<p>${escapeHTML(label('callbackAddress'))}: <code>${escapeHTML(redirect)}</code></p>` : `<p>${escapeHTML(label('callbackUnconfigured'))}</p>`}
+        ${auth.permissionGroups.map(group => `<label><input type="checkbox" data-auth-group value="${escapeAttr(group.id)}" checked>${escapeHTML(group.label)}</label>`).join('')}
+        <button type="button" data-auth-begin="${escapeAttr(connection.id)}"${redirect ? '' : ' disabled'}>${escapeHTML(label('authorize'))}</button>
+        ${connection.authorization?.connected ? `<button type="button" data-auth-revoke="${escapeAttr(connection.id)}">${escapeHTML(label('revoke'))}</button>` : ''}
+        <p data-authorization-status="${escapeAttr(connection.id)}" role="status">${operation ? escapeHTML(label('authState.' + operation.status)) : ''}${operation?.code ? ' · ' + escapeHTML(operation.code) : ''}</p>
+        ${operation?.status === 'pending' && operation.url ? `<a href="${escapeAttr(operation.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(label('openAuthorization'))}</a>` : ''}
+        ${operation && ['pending', 'exchanging'].includes(operation.status) ? `<button type="button" data-auth-cancel="${escapeAttr(operation.operationId)}">${escapeHTML(label('cancelAuthorization'))}</button>` : ''}</fieldset>`;
+}
+export function connectionInput(form: HTMLFormElement) {
+    const data = new FormData(form);
+    return {id: String(data.get('id') ?? ''), type: form.dataset.type!, name: String(data.get('name') ?? ''),
+        values: Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('[data-connection-field]')].map(field => [field.name, field.value]))};
 }
 export async function importConnection(control: HTMLInputElement): Promise<void> {
     const file = control.files?.[0], form = control.closest('form');

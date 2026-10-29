@@ -92,6 +92,8 @@ export interface ApplicationKernelPlatform {
 }
 
 export interface ApplicationRuntime {
+    /** Host-only callback/token capability; it is never part of the frontend services graph. */
+    toolConnections?: import('@itookit/app-contracts/services').ToolConnectionAccess;
     editorSwapStore?: import('@itookit/app-contracts/services').EditorSwapStore;
     /** Trusted host preparation and dispatch; this service is not an RPC contract. */
     independentCalls?: import('@itookit/llm-session').IndependentCallService;
@@ -545,7 +547,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         });
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();
-        return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections,
+        return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections, toolConnections: options.toolConnections,
             flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, independentCalls, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id) };
     } catch (error) {

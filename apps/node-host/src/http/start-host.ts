@@ -8,6 +8,7 @@ import type { loadCertificates } from './certificates';
 import {NodeEditorSwapStore} from '../storage/editor-swaps';
 
 export interface HttpHostOptions {
+    authorizationRedirectUri?: string;
     usersDir?: string;
     root: string; sidecar: string; certificates: Awaited<ReturnType<typeof loadCertificates>>; staticDir: string;
     auditFile: string; authDir: string; logMode?: string; port: number; host: string; backlog: number;

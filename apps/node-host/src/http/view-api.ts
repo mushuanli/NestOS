@@ -17,6 +17,7 @@ import { recordRequestPhase } from '../logging/audit-log';
 import {SnapshotCache} from '@itookit/app-transport/http';
 import {bootstrapView, type BootstrapRequest} from './view-bootstrap';
 import { callDiagnostics, replyDiagnostics } from './call-diagnostics';
+import {t} from '@itookit/common';
 
 interface Client { peer: RpcPeer; view: HostedView; stream?: ServerResponse; lastSeen: number; active: number;
     bootstrap?: Promise<Reply>; stopObservation?: () => void;
@@ -39,6 +40,7 @@ export class ViewApi {
     }
     async handle(request: IncomingMessage, response: ServerResponse, authorize?: () => Promise<boolean>): Promise<void> {
         const url = new URL(request.url ?? '/', 'https://localhost');
+        if (url.pathname.startsWith('/api/tool-connections/')) return this.authorizationCallback(response, url);
         if (url.pathname.endsWith('/events')) return this.stream(request, response, url, authorize);
         if (url.pathname.endsWith('/files')) return this.file(request, response, url);
         if (request.method !== 'POST') { response.writeHead(405, { Allow: 'POST' }); response.end(); return; }
@@ -58,6 +60,26 @@ export class ViewApi {
             clearTimeout(pending.timer); client.pending.delete(body.id!); pending.resolve(body.reply!); json(response, 200, {}); return;
         }
         return this.invoke(client, body, response);
+    }
+
+    private async authorizationCallback(response: ServerResponse, url: URL): Promise<void> {
+        response.setHeader('Cache-Control', 'no-store'); response.setHeader('Referrer-Policy', 'no-referrer');
+        if (url.pathname === '/api/tool-connections/result') {
+            response.setHeader('Content-Type', 'text/plain; charset=utf-8'); response.end(t('toolbox.connections.callbackFinished')); return;
+        }
+        const operation = 'tool.authorization.callback', started = Date.now();
+        try {
+            const port = (await this.runtime).toolConnections;
+            if (!port?.completeAuthorization) throw Object.assign(new Error('Unsupported authorization host'), {code: 'TOOL_AUTH_UNSUPPORTED'});
+            await port.completeAuthorization({state: url.searchParams.get('state') ?? '', code: url.searchParams.get('code') ?? undefined, error: url.searchParams.get('error') ?? undefined});
+            this.audit?.write({event: operation, operation, stage: 'callback', result: 'success', durationMs: Date.now() - started});
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            const safe = typeof code === 'string' && /^TOOL_(AUTH|CONNECTION)_[A-Z_]+$/.test(code) ? code : 'TOOL_AUTH_CALLBACK_FAILED';
+            response.setHeader('X-VFS-Error', safe);
+            this.audit?.write({event: operation, operation, stage: 'callback', result: 'failure', code: safe, durationMs: Date.now() - started});
+        }
+        response.writeHead(303, {Location: '/api/tool-connections/result'}); response.end();
     }
     private readUpdates(client: Client, id: string | undefined, response: ServerResponse): void {
         if (typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id)) throw new FSError('EINVAL', 'Invalid prepared update identity');

@@ -15,7 +15,7 @@ export async function collectGoogle(service, args, context, connections, fetcher
         stage = 'persist'; const result = await saveMaterials(items, args, {...context, signal}, service);
         await report('success', undefined, result.count); return result;
     } catch (error) {
-        const code = /^(GOOGLE_|TOOL_CONNECTION_)[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'GOOGLE_COLLECTION_FAILED';
+        const code = /^(GOOGLE_|TOOL_CONNECTION_|TOOL_AUTH_|RESOURCE_)[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'GOOGLE_COLLECTION_FAILED';
         await report('failure', code); throw fail(code);
     }
 }

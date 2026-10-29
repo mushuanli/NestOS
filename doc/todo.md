@@ -296,5 +296,6 @@ cargo build --offline --features tauri/custom-protocol --manifest-path apps/taur
 ## 通用功能扩展机制
 
 - 已实现：可信工具包的 Flow 资源声明与安装、工具面板中的用户连接配置、按用户隔离的凭据端口；业务采集 Flow 移出应用内置目录。
-- 待实现：通用 OAuth 授权主机与权限增量交互；ResourceTarget 注册、用户绑定和受限发布句柄；邮件等功能模块的实体存储与导航投影；显式工具包升级/卸载事务。
+- 已提供通用 OAuth 主机、权限组选择、PKCE/state、每用户回调、令牌刷新与撤销；外部包声明供应商端点及权限，HTTP 使用显式 publicOrigin。
+- 待实现：ResourceTarget 注册、用户绑定和受限发布句柄；邮件等功能模块的实体存储与导航投影；显式工具包升级/卸载事务。
 - 邮件当前是文件工作区，账号目录隔离不等于完整多邮箱同步 UI；不得通过扩大文件授权或内置厂商分支补齐。边界见[外部功能扩展](design/function-extensions.md)。

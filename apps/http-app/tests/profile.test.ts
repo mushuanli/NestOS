@@ -6,6 +6,14 @@ import { configDirectory, resolveDataRoot, resolveHttpConfigDirectory, resolveHt
 import { options } from '@itookit/node-host/http';
 
 let temp: string, config: string, cwd: string;
+it('uses only a configured HTTPS origin for tool authorization callbacks', async () => {
+    await writeFile(path.join(config, 'nestos.json'), JSON.stringify({http: {publicOrigin: 'https://nestos.example.com:2000'}}));
+    expect((await resolveHttpDirectories(config, cwd)).authorizationRedirectUri).toBe('https://nestos.example.com:2000/api/tool-connections/callback');
+    for (const origin of ['http://nestos.example.com', 'https://user:secret@nestos.example.com', 'https://nestos.example.com/other', 'https://nestos.example.com?next=other']) {
+        await writeFile(path.join(config, 'nestos.json'), JSON.stringify({http: {publicOrigin: origin}}));
+        await expect(resolveHttpDirectories(config, cwd)).rejects.toThrow();
+    }
+});
 beforeEach(async () => {
     temp = await mkdtemp(path.join(tmpdir(), 'nestos-http-profile-'));
     config = path.join(temp, 'config', 'nestos'); cwd = path.join(temp, 'workspace');

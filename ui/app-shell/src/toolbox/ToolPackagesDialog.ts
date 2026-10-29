@@ -1,6 +1,6 @@
 import {createModuleLogger, escapeHTML, randomUUID, t, type LocaleKey} from '@itookit/common';
 import type {FlowInstallationReport, FlowInstallations, ToolPackageInfo, ToolPackages} from '@itookit/app-contracts/services';
-import {sourceConnectionSettings, importConnection, type SourceConnections} from '../configuration/tool-connections';
+import {sourceConnectionSettings, importConnection, connectionInput, type SourceConnections} from '../configuration/tool-connections';
 
 interface PackageControls {toolPackages?: ToolPackages; flowInstallations?: FlowInstallations}
 const log = createModuleLogger('tool-package-ui');
@@ -21,6 +21,7 @@ class ToolPackagesDialog {
     private disposed = false;
     private error = '';
     private outcome = 'success';
+    private authorizationTimer?: ReturnType<typeof setTimeout>;
     constructor(private readonly controls: PackageControls, private readonly changed: () => Promise<void>) {}
 
     open(signal?: AbortSignal): Promise<void> {
@@ -42,7 +43,7 @@ class ToolPackagesDialog {
         return new Promise(resolve => {
             const abort = () => this.dialog.close(); signal?.addEventListener('abort', abort, {once: true});
             this.dialog.addEventListener('close', () => {
-                this.disposed = true; signal?.removeEventListener('abort', abort); this.dialog.remove();
+                this.disposed = true; clearTimeout(this.authorizationTimer); signal?.removeEventListener('abort', abort); this.dialog.remove();
                 if (origin instanceof HTMLElement && origin.isConnected) origin.focus(); resolve();
             }, {once: true});
         });
@@ -51,6 +52,9 @@ class ToolPackagesDialog {
     private click(event: MouseEvent): void {
         const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button') : null;
         if (!target || this.busy || this.disposed) return;
+        if (target.dataset.authBegin) {void this.authorize(target.closest('form')!); return;}
+        if (target.dataset.authCancel) {void this.run('tool.authorization.cancel', async () => {await this.controls.toolPackages?.connections?.cancelAuthorization?.(target.dataset.authCancel!); await this.readState();}); return;}
+        if (target.dataset.authRevoke) {void this.run('tool.authorization.revoke', async () => {await this.controls.toolPackages?.connections?.revokeAuthorization?.(target.dataset.authRevoke!); await this.readState();}); return;}
         if (target.hasAttribute('data-packages-refresh')) void this.refresh();
         const packageId = target.dataset.packageEnsure;
         if (packageId) {const item = this.packages.find(item => item.id === packageId); if (item) void this.register(item);}
@@ -83,9 +87,42 @@ class ToolPackagesDialog {
     }
 
     private async saveConnection(form: HTMLFormElement): Promise<void> {
-        const data = new FormData(form), input = {id: String(data.get('id') ?? ''), type: form.dataset.type!, name: String(data.get('name') ?? ''),
-            values: Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('[data-connection-field]')].map(field => [field.name, field.value]))};
+        const input = connectionInput(form);
         await this.run('tool.connection.save', async () => {await this.controls.toolPackages?.connections?.save(input); await this.readState();});
+    }
+    private async authorize(form: HTMLFormElement): Promise<void> {
+        if (!form.reportValidity()) return;
+        const input = connectionInput(form), groups = [...form.querySelectorAll<HTMLInputElement>('[data-auth-group]:checked')].map(field => field.value);
+        await this.run('tool.authorization.begin', async operationId => {
+            const port = this.controls.toolPackages?.connections;
+            if (!port?.beginAuthorization) throw new Error('TOOL_AUTH_UNSUPPORTED');
+            await port.save(input); await port.beginAuthorization(input.id, groups, operationId); await this.readState();
+        });
+    }
+    private pollAuthorizations(): void {
+        clearTimeout(this.authorizationTimer);
+        if (this.disposed || !this.connectionState.connections.some(connection => ['pending', 'exchanging'].includes(connection.authorization?.operation?.status ?? ''))) return;
+        this.authorizationTimer = setTimeout(() => {void this.refreshAuthorizations();}, 1000);
+    }
+    private async refreshAuthorizations(): Promise<void> {
+        if (this.disposed) return;
+        if (this.busy) {this.pollAuthorizations(); return;}
+        const port = this.controls.toolPackages?.connections; if (!port?.authorizationStatus) return;
+        try {
+            const operations = this.connectionState.connections.flatMap(connection => {
+                const operation = connection.authorization?.operation; return operation && ['pending', 'exchanging'].includes(operation.status) ? [operation] : [];
+            });
+            const states = await Promise.all(operations.map(operation => port.authorizationStatus!(operation.operationId)));
+            if (this.disposed) return;
+            for (const state of states) {
+                const connection = this.connectionState.connections.find(connection => connection.id === state.connectionId);
+                if (connection?.authorization) connection.authorization.operation = state;
+                const status = [...this.body.querySelectorAll<HTMLElement>('[data-authorization-status]')].find(node => node.dataset.authorizationStatus === state.connectionId);
+                if (status) status.textContent = t(`toolbox.connections.authState.${state.status}` as LocaleKey) + (state.code ? ' · ' + state.code : '');
+            }
+            if (states.some(state => !['pending', 'exchanging'].includes(state.status))) {await this.readState(); if (!this.disposed) this.render();}
+        } catch {if (!this.disposed) {this.error = 'TOOL_AUTH_STATUS_UNAVAILABLE'; await this.readState(); if (!this.disposed) this.render();}}
+        this.pollAuthorizations();
     }
 
     private async register(item: ToolPackageInfo): Promise<void> {
@@ -107,12 +144,12 @@ class ToolPackagesDialog {
         });
     }
 
-    private async run(operation: string, execute: () => Promise<void>): Promise<void> {
+    private async run(operation: string, execute: (operationId: string) => Promise<void>): Promise<void> {
         if (this.busy || this.disposed) return;
         const started = performance.now(), operationId = randomUUID(); this.busy = true; this.error = ''; this.outcome = 'success'; this.render();
         log.info('dependencies.started', {operation, operationId, stage: 'request', result: 'start'});
         try {
-            await execute();
+            await execute(operationId);
             log.info('dependencies.completed', {operation, operationId, stage: 'result', result: this.error ? 'partial' : this.outcome, durationMs: Math.round(performance.now() - started)});
         } catch (error) {
             if (!this.disposed) this.error = reason(error);
@@ -128,9 +165,10 @@ class ToolPackagesDialog {
             <span role="status">${this.busy ? escapeHTML(label('loading')) : ''}</span></div>
             <p class="tool-packages-dialog__error" role="alert">${escapeHTML(this.error)}</p>
             <section class="tool-packages-dialog__section">${this.packages.length ? this.packages.map(item => packageRow(item, this.busy)).join('') : `<p>${escapeHTML(label('empty'))}</p>`}</section>
-            ${this.controls.toolPackages?.connections ? sourceConnectionSettings(this.connectionState) : ''}
+            ${this.controls.toolPackages?.connections ? sourceConnectionSettings(this.connectionState, true) : ''}
             ${this.controls.flowInstallations ? `<section class="tool-packages-dialog__section"><h3>${escapeHTML(label('flows'))}</h3>${this.flows.map(item => flowRow(item, this.busy)).join('')}</section>` : ''}`;
         this.body.scrollTop = scroll;
+        this.pollAuthorizations();
     }
 }
 

@@ -57,23 +57,31 @@ function planForm(_snapshot: TwinSnapshot, _connections: Array<{ id: string; nam
     const data = plan?.data;
     return `<form class="twin__form" data-form="scanPlan" data-id="${escapeAttr(plan?.id ?? '')}">
         ${input('name', 'scanName', data?.name ?? '')}
-        ${executorFields(targets, data?.executor)}
+        <fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepSource'))}</legend>
+        ${executorFields(targets, data?.collection, 'collection')}
         ${select('inputMode', [...(data && !data.rules ? [{id: 'existing', name: label('scannerKeepInput')}] : []),
             {id: 'rules', name: label('scannerRange')}, {id: 'text', name: label('scannerText')}, {id: 'file', name: label('scannerFile')}, {id: 'upload', name: label('scannerUpload')}], data && !data.rules ? 'existing' : 'rules')}
         <label data-input-mode="text" hidden>${escapeHTML(label('scannerText'))}<textarea name="inputText" rows="6"></textarea></label>
         <label data-input-mode="file" hidden>${escapeHTML(label('scannerFile'))}<input name="inputFilePath" placeholder="/home/admin/notes/example.md"></label>
         <label data-input-mode="upload" hidden>${escapeHTML(label('scannerUpload'))}<input name="inputUpload" type="file" accept=".txt,.md,.json,.csv,.yaml,.yml"></label>
         <div data-input-mode="rules">${ruleText('include', 'scanInclude', data?.rules?.include ?? [])}</div>
-        <label data-scanner-builtin${data?.executor ? ' hidden' : ''}>${escapeHTML(label('scanFocus'))}<textarea name="focus" maxlength="2000" placeholder="${escapeAttr(label('scanFocusPlaceholder'))}">${escapeHTML(data?.focus ?? '')}</textarea></label>
         <div data-input-mode="rules">${ruleText('exclude', 'scanExclude', data?.rules?.exclude ?? [])}</div>
-        <p data-input-mode="rules">${escapeHTML(label('scanRuleSyntax'))}</p>
+        <p data-input-mode="rules">${escapeHTML(label('scanRuleSyntax'))}</p><p class="twin__help">${escapeHTML(label('previewScopeHelp'))}</p>
+        </fieldset><fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepKnowledge'))}</legend>
+        ${executorFields(targets, data?.executor)}
+        <p class="twin__help">${escapeHTML(label('scannerEvidenceHelp'))}</p>
+        <label data-scanner-builtin${data?.executor ? ' hidden' : ''}>${escapeHTML(label('scanFocus'))}<textarea name="focus" maxlength="2000" placeholder="${escapeAttr(label('scanFocusPlaceholder'))}">${escapeHTML(data?.focus ?? '')}</textarea></label>
         <details><summary>${escapeHTML(label('advanced'))}</summary><fieldset class="twin__selection"><legend>${escapeHTML(label('scanKinds'))}</legend>${TWIN_KINDS.map(kind => check('kinds', kind, label(`kind.${kind}`), data?.kinds.includes(kind) ?? true)).join('')}</fieldset></details>
+        </fieldset><fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepSchedule'))}</legend>
         ${select('trigger', ['manual', 'interval', 'changes'].map(id => ({id, name: label('scannerTrigger.' + id)})), data?.trigger ?? 'interval')}
         ${check('autoConfirm', 'on', label('scannerAutoConfirm'), data?.autoConfirm ?? false)}
         <label>${escapeHTML(label('scannerRunLimit'))}<input name="runTokenLimit" type="number" min="0" max="10000000" step="1" value="${data?.runTokenLimit ?? ''}"></label>
         <p>${escapeHTML(label('scannerRunLimitHelp'))}</p>
-        ${input('intervalMinutes', 'scanInterval', String(data?.intervalMinutes ?? 30), 'number')}
-        ${check('enabled', 'on', label('enabled'), data?.enabled ?? true)}
+        <div data-scanner-interval>${input('intervalMinutes', 'scanInterval', String(data?.intervalMinutes ?? 30), 'number')}</div>
+        <details><summary>${escapeHTML(label('advanced'))}</summary>
+        <label>${escapeHTML(label('maxOutputTokens'))}<input name="maxOutputTokens" type="number" min="128" max="8192" step="1" value="${data?.maxOutputTokens ?? ''}" placeholder="8192"></label>
+        <p class="twin__help">${escapeHTML(label('maxOutputTokensHelp'))}</p></details>
+        ${check('enabled', 'on', label('enabled'), data?.enabled ?? true)}</fieldset>
         <span data-input-mode="rules">${button('previewRule', 'previewRule')}</span><pre class="twin__preview" data-preview></pre>
         <button type="submit">${escapeHTML(label('save'))}</button></form>`;
 }
@@ -85,7 +93,7 @@ export function scanRunPage(snapshot: TwinSnapshot): string {
         <p>${escapeHTML(label('scanLeaseHost'))}: ${escapeHTML(worker.ownerHost || label('scanIdle'))}</p>
         <p>${escapeHTML(label('scanHostHelp'))}</p>${snapshot.scans.runs.slice(-50).reverse().map(run => `<article class="twin__card"><h3>${escapeHTML(run.data.name)}</h3>
         <p>${escapeHTML(label(`scanState.${run.data.state}`))} · ${run.data.completedSourceIds.length} / ${run.data.sourceIds.length} · ${escapeHTML(twinError(run.data.error, run.data.errorDetail))}</p>
-        <p>${escapeHTML(label('budget'))}: ${run.data.spentTokens} / ${run.data.reservedTokens} / ${run.data.budgetUnlimited ? escapeHTML(label('unlimited')) : run.data.tokenLimit}</p>
+        <p>${escapeHTML(label('spentTokens'))}: ${run.data.spentTokens} · ${escapeHTML(label('reservedTokens'))}: ${run.data.reservedTokens} · ${escapeHTML(label('tokenLimit'))}: ${run.data.budgetUnlimited ? escapeHTML(label('unlimited')) : run.data.tokenLimit}</p>
         ${run.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${run.data.runTokenLimit}</p>` : ''}
         ${button('openScanResults', 'scannerResults', run.id)}
         <p>${date(run.data.createdAt)} · ${escapeHTML(label('scanFinishedAt'))}: ${date(run.data.finishedAt)}</p>

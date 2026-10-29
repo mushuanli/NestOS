@@ -49,6 +49,7 @@ function validateSettings(data: Data): void {
     booleans(data, ['paused', 'useEnabled']); integers(data, ['tokenLimit', 'reservedTokens', 'spentTokens']);
 }
 function validateJob(data: Data): void {
+    validateOutputLimit(data);
     scannerExecutor(data.executor as import('@itookit/app-contracts').TwinScannerExecutor | undefined);
     if (data.meterPeriod !== undefined && (typeof data.meterPeriod !== 'string' || !/^\d{4}-\d{2}$/.test(data.meterPeriod))) invalid();
     for (const key of ['createdAt', 'startedAt', 'finishedAt', 'actualTokens', 'requestStartedAt', 'responseReceivedAt', 'responseCompletedAt']) if (data[key] !== undefined) integers(data, [key]);
@@ -65,6 +66,8 @@ function validateUsage(data: Data): void {
         || typeof ref.id !== 'string' || typeof ref.revision !== 'string')) invalid();
 }
 function validateScanRun(data: Data): void {
+    validateOutputLimit(data);
+    scannerExecutor(data.collection as import('@itookit/app-contracts').TwinScannerExecutor | undefined);
     scannerExecutor(data.executor as import('@itookit/app-contracts').TwinScannerExecutor | undefined);
     if (data.runTokenLimit !== undefined) integers(data, ['runTokenLimit']);
     if (data.budgetUnlimited !== undefined) booleans(data, ['budgetUnlimited']);
@@ -86,6 +89,9 @@ function validateManagedSource(data: Data): void {
     if (resource?.location !== undefined) oneOf(resource.location, ['local', 'remote']);
     if (resource?.directoryPath !== undefined && typeof resource.directoryPath !== 'string') invalid();
     if (data.observedVersion !== undefined && typeof data.observedVersion !== 'string') invalid();
+}
+function validateOutputLimit(data: Data): void {
+    if (data.maxOutputTokens !== undefined && (!Number.isSafeInteger(data.maxOutputTokens) || (data.maxOutputTokens as number) < 128 || (data.maxOutputTokens as number) > 8192)) invalid();
 }
 function strings(data: Data, keys: string[]): void { for (const key of keys) if (typeof data[key] !== 'string') invalid(); }
 function booleans(data: Data, keys: string[]): void { for (const key of keys) if (typeof data[key] !== 'boolean') invalid(); }

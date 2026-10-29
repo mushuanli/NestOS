@@ -19,7 +19,7 @@ export class TwinProjectCatalog {
             await this.files(project, catalog);
             await discoverHarness(this.projects, project, catalog);
         }
-        for (const session of sessions.filter(item => !item.id.startsWith('twin-analysis-'))) {
+        for (const session of sessions.filter(item => !/^twin-(analysis|collection)-/.test(item.id))) {
             const project = projects.filter(item => session.folder && (session.folder === item.path || session.folder.startsWith(item.path + '/')))
                 .sort((a, b) => b.path.length - a.path.length)[0];
             catalog.resources.push({ kind: 'session', location: 'local', target: session.id, sessionId: session.id, label: session.title,

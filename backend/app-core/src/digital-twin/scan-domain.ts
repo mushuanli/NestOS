@@ -5,6 +5,8 @@ import type { TwinRecordFamily, TwinRecordWrite } from './contracts';
 
 export interface TwinScanPlanInput {
     executor?: import('@itookit/app-contracts').TwinScannerExecutor;
+    collection?: import('@itookit/app-contracts').TwinScannerExecutor;
+    maxOutputTokens?: number;
     runTokenLimit?: number;
     rules?: TwinScanRules; autoConfirm?: boolean; focus?: string;
     name: string; sourceIds: string[]; connectionId: string; kinds: TwinMemoryKind[];
@@ -15,6 +17,8 @@ export interface TwinScanPlan extends TwinScanPlanInput { connectionFingerprint:
 export type TwinScanState = 'queued' | 'running' | 'succeeded' | 'paused' | 'failed' | 'cancelled' | 'interrupted';
 export interface TwinScanRun {
     executor?: import('@itookit/app-contracts').TwinScannerExecutor;
+    collection?: import('@itookit/app-contracts').TwinScannerExecutor;
+    maxOutputTokens?: number;
     runTokenLimit?: number;
     budgetUnlimited?: boolean;
     errorDetail?: string;
@@ -40,6 +44,9 @@ export function scanInput(input: TwinScanPlanInput): TwinScanPlanInput {
     if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 200
         || typeof input.connectionId !== 'string' || !input.connectionId.trim() || input.connectionId.length > 200
         || typeof input.enabled !== 'boolean') invalid();
+    if (input.collection && (!input.rules?.include.length || input.collection.target.kind !== 'flow')) throw new Error('TWIN_COLLECTION_SCOPE_REQUIRED');
+    if (input.collection && input.trigger === 'changes') throw new Error('TWIN_COLLECTION_INTERVAL_REQUIRED');
+    if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens < 128 || input.maxOutputTokens > 8192)) invalid();
     if (input.runTokenLimit !== undefined && (!Number.isSafeInteger(input.runTokenLimit) || input.runTokenLimit < 0 || input.runTokenLimit > 10000000)) invalid();
     if (input.autoConfirm !== undefined && typeof input.autoConfirm !== 'boolean') invalid();
     identifiers(input.sourceIds, 10000, Boolean(input.rules));
@@ -49,7 +56,7 @@ export function scanInput(input: TwinScanPlanInput): TwinScanPlanInput {
     if (!['analyze', 'reconcile'].includes(input.mode) || !['manual', 'interval', 'changes'].includes(input.trigger)) invalid();
     if (!Number.isSafeInteger(input.intervalMinutes) || input.intervalMinutes < 1 || input.intervalMinutes > 10080
         || !Number.isSafeInteger(input.tokenLimit) || input.tokenLimit < 0 || input.tokenLimit > 10000000) invalid();
-    return { ...(input.executor ? {executor: scannerExecutor(input.executor)} : {}), ...(input.runTokenLimit !== undefined ? {runTokenLimit: input.runTokenLimit} : {}), autoConfirm: input.autoConfirm ?? !!rules, ...(rules ? { rules } : {}), focus: input.focus?.trim() ?? '', name: input.name.trim(), sourceIds: [...new Set(input.sourceIds)], connectionId: input.connectionId.trim(),
+    return { ...(input.collection ? {collection: scannerExecutor(input.collection)} : {}), ...(input.maxOutputTokens !== undefined ? {maxOutputTokens: input.maxOutputTokens} : {}), ...(input.executor ? {executor: scannerExecutor(input.executor)} : {}), ...(input.runTokenLimit !== undefined ? {runTokenLimit: input.runTokenLimit} : {}), autoConfirm: input.autoConfirm ?? !!rules, ...(rules ? { rules } : {}), focus: input.focus?.trim() ?? '', name: input.name.trim(), sourceIds: [...new Set(input.sourceIds)], connectionId: input.connectionId.trim(),
         kinds: TWIN_KINDS.filter(kind => input.kinds.includes(kind)), mode: input.mode, trigger: input.trigger,
         intervalMinutes: input.intervalMinutes, tokenLimit: input.tokenLimit, enabled: input.enabled };
 }

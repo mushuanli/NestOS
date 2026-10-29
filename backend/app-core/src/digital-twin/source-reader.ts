@@ -16,7 +16,7 @@ export class NestosTwinSourceReader implements TwinSourceReader {
         const catalog = await new TwinProjectCatalog(this.projects, this.sessionsRepository).discover();
         await discoverWorkspaces(this.fs, catalog); return catalog;
     }
-    async sessions() { return (await this.sessionsRepository.list()).filter(session => !session.id.startsWith('twin-analysis-'))
+    async sessions() { return (await this.sessionsRepository.list()).filter(session => !/^twin-(analysis|collection)-/.test(session.id))
         .map(session => ({ id: session.id, title: session.title })); }
 
     async read(spec: TwinSourceSpec): Promise<TwinSourceContent> {
@@ -76,7 +76,7 @@ export class NestosTwinSourceReader implements TwinSourceReader {
     }
 
     private async session(id: string): Promise<TwinSourceContent> {
-        if (id.startsWith('twin-analysis-')) throw new Error('TWIN_RECURSIVE_SOURCE');
+        if (/^twin-(analysis|collection)-/.test(id)) throw new Error('TWIN_RECURSIVE_SOURCE');
         const manifest = await this.sessionsRepository.getManifest(id);
         const log = new RoundLog(this.sessionsRepository, id);
         const head = manifest.currentHead;

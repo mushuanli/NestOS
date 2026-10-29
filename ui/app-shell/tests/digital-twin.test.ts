@@ -244,3 +244,28 @@ it('saves a text scanner with independent Flow arguments and preserves its sourc
         expect(updated.data.sourceIds).toEqual(saved.data.sourceIds); expect(updated.data.executor).toEqual(saved.data.executor);
     } finally {await view.destroy(); await service.dispose(); await manager.dispose();}
 });
+
+it('configures private source connections without rendering stored secrets and preserves drafts on background updates', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const service = new DigitalTwinService({fs: await manager.openFileSystem('/'), reader: {sessions: async () => [], read: vi.fn()},
+        extractor: {run: vi.fn(), cancel: vi.fn(), cleanup: vi.fn()}, deleteSession: vi.fn()});
+    const save = vi.fn(async () => {});
+    service.setSourceConnections({snapshot: async () => ({types: [{id: 'example', name: 'Example source', description: 'Private source',
+        fields: [{name: 'token', label: 'Token', secret: true, required: true}]}],
+        connections: [{id: 'personal', type: 'example', name: 'My connection', values: {}, configuredSecrets: ['token']}]}), save, remove: vi.fn()});
+    const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
+    const view = new TwinWorkbench({service, sidebar, editor, connections: async () => [], selected() {}});
+    try {
+        await view.start(); await view.openResource('/sources');
+        const form = editor.querySelector<HTMLFormElement>('[data-form=sourceConnection][data-id=personal]')!;
+        const secret = form.querySelector<HTMLInputElement>('[name=token]')!;
+        expect(secret.type).toBe('password'); expect(secret.value).toBe(''); expect(secret.required).toBe(false);
+        secret.value = 'new-private-secret'; secret.dispatchEvent(new Event('input', {bubbles: true}));
+        await service.addMemory({content: 'Background change'});
+        expect(editor.querySelector('[data-form=sourceConnection][data-id=personal]')).toBe(form);
+        form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+        await vi.waitFor(() => expect(save).toHaveBeenCalledWith({id: 'personal', type: 'example', name: 'My connection', values: {token: 'new-private-secret'}}));
+        await vi.waitFor(() => expect(editor.querySelector('[data-form=sourceConnection][data-id=personal]')).not.toBe(form));
+        expect(editor.innerHTML).not.toContain('new-private-secret');
+    } finally {await view.destroy(); await service.dispose(); await manager.dispose();}
+});

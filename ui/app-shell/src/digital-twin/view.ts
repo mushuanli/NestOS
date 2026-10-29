@@ -49,7 +49,9 @@ export function updateSettings(snapshot: TwinSnapshot, connections: Array<{ id: 
 
 function budgetSettings(snapshot: TwinSnapshot): string {
     const settings = snapshot.settings.data, meter = snapshot.metering;
-    return `<div class="twin__usage"><div><span>${escapeHTML(label('spentTokens'))}</span><strong data-spent-tokens>${settings.spentTokens.toLocaleString()}</strong></div>
+    const remaining = Math.max(0, Math.min(settings.budgetUnlimited ? Infinity : settings.tokenLimit - settings.spentTokens - settings.reservedTokens,
+        settings.monthlyTokenLimit == null ? Infinity : settings.monthlyTokenLimit - (meter?.period.spentTokens ?? 0) - (meter?.period.reservedTokens ?? 0)));
+    return `<p>${escapeHTML(label('availableTokens'))}: <strong>${Number.isFinite(remaining) ? remaining.toLocaleString() : escapeHTML(label('unlimited'))}</strong></p><p class="twin__help">${escapeHTML(label('reservedBudgetHelp'))}</p><div class="twin__usage"><div><span>${escapeHTML(label('spentTokens'))}</span><strong data-spent-tokens>${settings.spentTokens.toLocaleString()}</strong></div>
         <div><span>${escapeHTML(label('reservedTokens'))}</span><strong data-reserved-tokens>${settings.reservedTokens.toLocaleString()}</strong></div></div>
         <div class="twin__budget">${checkbox('budgetUnlimited', 'budgetUnlimited', settings.budgetUnlimited === true)}
         <label data-budget-limit${settings.budgetUnlimited ? ' hidden' : ''}>${escapeHTML(label('tokenLimit'))}<input name="tokenLimit" type="number" min="0" step="1" value="${settings.tokenLimit}"${settings.budgetUnlimited ? ' disabled' : ''}></label>

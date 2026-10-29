@@ -1,0 +1,76 @@
+{
+  "id": "google-gmail-collect",
+  "name": "Gmail 邮件采集",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "parameters": [
+    {
+      "name": "connection",
+      "label": "我的 Google 连接",
+      "type": "string",
+      "required": true,
+      "default": "personal",
+      "description": "填写“我的数据连接”中的连接标识；始终使用当前登录用户自己的凭据。",
+      "role": "option"
+    },
+    {
+      "name": "directory",
+      "label": "保存来源目录",
+      "type": "string",
+      "required": true,
+      "default": "imports/google",
+      "description": "保存到当前执行工作区的目录。扫描范围应包含该目录。",
+      "role": "option"
+    },
+    {
+      "name": "maxItems",
+      "label": "每次最多采集条数",
+      "type": "number",
+      "default": 100,
+      "description": "1–500；超限会停止并保留已有来源，请缩小时间范围。",
+      "role": "policy"
+    },
+    {
+      "name": "query",
+      "label": "邮件范围",
+      "type": "string",
+      "required": true,
+      "default": "newer_than:30d -in:trash -in:spam",
+      "description": "Gmail 搜索语法，例如 newer_than:7d label:work。完整读取范围内的邮件，不修改邮箱。",
+      "role": "option"
+    }
+  ],
+  "runPolicy": {
+    "maxNodes": 4,
+    "maxConcurrency": 1
+  },
+  "nodes": [
+    {
+      "id": "collect",
+      "name": "读取并保存来源",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "capabilities": [
+        "google.gmail.collect"
+      ],
+      "config": {
+        "toolId": "google.gmail.collect",
+        "toolVersion": "1",
+        "approval": "none",
+        "args": {
+          "connection": "${param.connection}",
+          "directory": "${param.directory}",
+          "maxItems": "${param.maxItems}",
+          "query": "${param.query}"
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "outputs": {
+    "result": {
+      "value": "${nodes.collect.outputs.result}"
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import {buildTool, TaskListTool, type Tool} from '@itookit/tools';
 import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
@@ -7,7 +8,7 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close(); vi.unstubAllGlobals();});
 const text = '我喜欢 TypeScript。';
 const result = {candidates: [{content: '偏好 TypeScript', kind: 'preference', subject: 'self', project: '', eventTime: '', quote: text}]};
-async function setup(withOrganization = false) {
+async function setup(withOrganization = false, additionalTools: Tool[] = []) {
     const backend = new MemoryBackend(); await backend.init();
     for (const path of ['/etc', '/etc/llm', '/etc/llm/.providers', '/etc/llm/.connections']) await backend.mkdir(path);
     const write = (path: string, value: unknown) => backend.write(path, new TextEncoder().encode(JSON.stringify(value)));
@@ -19,7 +20,7 @@ async function setup(withOrganization = false) {
         return body.stream ? new Response(`data: ${JSON.stringify({id: 'response', choices: [{index: 0, delta: {role: 'assistant', content}, finish_reason: 'stop'}], usage})}\n\ndata: [DONE]\n\n`, {headers: {'content-type': 'text/event-stream'}})
             : new Response(JSON.stringify({id: 'response', choices: [{index: 0, message: {role: 'assistant', content}, finish_reason: 'stop'}], usage}), {headers: {'content-type': 'application/json'}});
     }); vi.stubGlobal('fetch', requests);
-    const runtime = await createApplicationRuntime({backend, ownerKind: 'cli', digitalTwinAutoStart: false, ...(withOrganization ? {digitalTwinWorkspaces: [{twinId: 'team', ownerId: 'organization:team', name: 'Team', kind: 'organization' as const, authorize: async () => {}}]} : {})}); cleanup.push(() => runtime.dispose());
+    const runtime = await createApplicationRuntime({backend, kernelPlatform: {additionalTools}, ownerKind: 'cli', digitalTwinAutoStart: false, ...(withOrganization ? {digitalTwinWorkspaces: [{twinId: 'team', ownerId: 'organization:team', name: 'Team', kind: 'organization' as const, authorize: async () => {}}]} : {})}); cleanup.push(() => runtime.dispose());
     const twin = runtime.digitalTwin!;
     await twin.configure({connectionId: 'default'}, (await twin.getSettings()).revision);
     return {runtime, twin, requests};
@@ -142,3 +143,28 @@ it('uses the remaining run budget for subsequent sources after settling the firs
     expect(requests).toHaveBeenCalledTimes(2);
     expect((await twin.snapshot()).scans.runs.find(item => item.id === runId)!.data).toMatchObject({state: 'succeeded', spentTokens: 200, reservedTokens: 0});
 }, 20000);
+
+it('collects workspace evidence with a published Tool Flow before discovery and enforces the extraction output cap', async () => {
+    const collected = vi.fn();
+    const tool = buildTool({name: 'fixture.collect', version: '1', inputSchema: TaskListTool.inputSchema, maxResultSizeChars: 1000,
+        async description() {return 'Collect fixture evidence';}, async prompt() {return '';},
+        async call(_args, context) {
+            collected(); await context.vfs!.writeFile('evidence/source.md', text); return {data: {count: 1}};
+        }, mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};}});
+    const {runtime, twin, requests} = await setup(false, [tool]);
+    await runtime.projects.personal();
+    const flow: FlowDraft = {id: 'collect-fixture' as never, name: 'Collect fixture', draftVersion: 1, updatedAt: 0, layout: {}, parameters: [],
+        nodes: [{id: 'collect' as never, name: 'Collect', plugin: 'builtin.tool', pluginVersion: '1.0.0', inputs: {}, capabilities: ['fixture.collect'],
+            config: {toolId: 'fixture.collect', toolVersion: '1', approval: 'none', args: {}}}], edges: [], outputs: {result: {value: '${nodes.collect.outputs.result}'}}};
+    await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
+    const target = (await twin.scannerTargets()).find(item => item.target.id === flow.id)!.target;
+    const id = await twin.saveScanRule(null, null, {name: 'Collect and learn', collection: {target}, include: ['file:**/evidence/*.md'], exclude: [],
+        trigger: 'manual', intervalMinutes: 30, enabled: true, autoConfirm: false, maxOutputTokens: 512});
+    const run = await twin.runScanPlan(id); await twin.waitScanRun(run);
+    expect(collected).toHaveBeenCalledTimes(1);
+    const snapshot = await twin.snapshot();
+    expect(snapshot.memories.some(memory => memory.data.quote === text && memory.data.state === 'candidate')).toBe(true);
+    expect(snapshot.scans.runs.find(item => item.id === run)!.data.sourceIds.length).toBeGreaterThan(0);
+    expect(requests).toHaveBeenCalled();
+    expect(JSON.parse(requests.mock.calls[0][1].body).max_tokens).toBe(512);
+}, 30000);

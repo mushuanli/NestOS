@@ -20,7 +20,7 @@ export class KernelTwinExtractor implements TwinExtractionPort {
         const startedAt = Date.now();
         let tokens: number | undefined;
         const state = { stage: 'preparing', taskId: '' };
-        traceAnalysis(job, state.stage, { inputCharacters: text.length, outputTokenLimit: TWIN_EXTRACTION_OUTPUT_LIMIT, thinking: false, stream: false });
+        traceAnalysis(job, state.stage, { inputCharacters: text.length, outputTokenLimit: job.maxOutputTokens ?? TWIN_EXTRACTION_OUTPUT_LIMIT, thinking: false, stream: false });
         try {
             const task = await this.prepare(job, text, attached, state);
             state.stage = 'waiting';
@@ -64,7 +64,7 @@ export class KernelTwinExtractor implements TwinExtractionPort {
         const session = await this.session(job.sessionId);
         const task = await session.submit<unknown, DurableChatOutput>({ program: { kind: 'llm.chat', version: '1' },
             requestId: 'extract', deferStart: true, input: { sessionId: job.sessionId, roundId: 'extract',
-                connectionId: job.connectionId, temperature: 0, stream: false, thinking: false, maxTokens: TWIN_EXTRACTION_OUTPUT_LIMIT,
+                connectionId: job.connectionId, temperature: 0, stream: false, thinking: false, maxTokens: job.maxOutputTokens ?? TWIN_EXTRACTION_OUTPUT_LIMIT,
                 llmRetry: { retries: 0, backoffMs: 0 },
                 messages: [{ role: 'system', content: extractionPrompt(job) }, { role: 'user', content: text }] } });
         state.taskId = task.id;

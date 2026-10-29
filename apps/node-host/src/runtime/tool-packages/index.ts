@@ -2,7 +2,7 @@ import {mkdir, realpath} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';
 import {createModuleLogger, randomUUID} from '@itookit/common';
-import type {FlowToolDependency, ToolDependencyResolver, ToolDependencyResult, ToolDependencyState, ToolPackageInfo} from '@itookit/app-contracts/services';
+import type {FlowToolDependency, ToolDependencyResolver, ToolDependencyResult, ToolDependencyState, ToolPackageInfo, ToolConnectionAccess} from '@itookit/app-contracts/services';
 import type {Tool} from '@itookit/tools';
 import type {ToolMeta} from '@itookit/tools/contracts';
 import {discoverToolPackages, packageError, packageIdentity, toolPackageDirectories, type ToolPackageSource} from './manifest';
@@ -14,7 +14,7 @@ import {activatePackageEnvironment} from './environment';
 const log = createModuleLogger('tool-packages');
 interface Registrar {registerTools(tools: Tool[]): Promise<void>; toolCatalog: {getToolMeta(id: string): ToolMeta | undefined};}
 export interface NodeToolPackageOptions {
-    env?: NodeJS.ProcessEnv; directories?: string[]; dataDirectory?: string; registryFile?: string;
+    connections?: ToolConnectionAccess; env?: NodeJS.ProcessEnv; directories?: string[]; dataDirectory?: string; registryFile?: string;
 }
 
 /** Executable locations come exclusively from a trusted host catalog and host environment. */
@@ -43,7 +43,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
             for (const source of await discoverToolPackages(this.options.directories ?? toolPackageDirectories(this.env))) this.addSource(source);
             this.records = await readToolPackageRegistry(this.registryFile);
             for (const record of this.records) {
-                try {this.installed.set(record.id, await restoreToolPackage(this.packageDirectory(record), record));}
+                try {this.installed.set(record.id, await restoreToolPackage(this.packageDirectory(record), record, this.options.connections));}
                 catch (error) {
                     const failure = failureReason(error, 'restore'); this.failures.set(record.id, failure);
                     this.record(operationId, 'restore-package', 'failure', started, 0, failure.code);
@@ -121,7 +121,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
             if (!source) throw packageError('TOOL_PACKAGE_NOT_FOUND', `Trusted local package ${reference.id}@${reference.version} is unavailable`);
             if (!this.registrar) throw packageError('TOOL_PACKAGE_RUNTIME_UNAVAILABLE', 'Tool registration runtime is not ready');
             stage = 'stage';
-            const installed = current ? await this.existingPackage(source, current) : await stageToolPackage(source, this.packageDirectory(reference), this.env);
+            const installed = current ? await this.existingPackage(source, current) : await stageToolPackage(source, this.packageDirectory(reference), this.env, this.options.connections);
             if (expected) assertToolVersion(expected, installed.tools.find(tool => tool.name === expected.id)?.version);
             stage = 'register'; const activated = this.activate(installed);
             try {await this.commitPackage(installed);} catch (error) {
@@ -152,7 +152,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
     private async existingPackage(source: ToolPackageSource, current: RegisteredToolPackage): Promise<InstalledToolPackage> {
         if (await packageFingerprint(source, await packageFiles(source, current.bindings)) !== current.fingerprint)
             throw packageError('TOOL_PACKAGE_CONTENT_CONFLICT', `Package ${current.id}@${current.version} has changed without a new version`);
-        return this.installed.get(current.id) ?? restoreToolPackage(this.packageDirectory(current), current);
+        return this.installed.get(current.id) ?? restoreToolPackage(this.packageDirectory(current), current, this.options.connections);
     }
 
     private async packageInfo(source: ToolPackageSource): Promise<ToolPackageInfo> {

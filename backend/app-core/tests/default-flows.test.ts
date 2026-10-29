@@ -105,9 +105,9 @@ it('uses one essay template and one Anki entry while preserving explicitly insta
     await store.installBuiltinDraft(external);
     await seedDefaultFlows(store);
     expect((await store.listDrafts()).map(draft => draft.id).sort()).toEqual([
-        'anki-generate', 'essay-review', 'external-workflow',
+        'anki-generate', 'essay-review', 'external-workflow', 'google-calendar-collect', 'google-gmail-collect',
     ]);
-    expect(createNestosFlowLibrary().map(draft => draft.id)).toEqual(['essay-review', 'anki-generate']);
+    expect(createNestosFlowLibrary().map(draft => draft.id)).toEqual(['essay-review', 'anki-generate', 'google-gmail-collect', 'google-calendar-collect']);
     expect(createNestosFlowDrawers()).toEqual([]);
     await seedDefaultFlows(new FlowDefinitionStore(storage));
     expect(await store.loadDraft(external.id)).toMatchObject({ name: external.name });

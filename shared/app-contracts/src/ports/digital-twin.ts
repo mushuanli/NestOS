@@ -9,6 +9,8 @@ export interface TwinScanRuleInput extends TwinScanRules {
     executor?: AppContracts.TwinScannerExecutor;
     trigger?: 'manual' | 'interval' | 'changes';
     autoConfirm?: boolean;
+    collection?: AppContracts.TwinScannerExecutor;
+    maxOutputTokens?: number;
     runTokenLimit?: number | null;
     focus?: string;
     name: string;
@@ -31,6 +33,8 @@ export interface TwinScanPlan extends TwinScanPlanInput {
 
 export interface TwinScanPlanInput {
     executor?: AppContracts.TwinScannerExecutor;
+    collection?: AppContracts.TwinScannerExecutor;
+    maxOutputTokens?: number;
     runTokenLimit?: number;
     rules?: TwinScanRules;
     autoConfirm?: boolean;
@@ -63,6 +67,9 @@ export interface TwinDataRecord<T> {
 }
 
 export interface DigitalTwinService {
+    listSourceConnections(): ReturnType<import('./tool-connections').ToolConnections['snapshot']>;
+    saveSourceConnection(input: import('./tool-connections').ToolConnectionInput): Promise<void>;
+    removeSourceConnection(id: string): Promise<void>;
     workspaces(): Promise<AppContracts.TwinWorkspaceView[]>;
     openWorkspace(id: string): Promise<DigitalTwinService>;
     scannerTargets(): Promise<import('@itookit/llm-session/contracts').RootCallTarget[]>;
@@ -202,6 +209,8 @@ export interface DigitalTwinService {
 
 export interface TwinScanRun {
     executor?: AppContracts.TwinScannerExecutor;
+    collection?: AppContracts.TwinScannerExecutor;
+    maxOutputTokens?: number;
     runTokenLimit?: number;
     budgetUnlimited?: boolean;
     errorDetail?: string;

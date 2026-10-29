@@ -1,3 +1,4 @@
+import {PublishedScannerCollector} from '../digital-twin/scanner-collector';
 import {recoverFlowSchedulers} from './flow-scheduler-recovery';
 import {bindTwinWorkspaces} from '../digital-twin/workspaces';
 import {PublishedScannerExecutor} from '../digital-twin/scanner-executor';
@@ -119,6 +120,7 @@ export interface ApplicationRuntime {
 }
 
 export interface ApplicationRuntimeOptions {
+    toolConnections?: import('@itookit/app-contracts/services').ToolConnectionAccess;
     /** The host resolves only trusted, locally available tool packages. */
     toolDependencies?: import('@itookit/app-contracts/services').ToolDependencyResolver;
     /** Interactive hosts activate background tasks after their first workspace is ready. */
@@ -468,8 +470,12 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager } satisfies import('./conversation-system').ConversationSystemOptions;
         const { sessionManager, commandBus, independentCalls, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
             () => createConversationSystem(conversationOptions));
-        if (independentCalls) for (const twin of twinServices) twin.setScannerExecution(new PublishedScannerExecutor({kernel: kernelCore, repository: sessionRepository,
+        for (const twin of twinServices) twin.setSourceConnections(options.toolConnections);
+        if (independentCalls) for (const twin of twinServices) {
+            twin.setCollector(new PublishedScannerCollector({kernel: kernelCore, repository: sessionRepository, ready: () => ({calls: independentCalls})}));
+            twin.setScannerExecution(new PublishedScannerExecutor({kernel: kernelCore, repository: sessionRepository,
             ready: () => ({commands: commandBus, calls: independentCalls}), exchanges: job => twin.scannerExchangeCount(job), bind: (job, sessionId) => twin.bindScanner(job, sessionId)}));
+        }
         flowInstallations = new FlowInstallationService(commandBus, new FlowToolPackages(kernel.toolCatalog, options.toolDependencies));
         const installations = flowInstallations;
         cleanupFns.push(() => installations.close());

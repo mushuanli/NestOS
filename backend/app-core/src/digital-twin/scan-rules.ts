@@ -6,6 +6,8 @@ export interface TwinScanRuleInput extends TwinScanRules {
     executor?: import('@itookit/app-contracts').TwinScannerExecutor;
     trigger?: 'manual' | 'interval' | 'changes';
     autoConfirm?: boolean;
+    collection?: import('@itookit/app-contracts').TwinScannerExecutor;
+    maxOutputTokens?: number;
     runTokenLimit?: number | null;
     focus?: string;
     name: string; intervalMinutes: number; enabled: boolean;

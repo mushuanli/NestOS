@@ -6,15 +6,15 @@ import type { TwinScanPlan, TwinScanPlanInput, TwinScanRun } from './scan-domain
 import { SCAN_TERMINAL } from './scan-domain';
 import { TwinScanPlans } from './scan-plans';
 import { TwinScanStore } from './scan-store';
-import { TwinScanWorker } from './scan-worker';
+import { TwinScanWorker, type TwinCollectionRunner } from './scan-worker';
 import { TwinSources } from './sources';
 
 export class TwinScans {
     readonly plans: TwinScanPlans;
     private readonly worker: TwinScanWorker;
-    constructor(readonly store: TwinScanStore, sources: TwinSources, analysis: TwinAnalysis, private readonly changed: () => void, private readonly index?: TwinSourceIndex, maintenance?: () => Promise<void>) {
+    constructor(readonly store: TwinScanStore, sources: TwinSources, analysis: TwinAnalysis, private readonly changed: () => void, private readonly index?: TwinSourceIndex, maintenance?: () => Promise<void>, collection?: TwinCollectionRunner) {
         this.plans = new TwinScanPlans(store, sources, index);
-        this.worker = new TwinScanWorker(store, this.plans, sources, analysis, changed, index, maintenance);
+        this.worker = new TwinScanWorker(store, this.plans, sources, analysis, changed, index, maintenance, collection);
     }
     async snapshot() {
         const lease = await this.store.lease();

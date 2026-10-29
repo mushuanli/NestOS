@@ -129,14 +129,14 @@ export class TwinAnalysis {
         const settings = await this.records.get<TwinSettings>('settings', 'pot');
         if (!settings || settings.data.paused) throw new Error('TWIN_ANALYSIS_PAUSED');
         const offset = progress.offset, end = extractionEnd(text, offset);
-        const estimatedTokens = new TextEncoder().encode(text.slice(offset, end) + (scope?.focus ?? '') + identityKey(settings.data)).length + TWIN_EXTRACTION_OUTPUT_ESTIMATE + TWIN_EXTRACTION_PROMPT_RESERVE;
+        const estimatedTokens = new TextEncoder().encode(text.slice(offset, end) + (scope?.focus ?? '') + identityKey(settings.data)).length + (scope?.maxOutputTokens ?? TWIN_EXTRACTION_OUTPUT_ESTIMATE) + TWIN_EXTRACTION_PROMPT_RESERVE;
         const run = scope?.executor ? (await this.records.get<TwinScanRun>('scan-run', scope.runId))!.data : null;
         const remaining = run?.runTokenLimit === undefined ? 50000 : Math.max(0, run.runTokenLimit - run.spentTokens - run.reservedTokens);
         const reservedTokens = scope?.executor ? Math.min(50000, remaining) : estimatedTokens;
         if (!settings.data.budgetUnlimited && settings.data.spentTokens + settings.data.reservedTokens + reservedTokens > settings.data.tokenLimit) throw new Error('TWIN_BUDGET_EXHAUSTED');
         const id = randomUUID(), epoch = (await this.records.store.inspect()).forgetEpoch;
         const guard = await this.guard(scope, { reserve: reservedTokens });
-        const data: TwinAnalysisJob = { meterPeriod: meterPeriod(), ...(scope?.executor ? {executor: scope.executor} : {}), sourceId: source.id, sourceRevision: source.revision, sourceHash: source.data.hash,
+        const data: TwinAnalysisJob = { ...(scope?.maxOutputTokens !== undefined ? {maxOutputTokens: scope.maxOutputTokens} : {}), meterPeriod: meterPeriod(), ...(scope?.executor ? {executor: scope.executor} : {}), sourceId: source.id, sourceRevision: source.revision, sourceHash: source.data.hash,
             ...userIdentity(settings.data), offset, start: offset, end, connectionId: source.data.connectionId, sessionId: `twin-analysis-${id}`, taskId: '', epoch,
             reservedTokens, createdAt: Date.now(), state: 'queued', error: '', ...(scope ? { scanScope: scope } : {}),
             checkpointId: progress.checkpointId, checkpointRevision: progress.checkpointRevision };

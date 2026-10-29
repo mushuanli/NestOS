@@ -45,6 +45,7 @@ export interface TwinSettings extends TwinUserIdentity {
 }
 export interface TwinGrantData { sessionId: string; agentId: string; connectionId: string; enabled: boolean; project: string; connectionFingerprint?: string; }
 export interface TwinAnalysisJob extends TwinUserIdentity {
+    maxOutputTokens?: number;
     executor?: import('./scanner').TwinScannerExecutor;
     meterPeriod?: string;
     errorDetail?: string; actualTokens?: number;
@@ -84,4 +85,4 @@ export function validateRelation(value: unknown): TwinRelation | undefined {
     return { predicate: relation.predicate.trim(), target: relation.target.trim(), targetKind: relation.targetKind };
 }
 
-export interface TwinScanScope { runId: string; planId: string; planRevision: string; sourceId: string; fence: number; kinds: TwinMemoryKind[]; focus?: string; executor?: import('./scanner').TwinScannerExecutor; }
+export interface TwinScanScope { maxOutputTokens?: number; runId: string; planId: string; planRevision: string; sourceId: string; fence: number; kinds: TwinMemoryKind[]; focus?: string; executor?: import('./scanner').TwinScannerExecutor; }

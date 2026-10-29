@@ -1,3 +1,5 @@
+import {NodeToolConnections} from './tool-connections';
+import path from 'node:path';
 import { createApplicationRuntime, type ApplicationRuntime, type ApplicationRuntimeOptions } from '@itookit/app-core';
 import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
 import { guardHostStorage } from '../storage/host-storage';
@@ -19,7 +21,7 @@ export interface NodeApplicationHost {runtime: ApplicationRuntime; audit: AuditP
 export async function openNodeApplication(options: NodeApplicationOptions): Promise<NodeApplicationHost> {
     const resources = await openHostRuntime(options);
     try {
-        const runtime = await createNodeRuntime(resources.backend, resources.root, {...options.runtime, providerAuthorization: resources.authorization}, options.toolPackages);
+        const runtime = await createNodeRuntime(resources.backend, resources.root, {...options.runtime, providerAuthorization: resources.authorization, toolConnections: new NodeToolConnections(path.join(options.authDir, 'tool-connections'))}, options.toolPackages);
         let closing: Promise<void> | undefined;
         return {runtime, audit: resources.audit, close: () => closing ??= closeHostResources([resources.close, () => runtime.dispose()])};
     } catch (error) { await resources.close(); throw error; }
@@ -32,10 +34,10 @@ export async function createNodeRuntime(source: IStorageBackend, root?: string, 
         if (key === 'close') return async () => {};
         const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
     }});
-    const packages = new NodeToolPackages(toolPackages);
+    const packages = new NodeToolPackages({...toolPackages, connections: options.toolConnections});
     try {
         await packages.initialize();
-        const additionalTools = mergeNodePackageTools([...createStandardNodeTools(), ...await loadNodeToolModules(),
+        const additionalTools = mergeNodePackageTools([...createStandardNodeTools(), ...await loadNodeToolModules(undefined, options.toolConnections),
             ...options.kernelPlatform?.additionalTools ?? []], packages.initialTools(), BUILTIN_TOOLS);
         const runtime = await createApplicationRuntime({remoteSourceProvider: createNestOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
             toolDependencies: options.toolDependencies ?? packages,

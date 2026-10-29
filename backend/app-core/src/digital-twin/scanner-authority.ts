@@ -29,7 +29,7 @@ export async function bindScannerSession(records: TwinRecords, job: TwinAnalysis
 /** Each actual provider attempt consumes part of the prepaid job envelope before sending. */
 export async function authorizeScannerExchange(records: TwinRecords, job: TwinAnalysisJob, request: Request, context: Context): Promise<void> {
     if (!context.attemptId) throw new Error('TWIN_SCANNER_ATTEMPT_REQUIRED');
-    const output = request.request.maxTokens ?? 8192;
+    const output = Math.min(request.request.maxTokens ?? 8192, job.maxOutputTokens ?? Infinity);
     if (!Number.isSafeInteger(output) || output <= 0 || output > job.reservedTokens) throw new Error('TWIN_SCAN_BUDGET_EXHAUSTED');
     request.request.maxTokens = output;
     const quantity = new TextEncoder().encode(JSON.stringify(request.request)).byteLength + output + 1024;

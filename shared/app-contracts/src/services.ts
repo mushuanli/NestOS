@@ -1,5 +1,6 @@
 /** Public application service interfaces, independent of runtime and service classes. */
 export type * from './ports/digital-twin';
+export type * from './ports/tool-connections';
 export type * from './ports/configuration';
 export type * from './ports/projects';
 export type * from './ports/files';

@@ -1,3 +1,4 @@
+import {sourceConnectionSettings, importConnection, type SourceConnections} from './source-connections';
 import {scannerFieldChange, updateExecutorMode, updateInputMode, readScannerExecutor, readScannerFile} from './scanner-fields';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
 import { memoryInput } from './memory-input';
@@ -20,6 +21,7 @@ export interface TwinWorkbenchOptions {
 }
 export class TwinWorkbench {
     private workspaces: import('@itookit/app-contracts').TwinWorkspaceView[] = [];
+    private sourceConnections: SourceConnections = {types: [], connections: []};
     private targets: RootCallTarget[] = [];
     private page: TwinPage = 'overview';
     private selectedSession = '';
@@ -53,7 +55,7 @@ export class TwinWorkbench {
         editor.addEventListener('keydown', event => this.scanTabKey(event), { signal });
         editor.addEventListener('submit', event => { event.preventDefault(); void this.submit(event); }, { signal });
         editor.addEventListener('input', event => this.search(event), { signal });
-        editor.addEventListener('change', event => { if (event.target instanceof HTMLSelectElement && event.target.hasAttribute('data-twin-workspace')) {void this.switchWorkspace(event.target); return;} if (event.target instanceof HTMLInputElement && event.target.name === 'inputUpload') {void this.loadScannerUpload(event.target); return;} if (scannerFieldChange(event, this.targets)) {this.dirty = true; return;} if (!this.scanLists.handle(event)) this.settingsChanged(event, true); }, { signal });
+        editor.addEventListener('change', event => { if (event.target instanceof HTMLSelectElement && event.target.hasAttribute('data-twin-workspace')) {void this.switchWorkspace(event.target); return;} if (event.target instanceof HTMLInputElement && event.target.name === 'connectionImport') {this.dirty = true; void importConnection(event.target).catch(error => {this.options.editor.querySelector('[role=alert]')!.textContent = error instanceof SyntaxError ? label('connectionImportInvalid') : errorText(error);}); return;} if (event.target instanceof HTMLInputElement && event.target.name === 'inputUpload') {void this.loadScannerUpload(event.target); return;} if (scannerFieldChange(event, this.targets)) {this.dirty = true; return;} if (!this.scanLists.handle(event)) this.settingsChanged(event, true); }, { signal });
         this.unsubscribe = this.options.service.onChange(() => this.serviceChanged());
         await Promise.all([this.navigation.start(), this.refresh()]);
         await this.navigation.sync('/' + this.page);
@@ -96,9 +98,9 @@ export class TwinWorkbench {
         this.loading = true; this.refreshQueued = false;
         if (!this.snapshot) this.render();
         try {
-            const [snapshot, connections, targets, workspaces] = await loadOverview(this.options, this.abort.signal);
+            const [snapshot, connections, targets, workspaces, sourceConnections] = await loadOverview(this.options, this.abort.signal);
             if (generation !== this.generation || this.abort.signal.aborted) return;
-            this.snapshot = snapshot; this.connections = connections; this.targets = targets; this.workspaces = workspaces; this.error = ''; this.loading = false; this.render();
+            this.sourceConnections = sourceConnections; this.snapshot = snapshot; this.connections = connections; this.targets = targets; this.workspaces = workspaces; this.error = ''; this.loading = false; this.render();
             if (this.refreshQueued && !this.dirty) void this.refreshDraft();
         } catch (error) {
             if (generation !== this.generation || this.abort.signal.aborted) return;
@@ -112,7 +114,7 @@ export class TwinWorkbench {
         const previousSettings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         const snapshot = this.snapshot;
         const body = !snapshot ? '' : this.page === 'overview' ? overview(snapshot)
-            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab, this.targets) : memories(snapshot, this.page, this.selectedSession.startsWith('scan:') ? this.selectedSession.slice(5) : undefined);
+            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab, this.targets) + sourceConnectionSettings(this.sourceConnections) : memories(snapshot, this.page, this.selectedSession.startsWith('scan:') ? this.selectedSession.slice(5) : undefined);
         this.options.editor.innerHTML = `<div class="twin__body">${this.workspaces.length ? `<label>${escapeHTML(label('workspace'))}<select data-twin-workspace ${this.busy ? 'disabled' : ''}>${this.workspaces.map(space => `<option value="${escapeAttr(space.id)}" ${space.id === snapshot?.workspace?.id ? 'selected' : ''}>${escapeHTML(space.name)} · ${escapeHTML(label('workspaceKind.' + space.kind))}</option>`).join('')}</select></label>` : ''}${snapshot?.workspace?.readOnly ? `<p>${escapeHTML(label('workspaceReadOnly'))}</p>` : ''}<h2>${escapeHTML(label(this.page))}</h2>
             <p class="twin__status" role="status">${escapeHTML(this.loading ? t('status.loading') : this.busy ? label('busy') : this.message)}</p>
             <p class="twin__error" role="alert">${escapeHTML(this.error)}</p>${this.error ? `<button type="button" data-action="refresh">${escapeHTML(label('refresh'))}</button>` : ''}${body}</div>`;
@@ -149,7 +151,8 @@ export class TwinWorkbench {
         this.busy = true; control.disabled = true;
         try {
             const next = await this.options.service.openWorkspace(control.value);
-            const [snapshot, targets, spaces] = await Promise.all([next.snapshot(), next.scannerTargets(), next.workspaces()]);
+            const [snapshot, targets, spaces, sourceConnections] = await Promise.all([next.snapshot(), next.scannerTargets(), next.workspaces(), next.listSourceConnections()]);
+            this.sourceConnections = sourceConnections;
             if (this.abort.signal.aborted || generation !== this.generation) return;
             this.unsubscribe?.(); this.options.service = next;
             this.autosave = new TwinSettingsAutosave(next, () => this.renderSaveState());
@@ -204,6 +207,7 @@ export class TwinWorkbench {
             cancelJob: () => this.options.service.cancelAnalysis(id),
             runScanPlan: () => this.options.service.runScanPlan(id), cancelScanRun: () => this.options.service.cancelScanRun(id),
             pauseScanPlan: () => this.scanPlanCommand(action, id), enableScanPlan: () => this.scanPlanCommand(action, id),
+            removeSourceConnection: () => this.options.service.removeSourceConnection(id),
             removeScanPlan: () => this.scanPlanCommand(action, id),
             revokeSource: () => this.sourceCommand(action, id), enableSource: () => this.sourceCommand(action, id),
             removeSource: () => this.sourceCommand(action, id),
@@ -258,7 +262,7 @@ export class TwinWorkbench {
     }
     private async refreshDraft(): Promise<void> {
         const resource = this.getActiveResourceId();
-        const drafts = [...this.options.editor.querySelectorAll<HTMLFormElement>('form')].map(form => ({
+        const drafts = [...this.options.editor.querySelectorAll<HTMLFormElement>('form:not([data-form=sourceConnection])')].map(form => ({
             key: `${form.dataset.form}:${form.dataset.id ?? ''}`, open: form.closest('details')?.open, values: [...new FormData(form).entries()] }));
         await this.refresh();
         if (resource !== this.getActiveResourceId()) return;
@@ -273,7 +277,7 @@ export class TwinWorkbench {
                 if (control instanceof HTMLInputElement && control.type === 'checkbox') control.checked = values.includes(control.value);
                 else if (values.length) {
                     control.value = values[0];
-                    if (control.name === 'executor') scannerFieldChange({target: control} as unknown as Event, this.targets);
+                    if (control.name === 'executor' || control.name === 'collection') scannerFieldChange({target: control} as unknown as Event, this.targets);
                 }
             }
             if (form.dataset.form === 'scanPlan') updateInputMode(form);
@@ -320,6 +324,8 @@ export class TwinWorkbench {
             mergePeople: () => service.mergePeople(form.dataset.id!, field(data, 'mergeTarget')),
             source: () => service.addSource(sourceSpec(data), field(data, 'connectionId')),
             memory: () => service.addMemory(memoryInput(data)),
+            sourceConnection: () => service.saveSourceConnection({id: field(data, 'id'), type: form.dataset.type!, name: field(data, 'name'),
+                values: Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('[data-connection-field]')].map(control => [control.name, String(data.get(control.name) ?? '')]))}),
             scanPlan: () => this.saveScanPlan(form, data),
             execution: () => this.saveMemory(form, data), correct: () => this.saveMemory(form, data),
         };
@@ -347,14 +353,15 @@ export class TwinWorkbench {
     }
     private async saveScanPlan(form: HTMLFormElement, data: FormData) {
         const plan = this.snapshot!.scans.plans.find(item => item.id === form.dataset.id);
-        const input: TwinScanRuleInput = { executor: readScannerExecutor(form, this.targets), name: field(data, 'name'), focus: field(data, 'focus'), include: lines(data, 'include'), exclude: lines(data, 'exclude'),
+        const input: TwinScanRuleInput = {collection: readScannerExecutor(form, this.targets, 'collection'),
+            maxOutputTokens: field(data, 'maxOutputTokens').trim() ? Number(data.get('maxOutputTokens')) : undefined, executor: readScannerExecutor(form, this.targets), name: field(data, 'name'), focus: field(data, 'focus'), include: lines(data, 'include'), exclude: lines(data, 'exclude'),
             kinds: data.getAll('kinds').map(String) as TwinScanRuleInput['kinds'],
             trigger: field(data, 'trigger') as TwinScanRuleInput['trigger'], autoConfirm: data.get('autoConfirm') === 'on',
             runTokenLimit: field(data, 'runTokenLimit').trim() ? Number(data.get('runTokenLimit')) : null,
             intervalMinutes: Number(data.get('intervalMinutes')), enabled: data.get('enabled') === 'on' };
         const mode = field(data, 'inputMode');
         if (mode === 'existing' && plan) return this.options.service.saveScanPlan(plan.id, plan.revision,
-            {...plan.data, name: input.name, focus: input.focus, executor: input.executor, trigger: input.trigger ?? plan.data.trigger,
+            {...plan.data, name: input.name, focus: input.focus, executor: input.executor, maxOutputTokens: input.maxOutputTokens, trigger: input.trigger ?? plan.data.trigger,
                 enabled: input.enabled, autoConfirm: input.autoConfirm, runTokenLimit: input.runTokenLimit ?? undefined, intervalMinutes: input.intervalMinutes});
         if (mode === 'text') input.input = {kind: 'text', text: field(data, 'inputText')};
         if (mode === 'file') input.input = {kind: 'file', path: field(data, 'inputFilePath')};

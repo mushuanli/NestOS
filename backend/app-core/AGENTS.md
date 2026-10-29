@@ -217,3 +217,5 @@ configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、�
 数字分身的月度 token 额度按 UTC 自然月独立于累计预算检查；metering 与 job/累计预留在同一 SeqFile 事务提交。结算回原预留月份，未知用量保留 pending，不将估算 token 表示为供应商费用。旧账不回填、不重置。
 
 数字分身 `scanner-executor` 复用发布 Agent / Flow 的独立调用和 Kernel 回执；工具与 MCP 通过 Flow 接入。`scanner-input` 保存空间内文本快照，工作区文件仍经过来源授权；`scanner-authority` 绑定子 Session、发送前复验与逐 attempt 额度。`workspaces` 只提供宿主授权的独立空间句柄，读写权限在后端强制；runtime 按真实执行绑定路由到所属空间，不以界面选择作为全局授权状态。当前文本扫描不接入 harness、媒体、动态委派及嵌套独立调用，范围见扫描器设计文档。
+
+- 数字分身可在每次扫描前执行单独冻结的采集 Flow，仅允许静态 Tool/Transform/Return，禁止模型、嵌套调用和来源变化触发；先保存工作区来源再重新发现，来源与知识继续用原 hash/证据机制。maxOutputTokens 同规则/运行/job 冻结并在发送前强制上限，layout 7 阻断旧客户端忽略新约束。

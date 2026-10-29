@@ -159,3 +159,7 @@
 .twin__scan-filters label:first-child { flex: 1 1 240px; }
 .twin__scan-filters input, .twin__scan-filters select { box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--llm-border-color, #dce1e8); border-radius: 8px; background: var(--llm-bg-primary, #fff); color: var(--llm-text-primary, #222); font: inherit; }
 .twin__scan-pagination { display: flex; gap: 12px; align-items: center; justify-content: end; font-size: 13px; margin-block: 16px; }
+
+.twin__step { margin: 0; padding: 16px; border: 1px solid var(--llm-border-color, #dce1e8); border-radius: 8px; display: grid; gap: 12px; min-width: 0; }
+.twin__step > legend { padding-inline: 6px; font-weight: 500; }
+.twin__step [hidden] { display: none; }

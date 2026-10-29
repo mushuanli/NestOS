@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "completedAt": "2026-10-29T05:13:57.702496+00:00",
+  "sourceCommit": "23bdf385287e673ad1c801b23ff919b08de49ce5",
+  "workingTreeModified": true,
+  "appCoreLive": {
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0
+  },
+  "cliLive": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "suites": [
+    {
+      "file": "backend/app-core/tests/harness-agent-live.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "cloudModel": false,
+      "nativeCLI": true,
+      "sourceSha256": "682d5c76ea7986872bd2631086684102e2c03968adce4b985678ea3590880aeb",
+      "log": "/tmp/x1-live-isolated-ckda0inh/fixed-agent.log"
+    },
+    {
+      "file": "backend/app-core/tests/harness-execution-live.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "cloudModel": false,
+      "nativeCLI": true,
+      "sourceSha256": "66c287413f54b4ca3db0f65fdfcd658dc37686ade076a2cc281b1da8de0f44bd",
+      "log": "/tmp/x1-live-isolated-ckda0inh/fixed-execution.log"
+    },
+    {
+      "file": "backend/app-core/tests/harness-capacity-live.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "cloudModel": false,
+      "nativeCLI": true,
+      "sourceSha256": "3b3d87f21f95460ee56cbebc2387fb99aa2ade4197a35ee55d130e5719f030d1",
+      "log": "/tmp/x1-live-isolated-ckda0inh/fixed-capacity.log"
+    },
+    {
+      "file": "backend/app-core/tests/harness-real-model-live.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "cloudModel": true,
+      "nativeCLI": true,
+      "sourceSha256": "504cb3a095b7641dedb8cdcc923cfa3be24667b33e2531575ed15db5baba501a",
+      "log": "/tmp/x1-live-real-final-1xwshfi3/real-app.log"
+    },
+    {
+      "file": "apps/cli/tests/harness-real-model-live.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "cloudModel": true,
+      "nativeCLI": true,
+      "sourceSha256": "05666224f7ebf4440180e15a015699ebdb144025e719c0b071b003547e63dd9e",
+      "log": "/tmp/x1-live-real-lr6d7kpw/real-cli.log"
+    }
+  ],
+  "isolation": {
+    "temporaryProjects": true,
+    "dailySessionsModified": false,
+    "fixedSuitesUseSeparateNodes": true
+  },
+  "httpd": {
+    "runningVersion": "20261029T044235-7b6a1026-dirty",
+    "verified": [
+      "health via client certificate",
+      "CLI to HTTP application RPC: connections, agents and MCP directory reads"
+    ],
+    "executionEndToEndVerified": false,
+    "deployed": false
+  },
+  "fixtureChange": {
+    "file": "backend/app-core/tests/harness-real-model-fixture.ts",
+    "description": "Require exact evidence JSON key in the prompt and report a type assertion before checking its length; no relaxed assertions or additional skips.",
+    "sourceSha256": "6e5b446697512822f0efad0d0bfe72de6ba7de607961c69dd814ac04ea826a2f"
+  },
+  "earlierAttempts": [
+    "Fixed peer initially used a host path for Write; corrected to the registered project sandbox path.",
+    "Native settings gateway attempt reached an indeterminate acknowledgement followed by EBUSY; failed logs retained in /tmp/x1-live-acceptance-kpnclmlz.",
+    "One actual model returned shortEvidence for an ambiguous prompt; failure retained in /tmp/x1-live-real-lr6d7kpw, exact schema prompt rerun passed.",
+    "A combined fixed-suite run did not finish after capacity testing; final fixed suites used separate fixture nodes."
+  ]
+}

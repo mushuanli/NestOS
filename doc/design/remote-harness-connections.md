@@ -99,6 +99,12 @@ pnpm --filter @itookit/cli exec vitest run tests/harness-real-model-live.test.ts
 
 测试缺少显式环境变量时跳过，不隐式使用日常会话或发送用户消息。测试设施使用临时项目和profile；业务工作流仍由 `.flow` 声明。
 
+## 真实环境补充回归（2026-10-29）
+
+本次显式提供隔离环境元数据，app-core 原跳过的 13 项全部通过：原生 CLI 与固定模型 peer 的执行/审批/取消/回执恢复 4 项、Agent/Flow/Composite/恢复 4 项、20 会话容量与冷恢复 1 项，以及真实模型 4 项。固定 peer 的三个套件分别使用独立临时节点，避免容量测试遗留状态影响其他验收；不能将这些固定响应测试计为云模型验收。CLI 另有真实 `.flow` 与 Agent 入口验收 1 项通过。机器记录见 [本次回归结果](fixtures/harness-live-regression-20261029.json)。
+
+真实模型曾将提示中的「short evidence」理解为 `shortEvidence`，导致验收字段缺失；提示现要求精确键 `evidence`，断言先核对字符串类型再检查长度，仍要求实际 Read、隐藏挑战值、正确发现与原回执恢复，未放宽条件。前次失败日志保留，修正后四项全部重跑通过。日常测试仍需显式环境变量，不能隐式写入个人项目。当前 httpd `20261029T044235-7b6a1026-dirty` 仅补验客户端证书认证、health 与 CLI 目录读取；本次没有部署，也没有将源码隔离环境的通过结果视为线上 httpd 执行链验收。
+
 ## 当前边界
 
 - 输入支持文本消息、已物化的文本/图片附件，以及标准 image/file 资产引用；原生 profile 必须声明相应能力。PDF 等其他格式须先显式转换，远程 URL 不由适配器自动下载。Agent 的 system/user 历史作为调用上下文传入，远端实际系统权限仍由原生 profile 控制。

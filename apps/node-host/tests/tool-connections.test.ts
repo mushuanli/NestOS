@@ -1,4 +1,4 @@
-import {mkdtemp, rm, stat, symlink} from 'node:fs/promises';
+import {mkdtemp, rm, stat, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {expect, it} from 'vitest';
@@ -32,5 +32,15 @@ it('refuses a symlinked credential directory', async () => {
     try {
         await symlink(root, path.join(root, 'link'));
         await expect(new NodeToolConnections(path.join(root, 'link')).snapshot()).rejects.toThrow('TOOL_CONNECTION_STORAGE_NOT_PRIVATE');
+    } finally {await rm(root, {recursive: true, force: true});}
+});
+
+it('reports corrupt credential storage without returning a JSON excerpt containing secrets', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'tool-connections-'));
+    try {
+        await writeFile(path.join(root, 'connections.json'), '[{"secret":"PRIVATE_TOKEN", broken]', {mode: 0o600});
+        await expect(new NodeToolConnections(root).snapshot()).rejects.toThrow('TOOL_CONNECTION_STORAGE_INVALID');
+        const failure = await new NodeToolConnections(root).snapshot().catch(error => error);
+        expect(String(failure)).not.toContain('PRIVATE_TOKEN');
     } finally {await rm(root, {recursive: true, force: true});}
 });

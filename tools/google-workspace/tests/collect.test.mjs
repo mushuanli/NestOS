@@ -62,3 +62,32 @@ test('rejects unsupported encoding and handles multipart alternatives without at
     assert.match(material.content, /I prefer TypeScript/); assert.doesNotMatch(material.content, /duplicate|secret.txt/);
     assert.throws(() => mailMaterial({id: 'a', payload: {...plain, headers: [{name: 'Content-Type', value: 'text/plain; charset=invalid-codec'}]}}), /GOOGLE_MAIL_ENCODING_UNSUPPORTED/);
 });
+
+test('classifies expired authorization, invalid clients, API disablement, quotas and local write failures without leaking details', async () => {
+    for (const [error, expected] of [['invalid_grant', 'REAUTH_REQUIRED'], ['invalid_client', 'CLIENT_INVALID']]) {
+        const f = fixture(() => Response.json({}));
+        await assert.rejects(collectGoogle('gmail', args, f.context, f.connections,
+            async () => Response.json({error, error_description: 'private-token'}, {status: 400})), new RegExp('GOOGLE_AUTH_' + expected));
+        assert.equal(f.files.size, 0); assert.doesNotMatch(f.logs.join(''), /private-token/);
+    }
+    for (const [reason, expected] of [['accessNotConfigured', 'API_DISABLED'], ['userRateLimitExceeded', 'RATE_LIMITED']]) {
+        const f = fixture(() => Response.json({error: {errors: [{reason}], message: 'private content'}}, {status: 403}));
+        await assert.rejects(collectGoogle('gmail', args, f.context, f.connections, f.fetcher), new RegExp('GOOGLE_MAIL_LIST_' + expected));
+        assert.equal(f.files.size, 0); assert.doesNotMatch(f.logs.join(''), /private content/);
+    }
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]}) : Response.json(message('a')));
+    f.context.vfs.writeFile = async () => {throw new Error('private filesystem detail');};
+    await assert.rejects(collectGoogle('gmail', args, f.context, f.connections, f.fetcher), /GOOGLE_SOURCE_WRITE_FAILED/);
+    assert.doesNotMatch(f.logs.join(''), /private filesystem/);
+});
+
+test('refuses to publish fetched evidence if the user changes the connection during collection', async () => {
+    let refreshToken = 'original-refresh';
+    const f = fixture(url => {
+        if (url.pathname.endsWith('/messages')) return Response.json({messages: [{id: 'a'}]});
+        refreshToken = 'replacement-refresh'; return Response.json(message('a'));
+    });
+    f.connections.resolve = async () => ({clientId: 'client', clientSecret: 'private-secret', refreshToken});
+    await assert.rejects(collectGoogle('gmail', args, f.context, f.connections, f.fetcher), /GOOGLE_CONNECTION_CHANGED/);
+    assert.equal(f.files.size, 0); assert.doesNotMatch(f.logs.join(''), /replacement-refresh|original-refresh/);
+});

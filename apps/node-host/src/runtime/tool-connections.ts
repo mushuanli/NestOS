@@ -30,7 +30,7 @@ export class NodeToolConnections implements ToolConnectionAccess {
         return {...record.values};
     }
     save(input: ToolConnectionInput): Promise<void> {
-        return this.mutate(records => {
+        return this.mutate('save', records => {
             const type = this.types.get(input?.type);
             if (!type || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(input.id) || !input.name?.trim()
                 || input.name.length > 200 || !input.values || typeof input.values !== 'object') throw failure('TOOL_CONNECTION_INVALID');
@@ -47,7 +47,7 @@ export class NodeToolConnections implements ToolConnectionAccess {
             return [...records.filter(record => record.id !== input.id), {id: input.id, type: input.type, name: input.name.trim(), values}];
         });
     }
-    remove(id: string): Promise<void> {return this.mutate(records => records.filter(record => record.id !== id));}
+    remove(id: string): Promise<void> {return this.mutate('remove', records => records.filter(record => record.id !== id));}
     private async read(): Promise<ToolConnectionInput[]> {
         await mkdir(this.directory, {recursive: true, mode: 0o700}); await this.checkPrivate(this.directory, true);
         const file = path.join(this.directory, 'connections.json');
@@ -55,17 +55,22 @@ export class NodeToolConnections implements ToolConnectionAccess {
             await this.checkPrivate(file);
             const records: unknown = JSON.parse(await readFile(file, 'utf8'));
             if (!Array.isArray(records) || records.some(record => !record || typeof record.id !== 'string'
-                || typeof record.type !== 'string' || typeof record.name !== 'string' || !record.values
+                || typeof record.type !== 'string' || typeof record.name !== 'string' || !record.values || typeof record.values !== 'object' || Array.isArray(record.values)
                 || Object.values(record.values).some(value => typeof value !== 'string'))) throw failure('TOOL_CONNECTION_STORAGE_INVALID');
             return records;
-        } catch (error) {if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error;}
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+            if (error instanceof SyntaxError) throw failure('TOOL_CONNECTION_STORAGE_INVALID');
+            if (/^TOOL_CONNECTION_[A-Z_]+$/.test((error as NodeJS.ErrnoException).code ?? '')) throw error;
+            throw failure((error as NodeJS.ErrnoException).code === 'EACCES' ? 'TOOL_CONNECTION_STORAGE_DENIED' : 'TOOL_CONNECTION_STORAGE_FAILED');
+        }
     }
     private async checkPrivate(file: string, directory = false): Promise<void> {
         const info = await lstat(file);
         if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile())
             || process.platform !== 'win32' && ((info.mode & 0o077) !== 0 || info.uid !== process.getuid?.())) throw failure('TOOL_CONNECTION_STORAGE_NOT_PRIVATE');
     }
-    private mutate(change: (records: ToolConnectionInput[]) => ToolConnectionInput[]): Promise<void> {
+    private mutate(action: string, change: (records: ToolConnectionInput[]) => ToolConnectionInput[]): Promise<void> {
         const operationId = randomUUID(), started = Date.now();
         const operation = this.tail.then(async () => {
             const records = change(await this.read()), temporary = path.join(this.directory, randomUUID() + '.tmp');
@@ -77,8 +82,8 @@ export class NodeToolConnections implements ToolConnectionAccess {
                 try {await handleDirectory.sync();} finally {await handleDirectory.close();}
             } finally {await unlink(temporary).catch(() => {});}
         });
-        const observed = operation.then(() => {console.info('[ToolConnections]', {operationId, stage: 'persist', result: 'success', durationMs: Date.now() - started});}, error => {
-            console.warn('[ToolConnections]', {operationId, stage: 'persist', result: 'failure', code: /^TOOL_CONNECTION_[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'TOOL_CONNECTION_STORAGE_FAILED', durationMs: Date.now() - started});
+        const observed = operation.then(() => {console.info('[ToolConnections]', {operation: action, operationId, stage: 'persist', result: 'success', durationMs: Date.now() - started});}, error => {
+            console.warn('[ToolConnections]', {operation: action, operationId, stage: 'persist', result: 'failure', code: /^TOOL_CONNECTION_[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'TOOL_CONNECTION_STORAGE_FAILED', durationMs: Date.now() - started});
             throw error;
         });
         this.tail = observed.catch(() => {}); return observed;

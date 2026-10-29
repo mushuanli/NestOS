@@ -28,7 +28,10 @@
       "type": "number",
       "default": 100,
       "description": "1–500；超限会停止并保留已有来源，请缩小时间范围。",
-      "role": "policy"
+      "role": "policy",
+      "minimum": 1,
+      "maximum": 500,
+      "integer": true
     },
     {
       "name": "calendarId",
@@ -45,7 +48,10 @@
       "type": "number",
       "default": 7,
       "description": "相对于采集当天，0–180。",
-      "role": "option"
+      "role": "option",
+      "minimum": 0,
+      "maximum": 180,
+      "integer": true
     },
     {
       "name": "futureDays",
@@ -53,7 +59,18 @@
       "type": "number",
       "default": 30,
       "description": "相对于采集当天，1–180。包含全天日程、重复事件实例和取消状态。",
-      "role": "option"
+      "role": "option",
+      "minimum": 1,
+      "maximum": 180,
+      "integer": true
+    },
+    {
+      "name": "sourceKey",
+      "label": "来源标识",
+      "type": "string",
+      "default": "default",
+      "description": "同一账号的多个独立采集范围使用不同标识；修改范围时保留标识，以使旧结果失效。只使用英文字母、数字、点、下划线或连字符。",
+      "role": "policy"
     }
   ],
   "runPolicy": {
@@ -80,7 +97,8 @@
           "maxItems": "${param.maxItems}",
           "calendarId": "${param.calendarId}",
           "pastDays": "${param.pastDays}",
-          "futureDays": "${param.futureDays}"
+          "futureDays": "${param.futureDays}",
+          "sourceKey": "${param.sourceKey}"
         }
       }
     }

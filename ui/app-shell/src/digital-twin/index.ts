@@ -326,7 +326,10 @@ export class TwinWorkbench {
             memory: () => service.addMemory(memoryInput(data)),
             sourceConnection: () => service.saveSourceConnection({id: field(data, 'id'), type: form.dataset.type!, name: field(data, 'name'),
                 values: Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('[data-connection-field]')].map(control => [control.name, String(data.get(control.name) ?? '')]))}),
-            scanPlan: () => this.saveScanPlan(form, data),
+            scanPlan: async () => {
+                const id = await this.saveScanPlan(form, data);
+                if ((event as SubmitEvent).submitter?.hasAttribute('data-run-scanner')) await service.runScanPlan(id);
+            },
             execution: () => this.saveMemory(form, data), correct: () => this.saveMemory(form, data),
         };
         await this.act(async () => {

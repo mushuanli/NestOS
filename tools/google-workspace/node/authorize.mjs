@@ -9,7 +9,9 @@ if (!args.client || !args.output || !['gmail', 'calendar', 'gmail,calendar'].inc
     console.error('Usage: node authorize.mjs --client desktop-client.json --output private-connection.json --services gmail,calendar');
     process.exit(1);
 }
-const file = JSON.parse(await readFile(args.client, 'utf8')), config = file.installed;
+let file;
+try {file = JSON.parse(await readFile(args.client, 'utf8'));} catch {throw new Error('GOOGLE_CLIENT_FILE_INVALID');}
+const config = file.installed;
 if (!config?.client_id || !config.client_secret) throw new Error('A Google Desktop OAuth client JSON is required');
 const state = randomBytes(32).toString('base64url'), verifier = randomBytes(48).toString('base64url');
 const scopes = (args.services ?? 'gmail,calendar').split(',').map(service => 'https://www.googleapis.com/auth/'

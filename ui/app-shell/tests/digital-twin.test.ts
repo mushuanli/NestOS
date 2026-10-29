@@ -269,3 +269,32 @@ it('configures private source connections without rendering stored secrets and p
         expect(editor.innerHTML).not.toContain('new-private-secret');
     } finally {await view.destroy(); await service.dispose(); await manager.dispose();}
 });
+
+it('saves and runs a reviewed text scanner with its output limit and disables immediate runs for a disabled scanner', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const extract = vi.fn(async (job: import('@itookit/app-contracts').TwinAnalysisJob, _text: string, attached: (id: string) => Promise<void>) => {
+        await attached('fixture-task');
+        return {tokens: 10, candidates: [{content: 'Prefers TypeScript', kind: 'preference' as const, subject: 'self', project: '', eventTime: '', quote: 'I prefer TypeScript.'}]};
+    });
+    const service = new DigitalTwinService({fs: await manager.openFileSystem('/'), reader: {sessions: async () => [], read: vi.fn()},
+        extractor: {run: extract, cancel: vi.fn(), cleanup: vi.fn()}, deleteSession: vi.fn()});
+    await service.configure({connectionId: 'model'}, (await service.getSettings()).revision);
+    const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
+    const view = new TwinWorkbench({service, sidebar, editor, connections: async () => [{id: 'model', name: 'Model'}], selected() {}});
+    try {
+        await view.start(); await view.openResource('/sources');
+        const form = editor.querySelector<HTMLFormElement>('[data-form=scanPlan]')!;
+        const mode = form.querySelector<HTMLSelectElement>('[name=inputMode]')!; mode.value = 'text'; mode.dispatchEvent(new Event('change', {bubbles: true}));
+        form.querySelector<HTMLInputElement>('[name=name]')!.value = 'Trial scanner';
+        form.querySelector<HTMLTextAreaElement>('[name=inputText]')!.value = 'I prefer TypeScript.';
+        form.querySelector<HTMLInputElement>('[name=maxOutputTokens]')!.value = '256';
+        const enabled = form.querySelector<HTMLInputElement>('[name=enabled]')!, run = form.querySelector<HTMLButtonElement>('[data-run-scanner]')!;
+        enabled.checked = false; enabled.dispatchEvent(new Event('change', {bubbles: true})); expect(run.disabled).toBe(true);
+        enabled.checked = true; enabled.dispatchEvent(new Event('change', {bubbles: true})); expect(run.disabled).toBe(false);
+        run.click();
+        await vi.waitFor(async () => expect((await service.snapshot()).scans.runs.some(run => run.data.state === 'succeeded')).toBe(true));
+        expect((await service.snapshot()).memories[0].data.state).toBe('candidate');
+        expect(extract.mock.calls[0][0].maxOutputTokens).toBe(256);
+        expect((await service.snapshot()).scans.plans.find(plan => plan.data.name === 'Trial scanner')!.data.trigger).toBe('manual');
+    } finally {await view.destroy(); await service.dispose(); await manager.dispose();}
+});

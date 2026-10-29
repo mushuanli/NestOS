@@ -42,12 +42,9 @@ export async function saveMaterials(items, args, context, service) {
     if (!context.vfs?.writeFile || !context.vfs?.readFile || !context.operationId) throw fail('GOOGLE_WORKSPACE_REQUIRED');
     const root = args.directory.replace(/\/$/, '');
     if (!root || root.split('/').some(part => part === '..' || part.startsWith('.')) || root.includes('\\')) throw fail('GOOGLE_DIRECTORY_INVALID');
-    const scope = hash(JSON.stringify([service, args.connection, service === 'gmail' ? '' : args.calendarId])).slice(0, 24);
+    const scope = hash(JSON.stringify([service, args.connection, args.sourceKey ?? 'default', service === 'gmail' ? '' : args.calendarId])).slice(0, 24);
     const directory = root + '/' + service + '-' + scope, manifest = directory + '/.sources.json';
-    let previous = [];
-    try {previous = JSON.parse(await context.vfs.readFile(manifest, {maxBytes: 128 * 1024}));}
-    catch (error) {if (error?.code !== 'ENOENT') throw fail('GOOGLE_SOURCE_INDEX_READ_FAILED');}
-    if (!Array.isArray(previous) || previous.some(id => typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id))) throw fail('GOOGLE_SOURCE_INDEX_INVALID');
+    const previous = await readManifest(context.vfs, manifest);
     const files = items.map(item => ({key: hash(item.id), content: item.content}));
     if (files.some(file => Buffer.byteLength(file.content) > 128 * 1024)
         || files.reduce((size, file) => size + Buffer.byteLength(file.content), 0) > 4 * 1024 * 1024) throw fail('GOOGLE_MATERIAL_LIMIT');
@@ -62,4 +59,12 @@ export async function saveMaterials(items, args, context, service) {
     } catch {throw fail(context.signal?.aborted ? 'GOOGLE_CANCELLED' : 'GOOGLE_SOURCE_WRITE_FAILED');}
     return {count: files.length, removed: previous.filter(id => !current.has(id)).length, directory,
         include: ['file:' + directory + '/*.md'], complete: true};
+}
+
+async function readManifest(vfs, manifest) {
+    let previous = [];
+    try {previous = JSON.parse(await vfs.readFile(manifest, {maxBytes: 128 * 1024}));}
+    catch (error) {if (error?.code !== 'ENOENT') throw fail('GOOGLE_SOURCE_INDEX_READ_FAILED');}
+    if (!Array.isArray(previous) || previous.some(id => typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id))) throw fail('GOOGLE_SOURCE_INDEX_INVALID');
+    return previous;
 }

@@ -56,8 +56,12 @@ function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name:
 function planForm(_snapshot: TwinSnapshot, _connections: Array<{ id: string; name: string }>, plan?: TwinDataRecord<TwinScanPlan>, targets: RootCallTarget[] = []): string {
     const data = plan?.data;
     return `<form class="twin__form" data-form="scanPlan" data-id="${escapeAttr(plan?.id ?? '')}">
-        ${input('name', 'scanName', data?.name ?? '')}
-        <fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepSource'))}</legend>
+        ${input('name', 'scanName', data?.name ?? '')}${materialFields(data, targets)}${knowledgeFields(data, targets)}${scheduleFields(data)}
+        <button type="submit">${escapeHTML(label('save'))}</button>
+        <button type="submit" data-run-scanner>${escapeHTML(label('saveAndRunScanner'))}</button></form>`;
+}
+function materialFields(data: TwinScanPlan | undefined, targets: RootCallTarget[]): string {
+    return `<fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepSource'))}</legend>
         ${executorFields(targets, data?.collection, 'collection')}
         ${select('inputMode', [...(data && !data.rules ? [{id: 'existing', name: label('scannerKeepInput')}] : []),
             {id: 'rules', name: label('scannerRange')}, {id: 'text', name: label('scannerText')}, {id: 'file', name: label('scannerFile')}, {id: 'upload', name: label('scannerUpload')}], data && !data.rules ? 'existing' : 'rules')}
@@ -67,23 +71,25 @@ function planForm(_snapshot: TwinSnapshot, _connections: Array<{ id: string; nam
         <div data-input-mode="rules">${ruleText('include', 'scanInclude', data?.rules?.include ?? [])}</div>
         <div data-input-mode="rules">${ruleText('exclude', 'scanExclude', data?.rules?.exclude ?? [])}</div>
         <p data-input-mode="rules">${escapeHTML(label('scanRuleSyntax'))}</p><p class="twin__help">${escapeHTML(label('previewScopeHelp'))}</p>
-        </fieldset><fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepKnowledge'))}</legend>
-        ${executorFields(targets, data?.executor)}
-        <p class="twin__help">${escapeHTML(label('scannerEvidenceHelp'))}</p>
+        <span data-input-mode="rules">${button('previewRule', 'previewRule')}</span><pre class="twin__preview" data-preview></pre></fieldset>`;
+}
+function knowledgeFields(data: TwinScanPlan | undefined, targets: RootCallTarget[]): string {
+    return `<fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepKnowledge'))}</legend>
+        ${executorFields(targets, data?.executor)}<p class="twin__help">${escapeHTML(label('scannerEvidenceHelp'))}</p>
         <label data-scanner-builtin${data?.executor ? ' hidden' : ''}>${escapeHTML(label('scanFocus'))}<textarea name="focus" maxlength="2000" placeholder="${escapeAttr(label('scanFocusPlaceholder'))}">${escapeHTML(data?.focus ?? '')}</textarea></label>
-        <details><summary>${escapeHTML(label('advanced'))}</summary><fieldset class="twin__selection"><legend>${escapeHTML(label('scanKinds'))}</legend>${TWIN_KINDS.map(kind => check('kinds', kind, label(`kind.${kind}`), data?.kinds.includes(kind) ?? true)).join('')}</fieldset></details>
-        </fieldset><fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepSchedule'))}</legend>
-        ${select('trigger', ['manual', 'interval', 'changes'].map(id => ({id, name: label('scannerTrigger.' + id)})), data?.trigger ?? 'interval')}
+        <details><summary>${escapeHTML(label('advanced'))}</summary><fieldset class="twin__selection"><legend>${escapeHTML(label('scanKinds'))}</legend>${TWIN_KINDS.map(kind => check('kinds', kind, label(`kind.${kind}`), data?.kinds.includes(kind) ?? true)).join('')}</fieldset></details></fieldset>`;
+}
+function scheduleFields(data?: TwinScanPlan): string {
+    return `<fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepSchedule'))}</legend>
+        ${select('trigger', ['manual', 'interval', 'changes'].map(id => ({id, name: label('scannerTrigger.' + id)})), data?.trigger ?? 'manual')}
+        <div data-scanner-interval>${input('intervalMinutes', 'scanInterval', String(data?.intervalMinutes ?? 30), 'number')}</div>
         ${check('autoConfirm', 'on', label('scannerAutoConfirm'), data?.autoConfirm ?? false)}
         <label>${escapeHTML(label('scannerRunLimit'))}<input name="runTokenLimit" type="number" min="0" max="10000000" step="1" value="${data?.runTokenLimit ?? ''}"></label>
         <p>${escapeHTML(label('scannerRunLimitHelp'))}</p>
-        <div data-scanner-interval>${input('intervalMinutes', 'scanInterval', String(data?.intervalMinutes ?? 30), 'number')}</div>
         <details><summary>${escapeHTML(label('advanced'))}</summary>
         <label>${escapeHTML(label('maxOutputTokens'))}<input name="maxOutputTokens" type="number" min="128" max="8192" step="1" value="${data?.maxOutputTokens ?? ''}" placeholder="8192"></label>
         <p class="twin__help">${escapeHTML(label('maxOutputTokensHelp'))}</p></details>
-        ${check('enabled', 'on', label('enabled'), data?.enabled ?? true)}</fieldset>
-        <span data-input-mode="rules">${button('previewRule', 'previewRule')}</span><pre class="twin__preview" data-preview></pre>
-        <button type="submit">${escapeHTML(label('save'))}</button></form>`;
+        ${check('enabled', 'on', label('enabled'), data?.enabled ?? true)}</fieldset>`;
 }
 const ruleText = (name: string, title: string, lines: string[]) => `<label>${escapeHTML(label(title))}<textarea name="${name}" rows="4" placeholder="${name === 'include' ? 'project:Alpha' : '**/*.log&#10;drafts/'}">${escapeHTML(lines.join('\n'))}</textarea></label>`;
 

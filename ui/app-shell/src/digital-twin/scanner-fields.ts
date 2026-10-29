@@ -29,12 +29,13 @@ export function scannerFieldChange(event: Event, targets: RootCallTarget[]): boo
         if (control.name === 'collection' && control.value) form.querySelector<HTMLSelectElement>('[name=inputMode]')!.value = 'rules';
         updateExecutorMode(form); updateInputMode(form); return true;
     }
-    if (control.name === 'trigger') {updateInputMode(form); return true;}
+    if (control.name === 'trigger' || control.name === 'enabled') {updateInputMode(form); return true;}
     if (control.name !== 'inputMode') return false;
     updateInputMode(form); return true;
 }
 export function updateInputMode(form: HTMLFormElement): void {
-    const input = form.querySelector<HTMLSelectElement>('[name=inputMode]')!;
+    const input = form.querySelector<HTMLSelectElement>('[name=inputMode]');
+    if (!input) return;
     const collection = !!form.querySelector<HTMLSelectElement>('[name=collection]')?.value;
     input.querySelectorAll('option').forEach(option => {option.disabled = collection && option.value !== 'rules';});
     if (collection) input.value = 'rules';
@@ -45,6 +46,8 @@ export function updateInputMode(form: HTMLFormElement): void {
     if (changes) changes.disabled = collection;
     if (collection && trigger?.value === 'changes') trigger.value = 'interval';
     const interval = form.querySelector<HTMLElement>('[data-scanner-interval]');
+    const run = form.querySelector<HTMLButtonElement>('[data-run-scanner]');
+    if (run) run.disabled = !form.querySelector<HTMLInputElement>('[name=enabled]')?.checked;
     if (interval) interval.hidden = trigger?.value === 'manual';
     form.querySelectorAll<HTMLElement>('[data-input-mode]').forEach(row => {row.hidden = row.dataset.inputMode !== mode;});
 }

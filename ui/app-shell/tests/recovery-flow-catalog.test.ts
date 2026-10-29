@@ -29,7 +29,7 @@ it('restores the single self-contained Anki Flow from System Recovery and replac
     const editor = new RecoverySettingsEditor(container, runtime.agentService, {} as never, undefined, files);
     cleanup.push(() => editor.destroy()); await editor.render();
     expect([...container.querySelectorAll<HTMLElement>('[data-initial-id]')].map(input => input.dataset.initialId)).toEqual([
-        'note:readme', 'note:demo', 'note:flow-format', 'flow:essay-review', 'flow:anki-generate',
+        'note:readme', 'note:demo', 'note:flow-format', 'flow:essay-review', 'flow:anki-generate', 'flow:google-gmail-collect', 'flow:google-calendar-collect',
     ]);
     expect(container.textContent).toContain('/home/admin/flows/anki-generate.flow');
     expect(container.querySelector<HTMLElement>('[data-initial-id="flow:anki-generate"]')!.parentElement!.textContent).toContain(t('initialFiles.missing'));
@@ -40,7 +40,7 @@ it('restores the single self-contained Anki Flow from System Recovery and replac
     const published = await runtime.commandBus.execute<FlowRevision>(FlowCommand.RevisionGet, { id: draft.id });
     expect(draft.functions?.map(fn => fn.id)).toEqual(['anki-build', 'anki-recognize-group', 'anki-complete-batch']);
     expect(published.functions?.map(fn => fn.id)).toEqual(draft.functions!.map(fn => fn.id));
-    expect((await runtime.commandBus.execute<FlowDraft[]>(FlowCommand.DraftList, {})).map(flow => flow.id).sort()).toEqual(['anki-generate', 'essay-review']);
+    expect((await runtime.commandBus.execute<FlowDraft[]>(FlowCommand.DraftList, {})).map(flow => flow.id).sort()).toEqual(['anki-generate', 'essay-review', 'google-calendar-collect', 'google-gmail-collect']);
     for (const fn of draft.functions!) expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, { id: fn.id })).toBeNull();
     for (const id of ['anki-build', 'anki-from-image', 'anki-recognize-group', 'anki-complete-batch'])
         expect(await runtime.commandBus.execute(FlowCommand.DraftLoad, { id })).toBeNull();

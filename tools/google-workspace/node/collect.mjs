@@ -10,6 +10,7 @@ export async function collectGoogle(service, args, context, connections, fetcher
         const client = await googleClient(connections, args.connection, signal, fetcher);
         stage = 'fetch';
         const items = service === 'gmail' ? await mails(client, args, signal) : await events(client, args, signal);
+        stage = 'connection-check'; await client.verifyConnection();
         stage = 'persist'; const result = await saveMaterials(items, args, {...context, signal}, service);
         await report('success', undefined, result.count); return result;
     } catch (error) {

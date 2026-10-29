@@ -20,7 +20,7 @@ it('lists exact files, restores only selected notes and preserves edits', async 
     const { runtime, notes, library } = await setup();
     await runtime.flowEngine.engine.driver.delete(['/essay-review.flow']);
     const entries = await library.list();
-    expect(entries.map(entry => entry.name)).toEqual(['readme.md', 'person-agent-demo.md', 'flow文件格式说明.md', 'essay-review.flow', 'anki-generate.flow']);
+    expect(entries.map(entry => entry.name)).toEqual(['readme.md', 'person-agent-demo.md', 'flow文件格式说明.md', 'essay-review.flow', 'anki-generate.flow', 'google-gmail-collect.flow', 'google-calendar-collect.flow']);
     expect(entries[1]).toMatchObject({ path: '/home/admin/notes/person-agent-demo.md', exists: false });
     expect(await library.restore(['note:demo'])).toEqual([{ id: 'note:demo', status: 'restored' }]);
     expect(await notes.driver.readContent('/person-agent-demo.md', { encoding: 'utf-8' })).toBe(demo.content);

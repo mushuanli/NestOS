@@ -44,9 +44,9 @@ export function scanInput(input: TwinScanPlanInput): TwinScanPlanInput {
     if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 200
         || typeof input.connectionId !== 'string' || !input.connectionId.trim() || input.connectionId.length > 200
         || typeof input.enabled !== 'boolean') invalid();
-    if (input.collection && (!input.rules?.include.length || input.collection.target.kind !== 'flow')) throw new Error('TWIN_COLLECTION_SCOPE_REQUIRED');
+    if (input.collection && (!input.rules?.include.length || input.collection.target?.kind !== 'flow')) throw new Error('TWIN_COLLECTION_SCOPE_REQUIRED');
     if (input.collection && input.trigger === 'changes') throw new Error('TWIN_COLLECTION_INTERVAL_REQUIRED');
-    if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens < 128 || input.maxOutputTokens > 8192)) invalid();
+    if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens < 128 || input.maxOutputTokens > 8192)) throw new Error('TWIN_INVALID_OUTPUT_LIMIT');
     if (input.runTokenLimit !== undefined && (!Number.isSafeInteger(input.runTokenLimit) || input.runTokenLimit < 0 || input.runTokenLimit > 10000000)) invalid();
     if (input.autoConfirm !== undefined && typeof input.autoConfirm !== 'boolean') invalid();
     identifiers(input.sourceIds, 10000, Boolean(input.rules));

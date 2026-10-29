@@ -44,13 +44,13 @@ async function setup(kind: 'memory' | 'indexeddb') {
 }
 
 describe.each(['memory', 'indexeddb'] as const)('scan plans on %s', kind => {
-    it('upgrades the known previous layout without resetting identity, memory or forget tombstones', async () => {
+    it.each([2, 6])('upgrades previous layout %s without resetting identity, memory or forget tombstones', async layoutVersion => {
         const host = await setup(kind);
         const retained = await host.service.addMemory({ content: 'Retained during scan upgrade' });
         const forgotten = await host.service.addMemory({ content: 'Forgotten before scan upgrade' });
         await host.service.forget(forgotten);
         const store = await SeqTwinStore.open(host.fs, 'personal', 'admin'), before = await store.inspect();
-        await host.fs.meta.seq!.setEntry('/var/lib/digital-twin/personal/authority.seq', 'twin', JSON.stringify({ ...before, layoutVersion: 2 }));
+        await host.fs.meta.seq!.setEntry('/var/lib/digital-twin/personal/authority.seq', 'twin', JSON.stringify({ ...before, layoutVersion }));
         await expect(store.inspect()).rejects.toThrow('Unsupported Twin layout');
         const upgraded = await SeqTwinStore.open(host.fs, 'personal', 'admin');
         expect(await upgraded.inspect()).toEqual(before);

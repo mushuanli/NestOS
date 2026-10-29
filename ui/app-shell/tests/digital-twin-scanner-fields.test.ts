@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {expect, it} from 'vitest';
 import {executorFields, readScannerExecutor, scannerFieldChange, readScannerFile} from '../src/digital-twin/scanner-fields';
+import {sourceConnectionSettings, importConnection} from '../src/digital-twin/source-connections';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
 const targets: RootCallTarget[] = [{target: {kind: 'flow', id: 'reader', version: '1', digest: 'digest'}, name: 'Reader',
     input: {flowId: 'reader', revision: 1, digest: 'digest', parameters: [{name: 'body', type: 'string', inputSource: 'composer.text'},
@@ -23,4 +24,18 @@ it('reads UTF-8 upload snapshots and rejects oversized and invalid encoded files
     expect(await readScannerFile(new File(['hello'], 'note.txt', {type: 'text/plain'}))).toBe('hello');
     await expect(readScannerFile(new File([new Uint8Array([0xff])], 'binary.txt'))).rejects.toThrow();
     await expect(readScannerFile(new File(['a'.repeat(128 * 1024 + 1)], 'large.txt'))).rejects.toThrow();
+});
+
+it('imports authorization fields locally without exposing a saved secret or mutating fields on invalid input', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    host.innerHTML = sourceConnectionSettings({types: [{id: 'fixture', name: 'Fixture', description: '', fields: [{name: 'token', label: 'Token', secret: true}]}], connections: []});
+    const control = host.querySelector<HTMLInputElement>('[name=connectionImport]')!, token = host.querySelector<HTMLInputElement>('[name=token]')!;
+    try {
+        Object.defineProperty(control, 'files', {configurable: true, value: [new File(['{"token":"imported-private"}'], 'connection.json')]});
+        await importConnection(control); expect(token.value).toBe('imported-private');
+        Object.defineProperty(control, 'files', {configurable: true, value: [new File(['{"token":4}'], 'bad.json')]});
+        await expect(importConnection(control)).rejects.toThrow(); expect(token.value).toBe('imported-private');
+        Object.defineProperty(control, 'files', {configurable: true, value: [new File(['a'.repeat(64 * 1024 + 1)], 'large.json')]});
+        await expect(importConnection(control)).rejects.toThrow();
+    } finally {host.remove();}
 });

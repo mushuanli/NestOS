@@ -12,7 +12,7 @@ import { createVFSMentionProviders } from '../browser/mention/createVFSMentionPr
 import { VFSUIShell } from '@itookit/vfs-ui';
 import { lazyMdxEditorFactory as defaultEditorFactory } from '../browser/lazy-mdx';
 import type { WorkbenchConfig } from '../types';
-import { t, ACTION_ICONS, NavigationRequest} from '@itookit/common';
+import { t, ACTION_ICONS, createModuleLogger, randomUUID, NavigationRequest} from '@itookit/common';
 import { EditorOptions, IEditor, EditorHostContext } from '@itookit/ui-common';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { showNameDialog } from '../files/project-dialog';
@@ -66,7 +66,7 @@ export class Workbench {
                 toolbarOptions: { ...config.uiOptions?.toolbarOptions,
                     extraItems: [...(config.uiOptions?.toolbarOptions?.extraItems ?? []), ...(study ? [{ id: 'study', label: t('editor.study'), iconHTML: ACTION_ICONS.anki, placement: 'overflow' as const }] : [])],
                     iconOnlyActions: [...(config.uiOptions?.toolbarOptions?.iconOnlyActions ?? []), ...(study ? ['study'] : [])],
-                    actions: { ...config.uiOptions?.toolbarOptions?.actions, ...(study ? { study: async () => this.openFileInternal('@study') } : {}) },
+                    actions: { ...config.uiOptions?.toolbarOptions?.actions, ...(study ? { study: async () => this.openStudy() } : {}) },
                     root: { label: '/', title: `${t('workbench.directoryPath')}: /`, run: () => this.openDirectory('/') } },
                 deferExpansion: config.uiOptions?.deferExpansion ?? true,
                 listItems: config.uiOptions?.listItems,
@@ -100,6 +100,7 @@ export class Workbench {
             config.editorContainer,
             this.enhancedEditorFactory,
             {
+                directoryActions: study ? [{id: 'study', label: t('editor.study'), icon: ACTION_ICONS.anki, run: () => this.openStudy()}] : [],
                 virtualViews: study ? [{ id: '@study', title: t('editor.study'), icon: ACTION_ICONS.anki,
                     create: async container => (await import('@itookit/mdx-adapter')).createStudyEditor(container, this.engine,
                         path => this.openFileInternal(path)) }] : [],
@@ -248,6 +249,17 @@ export class Workbench {
             await this.vfsUI.refresh(); await this.openDirectory(path);
         });
     }
+    private async openStudy(): Promise<void> {
+        const operationId = randomUUID(), started = Date.now(), log = createModuleLogger('study-navigation');
+        try {
+            await this.openFileInternal('@study');
+            log.info('study.open', {operationId, stage: 'activate', result: 'success', durationMs: Date.now() - started});
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            log.error('study.open', {operationId, stage: 'activate', result: 'failure', code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'STUDY_NAVIGATION_FAILED', durationMs: Date.now() - started}); throw error;
+        }
+    }
+
     private async openFileInternal(nodeId: string): Promise<void> {
         if (nodeId === '/') { await this.openDirectory(nodeId); return; }
         await this.lifecycleUnsubscribe.openResource(nodeId);

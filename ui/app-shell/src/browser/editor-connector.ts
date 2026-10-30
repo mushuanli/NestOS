@@ -19,6 +19,7 @@ import type { WorkbenchStatePort } from '../workbench/state';
 import { fileDirectoryBreadcrumbs } from '../workbench/directory-breadcrumbs';
 
 export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
+    directoryActions?: Array<{id: string; label: string; icon?: string; run(path: string): void | Promise<void>}>;
     virtualViews?: Array<{ id: string; title: string; icon: string; create(container: HTMLElement): Promise<IEditor> }>;
     resolveEditor?: (node: Node) => EditorFactory | null | undefined;
     onEditorCreated?: (editor: IEditor | null) => void;
@@ -120,8 +121,9 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             contextMenu: (event, id) => { void vfs.showItemMenu(event, id).catch(report); }, select: ids => vfs.setSelection(ids),
             selectedIds: () => vfs.getSnapshot().selectedIds,
             bulkActions: directoryBulkActions(vfs),
-            actions: readOnly ? undefined : [{ label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'file').catch(report); } },
-                { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'directory').catch(report); } }],
+            actions: [...(options.directoryActions ?? []).map(action => ({...action, run: () => {void Promise.resolve().then(() => action.run(item.id)).catch(report);}})),
+                ...(readOnly ? [] : [{ label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'file').catch(report); } },
+                    { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'directory').catch(report); } }])],
             open: id => { void openResource(id).catch(report); },
             parent: item.id === '/' ? undefined : () => {
                 const parent = item.id.slice(0, item.id.lastIndexOf('/')) || '/';

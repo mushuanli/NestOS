@@ -358,3 +358,7 @@ mdxeditor 只暴露可选 `StudyCreation.draftStore`、`resumeGeneration` 和 `S
 ### 保存目录与学习来源分离
 
 `StudyCreation.directories.list(parent?, signal?)` 提供独立的保存目录枚举，不透明目录 ID 原样交回宿主。NestOS 的 mdx-adapter 从当前笔记文件空间按需读取目录元数据，包含空目录及尚未跟踪 cloze 的目录，隐藏目录排除；不读取或解析 Markdown 正文，也不改变学习索引的来源范围。选择器先显示顶层目录，再完成子目录提示；未提供该能力的独立宿主仍回退 StudyHost.list。文件名扩展名沿用宿主 VFSService 规则：无扩展名补当前空间默认扩展名，已有 .md/.mind 保留；笔记空间默认 .mind。
+
+### 连续创建的保存回执
+
+StudyCreation.save 可返回 {label: string}，由宿主提供包含实际扩展名的保存位置。保存成功后创建窗口保持打开，提示实际保存结果，清空文件名、参考输入、输出与暂存草稿，保留目录、提示词和模型，并为下一份分配新身份；失败保留全部输入与原身份以便重试。按钮为“保存并继续”和“关闭”；状态固定在操作区，下一次编辑会清除上次提示。附加的生成会话改名不阻塞文件保存回执；暂存清理失败与文件保存失败分开提示。

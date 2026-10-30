@@ -244,7 +244,7 @@ export class Workbench {
         return newNode.path;
     }
 
-    private async createStudyFile(draft: StudyDraft): Promise<void> {
+    private async createStudyFile(draft: StudyDraft): Promise<{label: string}> {
         const operationId = draft.operationId, started = Date.now(), log = createModuleLogger('study-documents');
         let stage = 'validate';
         try {
@@ -261,6 +261,7 @@ export class Workbench {
             }
             this.createdStudyDrafts.delete(operationId);
             log.info('study.create', {operationId, stage: 'complete', result: 'success', durationMs: Date.now() - started});
+            return {label: receipt.path};
         } catch (error) {
             log.error('study.create', {operationId, stage, result: 'failure', code: error instanceof FSError ? error.code : 'STUDY_CREATE_FAILED', durationMs: Date.now() - started});
             throw error;

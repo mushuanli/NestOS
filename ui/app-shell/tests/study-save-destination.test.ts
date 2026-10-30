@@ -27,7 +27,9 @@ it.each([{name:'new-note',file:'new-note.mind'},{name:'custom.md',file:'custom.m
   document.querySelector<HTMLInputElement>('dialog input[required]')!.value=name;
   document.querySelector<HTMLTextAreaElement>('.mdx-study-create__draft textarea')!.value='--answer--';
   document.querySelector('dialog form')!.dispatchEvent(new Event('submit',{cancelable:true}));
-  await vi.waitFor(()=>expect(document.querySelector('dialog')).toBeNull());
+  await vi.waitFor(()=>expect(document.querySelector('dialog .mdx-study__status')?.textContent).toBe('已保存：/English/Reading/'+file));
+  expect(document.querySelector('dialog')).not.toBeNull();expect(document.querySelector<HTMLInputElement>('dialog input[required]')!.value).toBe('');
+  expect(document.querySelector<HTMLTextAreaElement>('.mdx-study-create__draft textarea')!.value).toBe('');
   expect(await fs.driver.readContent('/English/Reading/'+file,{encoding:'utf-8'})).toBe('--answer--');
   expect(await fs.driver.exists('/'+file)).toBe(false);expect(await fs.driver.exists('/English/Reading/'+file+'.mind')).toBe(false);
   expect(await fs.driver.exists('/.nestos/cloze-srs.seq')).toBe(false);

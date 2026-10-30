@@ -4,6 +4,7 @@ import type { ScopedPersistenceStore } from '@itookit/mdxeditor';
 import { CLOZE_SRS_PATH, clozeDocumentPrefix } from '@itookit/app-contracts';
 import { createModuleLogger, randomUUID } from '@itookit/common';
 import { EngineMetadataStore } from './metadata-store';
+import {studyIndex} from './study-index';
 
 const log = createModuleLogger('cloze-storage');
 function storageErrorCode(error: unknown): string {
@@ -63,6 +64,7 @@ export class SeqFileStore implements ScopedPersistenceStore {
                 await this.seq().deleteEntry(CLOZE_SRS_PATH, storageKey);
                 throw new FSError('ENOENT', 'Review document was moved or deleted during saving');
             }
+            studyIndex(this.fs).patch(path, key, value ?? null);
             log.info('cloze.write', { operationId, stage: 'persist', result: 'success', durationMs: Date.now() - started });
         } catch (error) {
             log.error('cloze.write', { operationId, stage: 'persist', result: 'failure',
@@ -76,8 +78,10 @@ export class SeqFileStore implements ScopedPersistenceStore {
             if (await this.legacy.get(key) !== undefined) { await this.legacy.remove(key); await this.legacy.flush(); }
             return;
         }
-        if (await this.fs.driver.exists(CLOZE_SRS_PATH))
+        if (await this.fs.driver.exists(CLOZE_SRS_PATH)) {
             await this.seq().deleteEntry(CLOZE_SRS_PATH, clozeDocumentPrefix(this.documentPath) + key);
+            studyIndex(this.fs).patch(this.documentPath, key, undefined, true);
+        }
     }
 
     updateDocumentPath(path: string): void {

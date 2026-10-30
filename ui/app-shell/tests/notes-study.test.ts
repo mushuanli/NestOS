@@ -2,11 +2,13 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { Workbench } from '../src/core/Workbench';
+import {registerStudyDocument, createAdapterStore} from '@itookit/mdx-adapter';
 afterEach(() => { vi.unstubAllGlobals(); document.body.replaceChildren(); });
 it.each(['full', 'compact'] as const)('opens study from the collapsed %s sidebar menu and preserves lazy writes', async toolbar => {
  vi.stubGlobal('matchMedia', () => ({ matches:false, addEventListener(){}, removeEventListener(){} }));
  const { manager } = await createVFS({rootBackend:new MemoryBackend()}); const fs = await manager.openFileSystem('/');
  await fs.driver.createFile({parentPath:'/',name:'a.mind',content:'A --alpha--.'});
+ await registerStudyDocument(fs, '/a.mind');
  const sidebar = document.createElement('div'), content = document.createElement('div'); document.body.append(sidebar,content);
  const workbench = new Workbench({files:{fs,cwd:'/'},sidebarContainer:sidebar,editorContainer:content,
   editorConfig:{plugins:['cloze:cloze']},uiOptions:{toolbar}});
@@ -21,10 +23,10 @@ it.each(['full', 'compact'] as const)('opens study from the collapsed %s sidebar
   await vi.waitFor(()=>expect([...content.querySelectorAll('button')].some(b=>b.textContent==='全部笔记')).toBe(true));
   [...content.querySelectorAll('button')].find(b=>b.textContent==='全部笔记')!.click();
   await vi.waitFor(()=>expect(content.textContent).toContain('未学 1'));
-  expect(await fs.driver.exists('/.nestos/cloze-srs.seq')).toBe(false);
+  expect(await createAdapterStore(fs, '/a.mind', 'cloze:memory').entries!('card:')).toEqual([]);
   const click = (label: string) => [...content.querySelectorAll('button')].find(button => button.textContent!.startsWith(label))!.click();
   click('开始学习'); click('显示答案');
-  expect(await fs.driver.exists('/.nestos/cloze-srs.seq')).toBe(false);
+  expect(await createAdapterStore(fs, '/a.mind', 'cloze:memory').entries!('card:')).toEqual([]);
   click('简单');
   await vi.waitFor(() => expect(content.textContent).toContain('本轮已完成'));
   expect(await fs.driver.exists('/.nestos/cloze-srs.seq')).toBe(true);

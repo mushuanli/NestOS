@@ -176,3 +176,11 @@
 | 平台中立 HTTP 客户端 | `shared/app-transport/src/http/view-client.ts` |
 | Node mTLS 注入 | `apps/node-host/src/client/index.ts` |
 | 模式日志与使用说明 | [CLI 与 HTTP](http-mode.md) |
+
+## 笔记学习索引
+
+| 场景 | 文件 |
+|---|---|
+| cloze 首次激活及可见编辑器跟踪 | `ui/mdx-adapter/src/study-tracking.ts` |
+| 已跟踪文件计数、状态缓存及五分钟增量核对 | `ui/mdx-adapter/src/study-index.ts` |
+| 跟踪记录协议 | `shared/app-contracts/src/presets/cloze-storage.ts` |

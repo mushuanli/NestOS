@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { defaultEditorFactory } from '../src/factory';
+import {SeqFileStore} from '../src/srs-store';
 import { CLOZE_SRS_PATH, clozeDocumentPrefix } from '@itookit/app-contracts';
 
 beforeEach(() => vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
@@ -27,12 +28,12 @@ it('stores notes review state in the document seqfile instead of node metadata',
         expect(cards).toHaveLength(2);
         // A fresh card is hidden; the first click reveals it and asks for a grade.
         const alpha = cards[0]!;
-        expect(await fs.driver.exists(CLOZE_SRS_PATH)).toBe(false);
+        expect(await new SeqFileStore(fs, '/notes/hello.mind').entries('card:')).toEqual([]);
         alpha.click();
         const grade = alpha.querySelector<HTMLButtonElement>('.mdx-memory__panel button[data-grade="3"]');
         expect(grade).not.toBeNull();
         expect(grade!.textContent).toContain('一般');
-        expect(await fs.driver.exists(CLOZE_SRS_PATH)).toBe(false);
+        expect(await new SeqFileStore(fs, '/notes/hello.mind').entries('card:')).toEqual([]);
         grade!.click();
 
         const seqPath = CLOZE_SRS_PATH, prefix = clozeDocumentPrefix('/notes/hello.mind');

@@ -11,3 +11,4 @@ export { EngineMetadataStore } from './metadata-store';
 export { SeqFileStore, createAdapterStore } from './srs-store';
 export { AssetManagerPlugin } from './asset-manager.plugin';
 export { createStudyHost, createStudyEditor } from './study';
+export {registerStudyDocument} from './study-index';

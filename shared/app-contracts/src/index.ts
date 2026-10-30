@@ -46,4 +46,5 @@ export {flowArgumentTokens, resolveFlowArguments, parameterSourceValue} from './
 
 export {collectionExecutor, scannerExecutor} from './digital-twin/scanner';
 export type {TwinCollectionExecutor, TwinScannerTool, TwinScannerExecutor, TwinScannerInput, TwinWorkspaceView} from './digital-twin/scanner';
-export { CLOZE_SRS_PATH, clozeDocumentPrefix, parseClozeStorageKey } from './presets/cloze-storage';
+export { CLOZE_SRS_PATH, CLOZE_DOCUMENT_KEY, clozeDocumentPrefix, parseClozeStorageKey } from './presets/cloze-storage';
+export type {ClozeDocumentRecord} from './presets/cloze-storage';

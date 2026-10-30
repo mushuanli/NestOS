@@ -9,7 +9,7 @@ NestOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJ
 - `src/assets.ts`：将授权 `IFileSystem` 转成 `AssetProvider`，拒绝附件路径穿越。
 - `src/document-host.ts`：文档打开、重命名和通知适配。
 - `src/metadata-store.ts`：插件元数据持久化，文档路径随重命名/移动更新；`entries(prefix)` 支持按 key 读取。
-- `src/srs-store.ts`：`cloze:memory` 使用笔记 nav 内统一的 `/.nestos/cloze-srs.seq`，key 为编码后的文档相对路径 + `#` + 插件 key。读取、展开卡片、未评分重置均不创建 seqfile；首次评分才创建并逐卡写入。后端 `app-core/vfs/cloze-lifecycle` 监听笔记 nav 文件视图，事务更新重命名/移动的路径 key，删除文件/目录时清理对应条目；不支持跨 nav 迁移。旧元数据只读兼容，实际评分时由核心迁移被修改的卡片；后端无 seqFiles 时回退节点元数据。
+- `src/srs-store.ts`：`cloze:memory` 使用笔记 nav 内统一的 `/.nestos/cloze-srs.seq`，key 为编码后的文档相对路径 + `#` + 插件 key。首次实际渲染 cloze 时登记 `$document` 计数及摘要，不生成评分状态；首次评分才逐卡写入。后端 `app-core/vfs/cloze-lifecycle` 监听笔记 nav 文件视图，事务更新重命名/移动的路径 key，删除文件/目录时清理对应条目；不支持跨 nav 迁移。旧元数据只读兼容，实际评分时由核心迁移被修改的卡片；后端无 seqFiles 时回退节点元数据。
 - `src/asset-manager.plugin.ts` / `src/asset-manager.ui.ts`：附件管理 UI、删除确认与生命周期。
 - `src/print.ts` / `src/conversation-print.ts`：VFS 打印适配与会话格式处理。
 
@@ -26,3 +26,5 @@ NestOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJ
 Markdown 文件默认通过 defaultEditorFactory 以 render 模式打开，大文件语法预算不能强制改成 edit；显式 initialMode 仍保留。纯文本继续源码显示，不启用 Markdown 解析。
 
 `src/study.ts` 提供 StudyHost 的 VFS/seqfile 适配和工作区 IEditor 包装；文档来源仅枚举 Markdown/笔记及目录，隐藏目录排除。管理视图与正文共用 `createAdapterStore`，首次评分才写入复习状态。
+
+已跟踪来源与缓存策略见 `src/study-index.ts`：不枚举未跟踪文件；当前可见文件即时更新，其他已跟踪文件五分钟核对版本及复习状态。管理器初次加载仍读取已跟踪正文构建卡片，后续复用正文缓存。评分持久成功后定向刷新内存状态；订阅与计时器随租约释放。

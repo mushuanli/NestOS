@@ -1,7 +1,9 @@
 import {mountFileMenu} from './file-menu';
+import {StudyTrackingPlugin} from './study-tracking';
+import {studyIndex} from './study-index';
 import { createMDxEditor as createEditor, defaultEditorFactory as createDefaultEditor, fileReference,
     type MDxEditor, type PluginConfig, type MDxEditorFactoryConfig } from '@itookit/mdxeditor';
-import { t } from '@itookit/common';
+import { t, createModuleLogger, randomUUID } from '@itookit/common';
 import { installNavigationButtonPresentation, editorFilePath, normalizeEditorOptions, type EditorOptions } from '@itookit/ui-common';
 import { createAdapterStore } from './srs-store';
 import { createAssetProvider } from './assets';
@@ -76,13 +78,20 @@ export function adaptEditorOptions(options: MDxAdapterOptions): MDxEditorFactory
     const titlebar = defaults['core:titlebar']!;
     const assets = createAssetProvider(options.files?.fs, () => path, options.assets);
     const plugins = (options.plugins ?? []).filter(isPluginConfig);
+    if (options.files && path && !options.readOnly && plugins.some(plugin => plugin === 'cloze:cloze' || Array.isArray(plugin) && plugin[0] === 'cloze:cloze')) plugins.push(new StudyTrackingPlugin(options.files.fs));
     if (assets && titlebar.enableAssetManager !== false && !plugins.includes('-ui:asset-manager')) plugins.push(new AssetManagerPlugin(options.files?.fs, () => path, options.assets, defaults['ui:asset-manager']));
+    const save = options.onSave ?? (path && options.hostContext?.saveContent ? (content: string) => options.hostContext!.saveContent!(path!, content) : undefined);
     return { htmlPolicy: options.htmlPolicy, scrollMode: options.scrollMode, signal: options.signal, documentPath: path, title: options.title, language: options.language,
         initialContent: options.initialContent, initialMode: options.initialMode, contentFormat: resolveDocumentFormat(options),
         onDocumentPathChange: next => { path = next; },
         readOnly: options.readOnly, plugins, defaultPluginOptions: defaults, host, assets, translate: key => t(key as Parameters<typeof t>[0]),
-        onSave: options.onSave ?? (path && options.hostContext?.saveContent
-            ? content => options.hostContext!.saveContent!(path!, content) : undefined),
+        onSave: save ? async content => {
+            await save(content);
+            try {if (options.files && path) await studyIndex(options.files.fs).update(path);}
+            catch (error) {const code = (error as {code?: string})?.code;
+                createModuleLogger('study-index').warn('study.index', {operationId: randomUUID(), stage: 'after-save', result: 'failure',
+                    code: code && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CLOZE_INDEX_FAILED'});}
+        } : undefined,
         storeFactory: options.files && path ? plugin => createAdapterStore(options.files!.fs, path!, plugin) : undefined,
     };
 }

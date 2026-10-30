@@ -3,18 +3,13 @@ import { IEditor } from '@itookit/ui-common';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { getLocale } from '@itookit/common';
 import { createAdapterStore } from './srs-store';
+import {studyIndex} from './study-index';
 
 export function createStudyHost(fs: IFileSystem, open: (id: string) => Promise<void>): StudyHost {
-    return { locale: getLocale(), open,
-        list: async (parent = '/') => (await fs.driver.getChildren(parent))
-            .filter(node => !node.name.startsWith('.') && (node.type === 'directory' || /\.(mind|md|markdown|mdx)$/i.test(node.name)))
-            .map(node => ({ id: node.path, title: node.name, kind: node.type === 'directory' ? 'directory' : 'document' })),
-        read: async id => {
-            const raw = await fs.driver.readContent(id, { encoding: 'utf-8' });
-            const content = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
-            return { content, revision: content };
-        },
-        store: id => createAdapterStore(fs, id, 'cloze:memory'),
+    const index = studyIndex(fs);
+    return {locale: getLocale(), open, watch: notify => index.watch(notify),
+        list: parent => index.list(parent), read: id => index.read(id),
+        store: id => index.store(id, createAdapterStore(fs, id, 'cloze:memory')),
     };
 }
 class StudyEditor extends IEditor {

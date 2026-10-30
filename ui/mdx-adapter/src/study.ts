@@ -4,10 +4,12 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import { getLocale } from '@itookit/common';
 import { createAdapterStore } from './srs-store';
 import {studyIndex} from './study-index';
+import {createStudyDirectories} from './study-directories';
 
 export function createStudyHost(fs: IFileSystem, open: (id: string) => Promise<void>, capabilities: Pick<StudyHost, 'creation'> = {}): StudyHost {
     const index = studyIndex(fs);
-    return {...capabilities, locale: getLocale(), open, watch: notify => index.watch(notify),
+    return {...capabilities, ...(capabilities.creation ? {creation: {...capabilities.creation,
+        directories: capabilities.creation.directories ?? createStudyDirectories(fs)}} : {}), locale: getLocale(), open, watch: notify => index.watch(notify),
         list: parent => index.list(parent), read: id => index.read(id),
         store: id => index.store(id, createAdapterStore(fs, id, 'cloze:memory')),
     };

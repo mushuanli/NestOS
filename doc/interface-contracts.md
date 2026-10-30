@@ -354,3 +354,7 @@ mdxeditor 只暴露可选 `StudyCreation.draftStore`、`resumeGeneration` 和 `S
 正文辅助查询超过十秒或发生传输异常时，若原生成请求仍在等待确认，则记录 retrying 并继续观察，不将其抢先判为生成失败。悬挂查询保持单个进行中的请求；原请求正常返回仍可完成草稿回填。结束原因、空正文及真实任务失败继续独立处理。
 
 `ApplicationBackend.reportClientDiagnostic` 只接收 operation、operationId、sessionId、stage、code、result、durationMs、remoteCode、requestId 等限定元数据，校验长度/格式并拒绝额外字段。宿主输出带 `[ClientDiagnostic]` 和 source=client 的运行日志；HTTP 宿主写入既有 runtime log，审计日志仍记录该上报 RPC 的请求 ID 与认证用户。不会上传错误正文、堆栈、提示词、消息或令牌。客户端区分 TEXT_RESULT_QUERY_TIMEOUT、TRANSPORT_FAILED、REJECTED 和 CAPABILITY_UNAVAILABLE；上报失败不会再次触发上报或阻塞生成。
+
+### 保存目录与学习来源分离
+
+`StudyCreation.directories.list(parent?, signal?)` 提供独立的保存目录枚举，不透明目录 ID 原样交回宿主。NestOS 的 mdx-adapter 从当前笔记文件空间按需读取目录元数据，包含空目录及尚未跟踪 cloze 的目录，隐藏目录排除；不读取或解析 Markdown 正文，也不改变学习索引的来源范围。选择器先显示顶层目录，再完成子目录提示；未提供该能力的独立宿主仍回退 StudyHost.list。文件名扩展名沿用宿主 VFSService 规则：无扩展名补当前空间默认扩展名，已有 .md/.mind 保留；笔记空间默认 .mind。

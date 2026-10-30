@@ -1,6 +1,12 @@
 import type {ToolConnectionType, ToolOAuthDefinition} from '@itookit/app-contracts/services';
 export const authFailure = (code: string) => Object.assign(new Error(code), {code});
 export interface OAuthTokenReply {access_token: string; refresh_token?: string; expires_in?: number; scope?: string}
+export function validateOAuthRedirect(value: string): void {
+    try {
+        const url = new URL(value);
+        if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/api/tool-connections/callback' || url.search || url.hash) throw new Error();
+    } catch {throw authFailure('TOOL_AUTH_REDIRECT_INVALID');}
+}
 
 export function validateOAuth(type: ToolConnectionType): void {
     const definition = type.authorization;

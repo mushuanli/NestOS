@@ -1,14 +1,14 @@
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import type {ToolAuthorizationView, ToolConnectionType, ToolOAuthDefinition} from '@itookit/app-contracts/services';
-import {authFailure, tokenRequest, type OAuthTokenReply} from './tool-oauth-client';
+import {authFailure, tokenRequest, validateOAuthRedirect, type OAuthTokenReply} from './tool-oauth-client';
 
-export interface PrivateConnection {id: string; type: string; revision?: string; authorizedScopes?: string[]; values: Record<string, string>}
+export interface PrivateConnection {id: string; type: string; revision?: string; redirectUri?: string; authorizedScopes?: string[]; values: Record<string, string>}
 export interface AuthorizationStore {
     get(id: string): Promise<PrivateConnection>;
     definition(type: string): ToolConnectionType | undefined;
     patch(id: string, revision: string | undefined, patch: Record<string, string>, scopes?: string[]): Promise<PrivateConnection>;
 }
-interface Attempt {view: ToolAuthorizationView; state: string; verifier: string; record: PrivateConnection; definition: ToolOAuthDefinition; scopes: string[]; work?: Promise<void>}
+interface Attempt {view: ToolAuthorizationView; state: string; verifier: string; redirectUri: string; record: PrivateConnection; definition: ToolOAuthDefinition; scopes: string[]; work?: Promise<void>}
 interface CachedToken {value: string; expiresAt: number; revision?: string}
 const secret = () => randomBytes(32).toString('base64url');
 
@@ -20,11 +20,7 @@ export class ToolAuthorization {
     private closed = false;
     private preparing: Promise<void> = Promise.resolve();
     constructor(private readonly store: AuthorizationStore, readonly redirectUri?: string, private readonly fetcher = fetch) {
-        if (redirectUri) {
-            const url = new URL(redirectUri);
-            if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/api/tool-connections/callback' || url.search || url.hash)
-                throw authFailure('TOOL_AUTH_REDIRECT_INVALID');
-        }
+        if (redirectUri) validateOAuthRedirect(redirectUri);
     }
     begin(id: string, groups: string[], operationId: string): Promise<ToolAuthorizationView> {
         const work = this.preparing.then(() => this.prepareBegin(id, groups, operationId));
@@ -32,19 +28,21 @@ export class ToolAuthorization {
     }
     private async prepareBegin(id: string, groups: string[], operationId: string): Promise<ToolAuthorizationView> {
         if (this.closed) throw authFailure('TOOL_AUTH_CLOSED');
-        if (!this.redirectUri) throw authFailure('TOOL_AUTH_REDIRECT_UNCONFIGURED');
         if (!/^[a-zA-Z0-9_-]{1,100}$/.test(operationId)) throw authFailure('TOOL_AUTH_OPERATION_INVALID');
         this.prune(); const old = this.attempts.get(operationId);
         if (old) {if (old.record.id !== id || JSON.stringify(old.scopes) !== JSON.stringify(this.scopes(old.definition, groups))) throw authFailure('TOOL_AUTH_OPERATION_CONFLICT'); return this.view(old);}
         if (this.attempts.size >= 100) throw authFailure('TOOL_AUTH_OPERATION_LIMIT');
         const record = await this.store.get(id), definition = this.definition(record), scopes = this.scopes(definition, groups);
+        const redirectUri = record.redirectUri ?? this.redirectUri;
+        if (!redirectUri) throw authFailure('TOOL_AUTH_REDIRECT_UNCONFIGURED');
+        validateOAuthRedirect(redirectUri);
         if (this.closed) throw authFailure('TOOL_AUTH_CLOSED');
         if (!record.values[definition.clientIdField] || definition.clientSecretField && !record.values[definition.clientSecretField]) throw authFailure('TOOL_AUTH_CLIENT_REQUIRED');
         for (const attempt of this.attempts.values()) if (attempt.record.id === id && ['pending', 'exchanging'].includes(attempt.view.status)) this.cancel(attempt.view.operationId);
-        const attempt: Attempt = {record, definition, scopes, state: secret(), verifier: secret(),
+        const attempt: Attempt = {record, definition, scopes, redirectUri, state: secret(), verifier: secret(),
             view: {operationId, connectionId: id, status: 'pending', expiresAt: Date.now() + 10 * 60000}};
         const url = new URL(definition.authorizationEndpoint);
-        url.search = new URLSearchParams({...definition.authorizationParameters, client_id: record.values[definition.clientIdField], redirect_uri: this.redirectUri,
+        url.search = new URLSearchParams({...definition.authorizationParameters, client_id: record.values[definition.clientIdField], redirect_uri: redirectUri,
             response_type: 'code', scope: scopes.join(' '), state: attempt.state, code_challenge: createHash('sha256').update(attempt.verifier).digest('base64url'), code_challenge_method: 'S256'}).toString();
         attempt.view.url = url.href; this.attempts.set(operationId, attempt); this.report(attempt, 'begin', 'success'); return this.view(attempt);
     }
@@ -73,7 +71,7 @@ export class ToolAuthorization {
         const started = Date.now();
         try {
             const token = await tokenRequest(attempt.definition, attempt.record.values, {grant_type: 'authorization_code', code,
-                code_verifier: attempt.verifier, redirect_uri: this.redirectUri!}, this.fetcher);
+                code_verifier: attempt.verifier, redirect_uri: attempt.redirectUri}, this.fetcher);
             if (this.view(attempt).status !== 'exchanging' || this.closed) throw authFailure('TOOL_AUTH_CANCELLED');
             const refresh = token.refresh_token ?? attempt.record.values[attempt.definition.refreshTokenField];
             if (!refresh) throw authFailure('TOOL_AUTH_REFRESH_TOKEN_REQUIRED');

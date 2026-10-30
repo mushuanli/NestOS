@@ -4,31 +4,31 @@
 
 ## 安装与每个用户的配置
 
-1. 管理员在工具箱的工具包目录注册 `nestos-googlecli`。默认可信目录是仓库的 `tools/`；发布宿主可用 `NESTOS_TOOL_PACKAGE_DIRS` 指定包含本包的可信目录。注册不自动发起网络访问。多用户 httpd 的已安装工具代码可以共享。
-2. 在 Google Cloud 创建自己的 Desktop OAuth 客户端，下载客户端 JSON，按需启用 Gmail API 和 Google Calendar API。OAuth 应用仍在测试状态时，将要授权的账号加入测试用户。所需权限分别为 `gmail.readonly` 和 `calendar.events.readonly`；只授权邮件不会自动取得日历权限。
-3. 在用户自己的电脑运行授权助手（需 Node 22+，无需安装依赖）：
+1. 管理员注册本可信工具包；工具代码可以共享，安装不自动访问 Google。
+2. 管理员在 Google Cloud 创建 **Web application** OAuth 客户端，启用 Gmail API / Calendar API，并登记完整回调，例如 `https://nestos.example.com:2000/api/tool-connections/callback`。测试模式需添加测试用户，所需只读权限由本包声明。
+3. 管理员进入“工具箱 → 工具包 → 我的数据连接 → 管理员：授权应用配置”，保存 Client ID、Client Secret 和回调地址。只需配置一次，Secret 不回显；修改时留空保留。也可用 `http.publicOrigin` 预填地址，界面保存应用回调后无需修改 profile 或重启各用户运行时。
+4. 各用户在自己的“我的数据连接”中选择邮件和日历权限，点击“连接账号”，在自动打开的 Google 页面选择自己的账号并同意。若浏览器拦截新页，点击面板的“继续授权”链接。账号名称可修改，连接 ID 自动生成并在保存后显示，供采集器绑定。每个账号独立建立连接，无需运行脚本或填写 token。
+5. 宿主自动刷新访问令牌。邮件与日历可一次同意并复用同一连接；用户可以重新授权或撤销。管理员变更应用客户端或回调后，旧授权需重新连接；停用应用会停止所有绑定用户获取令牌，但不会声称已撤销 Google 侧历史授权。
 
-   ```bash
-   node tools/nestos-googlecli/node/authorize.mjs --client desktop-client.json --output private-connection.json --services gmail,calendar
-   ```
+Google [回调验证规则](https://developers.google.com/identity/protocols/oauth2/web-server#redirect-uri-validation) 不接受非 localhost 的 IP 字面量，因此当前 `https://192.168.31.10:2000` 访问方式需要管理员配置符合规则、浏览器可达的 HTTPS 域名。回调仍由用户浏览器访问并携带 NestOS 客户端证书；Google 不负责 NestOS 登录。
 
-   在浏览器打开助手显示的 Google 授权 URL。助手只监听 `127.0.0.1` 临时端口，校验 state 并使用 PKCE；五分钟超时。生成文件以 `0600` 写入，已有文件不会覆盖。只需要邮件或日历时，将 `--services` 改为 `gmail` 或 `calendar`。Google OAuth 测试模式的令牌有效期受 Google 策略约束，失效后须重新授权。
-4. 以自己的身份进入 NestOS → 工具箱 → 工具包 → 我的数据连接。添加 Google 连接，设置标识（例如 `personal`）和名称，导入刚生成的 `private-connection.json`，保存。也可以逐项填写 Client ID、Client Secret、Refresh Token。已保存密钥不会回传，编辑时留空保留；删除连接移除本地凭据记录；如需撤销 Google 侧授权，可在 Google 账号后台移除应用。授权文件包含密钥，应保留在私有目录，使用后自行妥善处理，不能加入项目或 Git。
-5. 工具包注册后点击“安装扩展流程”；多用户宿主由管理员完成共享定义的安装与发布。流程资源随本包 `flows/` 目录提供，不属于 NestOS 内置产品目录。安装会恢复并发布 `Gmail 邮件采集`、`Google Calendar 日程采集`。每个用户在自己的扫描器绑定参数，不修改共享 Flow 默认值。已安装流程和修订按既有机制保留；缺工具会由依赖准备流程报告。
+## 兼容已有个人客户端
 
-## NestOS 网页授权
+已有连接继续使用原客户端及私有凭据，不会自动迁移到共享应用。保留本地 Desktop 授权助手，供旧客户端或暂时没有网页回调的部署使用（Node 22+）：
 
-通用 OAuth 宿主已接入。管理员在 `nestos.json` 设置 `http.publicOrigin`（例如 `https://nestos.example.com:2000`），Google Cloud 使用 **Web application** OAuth 客户端，登记完整回调 `https://nestos.example.com:2000/api/tool-connections/callback`。在“我的数据连接”填写 Client ID / Client Secret，保存后勾选邮件、日历权限组，点击授权并打开授权链接。两个权限可以一次同意并复用同一连接；宿主自动刷新访问令牌，界面可取消或撤销授权。每个用户分别选择自己的 Google 账号。
+```bash
+node tools/nestos-googlecli/node/authorize.mjs --client desktop-client.json --output private-connection.json --services gmail,calendar
+```
 
-Google [回调验证规则](https://developers.google.com/identity/protocols/oauth2/web-server#redirect-uri-validation) 不接受非 localhost 的 IP 字面量，因此当前 `https://192.168.31.10:2000` 访问方式需要配置符合规则、浏览器可达的 HTTPS 域名；否则继续使用上面的 Desktop 客户端和本地授权助手导入。网页授权和本地助手使用的客户端类型不同，不要混用。浏览器回调需携带当前 NestOS 用户的客户端证书；Google 不负责 NestOS 登录。
+助手监听 `127.0.0.1` 临时端口，验证 state 和 PKCE，生成的文件按 0600 保存；在旧个人连接或“高级：使用自己的授权应用或导入凭据”表单中导入该文件即可。此方式是兼容入口，网页授权使用 Web application 客户端，两种客户端类型不可混用。授权文件含私密信息，不能提交 Git。
 
-包原目录与清单 ID `google-workspace` 已改为 `nestos-googlecli`（采用 google 的标准拼写）。`google.collect`、两个兼容 Tool ID 和内部连接类型 `google-workspace` 保留，已有连接数据无需改名。本包直接使用 Google HTTP API，未调用或依赖 `gws` CLI，也不启动常驻 MCP 服务。已注册旧包不会因目录改名自动升级，仍受宿主显式注册与版本冲突策略约束。
+包原目录和清单 ID `google-workspace` 已改为 `nestos-googlecli`。`google.collect`、两个兼容 Tool ID 和内部连接类型 `google-workspace` 保留，已有连接无需改名。本包直接使用 Google HTTP API，不依赖 `gws` CLI，也不启动常驻 MCP 服务；旧包不会因改名自动升级。
 
 ## 创建扫描器
 
 在数字分身添加扫描器：
 
-- 来源与范围：选择对应采集 Flow，将“我的 Google 连接”设为 `personal`；邮件默认保存到 `imports/mail/<连接>/mail/<来源标识>/*.email`，日程默认保存到 `imports/calendar/<连接>/calendar/<来源标识>-<摘要>/*.md`。匹配范围分别填写 `file:**/imports/mail/**/*.email` 或 `file:**/imports/calendar/**/*.md`。需要缩小到某项目时再增加适当的范围约束。
+- 来源与范围：选择对应采集 Flow，将连接参数设为“我的数据连接”中显示的连接标识；邮件默认保存到 `imports/mail/<连接>/mail/<来源标识>/*.email`，日程默认保存到 `imports/calendar/<连接>/calendar/<来源标识>-<摘要>/*.md`。匹配范围分别填写 `file:**/imports/mail/**/*.email` 或 `file:**/imports/calendar/**/*.md`。需要缩小到某项目时再增加适当的范围约束。
 - Gmail：默认查询 `newer_than:30d -in:trash -in:spam`。可用 Gmail 搜索语法调整日期、标签或联系人。
 - Calendar：默认日历为 `primary`，回看 7 天、未来 30 天；支持显式指定有读取权限的日历 ID。工具另接受 ISO `timeMin/timeMax`，用于固定日期范围的自定义 Flow。全天事件保留 date，带时间事件保留原时区信息，重复事件展开为实例，取消事件保存为取消状态。
 - 默认最多 100 条，可设为 1–500。超过上限或分页未完成时整次采集失败，不将已有材料错误标记为移除；请缩小采集范围后重试。

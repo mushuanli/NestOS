@@ -98,7 +98,7 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
     "FlowInstallations": { invalidates: ['configuration'], domain: 'configuration', markers: ["ensure", "check"], fields: [],
         methods: {"list": "query", "check": "query", "ensure": "async"} },
     "ToolConnections": {invalidates: ['configuration', 'twin'], domain: 'configuration', markers: ["snapshot", "save", "remove"], fields: [],
-        methods: {"snapshot": "query", "save": "async", "remove": "async", "beginAuthorization": "async", "authorizationStatus": "query", "cancelAuthorization": "async", "revokeAuthorization": "async"} },
+        methods: {"snapshot": "query", "save": "async", "remove": "async", "saveApplication": "async", "removeApplication": "async", "beginAuthorization": "async", "authorizationStatus": "query", "cancelAuthorization": "async", "revokeAuthorization": "async"} },
     "ToolPackages": { invalidates: ['configuration'], domain: 'configuration', markers: ["ensure", "list"], fields: ['connections'],
         methods: {"list": "query", "ensure": "async", "installFlows": "async"} },
     "ToolboxDrawers": { domain: 'configuration', markers: ["snapshot", "assign"], fields: [],

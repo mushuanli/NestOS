@@ -1,4 +1,6 @@
 import {NodeToolConnections} from './tool-connections';
+import {ToolOAuthApplications} from './tool-oauth-applications';
+import {canonical, within} from './paths';
 import path from 'node:path';
 import { createApplicationRuntime, type ApplicationRuntime, type ApplicationRuntimeOptions } from '@itookit/app-core';
 import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
@@ -11,6 +13,7 @@ import {NodeToolPackages, type NodeToolPackageOptions} from './tool-packages';
 import {BUILTIN_TOOLS} from '@itookit/tools';
 
 export interface NodeApplicationOptions {
+    oauthApplicationsDirectory?: string;
     authorizationRedirectUri?: string;
     toolPackages?: NodeToolPackageOptions;
     createFs?: () => import('@itookit/vfsdriver-local').IFsOps;
@@ -23,7 +26,11 @@ export async function openNodeApplication(options: NodeApplicationOptions): Prom
     const resources = await openHostRuntime(options);
     let connections: NodeToolConnections | undefined;
     try {
-        connections = new NodeToolConnections(path.join(options.authDir, 'tool-connections'), {redirectUri: options.authorizationRedirectUri});
+        const applicationDirectory = await canonical(path.resolve(options.oauthApplicationsDirectory ?? path.join(options.authDir, 'tool-oauth-applications')));
+        if (within(resources.root, applicationDirectory)) throw new Error('OAuth application credentials must remain outside the VFS data root');
+        connections = new NodeToolConnections(path.join(options.authDir, 'tool-connections'), {redirectUri: options.authorizationRedirectUri,
+            applications: new ToolOAuthApplications(applicationDirectory),
+            manageApplications: options.runtime?.configurationReadonly !== true});
         const ownedConnections = connections;
         const runtime = await createNodeRuntime(resources.backend, resources.root, {...options.runtime, providerAuthorization: resources.authorization, toolConnections: connections}, options.toolPackages);
         let closing: Promise<void> | undefined;

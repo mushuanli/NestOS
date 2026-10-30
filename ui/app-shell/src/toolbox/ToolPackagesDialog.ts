@@ -22,6 +22,7 @@ class ToolPackagesDialog {
     private error = '';
     private outcome = 'success';
     private authorizationTimer?: ReturnType<typeof setTimeout>;
+    private readonly connectionDrafts = new Map<string, string>();
     constructor(private readonly controls: PackageControls, private readonly changed: () => Promise<void>) {}
 
     open(signal?: AbortSignal): Promise<void> {
@@ -33,7 +34,11 @@ class ToolPackagesDialog {
         const close = document.createElement('button'); close.type = 'button'; close.textContent = t('action.close'); close.onclick = () => this.dialog.close();
         header.append(title, close); this.dialog.append(header, this.body); document.body.append(this.dialog);
         this.body.onclick = event => this.click(event); this.dialog.showModal(); void this.refresh();
-        this.body.onsubmit = event => {event.preventDefault(); const form = event.target as HTMLFormElement; if (form.dataset.form === 'sourceConnection') void this.saveConnection(form);};
+        this.body.onsubmit = event => {
+            event.preventDefault(); const form = event.target as HTMLFormElement;
+            if (form.dataset.form === 'sourceConnection') void this.saveConnection(form);
+            else if (form.dataset.form === 'oauthApplication') void this.saveApplication(form);
+        };
         this.body.onchange = event => {
             const input = event.target;
             if (input instanceof HTMLInputElement && input.name === 'connectionImport') void importConnection(input).catch(() => {
@@ -52,6 +57,9 @@ class ToolPackagesDialog {
     private click(event: MouseEvent): void {
         const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button') : null;
         if (!target || this.busy || this.disposed) return;
+        if (target.dataset.applicationRemove) {void this.run('tool.application.remove', async () => {
+            await this.controls.toolPackages?.connections?.removeApplication?.(target.dataset.applicationRemove!); await this.readState();
+        }); return;}
         if (target.dataset.authBegin) {void this.authorize(target.closest('form')!); return;}
         if (target.dataset.authCancel) {void this.run('tool.authorization.cancel', async () => {await this.controls.toolPackages?.connections?.cancelAuthorization?.(target.dataset.authCancel!); await this.readState();}); return;}
         if (target.dataset.authRevoke) {void this.run('tool.authorization.revoke', async () => {await this.controls.toolPackages?.connections?.revokeAuthorization?.(target.dataset.authRevoke!); await this.readState();}); return;}
@@ -90,14 +98,38 @@ class ToolPackagesDialog {
         const input = connectionInput(form);
         await this.run('tool.connection.save', async () => {await this.controls.toolPackages?.connections?.save(input); await this.readState();});
     }
+    private async saveApplication(form: HTMLFormElement): Promise<void> {
+        if (!form.reportValidity()) return;
+        const data = new FormData(form), input = {type: form.dataset.type!, clientId: String(data.get('clientId') ?? ''),
+            clientSecret: String(data.get('clientSecret') ?? ''), redirectUri: String(data.get('redirectUri') ?? '')};
+        await this.run('tool.application.save', async () => {
+            const port = this.controls.toolPackages?.connections;
+            if (!port?.saveApplication) throw new Error('TOOL_AUTH_APPLICATION_UNAVAILABLE');
+            await port.saveApplication(input); await this.readState();
+        });
+        if (this.error && !this.disposed) {
+            const restored = [...this.body.querySelectorAll<HTMLFormElement>('[data-form=oauthApplication]')].find(item => item.dataset.type === input.type);
+            for (const name of ['clientId', 'clientSecret', 'redirectUri'] as const) {const field = restored?.querySelector<HTMLInputElement>(`[name=${name}]`); if (field) field.value = input[name];}
+        }
+    }
     private async authorize(form: HTMLFormElement): Promise<void> {
         if (!form.reportValidity()) return;
         const input = connectionInput(form), groups = [...form.querySelectorAll<HTMLInputElement>('[data-auth-group]:checked')].map(field => field.value);
+        if (!groups.length) {this.body.querySelector('[role=alert]')!.textContent = t('toolbox.connections.choosePermissions'); return;}
+        if (form.querySelector<HTMLInputElement>('[name=id]')?.type === 'hidden') this.connectionDrafts.set(input.type, input.id);
+        const popup = authorizationWindow(); let navigated = false;
         await this.run('tool.authorization.begin', async operationId => {
             const port = this.controls.toolPackages?.connections;
             if (!port?.beginAuthorization) throw new Error('TOOL_AUTH_UNSUPPORTED');
-            await port.save(input); await port.beginAuthorization(input.id, groups, operationId); await this.readState();
+            try {
+                await port.save(input); const operation = await port.beginAuthorization(input.id, groups, operationId);
+                if (popup && !popup.closed && operation.url && !this.disposed) {
+                    if (new URL(operation.url).protocol !== 'https:') throw new Error('TOOL_AUTH_URL_INVALID');
+                    popup.location.replace(operation.url); navigated = true;
+                }
+            } finally {await this.readState();}
         });
+        if (popup && !navigated) popup.close();
     }
     private pollAuthorizations(): void {
         clearTimeout(this.authorizationTimer);
@@ -160,6 +192,7 @@ class ToolPackagesDialog {
 
     private render(): void {
         const scroll = this.body.scrollTop;
+        const connectionDetails = new Map([...this.body.querySelectorAll<HTMLDetailsElement>('[data-connection-details]')].map(node => [node.dataset.connectionDetails, node.open]));
         this.body.innerHTML = `<p>${escapeHTML(label('help'))}</p><div class="tool-packages-dialog__actions">
             <button type="button" data-packages-refresh ${this.busy ? 'disabled' : ''}>${escapeHTML(t('action.refresh'))}</button>
             <span role="status">${this.busy ? escapeHTML(label('loading')) : ''}</span></div>
@@ -167,6 +200,12 @@ class ToolPackagesDialog {
             <section class="tool-packages-dialog__section">${this.packages.length ? this.packages.map(item => packageRow(item, this.busy)).join('') : `<p>${escapeHTML(label('empty'))}</p>`}</section>
             ${this.controls.toolPackages?.connections ? sourceConnectionSettings(this.connectionState, true) : ''}
             ${this.controls.flowInstallations ? `<section class="tool-packages-dialog__section"><h3>${escapeHTML(label('flows'))}</h3>${this.flows.map(item => flowRow(item, this.busy)).join('')}</section>` : ''}`;
+        for (const node of this.body.querySelectorAll<HTMLDetailsElement>('[data-connection-details]')) if (connectionDetails.has(node.dataset.connectionDetails)) node.open = connectionDetails.get(node.dataset.connectionDetails)!;
+        for (const [type, id] of this.connectionDrafts) {
+            if (this.connectionState.connections.some(item => item.id === id)) {this.connectionDrafts.delete(type); continue;}
+            const form = [...this.body.querySelectorAll<HTMLFormElement>('[data-form=sourceConnection]')].find(item => item.dataset.type === type && item.querySelector<HTMLInputElement>('[name=id]')?.type === 'hidden');
+            const field = form?.querySelector<HTMLInputElement>('[name=id]'); if (field) field.value = id;
+        }
         this.body.scrollTop = scroll;
         this.pollAuthorizations();
     }
@@ -192,4 +231,15 @@ function flowRow(report: FlowInstallationReport, busy: boolean): string {
         ${report.status !== 'ready' ? `<button type="button" data-flow-ensure="${escapeHTML(report.flowId)}" ${busy ? 'disabled' : ''}>${escapeHTML(label('prepare'))}</button>` : ''}</div></article>`;
 }
 
-function reason(error: unknown): string {return error instanceof Error ? error.message : String(error);}
+function reason(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const keys: Record<string, string> = {TOOL_AUTH_REDIRECT_INVALID: 'invalidCallback', TOOL_AUTH_CLIENT_REQUIRED: 'clientRequired',
+        TOOL_AUTH_APPLICATION_ADMIN_REQUIRED: 'adminRequired', TOOL_AUTH_APPLICATION_UNCONFIGURED: 'applicationMissing',
+        TOOL_AUTH_REAUTHORIZE_REQUIRED: 'reauthorize', TOOL_AUTH_APPLICATION_STORAGE_NOT_PRIVATE: 'storagePrivate',
+        TOOL_AUTH_APPLICATION_STORAGE_DENIED: 'storageDenied', TOOL_AUTH_APPLICATION_BUSY: 'applicationBusy'};
+    return Object.hasOwn(keys, message) ? t(`toolbox.connections.${keys[message]}` as LocaleKey) + ` (${message})` : message;
+}
+function authorizationWindow(): Window | null {
+    try {const popup = window.open('about:blank', '_blank'); if (popup) popup.opener = null; return popup;}
+    catch {return null;}
+}

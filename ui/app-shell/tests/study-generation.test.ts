@@ -41,5 +41,5 @@ it('retains explicit generation failures instead of treating them as lost replie
  const sessionResponse=vi.fn();
  const api=studyGeneration({createSessionDraft:async()=> 'draft',generateText:async()=>{throw Object.assign(new Error('Rejected'),{code:'TEXT_AUTH_REJECTED'});},cancelTextGeneration:async()=>{},sessionResponse} as unknown as ApplicationBackend,{updateManifest:async()=>{}});
  await expect(api.generate!({draftId:'draft',title:'New',operationId:'op',prompt:'Convert',source:'Source',previousDraft:'',signal:new AbortController().signal})).rejects.toMatchObject({code:'TEXT_AUTH_REJECTED'});
- expect(sessionResponse).not.toHaveBeenCalled();
+ expect(sessionResponse).toHaveBeenCalledWith('draft',{operationId:'op',branch:'main'});
 });

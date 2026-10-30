@@ -1503,6 +1503,8 @@ export const en: LocaleStrings = {
     'editor.studySessionView': 'View generation session',
     'editor.studyRecoveringResult': 'Connection interrupted. Checking the original result; view session.',
     'editor.studyOutputLimited': 'Model output limit reached. Draft retained; check its ending.',
+    'editor.studyAlreadyCreated': "The file was created. Open it before changing its name or content.",
+    'editor.studyInvalidName': "Enter a file name without path separators.",
     'editor.studyCreate': "New Anki note",
     'textGeneration.instructions': 'Generation instructions',
     'textGeneration.source': 'Source material',

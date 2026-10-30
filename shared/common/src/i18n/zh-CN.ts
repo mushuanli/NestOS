@@ -1504,6 +1504,8 @@ export const zhCN = {
     'editor.studySessionView': '查看生成会话',
     'editor.studyRecoveringResult': '连接中断，正在核对原生成结果；可查看会话',
     'editor.studyOutputLimited': '输出达到模型上限，已保留草稿，请检查结尾',
+    'editor.studyAlreadyCreated': "文件已创建，请先打开该文件再修改名称或内容。",
+    'editor.studyInvalidName': "请输入文件名，名称中不能包含路径分隔符。",
     'editor.studyCreate': "新增 Anki 文件",
     'textGeneration.instructions': '生成要求 / AI 提示词',
     'textGeneration.source': '待处理内容',

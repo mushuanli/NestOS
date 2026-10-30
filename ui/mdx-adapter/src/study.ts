@@ -5,9 +5,9 @@ import { getLocale } from '@itookit/common';
 import { createAdapterStore } from './srs-store';
 import {studyIndex} from './study-index';
 
-export function createStudyHost(fs: IFileSystem, open: (id: string) => Promise<void>): StudyHost {
+export function createStudyHost(fs: IFileSystem, open: (id: string) => Promise<void>, capabilities: Pick<StudyHost, 'creation'> = {}): StudyHost {
     const index = studyIndex(fs);
-    return {locale: getLocale(), open, watch: notify => index.watch(notify),
+    return {...capabilities, locale: getLocale(), open, watch: notify => index.watch(notify),
         list: parent => index.list(parent), read: id => index.read(id),
         store: id => index.store(id, createAdapterStore(fs, id, 'cloze:memory')),
     };
@@ -19,6 +19,7 @@ class StudyEditor extends IEditor {
     async init(container: HTMLElement): Promise<void> { this.view = new StudyView(container, this.host); }
     async destroy(): Promise<void> { await this.view?.destroy(); }
     async flushPendingSave(): Promise<void> { await this.view?.flush(); }
+    async activate(): Promise<void> {await this.view?.refresh();}
     getText(): string { return ''; }
     setText(): void {}
     focus(): void {}
@@ -34,6 +35,6 @@ class StudyEditor extends IEditor {
     clearSearch(): void {}
     on(): () => void { return () => {}; }
 }
-export async function createStudyEditor(container: HTMLElement, fs: IFileSystem, open: (id: string) => Promise<void>): Promise<IEditor> {
-    const editor = new StudyEditor(createStudyHost(fs, open)); await editor.init(container); return editor;
+export async function createStudyEditor(container: HTMLElement, fs: IFileSystem, open: (id: string) => Promise<void>, capabilities: Pick<StudyHost, 'creation'> = {}): Promise<IEditor> {
+    const editor = new StudyEditor(createStudyHost(fs, open, capabilities)); await editor.init(container); return editor;
 }

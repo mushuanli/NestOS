@@ -1,3 +1,5 @@
+import {FSError} from '@itookit/vfs-core';
+import type {StudyDraft} from '@itookit/mdxeditor';
 import {backToPreviousPage} from '../navigation/page-history';
 import { createNestOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { connectEditorLifecycle } from '../browser/editor-connector';
@@ -20,6 +22,7 @@ import { presentationPersistence } from '../persistence/initial-navigation';
 
 export class Workbench {
     private readonly dialogs = new AbortController();
+    private createdStudyDrafts = new Map<string, {path: string; signature: string}>();
     private vfsUI: VFSUIShell;
     private engine: IFileSystem;
     private lifecycleUnsubscribe: ReturnType<typeof connectEditorLifecycle>;
@@ -101,9 +104,11 @@ export class Workbench {
             this.enhancedEditorFactory,
             {
                 directoryActions: study ? [{id: 'study', label: t('editor.study'), icon: ACTION_ICONS.anki, run: () => this.openStudy()}] : [],
-                virtualViews: study ? [{ id: '@study', title: t('editor.study'), icon: ACTION_ICONS.anki,
+                virtualViews: study ? [{ id: '@study', title: t('editor.study'), icon: ACTION_ICONS.anki, preview: false,
                     create: async container => (await import('@itookit/mdx-adapter')).createStudyEditor(container, this.engine,
-                        path => this.openFileInternal(path)) }] : [],
+                        path => this.openFileInternal(path), config.uiOptions?.readOnly || config.editorConfig?.readOnly || config.editorConfig?.canCreateEntries === false ? {} : {
+                            creation: {...config.studyGeneration, label: t('editor.studyCreate'), save: draft => this.createStudyFile(draft)},
+                        }) }] : [],
                 windows: config.windows,
                 navigationLabel: config.uiOptions?.title ?? t('project.files'),
                 onBeforeNavigate: config.onBeforeNavigate,
@@ -239,6 +244,28 @@ export class Workbench {
         return newNode.path;
     }
 
+    private async createStudyFile(draft: StudyDraft): Promise<void> {
+        const operationId = draft.operationId, started = Date.now(), log = createModuleLogger('study-documents');
+        let stage = 'validate';
+        try {
+            if (!draft.title.trim() || /[\\/]/.test(draft.title)) throw new FSError('EINVAL', t('editor.studyInvalidName'));
+            const parentPath = draft.parent?.id ?? '/';
+            if ((await this.engine.capabilitiesAt(parentPath)).readonly) throw new FSError('EROFS', t('vfs.creation.readOnly'));
+            const signature = JSON.stringify([draft.title, parentPath, draft.content]);
+            let receipt = this.createdStudyDrafts.get(operationId);
+            if (receipt && receipt.signature !== signature) throw new FSError('EEXIST', t('editor.studyAlreadyCreated'));
+            if (!receipt) {
+                stage = 'create';
+                const node = await this.vfsUI.sessionService.createFile({title: draft.title, parentPath, content: draft.content});
+                receipt = {path: node.path, signature}; this.createdStudyDrafts.set(operationId, receipt);
+            }
+            this.createdStudyDrafts.delete(operationId);
+            log.info('study.create', {operationId, stage: 'complete', result: 'success', durationMs: Date.now() - started});
+        } catch (error) {
+            log.error('study.create', {operationId, stage, result: 'failure', code: error instanceof FSError ? error.code : 'STUDY_CREATE_FAILED', durationMs: Date.now() - started});
+            throw error;
+        }
+    }
     private async openDirectory(path: string): Promise<void> {
         await this.lifecycleUnsubscribe.openDirectory(path); this.config.onSessionChange?.(path);
     }

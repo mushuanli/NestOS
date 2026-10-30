@@ -122,6 +122,7 @@ export interface BootWorkspaceParts {
 }
 
 export interface AppOptions {
+    studyGeneration?: Pick<import('@itookit/mdxeditor').StudyCreation, 'generate' | 'defaultPrompt' | 'configurationUrl' | 'generationTargets' | 'prompts' | 'generationSaved' | 'sources' | 'draftStore' | 'resumeGeneration'>;
     recovery?: import('./workbench/recovery').AppRecoveryState;
     initialView?: import('@itookit/app-contracts/services').OpenedApplicationView;
     fileTypes?: import('./config/file-registry').AppFileTypeConfig[];
@@ -178,6 +179,7 @@ export interface AppHandle {
 // ── Workbench config ────────────────────────────────────────────────────
 
 export interface WorkbenchConfig {
+    studyGeneration?: Pick<import('@itookit/mdxeditor').StudyCreation, 'generate' | 'defaultPrompt' | 'configurationUrl' | 'generationTargets' | 'prompts' | 'generationSaved' | 'sources' | 'draftStore' | 'resumeGeneration'>;
     deferNavigation?: boolean;
     chatFromFile?: import('@itookit/ui-common').EditorHostContext['chatFromFile'];
     /** Preferred input: an already authorized file context. The host owns its lifetime. */

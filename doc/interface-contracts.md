@@ -342,3 +342,9 @@ Node 的目录、权限、原子写入和 48 小时清理由可信宿主实现�
 `app-core/host/conversation-observation` 将宿主持有的执行投影到浏览器/桌面的独立阅读视图，按 Session 和分支隔离；观察不创建新执行，释放视图会释放订阅。`ConversationContexts.subscribe` 只属于宿主，不作为独立 RPC 能力导出。
 
 Anki 创建通过该通用正文 API 按本次 operationId 读取 main 分支结果。生成回执断开后只核对原轮次，不重发生成请求；已存在的进行中轮次继续等待，未确认接纳的操作最多核对三十秒后报 TEXT_RESULT_UNCONFIRMED。成功仅回填草稿，保存仍由用户显式触发。回归覆盖后台流式思考/正文经真实 RpcPeer 传输、轮次选择、断线恢复、取消及草稿输入框正文回填。
+
+### 创建草稿的暂存与完成观察
+
+Anki 创建在提交后独立查询同一 operationId 的 Session 终态，以一秒间隔兜底；原生成 RPC 迟到、丢失或可选结束原因查询悬挂，不阻塞已有正文回填。读取有十秒等待边界，取消会释放观察计时器，不重发生成。Markdown 预览渲染与生成忙碌状态分离。
+
+mdxeditor 只暴露可选 `StudyCreation.draftStore`、`resumeGeneration` 和 `StudyCreationState`；宿主用已有 FileRecoveryStore 按认证用户、标签页、工作区隔离暂存输入。小草稿同步写入 sessionStorage，大草稿使用现有 IndexedDB 回退。原标签页刷新或异常中断后可恢复最近成功写入的草稿；取消/关闭、保存和清空新建会丢弃恢复记录。恢复进行中的生成只观察原操作，不重新调用模型。库中不依赖 NestOS、VFS、Session 或浏览器持久化实现。

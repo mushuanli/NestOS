@@ -30,3 +30,5 @@ UI 不附带业务模板。NestOS 产品 Flow 以本目录的 JSON 定义保存�
 `notes-readme.json` 是笔记 `readme.md` 的正文源，包含编辑器/AI Chat、HTML Live 可运行示例、nestos-node 接入、权限与功能说明，以及 httpd 可选 swap 配置。与人物样本分开存放；已有文件不自动覆盖，使用恢复初始文件入口按需创建。
 
 `flow-format-guide.json` 是笔记 `flow文件格式说明.md` 的唯一内容源，通过系统恢复 `note:flow-format` 写入 `/home/admin/notes/`，包含供用户与 AI 使用的完整示例与参数说明。恢复保留已有笔记；测试以实际 Flow 校验器验证文档首个完整示例。系统恢复内置 Flow 则覆盖当前草稿并发布新修订，保留历史版本。
+
+Flow 格式说明的预设内容包含文档 AI Chat 的真实独立行 `::@` 输入，使用完整文件上下文引导需求澄清和 Flow JSON 生成。生成进入普通 Session，不自动执行、发布或写入 Flow；文档作为应用资源，不在独立 mdxeditor 中内置业务提示。

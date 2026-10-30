@@ -43,6 +43,9 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    listTextModels(): Promise<Array<{id: string; name: string; model?: string; models: Array<{id: string; name: string}>; available: boolean; reason?: string; default: boolean}>>;
+    generateText(request: {sessionId: string; modelId?: string; connectionId?: string; operationId: string; prompt: string; source: string; previousDraft: string}): Promise<string>;
+    cancelTextGeneration(operationId: string): Promise<void>;
     assistantOverview?(): Promise<import('./assistant').AssistantOverview>;
     editorSwaps?: import('./editor-swap').EditorSwapFactory;
     documentChatFile(request: import('./document-chat').DocumentChatFileRequest): Promise<import('./document-chat').DocumentChatFile>;

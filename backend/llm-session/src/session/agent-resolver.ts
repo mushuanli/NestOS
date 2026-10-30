@@ -330,6 +330,7 @@ export class AgentResolver {
     async reResolveModel(config: ExecutorConfig, overrides: {
         connectionId?: string;
         modelTier?: ModelTier;
+        modelName?: string;
         allowUnconfigured?: boolean;
         useDefault?: boolean;
         frozenConnection?: ConnectionMeta;
@@ -345,7 +346,9 @@ export class AgentResolver {
         const provider = this.agentService.getProvider(connMeta.providerId);
         if (connMeta.enabled === false || provider?.enabled === false) throw new Error(`Connection is disabled: ${connMeta.id}`);
         const tier = overrides.modelTier ?? 'optimal';
-        const model = resolveModelForTier(connMeta, tier);
+        const model = overrides.modelName ?? resolveModelForTier(connMeta, tier);
+        if (overrides.modelName !== undefined && !provider?.models.some(item => item.id === overrides.modelName && (item.category ?? 'chat') === 'chat'))
+            throw new Error('Selected text model is unavailable');
         if (!model) throw new Error(`Connection has no model: ${connMeta.id}`);
         return { ...config, connectionId: connMeta.id, model,
             temperature: config.temperature ?? connMeta.temperature,

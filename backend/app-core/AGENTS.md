@@ -225,3 +225,5 @@ configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、�
 笔记 `vfs/cloze-lifecycle.ts` 在 Runtime 生命周期监听 notes nav 自身的缓存文件视图（VFS 事件按 view 隔离），维护统一 `/.nestos/cloze-srs.seq` 的文档路径 key；未打开的文件同样跟随重命名/移动，删除目录按路径边界清理。记录迁移在 SeqFile 事务中执行，空状态不创建存储；跨 nav 迁移不在支持范围内。
 
 - assistant/overview 在用户绑定的服务图中读取摘要与 sessionActivity，聚合优先级和目标路由，不启动 Session、模型或扫描器。DigitalTwin.activitySummary 只投影空间、扫描器和最近运行元数据，不返回证据、提示词或凭据。
+
+configuration/text-generation 与 text-session 使用正式 Session 提交与持久轮次结果，不设置独立的 8192 输出预算或重复上下文预算；协议必需的输出参数来自模型声明，显式用户限制优先。length 且有正文时保留结果并记录安全诊断；空正文仍返回 TEXT_OUTPUT_EMPTY。

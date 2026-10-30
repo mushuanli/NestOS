@@ -1,3 +1,4 @@
+import {createTextGeneration, listTextModels} from '../configuration/text-generation';
 import {assistantOverview} from '../assistant/overview';
 import {publicConfiguration} from './configuration-access';
 import {DocumentChatFileView} from '../document-chat/file';
@@ -55,6 +56,7 @@ export function createApplicationClient(services: LocalApplicationServices, opti
 export function bindApplicationBackend(services: LocalApplicationServices, options: ApplicationViewOptions = {}, scope = new ViewScope()): ApplicationBackend {
     const { vfs, agentService, sessionRepository: repository, projects, kernel, commandBus } = services;
     const lifecycle = () => new SessionLifecycleService({ repository, kernel: kernel.kernel });
+    const textGeneration = scope.own(createTextGeneration(services));
     let opening = false;
     const backend: ApplicationBackend = {
         assistantOverview: () => assistantOverview(services),
@@ -99,6 +101,9 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         readUiDocuments: names => readUiDocuments(vfs, names),
         writeUiDocuments: documents => writeUiDocuments(vfs, documents),
         settings: sources => settingsService(services, sources, options, scope),
+        listTextModels: () => listTextModels(agentService),
+        generateText: async request => (await textGeneration).generateText(request),
+        cancelTextGeneration: async id => (await textGeneration).cancelTextGeneration(id),
         ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService, options.configurationReadonly),
         initialFiles: async () => new NestosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/notes'), services.flowInstallations),
         projectSessions: async () => projects?.sessions ?? new ProjectSessions(repository),

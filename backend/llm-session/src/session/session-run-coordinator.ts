@@ -484,6 +484,7 @@ export class SessionRunCoordinator {
             : await this.agents.reResolveModel(identity, {
             connectionId,
             modelTier: input.overrides?.modelTier,
+            modelName: input.overrides?.modelName,
             useDefault: !input.instructionConnectionBinding,
             frozenConnection,
         });

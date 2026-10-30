@@ -12,7 +12,7 @@ import { createVFSMentionProviders } from '../browser/mention/createVFSMentionPr
 import { VFSUIShell } from '@itookit/vfs-ui';
 import { lazyMdxEditorFactory as defaultEditorFactory } from '../browser/lazy-mdx';
 import type { WorkbenchConfig } from '../types';
-import { t, NavigationRequest} from '@itookit/common';
+import { t, ACTION_ICONS, NavigationRequest} from '@itookit/common';
 import { EditorOptions, IEditor, EditorHostContext } from '@itookit/ui-common';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { showNameDialog } from '../files/project-dialog';
@@ -44,6 +44,7 @@ export class Workbench {
         this.baseEditorFactory = config.editorFactory ?? defaultEditorFactory;
 
         const scopeId = config.scopeId || this.engine.viewId;
+        const study = config.editorConfig?.plugins?.includes('cloze:cloze') === true;
 
         this.vfsUI = createVFSUI(
             {
@@ -63,6 +64,9 @@ export class Workbench {
                     showTitle: config.uiOptions?.appearance?.showTitle ?? (!!config.uiOptions?.titleHeader || config.uiOptions?.toolbar === 'compact') },
                 activateDirectories: true, autoSelectFirst: false,
                 toolbarOptions: { ...config.uiOptions?.toolbarOptions,
+                    extraItems: [...(config.uiOptions?.toolbarOptions?.extraItems ?? []), ...(study ? [{ id: 'study', label: t('editor.study'), iconHTML: ACTION_ICONS.anki, placement: 'overflow' as const }] : [])],
+                    iconOnlyActions: [...(config.uiOptions?.toolbarOptions?.iconOnlyActions ?? []), ...(study ? ['study'] : [])],
+                    actions: { ...config.uiOptions?.toolbarOptions?.actions, ...(study ? { study: async () => this.openFileInternal('@study') } : {}) },
                     root: { label: '/', title: `${t('workbench.directoryPath')}: /`, run: () => this.openDirectory('/') } },
                 deferExpansion: config.uiOptions?.deferExpansion ?? true,
                 listItems: config.uiOptions?.listItems,
@@ -96,9 +100,13 @@ export class Workbench {
             config.editorContainer,
             this.enhancedEditorFactory,
             {
+                virtualViews: study ? [{ id: '@study', title: t('editor.study'), icon: ACTION_ICONS.anki,
+                    create: async container => (await import('@itookit/mdx-adapter')).createStudyEditor(container, this.engine,
+                        path => this.openFileInternal(path)) }] : [],
                 windows: config.windows,
                 navigationLabel: config.uiOptions?.title ?? t('project.files'),
                 onBeforeNavigate: config.onBeforeNavigate,
+                onResourceRelocated: path => (config.onResourceRelocated ?? config.onSessionChange)?.(path),
                 fileTypes: config.fileTypes,
                 resolveEditor: resolveFileEditor(config.fileTypes, config.customEditorResolver),
                 hostContext: sharedHostContext,

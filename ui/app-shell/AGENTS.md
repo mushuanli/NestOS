@@ -201,3 +201,7 @@ LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原�
 工作台智能体侧栏的更多菜单复用管理服务提供配置、重命名与删除；重命名只改显示名称，保留 Agent ID，删除前确认且不删除已有会话。远程 Agent 只提供配置入口，不在本地重命名或删除。失败保留列表并显示具体原因，日志只含身份、操作阶段、结果和耗时。正文 `::@` 的默认目标读取来源 Session 分支的目标/Agent，再回退 default；候选可见性由公开目录和 exposure 决定，禁止按测试名称过滤。
 
 工具包面板通过通用 installFlows 安装扩展携带的流程，configuration/tool-connections 渲染外部 Schema 声明的用户连接字段。该表单不包含厂商分支，秘密只提交不回填；授权文件只在本地读取。数字分身仅保留同一表单的快捷入口。
+
+笔记侧栏更多菜单通过通用 toolbar extraItems 打开 `@study` 学习页。Workbench 根据 cloze 工作区配置注入通用 virtualViews，编辑器连接器为虚拟页复用标签与生命周期；虚拟身份不传给 VFS 文件读取。StudyView 及队列位于 mdxeditor，NestOS 只装配文档/存储端口。
+
+文件工作台消费 VFS 已提交的移动与重命名事件，按目录前缀同步已打开及待恢复标签的身份、位置、编辑器保存目标和当前路由。目录页原地更新面包屑、条目与刷新目标，保留筛选和滚动；跨移动返回的旧刷新结果或 ENOENT 必须丢弃并读取新路径。当前资源迁移使用 replace 更新历史，不新增导航步骤。

@@ -1417,6 +1417,7 @@ export const zhCN = {
     'ocr.request': "请按照系统提示词处理这张图片。",
     'configuration.deleteConfirm': '删除选中的 {count} 项配置？',
     'vfs.toolbar.directory': '目录',
+    'editor.study': 'Anki 学习管理',
     'editor.moreActions': '更多操作',
     'editor.copyContent': '复制文件内容',
     'editor.copySuccess': '已复制到剪贴板',

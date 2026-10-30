@@ -196,6 +196,7 @@ export interface WorkbenchConfig {
     };
     onNavigate?: (request: NavigationRequest) => Promise<void>;
     onSessionChange?: (sessionId: string | null) => void;
+    onResourceRelocated?: (resourceId: string) => void;
     onBeforeNavigate?(): void;
     onSidebarToggle?: (collapsed: boolean) => void;
     workbenchState?: import('./workbench/state').WorkbenchStatePort;

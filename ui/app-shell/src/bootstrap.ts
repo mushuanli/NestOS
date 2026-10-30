@@ -435,6 +435,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             onNavigate:      async (req: NavigationRequest) => handleNavigationRequest(req),
             onBeforeNavigate: () => {if (visibleWorkspaceId === elementId) rememberCurrentPage();},
             onSessionChange: (sessionId) => selectionHistory(elementId, sessionId, 'push'),
+            onResourceRelocated: resourceId => selectionHistory(elementId, resourceId, 'replace'),
             onSidebarToggle: (collapsed) => {
                 if (collapsed) {
                     sidebarEl.classList.add('is-collapsed');

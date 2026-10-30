@@ -24,3 +24,5 @@ NestOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJ
 更多菜单顺序通过公开 `actionOrder` 声明（`data-button-id`），适配层不再移动标题栏内部节点；`core:titlebar.enableAssetManager` 是宿主私有开关，仅在 `defaultPluginOptions` 中透传。
 
 Markdown 文件默认通过 defaultEditorFactory 以 render 模式打开，大文件语法预算不能强制改成 edit；显式 initialMode 仍保留。纯文本继续源码显示，不启用 Markdown 解析。
+
+`src/study.ts` 提供 StudyHost 的 VFS/seqfile 适配和工作区 IEditor 包装；文档来源仅枚举 Markdown/笔记及目录，隐藏目录排除。管理视图与正文共用 `createAdapterStore`，首次评分才写入复习状态。

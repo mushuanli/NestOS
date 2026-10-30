@@ -28,6 +28,11 @@ export interface DirectoryListOptions {
 }
 const refreshers = new WeakMap<HTMLElement, () => Promise<void>>();
 const selectionRefreshers = new WeakMap<HTMLElement, () => void>();
+const relocators = new WeakMap<HTMLElement, (path: string, title: string, breadcrumbs: DirectoryBreadcrumb[]) => void>();
+export function relocateDirectoryList(panel: HTMLElement, path: string, title: string, breadcrumbs: DirectoryBreadcrumb[]): void {
+    const list = panel.querySelector<HTMLElement>('.workbench-directory');
+    if (list) relocators.get(list)?.(path, title, breadcrumbs);
+}
 export function refreshDirectorySelection(panel: HTMLElement): void {
     const list = panel.matches('.workbench-directory') ? panel : panel.querySelector<HTMLElement>('.workbench-directory');
     if (list) selectionRefreshers.get(list)?.();
@@ -50,7 +55,7 @@ export function createDirectoryList(options: DirectoryListOptions): HTMLElement 
     const panel = document.createElement('section'); panel.className = 'workbench-directory';
     const heading = document.createElement('h2'); heading.textContent = options.title;
     const header = document.createElement('div'); header.className = 'workbench-directory__heading'; header.append(heading); header.hidden = !!options.breadcrumbs; panel.setAttribute('aria-label', options.title);
-    const path = options.breadcrumbs ? createDirectoryBreadcrumbs(options.breadcrumbs, options.openDirectory ?? options.open)
+    let path = options.breadcrumbs ? createDirectoryBreadcrumbs(options.breadcrumbs, options.openDirectory ?? options.open)
         : document.createElement('p');
     if (!options.breadcrumbs) { path.className = 'workbench-directory__path'; path.textContent = options.path; }
     const fail = (error: unknown) => { const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = error instanceof Error ? error.message : String(error); panel.append(notice); };
@@ -74,14 +79,28 @@ export function createDirectoryList(options: DirectoryListOptions): HTMLElement 
         if (!searching) renderEntries(body, options, toolbar.query, sort, ascending, selection);
     };
     selectionRefreshers.set(panel, render);
+    relocators.set(panel, (next, title, breadcrumbs) => {
+        const previous = options.path;
+        options.entries = options.entries.map(entry => ({...entry, id: next + entry.id.slice(previous.length)}));
+        options.path = next; options.title = title; options.breadcrumbs = breadcrumbs;
+        heading.textContent = title; panel.setAttribute('aria-label', title);
+        const replacement = createDirectoryBreadcrumbs(breadcrumbs, options.openDirectory ?? options.open);
+        path.replaceWith(replacement); path = replacement; render();
+    });
     panel.append(header, path, toolbar.element, missing);
     if (selection) panel.append(selection.bar); if (options.search) panel.append(options.search.element); panel.append(scroll);
     render(); return panel;
 }
 async function refreshEntries(options: DirectoryListOptions, missing: HTMLElement, toolbar: HTMLElement, render: () => void): Promise<void> {
     if (!options.refresh) return;
-    try { options.entries = await options.refresh(); missing.hidden = true; }
+    const path = options.path;
+    try {
+        const entries = await options.refresh();
+        if (options.path !== path) return refreshEntries(options, missing, toolbar, render);
+        options.entries = entries; missing.hidden = true;
+    }
     catch (error) {
+        if (options.path !== path) return refreshEntries(options, missing, toolbar, render);
         if (!isMissingDirectory(error)) throw error;
         options.entries = []; missing.hidden = false;
     }

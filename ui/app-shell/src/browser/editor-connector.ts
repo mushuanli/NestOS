@@ -1,6 +1,6 @@
 import {createRecoverableFileEditor} from './file-recovery';
 import { showNameDialog } from '../files/project-dialog';
-import { t, FILE_BROWSER_ICONS, FILE_ICONS, type NavigationRequest } from '@itookit/common';
+import { t, FILE_BROWSER_ICONS, FILE_ICONS, randomUUID, type NavigationRequest } from '@itookit/common';
 import { directoryBulkActions } from '../workbench/vfs-actions';
 import { watchDirectoryList } from '../workbench/directory-watch';
 import type { EditorFactory, IEditor, EditorHostContext } from '@itookit/ui-common';
@@ -14,11 +14,12 @@ import { MediaViewerEditor, isBinaryViewable } from './MediaViewerEditor';
 import { LatestViewLoad, type ViewLoad } from '../lifecycle/view-load';
 import { WorkbenchTabs, type WorkbenchTab } from '../workbench/tabs';
 import { WorkbenchSidebar } from '../workbench/sidebar';
-import { createDirectoryList, refreshDirectoryList, watchDirectorySelection } from '../workbench/directory-list';
+import { createDirectoryList, refreshDirectoryList, relocateDirectoryList, watchDirectorySelection } from '../workbench/directory-list';
 import type { WorkbenchStatePort } from '../workbench/state';
 import { fileDirectoryBreadcrumbs } from '../workbench/directory-breadcrumbs';
 
 export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
+    virtualViews?: Array<{ id: string; title: string; icon: string; create(container: HTMLElement): Promise<IEditor> }>;
     resolveEditor?: (node: Node) => EditorFactory | null | undefined;
     onEditorCreated?: (editor: IEditor | null) => void;
     saveDebounceMs?: number;
@@ -31,6 +32,7 @@ export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
     canCreateEntries?: boolean;
     navigationLabel?: string;
     onBeforeNavigate?(): void;
+    onResourceRelocated?(path: string): void;
     [key: string]: any;
 }
 interface OpenView { node: VFSNodeUI; editor?: IEditor; lease?: EditorLease; cancel?: () => void }
@@ -111,7 +113,6 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         tabs.setIcon(tab.id, item.icon ?? FILE_ICONS.folder);
         const nodes = await filterGitignoredFiles(engine, await engine.driver.getChildren(item.id, { signal: load.signal }), load.signal); load.check();
         const readOnly = !allowsRowAction('create-in-folder-session', extra.readOnly === true, item) || (await engine.capabilitiesAt(item.id)).readonly; load.check();
-        const parent = item.id.slice(0, item.id.lastIndexOf('/')) || '/';
         tab.panel.replaceChildren(createDirectoryList({ title: item.metadata.title, path: item.id,
             breadcrumbs: fileDirectoryBreadcrumbs(item.id, t('project.files')),
             openDirectory: id => { void (id === '/' ? openDirectory(id).then(() => vfs.setSelection([])) : openResource(id)).catch(report); },
@@ -122,7 +123,10 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             actions: readOnly ? undefined : [{ label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'file').catch(report); } },
                 { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'directory').catch(report); } }],
             open: id => { void openResource(id).catch(report); },
-            parent: item.id === '/' ? undefined : () => { void (parent === '/' ? openDirectory(parent) : openResource(parent)).catch(report); },
+            parent: item.id === '/' ? undefined : () => {
+                const parent = item.id.slice(0, item.id.lastIndexOf('/')) || '/';
+                void (parent === '/' ? openDirectory(parent) : openResource(parent)).catch(report);
+            },
             refresh: () => directoryEntries(item.id).catch(error => { report(error); throw error; }) }));
         tab.subscriptions.push(watchDirectoryList(engine, tab.panel, report));
         tab.subscriptions.push(watchDirectorySelection(tab.panel, vfs));
@@ -131,7 +135,9 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         tabs.location(tab.id, item.id);
         if (item.icon) tabs.setIcon(tab.id, item.icon);
         const view: OpenView = { node: item };
-        if (item.type === 'directory') await directory(tab, item, load);
+        const virtual = options.virtualViews?.find(view => view.id === item.id);
+        if (virtual) view.editor = await virtual.create(tab.panel);
+        else if (item.type === 'directory') await directory(tab, item, load);
         else {
             const raw = await engine.driver.readContent(item.id, {encoding: 'binary', onRevision: value => {revisions.set(item.id, value);}});
             load.check(); const mime = guessMimeType('file' + (item.metadata.custom?._extension ?? ''));
@@ -148,6 +154,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             }
             if (!loads.isCurrent(load) || closed) { await view.editor?.destroy(); return; }
         }
+        if (!loads.isCurrent(load) || closed) { await view.editor?.destroy(); return; }
         load.check(); view.cancel = loads.detach(load); tab.value = view; bind(tab, view);
         onEditorCreated?.(view.editor ?? null);
     }
@@ -169,26 +176,36 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         });
         pending.add(task); void task.finally(() => pending.delete(task)); await task;
     }
+    function relocate(oldPath: string, newPath: string): void {
+        const operationId = randomUUID(), started = Date.now();
+        const active = tabs.current?.id;
+        let count = 0;
+        for (const tab of tabs.values()) {
+            const next = replacePrefix(tab.id, oldPath, newPath); if (next === tab.id) continue;
+            const title = next.split('/').pop() || tab.title, view = tab.value;
+            if (view) {
+                Object.assign(view.node, {id: next, metadata: {...view.node.metadata, title, path: next,
+                    parentPath: next.slice(0, next.lastIndexOf('/')) || '/'}});
+                view.editor?.updateNodeId?.(next); view.editor?.setTitle?.(title);
+                if (view.node.type === 'directory') relocateDirectoryList(tab.panel, next, title, fileDirectoryBreadcrumbs(next, t('project.files')));
+            }
+            revisions.set(next, revisions.get(tab.id)); revisions.delete(tab.id);
+            tabs.rename(tab.id, next, title); tabs.location(next, next); count++;
+        }
+        if (pendingItem) {
+            const next = replacePrefix(pendingItem.id, oldPath, newPath);
+            if (next !== pendingItem.id) pendingItem = {...pendingItem, id: next};
+        }
+        if (count) console.debug('[EditorConnector]', {operationId, operation: 'resource.relocate', stage: 'views', result: 'success', count, durationMs: Date.now() - started});
+        if (active && active !== tabs.current?.id && tabs.current) options.onResourceRelocated?.(tabs.current.id);
+    }
     const unsubscribe = [vfs.on('sessionSelected', event => { selectionWork = select(event).catch(report); }),
         vfs.on('navigateToHeading', ({ elementId }) => tabs.current?.value?.editor?.navigateTo({ elementId })),
-        vfs.on('fileRenamed', ({ oldId, newId, item }) => {
-            for (const tab of tabs.values()) {
-                const next = replacePrefix(tab.id, oldId, newId); if (next === tab.id) continue;
-                const view = tab.value; if (view) { view.node = vfs.getNode(next) ?? { ...view.node, id: next }; view.editor?.updateNodeId?.(next); }
-                revisions.set(next, revisions.get(tab.id)); revisions.delete(tab.id);
-                const title = next === newId ? item.metadata.title : tab.title; view?.editor?.setTitle?.(title); tabs.rename(tab.id, next, title);
-                tabs.location(next, next);
-                if (next === newId && item.icon) tabs.setIcon(next, item.icon);
-            }
-        })];
+        vfs.on('fileRenamed', ({ oldId, newId }) => relocate(oldId, newId))];
     if (typeof engine.on === 'function') unsubscribe.push(engine.on('node:moved', event => {
-        for (const { oldPath, newPath } of event.payload.nodes) for (const tab of tabs.values()) {
-            const next = replacePrefix(tab.id, oldPath, newPath); if (next === tab.id) continue;
-            const title = next.split('/').pop() || tab.title;
-            if (tab.value) { tab.value.node = { ...tab.value.node, id: next }; tab.value.editor?.updateNodeId?.(next); tab.value.editor?.setTitle?.(title); }
-            revisions.set(next, revisions.get(tab.id)); revisions.delete(tab.id);
-            tabs.rename(tab.id, next, title);
-        }
+        for (const {oldPath, newPath} of event.payload.nodes) relocate(oldPath, newPath);
+    }), engine.on('node:renamed', event => {
+        for (const {oldPath, newPath} of event.payload.nodes) relocate(oldPath, newPath);
     }), engine.on('node:deleted', event => {
         for (const tab of tabs.values()) if (event.payload.requestedPaths.some(path => tab.id === path || tab.id.startsWith(path + '/')))
             void tabs.close(tab.id, false).catch(report);
@@ -205,6 +222,12 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             parentPath: node?.parentPath ?? null, tags: [], createdAt: new Date(node?.createdAt ?? 0).toISOString(), lastModified: new Date(node?.modifiedAt ?? 0).toISOString(), custom: node?.metadata ?? {} } } });
     }
     async function openResource(path: string): Promise<void> {
+        const virtual = options.virtualViews?.find(view => view.id === path);
+        if (virtual) {
+            selectionWork = select({ item: { id: path, type: 'file', icon: virtual.icon, version: '1',
+                metadata: { title: virtual.title, path, parentPath: null, tags: [], createdAt: '', lastModified: '', custom: {} } } });
+            await selectionWork; return;
+        }
         const node = await engine.driver.getNode(path);
         if (!node) throw new FSError('ENOENT', 'File not found', 'open', path);
         const item: VFSNodeUI = {id: path, type: node.type === 'directory' ? 'directory' : 'file', icon: vfs.getResourceIcon(node), version: String(node.version),

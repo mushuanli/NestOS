@@ -1,3 +1,4 @@
+import {sessionResponse} from '../session/session-response';
 import {createTextGeneration, listTextModels} from '../configuration/text-generation';
 import {assistantOverview} from '../assistant/overview';
 import {publicConfiguration} from './configuration-access';
@@ -60,6 +61,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     let opening = false;
     const backend: ApplicationBackend = {
         assistantOverview: () => assistantOverview(services),
+        sessionResponse: (id, query) => sessionResponse(repository, id, query),
         editorSwaps: services.editorSwapStore ? {openEditorSwap: async request => {
             const node = await request.files.driver.getNode(request.path);
             if (!node || node.type !== 'file') throw new FSError('ENOENT', 'Swap source file is unavailable');

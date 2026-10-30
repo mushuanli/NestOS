@@ -1501,6 +1501,7 @@ export const en: LocaleStrings = {
     'vfs.toolbar.directory': 'Folder',
     'editor.studySessionTitle': 'Anki creation: ',
     'editor.studySessionView': 'View generation session',
+    'editor.studyRecoveringResult': 'Connection interrupted. Checking the original result; view session.',
     'editor.studyOutputLimited': 'Model output limit reached. Draft retained; check its ending.',
     'editor.studyCreate': "New Anki note",
     'textGeneration.instructions': 'Generation instructions',

@@ -43,6 +43,7 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    sessionResponse(sessionId: string, query?: SessionResponseQuery): Promise<SessionResponse | undefined>;
     listTextModels(): Promise<Array<{id: string; name: string; model?: string; models: Array<{id: string; name: string}>; available: boolean; reason?: string; default: boolean}>>;
     generateText(request: {sessionId: string; modelId?: string; connectionId?: string; operationId: string; prompt: string; source: string; previousDraft: string}): Promise<string>;
     cancelTextGeneration(operationId: string): Promise<void>;
@@ -78,6 +79,15 @@ export interface ApplicationBackend {
     taskAttachment: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;
     sessionTasks(sessionId: string, options?: SessionTaskQuery): Promise<SessionTaskPage>;
     taskEvents(sessionId: string, taskId: string, options?: TaskEventQuery): Promise<TaskEventView>;
+}
+/** Omit selectors to read the latest round in the selected (or current) branch. */
+export interface SessionResponseQuery {branch?: string; operationId?: string; roundId?: string}
+export interface SessionResponse {
+    roundId: string;
+    operationId?: string;
+    status: import('@itookit/llm-session/contracts').Round['status'];
+    text: string;
+    finishReason?: string;
 }
 export interface SessionDraftRequest {
     sessionId?: string;

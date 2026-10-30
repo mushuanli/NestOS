@@ -118,6 +118,7 @@ export interface ApplicationRuntime {
     runCatalog: RunCatalog;
     createView(): Promise<import('./conversation-system').OwnedConversationView>;
     openConversation(sessionId: string): Promise<import('./conversation-contexts').ConversationLease>;
+    conversationObservation?: Pick<ConversationContexts, 'subscribe'>;
     startBackground?(): void;
     prepareSession?(sessionId: string): Promise<boolean>;
     dispose(): Promise<void>;
@@ -551,7 +552,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         if (policy.projects === 'before-ready') startBackground();
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections, toolConnections: options.toolConnections,
             flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, independentCalls, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
-            projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id) };
+            projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id), conversationObservation: conversationContexts };
     } catch (error) {
         await startup.close();
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {

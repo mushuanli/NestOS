@@ -3,8 +3,9 @@ import {t, createModuleLogger} from '@itookit/common';
 import type {ISessionRepository} from '@itookit/llm-session';
 import type {ApplicationBackend} from '@itookit/app-contracts/services';
 import type {StudyCreation} from '@itookit/mdxeditor';
+import {recoverGenerationResult} from './generation-result-recovery';
 /** Cancellation is an explicit remote operation; AbortSignal itself is never serialized. */
-export function studyGeneration(backend: ApplicationBackend, repository: Pick<ISessionRepository, 'updateManifest'> & Partial<Pick<ISessionRepository, 'readHistoryChain'>>): Pick<StudyCreation, 'generate' | 'configurationUrl' | 'generationTargets' | 'generationSaved'> {
+export function studyGeneration(backend: ApplicationBackend, repository: Pick<ISessionRepository, 'updateManifest'>): Pick<StudyCreation, 'generate' | 'configurationUrl' | 'generationTargets' | 'generationSaved'> {
     const generated = new Set<string>();
     return {generationSaved: async draft => {if (generated.has(draft.operationId)) {await repository.updateManifest(draft.operationId, {title: t('editor.studySessionTitle') + draft.title}); generated.delete(draft.operationId);}}, configurationUrl: '#/settings/connections', generationTargets: {list: async signal => {
         signal.throwIfAborted(); const models = await backend.listTextModels(); signal.throwIfAborted();
@@ -20,14 +21,18 @@ export function studyGeneration(backend: ApplicationBackend, repository: Pick<IS
             await backend.createSessionDraft({sessionId: draftId, title, inputText: ''});
             generated.add(draftId); request.signal.throwIfAborted();
             request.onExecution?.({label: t('editor.studySessionView') + ' · ' + title, url: '#/chat/' + encodeURIComponent(sessionRoute(draftId, 'main'))});
-            const result = await backend.generateText({sessionId: draftId, operationId, prompt, source, previousDraft, connectionId: targetId, modelId});
-            const history = await repository.readHistoryChain?.(draftId).catch(() => {
+            const result = await backend.generateText({sessionId: draftId, operationId, prompt, source, previousDraft, connectionId: targetId, modelId}).catch(error => {
+                request.signal.throwIfAborted();
+                if (typeof error?.code === 'string' && /^TEXT_/.test(error.code)) throw error;
+                request.onExecution?.({label: t('editor.studyRecoveringResult'), url: '#/chat/' + encodeURIComponent(sessionRoute(draftId, 'main'))});
+                return recoverGenerationResult(backend, draftId, operationId, request.signal);
+            });
+            const response = await backend.sessionResponse?.(draftId, {operationId, branch: 'main'}).catch(() => {
                 createModuleLogger('study-generation').warn('text.history', {operationId, stage: 'read-finish-reason', result: 'failure', code: 'TEXT_HISTORY_UNAVAILABLE'});
                 return undefined;
             });
-            const round = history?.rounds.find(item => item.submission?.id === operationId);
-            if (round?.result?.finishReason === 'length') request.onExecution?.({label: t('editor.studyOutputLimited'), url: '#/chat/' + encodeURIComponent(sessionRoute(draftId, 'main'))});
-            request.signal.throwIfAborted(); return result;
+            if (response?.finishReason === 'length') request.onExecution?.({label: t('editor.studyOutputLimited'), url: '#/chat/' + encodeURIComponent(sessionRoute(draftId, 'main'))});
+            request.signal.throwIfAborted(); return response?.status === 'completed' ? response.text : result;
         } finally {request.signal.removeEventListener('abort', cancel);}
     }};
 }

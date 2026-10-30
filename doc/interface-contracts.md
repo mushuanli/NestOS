@@ -334,3 +334,11 @@ Node 的目录、权限、原子写入和 48 小时清理由可信宿主实现�
 能力调用不使文件/会话域失效，不把每次副本写入变成工作区重载。MDX 核心仍只消费宿主回调，不解释 httpd 或宿主路径。
 
 数字分身 `collectionTools()` 投影可直接采集的固定版本 Tool 及参数 Schema；`TwinCollectionExecutor` 兼容原发布 Flow 和新 Tool 目标。`mode=collect` 只采集，不要求模型。`triggerScanPlan(planId,eventId)` 是授权事件写入端口，与入队原子保存去重回执，RPC 不自动重放；`event` 触发不参与定时扫描。`authorizeTool` 是宿主注入的通用 Effect 授权门，能力获取前后及恢复时复验，不向 UI 暴露凭据。详见 [扫描器与共享空间](design/digital-twin-scanners.md)。
+
+## Session 响应正文读取与后台观察
+
+`ApplicationBackend.sessionResponse(sessionId, query?)` 是只读 query。省略选择器时读取当前分支最近一轮；`branch` 可选择已有分支，`operationId` 或 `roundId` 精确选择一轮，两者不能同时指定。未找到返回 undefined，不能退回其他回复。返回 roundId、operationId、status、text、finishReason；text 只包含 assistant 的文本块，排除思考、工具、附件及用户消息。读取不绑定 Session、不切分支、不启动执行。
+
+`app-core/host/conversation-observation` 将宿主持有的执行投影到浏览器/桌面的独立阅读视图，按 Session 和分支隔离；观察不创建新执行，释放视图会释放订阅。`ConversationContexts.subscribe` 只属于宿主，不作为独立 RPC 能力导出。
+
+Anki 创建通过该通用正文 API 按本次 operationId 读取 main 分支结果。生成回执断开后只核对原轮次，不重发生成请求；已存在的进行中轮次继续等待，未确认接纳的操作最多核对三十秒后报 TEXT_RESULT_UNCONFIRMED。成功仅回填草稿，保存仍由用户显式触发。回归覆盖后台流式思考/正文经真实 RpcPeer 传输、轮次选择、断线恢复、取消及草稿输入框正文回填。

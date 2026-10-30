@@ -1,5 +1,5 @@
 import {t, createModuleLogger} from '@itookit/common';
-import {SessionCommand, type Round, type SessionInstructionQueue} from '@itookit/llm-session/contracts';
+import {SessionCommand, assistantResponseText, type Round, type SessionInstructionQueue} from '@itookit/llm-session/contracts';
 import type {ApplicationBackend, LocalApplicationServices} from '@itookit/app-contracts/services';
 
 type Request = Parameters<ApplicationBackend['generateText']>[0];
@@ -76,8 +76,7 @@ class TextSessionObserver {
 }
 function completedText(round: Round): string {
     if (round.status !== 'completed') throw failure(round.status === 'cancelled' ? 'TEXT_CANCELLED' : 'TEXT_SESSION_FAILED');
-    const content = round.output.filter(message => message.role === 'assistant').map(message => typeof message.content === 'string'
-        ? message.content : message.content.filter(part => part.type === 'text').map(part => 'text' in part ? part.text : '').join('')).join('\n').trim();
+    const content = assistantResponseText(round);
     const finishReason = round.result?.finishReason;
     const metadata = {operationId: round.submission?.id, roundId: round.id, stage: 'output', result: content ? 'available' : 'empty', finishReason, outputCharacters: content.length};
     if (finishReason === 'length') createModuleLogger('text-generation').warn('text.output', metadata);

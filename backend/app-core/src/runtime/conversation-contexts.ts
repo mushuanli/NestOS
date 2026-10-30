@@ -1,6 +1,6 @@
 import { FSError } from '@itookit/vfs-core';
 import { SessionCommand } from '@itookit/llm-session/contracts';
-import type { ICommandBus, SessionSnapshot, SessionViewPort } from '@itookit/llm-session/contracts';
+import type { ICommandBus, SessionSnapshot, SessionViewPort, SessionEventEnvelope } from '@itookit/llm-session/contracts';
 
 export interface ConversationClient {
     sessionManager: Pick<SessionViewPort, 'onEvent' | 'onGlobalEvent'> & { getSnapshot(): SessionSnapshot };
@@ -18,6 +18,7 @@ interface ContextOptions {
 
 /** Execution contexts belong to the host, never to a browser connection. */
 export class ConversationContexts {
+    private readonly listeners = new Set<(sessionId: string, event: SessionEventEnvelope, snapshot: SessionSnapshot) => void>();
     private readonly contexts = new Map<string, Entry>();
     private closed = false;
     private closing?: Promise<void>;
@@ -47,8 +48,20 @@ export class ConversationContexts {
         const context = await this.create();
         try {
             const createMissing = await this.canCreate(sessionId);
-            await context.commandBus.execute(SessionCommand.Bind, { sessionId, createMissing }); return context;
+            await context.commandBus.execute(SessionCommand.Bind, { sessionId, createMissing });
+            if (this.closed) throw new FSError('EIO', 'Conversation host is closed');
+            const stop = context.sessionManager.onEvent(event => {
+                const snapshot = context.sessionManager.getSnapshot();
+                if (snapshot.sessionId !== sessionId) return;
+                for (const listener of this.listeners) {
+                    try {listener(sessionId, event, snapshot);} catch {console.warn('Conversation observation failed', {code: 'CONVERSATION_OBSERVER_FAILED', sessionId});}
+                }
+            });
+            return {...context, dispose: async () => {stop(); await context.dispose();}};
         } catch (error) { await context.dispose(); throw error; }
+    }
+    subscribe(listener: (sessionId: string, event: SessionEventEnvelope, snapshot: SessionSnapshot) => void): () => void {
+        this.listeners.add(listener); return () => {this.listeners.delete(listener);};
     }
     private now(): number { return this.options.now?.() ?? Date.now(); }
     private startTimer(): void {
@@ -77,6 +90,7 @@ export class ConversationContexts {
     close(): Promise<void> {
         if (!this.closing) {
             this.closed = true;
+            this.listeners.clear();
             if (this.timer) { clearInterval(this.timer); this.timer = undefined; }
             const pending = [...this.contexts.values()].map(entry => entry.pending);
             this.closing = (async () => {

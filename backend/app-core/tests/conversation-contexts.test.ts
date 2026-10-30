@@ -9,7 +9,7 @@ function fixture(options: { maxIdle?: number; canRelease?: (id: string) => Promi
     let now = 0;
     const created: Array<{ sessionManager: any; commandBus: any; dispose: ReturnType<typeof vi.fn> }> = [];
     const create = vi.fn(async () => {
-        const context = { sessionManager: { getSnapshot: () => ({ status: 'idle', isRunning: false }), onEvent: vi.fn(), onGlobalEvent: vi.fn() },
+        const context = { sessionManager: { getSnapshot: () => ({ status: 'idle', isRunning: false }), onEvent: vi.fn(() => vi.fn()), onGlobalEvent: vi.fn(() => vi.fn()) },
             commandBus: { execute: vi.fn(async () => {}), list: () => [] }, dispose: vi.fn(async () => {}) };
         created.push(context); return context;
     });

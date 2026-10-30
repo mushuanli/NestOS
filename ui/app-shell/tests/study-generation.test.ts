@@ -24,9 +24,22 @@ it('propagates cancellation through an explicit backend operation',async()=>{
  await expect(pending).rejects.toMatchObject({name:'AbortError'});expect(cancelTextGeneration).toHaveBeenCalledWith('op');
 });
 it('keeps nonempty limited output and explains the limit through the execution link', async () => {
- const api=studyGeneration({createSessionDraft:async()=> 'draft',generateText:async()=> 'Partial',cancelTextGeneration:async()=>{}} as unknown as ApplicationBackend,
-  {updateManifest:async()=>{},readHistoryChain:async()=>({rounds:[{submission:{id:'op'},result:{finishReason:'length'}}]} as never)});
+ const api=studyGeneration({createSessionDraft:async()=> 'draft',generateText:async()=> 'Partial',cancelTextGeneration:async()=>{},sessionResponse:async()=>({roundId:'round',operationId:'op',status:'completed',text:'Partial',finishReason:'length'})} as unknown as ApplicationBackend,
+  {updateManifest:async()=>{}});
  const onExecution=vi.fn();
  expect(await api.generate!({draftId:'draft',title:'New',operationId:'op',prompt:'Convert',source:'Source',previousDraft:'',signal:new AbortController().signal,onExecution})).toBe('Partial');
  expect(onExecution).toHaveBeenLastCalledWith(expect.objectContaining({label:'输出达到模型上限，已保留草稿，请检查结尾'}));
+});
+it('recovers the completed original round after a lost transport reply without resubmitting', async () => {
+ const generateText=vi.fn(async()=>{throw new TypeError('Failed to fetch');});
+ const sessionResponse=vi.fn(async()=>({roundId:'round',operationId:'op',status:'completed',text:'--retained--',finishReason:'stop'}));
+ const api=studyGeneration({createSessionDraft:async()=> 'draft',generateText,cancelTextGeneration:async()=>{},sessionResponse} as unknown as ApplicationBackend,{updateManifest:async()=>{}});
+ expect(await api.generate!({draftId:'draft',title:'New',operationId:'op',prompt:'Convert',source:'Source',previousDraft:'',signal:new AbortController().signal})).toBe('--retained--');
+ expect(generateText).toHaveBeenCalledOnce();
+});
+it('retains explicit generation failures instead of treating them as lost replies', async () => {
+ const sessionResponse=vi.fn();
+ const api=studyGeneration({createSessionDraft:async()=> 'draft',generateText:async()=>{throw Object.assign(new Error('Rejected'),{code:'TEXT_AUTH_REJECTED'});},cancelTextGeneration:async()=>{},sessionResponse} as unknown as ApplicationBackend,{updateManifest:async()=>{}});
+ await expect(api.generate!({draftId:'draft',title:'New',operationId:'op',prompt:'Convert',source:'Source',previousDraft:'',signal:new AbortController().signal})).rejects.toMatchObject({code:'TEXT_AUTH_REJECTED'});
+ expect(sessionResponse).not.toHaveBeenCalled();
 });

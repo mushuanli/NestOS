@@ -1502,6 +1502,7 @@ export const zhCN = {
     'vfs.toolbar.directory': '目录',
     'editor.studySessionTitle': 'Anki 创建：',
     'editor.studySessionView': '查看生成会话',
+    'editor.studyRecoveringResult': '连接中断，正在核对原生成结果；可查看会话',
     'editor.studyOutputLimited': '输出达到模型上限，已保留草稿，请检查结尾',
     'editor.studyCreate': "新增 Anki 文件",
     'textGeneration.instructions': '生成要求 / AI 提示词',

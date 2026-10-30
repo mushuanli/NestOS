@@ -1,6 +1,7 @@
 export * from './contracts/independent-calls';
 /** Conversation and configuration contracts; no runtime, VFS or YAML initialization. */
 export * from './contracts/conversation';
+export {assistantResponseText} from './contracts/assistant-text';
 export * from './contracts/session';
 export * from './contracts/command-bus';
 export * from './contracts/extension';

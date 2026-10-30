@@ -863,3 +863,7 @@ initializeConversationSystem 在已配置独立调用宿主时返回 independent
 ### 独立调用的恢复目录
 
 createFlowInvocationSessions(fs, "independent") 提供独立调用恢复索引，供 ConversationSystemOptions.independentCallSessions 注入。事务 SeqFile 在路由写入前标记来源 Session，完整兼容扫描后才确认目录完整；索引不可用时继续扫描原 Kernel 路由。目录仅优化恢复定位，不代替 Kernel 接纳或执行事实。
+
+### 提取助手正文
+
+`assistantResponseText(round)` 从 `@itookit/llm-session/contracts` 导出，只拼接 assistant 的文本内容，不包含 reasoning/thinking、工具、图片或用户输入。生成回填与应用层的 `ApplicationBackend.sessionResponse` 共用此实现，后者提供按分支、轮次或提交操作选择结果的只读 API。

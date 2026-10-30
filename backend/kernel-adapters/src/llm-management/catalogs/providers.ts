@@ -287,8 +287,8 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
             defaultThinkingEnabled: true, // DeepSeek Responses 默认开启思考，关闭需 effort='none'
         },
         models: [
-            { id: 'deepseek-v4-pro', name: MODEL_NAME_DEEPSEEK_V4_PRO, icon: '👑', supportsThinking: true, reasoning: { efforts: [{ id: 'low' }, { id: 'high' }, { id: 'max' }], canDisable: true, transport: 'deepseek' } },
-            { id: 'deepseek-v4-flash', name: MODEL_NAME_DEEPSEEK_V4_FLASH, icon: '⚡', reasoning: { efforts: [{ id: 'low' }, { id: 'high' }, { id: 'max' }], canDisable: true, transport: 'deepseek' } },
+            { id: 'deepseek-v4-pro', name: MODEL_NAME_DEEPSEEK_V4_PRO, icon: '👑', contextWindow: 1048576, maxOutput: 393216, supportsThinking: true, reasoning: { efforts: [{ id: 'low' }, { id: 'high' }, { id: 'max' }], canDisable: true, transport: 'deepseek' } },
+            { id: 'deepseek-v4-flash', name: MODEL_NAME_DEEPSEEK_V4_FLASH, icon: '⚡', contextWindow: 1048576, maxOutput: 393216, reasoning: { efforts: [{ id: 'low' }, { id: 'high' }, { id: 'max' }], canDisable: true, transport: 'deepseek' } },
         ],
     },
 

@@ -1,5 +1,10 @@
 import {expect, it} from 'vitest';
 import {completeModelDeclaration} from '../../src/contracts';
+it('inherits declared token capacities without overriding an explicit user configuration', () => {
+    const declared = {id: 'example', name: 'Example', contextWindow: 1048576, maxOutput: 393216};
+    expect(completeModelDeclaration({id: 'example', name: 'Mine'}, declared)).toMatchObject({contextWindow: 1048576, maxOutput: 393216});
+    expect(completeModelDeclaration({id: 'example', name: 'Mine', maxOutput: 262144}, declared).maxOutput).toBe(262144);
+});
 import {createLlmDeviceCatalog} from '../../src/llm-management/catalogs';
 const volcengineImageModels = createLlmDeviceCatalog().providers.volcengine.models.filter(model => model.category === 'image');
 import {requireMediaCapabilities} from '@itookit/driver-llm/contracts';

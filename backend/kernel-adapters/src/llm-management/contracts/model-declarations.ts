@@ -4,7 +4,8 @@ import type {LLMModel} from '@itookit/driver-llm/contracts';
 export function completeModelDeclaration(model: LLMModel, declared?: LLMModel): LLMModel {
     if (!declared || declared.id !== model.id) return model;
     const operations = model.operations ?? declared.operations;
-    return {...model, operations, supportedOperations: model.supportedOperations ?? declared.supportedOperations,
+    return {...model, contextWindow: model.contextWindow ?? declared.contextWindow, maxOutput: model.maxOutput ?? declared.maxOutput,
+        operations, supportedOperations: model.supportedOperations ?? declared.supportedOperations,
         category: model.operations ? model.category : declared.operations ? declared.category : model.category ?? declared.category,
         capabilitiesKnown: operations && Object.keys(operations).length ? true : model.capabilitiesKnown,
         reasoning: model.reasoning ?? declared.reasoning, reasoningByProtocol: model.reasoningByProtocol ?? declared.reasoningByProtocol};

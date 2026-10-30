@@ -7,7 +7,6 @@ import {ASSISTANT_MENU_DOCUMENT, emptyAssistantState, readAssistantState, shortc
 import {requestAssistantShortcut, withAssistantShortcut} from '../src/navigation/assistant-actions';
 import {shortcutEditor, updateShortcutFields, filterTargetChoices, filterSessionChoices, type AssistantChoices} from '../src/navigation/assistant-editor';
 import {matchesShortcutQuery, type AssistantMenuState} from '../src/navigation/assistant-shortcuts';
-import {installAssistantNav} from '../src/navigation/assistant-nav';
 const releases: Array<() => void> = [];
 afterEach(() => {for (const close of releases.splice(0)) close(); document.body.replaceChildren(); vi.restoreAllMocks();});
 const event = (id: string, kind: AssistantEvent['kind'] = 'completion', priority = 4): AssistantEvent => ({id, revision: 'v1', kind, source: 'sessions', title: '<img src=x onerror=alert(1)>',
@@ -152,21 +151,6 @@ it('adds the selected navigation target with editable keywords and reuses an exi
     expect(again.querySelector<HTMLInputElement>('[name=keywords]')!.value).toBe('工作 周报');
     again.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true})); await vi.waitFor(() => expect(f.write).toHaveBeenCalledTimes(2));
     expect(f.write.mock.calls[1][1].shortcuts).toHaveLength(1);
-});
-
-it('offers keyboard and mobile top-level navigation actions with lifecycle cleanup', async () => {
-    const f = setup([]); await vi.waitFor(() => expect(f.assistantOverview).toHaveBeenCalledOnce());
-    const more = document.createElement('dialog'); more.id = 'mobile-more-menu'; more.innerHTML = '<div class="mobile-more-menu__grid"><button class="app-nav-btn" data-target="notes-workspace">Notes</button></div>'; document.body.append(more);
-    const signal = new AbortController(), stop = installAssistantNav(signal.signal, () => 'notes'); releases.push(() => {signal.abort(); stop();});
-    const nav = more.querySelector<HTMLButtonElement>('.app-nav-btn')!;
-    nav.dispatchEvent(new KeyboardEvent('keydown', {key: 'F10', shiftKey: true, bubbles: true})); expect(document.querySelector<HTMLDialogElement>('.assistant-nav-menu')!.open).toBe(true);
-    document.querySelector<HTMLButtonElement>('.assistant-nav-menu button')!.click();
-    await vi.waitFor(() => expect(document.querySelector('[data-assistant-form]')).not.toBeNull());
-    expect(document.querySelector<HTMLInputElement>('[name=title]')!.value).toBe('Notes');
-    document.querySelector<HTMLDialogElement>('.assistant-menu')!.close();
-    more.showModal(); more.querySelector<HTMLButtonElement>('.assistant-nav-pin')!.click();
-    expect(more.open).toBe(false); await vi.waitFor(() => expect(document.querySelector('[data-assistant-form]')).not.toBeNull());
-    signal.abort(); stop(); expect(document.querySelector('.assistant-nav-pin')).toBeNull(); expect(document.querySelector('.assistant-nav-menu')).toBeNull(); expect(nav.isConnected).toBe(true);
 });
 
 it('renders actionable text instead of undefined when a loaded icon catalog lacks assistant icons', async () => {

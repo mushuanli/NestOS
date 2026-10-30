@@ -1,4 +1,3 @@
-import {installAssistantNav} from './navigation/assistant-nav';
 import {withAssistantShortcut} from './navigation/assistant-actions';
 import {installAssistantMenu} from './navigation/assistant-menu';
 import {createEditorSwapFactory} from './browser/editor-swap';
@@ -698,7 +697,6 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const entryResource = (id: string) => isProjectWorkspace(id)
         ? '/' : managerCache.get(id)?.getActiveResourceId() ?? null;
 
-    cleanupFns.push(installAssistantNav(navigationSignal, id => reverseRouteMap[id] ?? id));
     document.querySelectorAll('.app-nav-btn[data-target]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();

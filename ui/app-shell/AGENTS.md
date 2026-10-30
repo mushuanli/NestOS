@@ -205,3 +205,7 @@ LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原�
 笔记侧栏更多菜单通过通用 toolbar extraItems 打开 `@study` 学习页。Workbench 根据 cloze 工作区配置注入通用 virtualViews，编辑器连接器为虚拟页复用标签与生命周期；虚拟身份不传给 VFS 文件读取。StudyView 及队列位于 mdxeditor，NestOS 只装配文档/存储端口。
 
 文件工作台消费 VFS 已提交的移动与重命名事件，按目录前缀同步已打开及待恢复标签的身份、位置、编辑器保存目标和当前路由。目录页原地更新面包屑、条目与刷新目标，保留筛选和滚动；跨移动返回的旧刷新结果或 ENOENT 必须丢弃并读取新路径。当前资源迁移使用 replace 更新历史，不新增导航步骤。
+
+助手入口通过 AssistantMenu 统一顶部品牌和手机底部导航，前三项事件来自只读 assistantOverview；等待处理不能被已读代替。快捷项和已读版本保存到用户 UI 文档，沿用项目、草稿、会话和扫描器路由，不在菜单内执行任务。数字分身 workspace 深链保留空间身份并定位规则或运行卡片；详情见 doc/design/assistant-menu.md。
+
+快捷访问与新增表单的项目、项目内会话、扫描器统一使用多词 AND 筛选；关键词是可选的个人快捷项字段，搜索本身不持久化。导航菜单经 assistant-actions 交给助手编辑所选目标，不能误用当前页面；保持原菜单动作并兼容只读目标，重复目标编辑已有快捷项。

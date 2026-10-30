@@ -63,3 +63,12 @@ it('keeps rule drafts when switching panels and finds targets beyond the old 200
     expect(host.editor.querySelector('[data-form="scanPlan"]')).toBe(form); expect(name.value).toBe('Draft');
     expect(host.selected).toHaveBeenLastCalledWith('/sources/plans');
 });
+
+it('reveals a pinned scanner beyond the first page and clears conflicting list filters', async () => {
+    const host = await setup(); host.filter('plans', 'query', 'Rule 1'); host.filter('plans', 'enabled', 'true');
+    await host.workbench.openResource('/sources/' + encodeURIComponent('plan:plan-11'));
+    expect(host.visible('plans').map(row => row.dataset.scanRow)).toContain('plan-11');
+    expect(host.list('plans').querySelector<HTMLInputElement>('[data-scan-filter=query]')!.value).toBe('');
+    expect(host.editor.querySelector('[data-assistant-focus=true]')?.getAttribute('data-scan-row')).toBe('plan-11');
+    await expect(host.workbench.openResource('/sources/' + encodeURIComponent('plan:missing'))).rejects.toThrow('扫描器');
+});

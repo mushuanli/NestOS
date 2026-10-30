@@ -163,3 +163,5 @@
 .twin__step { margin: 0; padding: 16px; border: 1px solid var(--llm-border-color, #dce1e8); border-radius: 8px; display: grid; gap: 12px; min-width: 0; }
 .twin__step > legend { padding-inline: 6px; font-weight: 500; }
 .twin__step [hidden] { display: none; }
+
+.twin__card[data-assistant-focus="true"] { outline: 2px solid var(--primary-color, #5b66f5); outline-offset: 2px; }

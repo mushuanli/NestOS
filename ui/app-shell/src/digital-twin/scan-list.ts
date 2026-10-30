@@ -51,6 +51,14 @@ export class TwinScanLists {
             this.applyList(list);
         });
     }
+    reveal(root: HTMLElement, id: string): boolean {
+        const list = root.querySelector<HTMLElement>('[data-scan-list="plans"]'); if (!list) return false;
+        const rows = [...list.querySelectorAll<HTMLElement>('[data-scan-row]')], index = rows.findIndex(row => row.dataset.scanRow === id);
+        if (index < 0) return false;
+        this.filters.plans = {query: '', enabled: '', kind: '', state: '', page: Math.floor(index / PAGE_SIZE)};
+        this.restore(root); const row = rows[index]; row.tabIndex = -1;
+        row.setAttribute('data-assistant-focus', 'true'); row.scrollIntoView?.({block: 'center'}); row.focus({preventScroll: true}); return true;
+    }
     private applyList(list: HTMLElement): void {
         const state = this.filters[list.dataset.scanList as ListKind], query = state.query.trim().toLocaleLowerCase();
         const rows = [...list.querySelectorAll<HTMLElement>('[data-scan-row]')];

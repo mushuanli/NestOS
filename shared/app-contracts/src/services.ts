@@ -21,3 +21,5 @@ export type * from './ports/flow-installation';
 export type * from './ports/document-chat';
 
 export type {EditorSwap, EditorSwapSnapshot, EditorSwapFactory, EditorSwapStore} from "./ports/editor-swap";
+
+export type * from './ports/assistant';

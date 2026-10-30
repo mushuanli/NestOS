@@ -1,3 +1,4 @@
+import {ASSISTANT_ADD_EVENT} from '../src/navigation/assistant-actions';
 import { SystemPromptSettingsEditor } from '../../llm-settings-ui/src/editors/SystemPromptSettingsEditor';
 // @vitest-environment jsdom
 import * as archiveTransfer from '../src/files/archive-transfer';
@@ -73,6 +74,11 @@ it('shows explicitly grouped external Flows with the generic Flow context menu',
     expect(group().querySelector('[data-item-id="/flows/review.flow"]')).toBeNull();
     group().querySelector<HTMLButtonElement>('[data-item-id="/flows/shared-child.flow"] [data-action="item-menu"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu button[data-action]')?.getAttribute('data-action')).toBe('flow:run'));
+    const added = vi.fn(); document.addEventListener(ASSISTANT_ADD_EVENT, added, {once: true});
+    document.querySelector<HTMLButtonElement>('.vfs-context-menu [data-action="assistant-add-shortcut"]')!.click();
+    await vi.waitFor(() => expect(added).toHaveBeenCalledOnce());
+    expect((added.mock.calls[0][0] as CustomEvent).detail).toMatchObject({title: 'Shared child', target: {kind: 'resource', workspace: 'toolbox', resource: '/flows/shared-child.flow'}});
+    expect(f.navigate).not.toHaveBeenCalled();
 });
 
 it('moves the agent entry out of the toolbox while retaining direct configuration links', async () => {

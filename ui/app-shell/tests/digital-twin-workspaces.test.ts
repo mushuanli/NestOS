@@ -24,7 +24,10 @@ it('switches only the current view to an authorized organization handle and make
         expect((await personal.snapshot()).memories).toHaveLength(0);
         await view.openResource('/sources');
         expect(editor.querySelector<HTMLInputElement>('[data-form=scanPlan] [name=name]')!.disabled).toBe(true);
-        await view.openResource('/memories');
+        await view.openResource('/workspace/personal/overview');
+        expect(editor.querySelector<HTMLSelectElement>('[data-twin-workspace]')!.value).toBe('personal');
+        await view.openResource('/workspace/team/memories');
+        expect(view.getActiveResourceId()).toBe('/workspace/team/memories');
         expect(editor.querySelector<HTMLButtonElement>('[data-action=forget]')!.disabled).toBe(true);
         await expect(viewer.addMemory({content: 'Denied'})).rejects.toThrow('TWIN_WORKSPACE_READ_ONLY');
     } finally {await view.destroy(); await viewer.dispose(); await owner.dispose(); await personal.dispose(); await manager.dispose(); sidebar.remove(); editor.remove();}

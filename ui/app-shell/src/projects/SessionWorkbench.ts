@@ -1,3 +1,5 @@
+import {withAssistantShortcut} from '../navigation/assistant-actions';
+import {projectAssistantShortcut} from './project-assistant-shortcut';
 import {backToPreviousPage} from '../navigation/page-history';
 import { SessionTaskView } from './SessionTaskView';
 import { AgentDrawer } from './agent-drawer';
@@ -440,7 +442,7 @@ export class SessionWorkbench implements WorkspaceController {
                 mapItem: item => projectItems([item])[0] ?? item,
                 bulkItems: (items, defaults) => items.some(item => item.metadata.custom.remoteProject)
                     ? defaults.filter(entry => !('id' in entry) || !['bulk-delete', 'bulk-move', 'bulk-copy'].includes(entry.id)) : defaults,
-                items: projectIconMenu((item, defaults) => {
+                items: projectIconMenu(withAssistantShortcut((item, defaults) => {
                     if (item.id === '/' && this.projects) return [{id: 'create-project', label: t('project.create'), onClick: () => this.createProject('/')}];
                     if (isFlowPath(item.id)) return this.flows?.menu.items?.(item,
                         item.id === '/@flows' ? [] : defaults.filter(entry => 'id' in entry && entry.id === 'delete')) ?? [];
@@ -506,7 +508,7 @@ export class SessionWorkbench implements WorkspaceController {
                             onClick: () => { void this.closeSession(target.sessionId).catch(error => this.report(error)); } }];
                     }
                     return defaults;
-                }),
+                }, projectAssistantShortcut)),
             },
         }, this.navigationFiles) as VFSUIShell;
         this.subscriptions.add(this.sidebarUI.on('resourceActivated', ({item}) => {

@@ -1,0 +1,51 @@
+.assistant-launcher { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 48px; min-height: 48px; border: 0; background: transparent; color: var(--text-primary, #111827); font: inherit; cursor: pointer; }
+.assistant-launcher .assistant-launcher__icon { position: relative; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: #eef2ff; color: #4338ca; font-size: 20px; box-shadow: none; }
+.assistant-launcher .assistant-launcher__label { display: block; width: auto; height: auto; border-radius: 0; background: transparent; color: inherit; font-size: 10px; box-shadow: none; }
+.assistant-launcher .assistant-launcher__count { position: absolute; top: -4px; right: -8px; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; width: auto; height: 20px; padding: 0 5px; border: 2px solid var(--sidebar-bg, #f8fafc); border-radius: 12px; background: #e2e8f0; color: #475569; font-size: 10px; font-weight: 700; box-shadow: none; }
+.assistant-launcher--attention .assistant-launcher__count { background: #dc2626; color: white; }
+.assistant-launcher:focus-visible { outline: 2px solid var(--primary-color, #5b66f5); outline-offset: 2px; border-radius: 8px; }
+.app-nav-item--assistant { display: none; }
+.assistant-menu { position: fixed; inset: 12px auto auto 88px; width: min(440px, calc(100vw - 108px)); max-height: calc(var(--app-visible-height, 100dvh) - 24px); margin: 0; padding: 0; border: 1px solid var(--border-color, #e2e8f0); border-radius: 16px; background: var(--bg-primary, #fff); color: var(--text-primary, #111827); box-shadow: 0 16px 48px #0f172a26; }
+.assistant-menu::backdrop { background: #0f172a33; }
+.assistant-menu__body { box-sizing: border-box; max-height: calc(var(--app-visible-height, 100dvh) - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 18px; line-height: 1.5; }
+.assistant-menu__header, .assistant-menu__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.assistant-menu__header h2 { margin: 0; font-size: 20px; }
+.assistant-menu__heading h3 { margin: 0; font-size: 15px; }
+.assistant-menu__heading > span { color: var(--text-secondary, #64748b); font-size: 12px; }
+.assistant-menu section { padding: 16px 0; border-top: 1px solid var(--border-color, #e2e8f0); }
+.assistant-menu button { min-height: 44px; padding: 8px 10px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.assistant-menu button:disabled { opacity: .55; cursor: wait; }
+.assistant-menu button:focus-visible, .assistant-menu input:focus-visible, .assistant-menu select:focus-visible { outline: 2px solid var(--primary-color, #5b66f5); outline-offset: 2px; }
+.assistant-menu__event { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 10px; }
+.assistant-menu__event > button:first-child { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; border: 0; text-align: left; }
+.assistant-menu__event strong { color: var(--primary-color, #5b66f5); font-size: 12px; }
+.assistant-menu__event span { overflow-wrap: anywhere; }
+.assistant-menu__event time { color: var(--text-secondary, #64748b); font-size: 11px; }
+.assistant-menu__event > button[data-assistant-read] { flex-shrink: 0; margin-right: 5px; }
+.assistant-menu__shortcut { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.assistant-menu__shortcut > button { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.assistant-menu__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.assistant-menu__empty { color: var(--text-secondary, #64748b); font-size: 13px; }
+.assistant-menu__error { color: var(--error-color, #dc2626); font-size: 13px; overflow-wrap: anywhere; }
+.assistant-menu__error:empty { display: none; }
+.assistant-menu__form { display: grid; gap: 12px; margin-top: 12px; padding: 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 10px; }
+.assistant-menu__form label { display: grid; gap: 5px; font-size: 13px; }
+.assistant-menu__form [hidden] { display: none; }
+.assistant-menu__form input, .assistant-menu__form select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 6px; background: var(--bg-primary, #fff); color: inherit; font: inherit; font-size: 16px; }
+.assistant-menu__form [role="alert"] { color: var(--error-color, #dc2626); }
+@media (max-width: 768px) {
+    .main-nav-list > .app-nav-item--assistant { display: flex; }
+    .assistant-launcher.app-nav-btn .assistant-launcher__icon { width: 26px; height: 26px; background: transparent; font-size: 20px; }
+    .assistant-menu { inset: auto 0 0; width: 100%; max-width: 100%; max-height: calc(var(--app-visible-height, 100dvh) - 12px); border-radius: 18px 18px 0 0; }
+    .assistant-menu__body { max-height: calc(var(--app-visible-height, 100dvh) - 12px); padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+}
+
+.assistant-menu__search { display: grid; gap: 5px; font-size: 13px; margin-bottom: 8px; }
+.assistant-menu__search input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; background: var(--bg-primary, #fff); color: inherit; font-size: 16px; }
+.assistant-menu__shortcut small { display: block; color: var(--text-secondary, #64748b); }
+
+.assistant-nav-menu { max-width: calc(100vw - 32px); padding: 16px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 12px; background: var(--bg-primary, #fff); color: var(--text-primary, #111827); }
+.assistant-nav-menu::backdrop { background: #0f172a33; }
+.assistant-nav-menu button, .assistant-nav-pin { min-width: 44px; min-height: 44px; padding: 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.assistant-nav-item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.assistant-nav-pin { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; }

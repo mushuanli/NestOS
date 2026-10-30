@@ -43,6 +43,7 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    assistantOverview?(): Promise<import('./assistant').AssistantOverview>;
     editorSwaps?: import('./editor-swap').EditorSwapFactory;
     documentChatFile(request: import('./document-chat').DocumentChatFileRequest): Promise<import('./document-chat').DocumentChatFile>;
     documentChatBacklinks(sessionId: string, branch: string): Promise<import('./document-chat').DocumentChatLink[]>;

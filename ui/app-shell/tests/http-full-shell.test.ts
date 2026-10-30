@@ -102,8 +102,9 @@ it.each(['start', 'chat', 'notes', 'session'])('mounts the complete common shell
         while (pendingRequests.size) await Promise.all([...pendingRequests]);
         expect(calls.openSession).toBeUndefined(); expect(calls.getShared).toBeUndefined();
         expect(calls.listSessionPendingInteractionTasks).toBeUndefined();
-        for (const method of ['taskAttachment', 'onGlobalEvent', 'onEvent', 'subscribe', 'onChange', 'onChanged', 'onPromoted', 'list', 'execute:session.flow.invocations'])
+        for (const method of ['taskAttachment', 'onGlobalEvent', 'onEvent', 'subscribe', 'onChanged', 'onPromoted', 'list', 'execute:session.flow.invocations'])
             expect(calls[method]).toBeUndefined();
+        expect(calls.onChange ?? 0).toBeLessThanOrEqual(1); // The assistant observes Twin changes once.
         console.log('[HTTP Session recovery metrics]', {...metrics, methods: calls, requestGroups});
         return;
     }

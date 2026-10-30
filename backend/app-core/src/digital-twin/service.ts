@@ -188,6 +188,18 @@ export class DigitalTwinService {
         this.listeners.clear();
     }
 
+    async activitySummary(): Promise<import('@itookit/app-contracts/services').TwinActivitySummary> {
+        const workspace = await this.workspaceView();
+        if (!await this.initialized()) return {workspace, plans: [], runs: []};
+        const records = (await this.services('read')).records;
+        const plans = await records.list<TwinScanPlan>('scan-plan'), runs = await records.list<import('./scan-domain').TwinScanRun>('scan-run');
+        const latest = new Map<string, typeof runs[number]>();
+        for (const run of runs) if (run.data.createdAt > (latest.get(run.data.planId)?.data.createdAt ?? -1)) latest.set(run.data.planId, run);
+        return {workspace, plans: plans.map(plan => ({id: plan.id, name: plan.data.name})),
+            runs: [...latest.values()].map(run => ({id: run.id, planId: run.data.planId, name: run.data.name, state: run.data.state,
+                at: run.data.finishedAt || run.data.startedAt || run.data.createdAt}))};
+    }
+
     async snapshot(progress: (stage: string) => void = () => {}) {
         const read = <T>(stage: string, action: () => Promise<T>) => { progress(stage); return action(); };
         const services = await read('services.initialize', () => this.services('read'));

@@ -30,6 +30,7 @@
 | 主题 | 入口 |
 | --- | --- |
 | 文件与挂载 | [VFS](design/VFS-design.md)、[Session 挂载](design/vfs-session-mount-access.md)、[HTTP 文件系统](design/vfs-http-driver.md) |
+| 助手入口 | [事件数、前三项待处理与个人快捷访问](design/assistant-menu.md) |
 | 导航与编辑器 | [项目导航](design/project-session-navigation.md)、[工具箱](design/toolbox-navigation.md)、[浏览器边界](design/vfs-ui-boundary-review.md)、[编辑器生命周期](design/ui-lifecycle-refactoring.md) |
 | LLM 能力 | [Tool / Skill / MCP](design/tool-skill-mcp-capabilities.md)、[Skill](design/skill-design.md)、[Context GC](design/context-gc.md) |
 | 聊天 UI 独立化 | [单依赖边界、操作回调与快照订阅（设计提案）](design/llm-ui-independent-module.md) |

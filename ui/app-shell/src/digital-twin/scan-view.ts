@@ -1,3 +1,4 @@
+import {t} from '@itookit/common';
 import {collectionFields} from './collection-fields';
 import type {TwinScannerTool} from '@itookit/app-contracts';
 import {executorFields} from './scanner-fields';
@@ -53,6 +54,7 @@ function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name:
         ${plan.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${plan.data.runTokenLimit}</p>` : ''}
         ${latest ? `<p>${escapeHTML(label('updatedSources'))}: ${latest.data.completedSourceIds.length} · ${escapeHTML(label('newMemories'))}: ${snapshot.jobs.filter(job => job.data.scanScope?.runId === latest.id).reduce((sum, job) => sum + (job.data.addedMemories ?? 0), 0)}</p>` : ''}
         ${plan.data.enabled ? button('runScanPlan', 'scanNow', plan.id) + button('pauseScanPlan', 'pauseScanPlan', plan.id) : button('enableScanPlan', 'enableScanPlan', plan.id)}
+        <button type="button" data-action="addShortcut" data-id="${escapeAttr(plan.id)}">${escapeHTML(t('assistant.addToShortcuts'))}</button>
         ${button('removeScanPlan', 'removeScanPlan', plan.id)}<details><summary>${escapeHTML(label('editScanPlan'))}</summary>${planForm(snapshot, connections, plan, targets, tools)}</details></article>`;
 }
 
@@ -102,11 +104,13 @@ function scheduleFields(data?: TwinScanPlan): string {
 }
 const ruleText = (name: string, title: string, lines: string[]) => `<label>${escapeHTML(label(title))}<textarea name="${name}" rows="4" placeholder="${name === 'include' ? 'project:Alpha' : '**/*.log&#10;drafts/'}">${escapeHTML(lines.join('\n'))}</textarea></label>`;
 
-export function scanRunPage(snapshot: TwinSnapshot): string {
+export function scanRunPage(snapshot: TwinSnapshot, selected?: string): string {
+    const rows = snapshot.scans.runs.slice(-50).reverse(), pinned = snapshot.scans.runs.find(run => run.id === selected);
+    if (pinned && !rows.includes(pinned)) rows.unshift(pinned);
     const worker = snapshot.scans.worker;
     return `<p class="twin__error">${escapeHTML(snapshot.scans.discovery.errors.join(', '))}</p><p>${escapeHTML(label('scanHost'))}: ${escapeHTML(worker.host)} · ${escapeHTML(label(worker.online ? 'scanOnline' : 'scanOffline'))} · ${escapeHTML(worker.error)}</p>
         <p>${escapeHTML(label('scanLeaseHost'))}: ${escapeHTML(worker.ownerHost || label('scanIdle'))}</p>
-        <p>${escapeHTML(label('scanHostHelp'))}</p>${snapshot.scans.runs.slice(-50).reverse().map(run => `<article class="twin__card"><h3>${escapeHTML(run.data.name)}</h3>
+        <p>${escapeHTML(label('scanHostHelp'))}</p>${rows.map(run => `<article class="twin__card" data-scan-run="${escapeAttr(run.id)}"><h3>${escapeHTML(run.data.name)}</h3>
         <p>${escapeHTML(label(`scanState.${run.data.state}`))} · ${run.data.completedSourceIds.length} / ${run.data.sourceIds.length} · ${escapeHTML(twinError(run.data.error, run.data.errorDetail))}</p>
         <p>${escapeHTML(label('spentTokens'))}: ${run.data.spentTokens} · ${escapeHTML(label('reservedTokens'))}: ${run.data.reservedTokens} · ${escapeHTML(label('tokenLimit'))}: ${run.data.budgetUnlimited ? escapeHTML(label('unlimited')) : run.data.tokenLimit}</p>
         ${run.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${run.data.runTokenLimit}</p>` : ''}

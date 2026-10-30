@@ -1,3 +1,4 @@
+import {assistantOverview} from '../assistant/overview';
 import {publicConfiguration} from './configuration-access';
 import {DocumentChatFileView} from '../document-chat/file';
 import {documentChatBacklinks} from '../document-chat/backlinks';
@@ -56,6 +57,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     const lifecycle = () => new SessionLifecycleService({ repository, kernel: kernel.kernel });
     let opening = false;
     const backend: ApplicationBackend = {
+        assistantOverview: () => assistantOverview(services),
         editorSwaps: services.editorSwapStore ? {openEditorSwap: async request => {
             const node = await request.files.driver.getNode(request.path);
             if (!node || node.type !== 'file') throw new FSError('ENOENT', 'Swap source file is unavailable');

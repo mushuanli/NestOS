@@ -49,6 +49,12 @@ it('exposes independently authorized Twin workspace handles and scanner catalogs
         expect(await personal.triggerScanPlan(id, 'rpc-event')).toBe(run); await personal.waitScanRun(run);
         expect(invoke).toHaveBeenCalledTimes(1);
         expect((await personal.snapshot()).scans.runs.find((item: any) => item.id === run).data.state).toBe('succeeded');
+        const summary = await root.backend.assistantOverview();
+        expect(summary.unavailable).toEqual([]);
+        expect(summary.scanners).toContainEqual({id, name: 'RPC collector', workspaceId: 'personal', workspaceName: 'Personal'});
+        expect(summary.events).toContainEqual(expect.objectContaining({kind: 'scanCompletion', target: {target: 'twin', resourceId: '/workspace/personal/runs/' + encodeURIComponent(run)}}));
+        expect(JSON.stringify(summary)).not.toContain('host-private-token');
+        expect((await personal.activitySummary()).plans).toContainEqual({id, name: 'RPC collector'});
         expect(personal.setCollector).toBeUndefined();
         await expect(personal.openWorkspace('missing')).rejects.toThrow('TWIN_WORKSPACE_ACCESS_DENIED');
     } finally {await client.close(); await server.close(); await view.close(); await runtime.dispose();}

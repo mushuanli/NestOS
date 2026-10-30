@@ -68,6 +68,7 @@ export interface TwinDataRecord<T> {
 }
 
 export interface DigitalTwinService {
+    activitySummary?(): Promise<import('./assistant').TwinActivitySummary>;
     listSourceConnections(): ReturnType<import('./tool-connections').ToolConnections['snapshot']>;
     saveSourceConnection(input: import('./tool-connections').ToolConnectionInput): Promise<void>;
     removeSourceConnection(id: string): Promise<void>;

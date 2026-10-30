@@ -1,3 +1,4 @@
+import {withAssistantShortcut} from '../navigation/assistant-actions';
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { defaultConnectionMenu } from './model-defaults';
 import { createNestOSVFSUI as createVFSUI, nestOSVFSPresentation } from '../browser/vfs-presentation';
@@ -127,7 +128,7 @@ export class ToolboxWorkbench implements WorkspaceController {
             fileCreation: { resolveParent: path => path ?? (['agents', 'flows'].includes(this.prefs.filter) ? '/' + this.prefs.filter : null) },
             sort: { by: 'title', direction: 'asc', directoriesFirst: true },
             compareItems: compareModelItems,
-            contextMenu: { items: (item, defaults) => this.menu(item, defaults), bulkItems: (items, defaults) => this.bulkMenu(items, defaults) },
+            contextMenu: { items: withAssistantShortcut((item, defaults) => this.menu(item, defaults), item => ({title: this.titles.get(item.id) || item.metadata.title || item.id, context: t('toolbox.title'), target: {kind: 'resource', workspace: 'toolbox', resource: item.id}})), bulkItems: (items, defaults) => this.bulkMenu(items, defaults) },
         }, this.view);
         this.connectSources();
         const stopUsage = this.options.executorUsage?.subscribe?.(() => this.ui.refreshList());

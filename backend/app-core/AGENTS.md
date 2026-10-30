@@ -223,3 +223,5 @@ configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、�
 扫描器以触发方式、动作、结果接纳组合规则；collection 可直接绑定固定版本 Tool，复用 kernel-adapters.tool 与 tool.call，不创建包装 Flow。collect 模式不要求模型或来源范围，也不参与知识规则匹配。triggerScanPlan 的 eventId 回执与入队原子提交；重复事件返回原运行，运行中新增事件合并到后续队列，event 不参与定时调度。Tool 能力获取前后复验空间、规则和目录签名；MCP 未进入直接采集目录时不在 UI 冒充可用。
 
 笔记 `vfs/cloze-lifecycle.ts` 在 Runtime 生命周期监听 notes nav 自身的缓存文件视图（VFS 事件按 view 隔离），维护统一 `/.nestos/cloze-srs.seq` 的文档路径 key；未打开的文件同样跟随重命名/移动，删除目录按路径边界清理。记录迁移在 SeqFile 事务中执行，空状态不创建存储；跨 nav 迁移不在支持范围内。
+
+- assistant/overview 在用户绑定的服务图中读取摘要与 sessionActivity，聚合优先级和目标路由，不启动 Session、模型或扫描器。DigitalTwin.activitySummary 只投影空间、扫描器和最近运行元数据，不返回证据、提示词或凭据。

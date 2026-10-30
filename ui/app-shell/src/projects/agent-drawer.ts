@@ -1,3 +1,4 @@
+import {requestAssistantShortcut} from '../navigation/assistant-actions';
 import { Drawer, createVFSBrowser, createDeleteOperation, describeErrorReason, type VFSBrowser, type BrowserNode, type BrowserAction } from '@itookit/vfs-ui';
 import { FILE_BROWSER_ICONS, TOOLBOX_ICONS, createModuleLogger, randomUUID, t, type NavigationRequest } from '@itookit/common';
 import { toolboxPath, ungroupedId } from '@itookit/app-contracts';
@@ -101,6 +102,7 @@ export class AgentDrawer {
             ({id, label, iconHTML, placements: ['toolbar'], run});
         return [toolbar('create-agent', t('workbench.createAgent'), () => this.create()),
             toolbar('refresh-agents', t('workbench.refresh'), async () => {this.dirty = true; await this.refresh();}, FILE_BROWSER_ICONS.refresh),
+            this.menu('assistant-add-shortcut', t('assistant.addToShortcuts'), async agent => {if (agent.path) requestAssistantShortcut({title: agent.name, context: t('toolbox.agents'), target: {kind: 'resource', workspace: 'toolbox', resource: agent.path}});}),
             this.menu('configure-agent', t('workbench.configureAgent'), agent => this.configure(agent)),
             ...(this.options.rename ? [this.menu('rename-agent', t('action.rename'), agent => this.rename(agent), true)] : []),
             ...(this.options.remove ? [this.menu('delete-agent', t('action.delete'), agent => this.remove([agent.id]), true)] : []),

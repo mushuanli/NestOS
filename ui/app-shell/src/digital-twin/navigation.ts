@@ -1,3 +1,4 @@
+import {assistantShortcutAction} from '../navigation/assistant-actions';
 import { ENTITY_ICONS, t } from '@itookit/common';
 import { VFSUIShell, type BrowserNode, type BrowserSource } from '@itookit/vfs-ui';
 import { nestOSVFSPresentation } from '../browser/vfs-presentation';
@@ -24,7 +25,7 @@ export class TwinNavigation {
     private stopped = false;
     private pending = Promise.resolve();
 
-    constructor(container: HTMLElement, navigate: (path: string) => Promise<void>, report: (error: unknown) => void) {
+    constructor(container: HTMLElement, navigate: (path: string) => Promise<void>, report: (error: unknown) => void, resource: (path: string) => string = path => path) {
         const rank = (id: string) => TWIN_PAGES.indexOf(id.slice(1) as typeof TWIN_PAGES[number]);
         this.list = new VFSUIShell({
             sessionListContainer: container, source: twinNavigationSource(), title: t('twin.title'),
@@ -34,8 +35,8 @@ export class TwinNavigation {
             appearance: { showTimestamp: false }, defaultUiSettings: { showSummary: false, showTags: false, showBadges: false },
             sort: { by: 'title', direction: 'asc' }, compareItems: (a, b) => rank(a.id) - rank(b.id),
             listItems: items => items.map(item => ({ ...item, metadata: { ...item.metadata,
-                custom: { ...item.metadata.custom, navigationMenu: false } } })),
-            contextMenu: { items: () => [], bulkItems: () => [] }, onError: report,
+                custom: { ...item.metadata.custom, navigationMenu: true } } })),
+            contextMenu: { items: item => [assistantShortcutAction({title: item.metadata.title || item.id, context: t('twin.title'), target: {kind: 'resource', workspace: 'twin', resource: resource(item.id)}})], bulkItems: () => [] }, onError: report,
         });
         this.unsubscribe = this.list.on('sessionSelected', ({ item }) => {
             if (this.syncing || this.stopped || !item) return;

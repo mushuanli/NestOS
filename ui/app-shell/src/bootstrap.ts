@@ -1,3 +1,6 @@
+import {installAssistantNav} from './navigation/assistant-nav';
+import {withAssistantShortcut} from './navigation/assistant-actions';
+import {installAssistantMenu} from './navigation/assistant-menu';
 import {createEditorSwapFactory} from './browser/editor-swap';
 import { WorkbenchWindows } from './workbench/windows';
 import {t as translate} from '@itookit/common';
@@ -102,7 +105,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const startupRoute = parseWorkspaceHash(location.hash, resolvedDefault);
     const startupWorkspace = workspaces.find(ws => ws.elementId === routeMap[startupRoute.slug]);
     const initialDocuments = startupWorkspace?.type === 'chat'
-        ? INITIAL_CHAT_DOCUMENTS : ['theme'];
+        ? INITIAL_CHAT_DOCUMENTS : ['theme', 'nestos_assistant_menu_v1'];
     const opened = options.initialView ?? (startupWorkspace?.type === 'chat' && typeof backend.openView === 'function' ? await openInitialView(backend, initialDocuments, startupRoute.resource) : undefined);
     const projection = opened ? new OpenedViewProjection(opened, services, backend) : undefined;
     if (projection) {
@@ -118,7 +121,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     // inspectable store instead of the webview's localStorage.
     const uiDocs = new VfsJsonStore(backend);
     if (opened) uiDocs.seed(opened.documents);
-    else if (startupWorkspace?.type === 'chat') uiDocs.prefetch(initialDocuments);
+    else uiDocs.prefetch(initialDocuments);
     const executorUsage = new ExecutorUsage(uiDocs);
     cleanupFns.push(() => uiDocs.flush());
     const themeReady = themeService.init(uiDocs);
@@ -388,7 +391,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 content:         uiPassThrough.fileCreation?.content ?? (primaryType ? options.fileTemplates?.[primaryType] : undefined) ?? primaryDef?.defaultContent,
             },
             contextMenu: {
-                items: (_item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]) => {
+                items: withAssistantShortcut((_item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]) => {
                     if (uiPassThrough.readOnly) return [];
                     if (strategyType === 'flows') return flowContextMenu.items?.(_item, defaults) ?? defaults;
                     if (services.digitalTwin && ['emails', 'notes', 'home', 'projects'].includes(wsConfig.workspaceName)) return [...defaults,
@@ -396,7 +399,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                             directory: _item.type === 'directory', label: _item.metadata.title || _item.id }),
                             async () => { await handleNavigationRequest({ target: 'twin', resourceId: '/sources' }); }, twinMenuLifetime.signal)];
                     return defaults;
-                },
+                }, item => ({title: item.metadata.title || item.id, context: wsConfig.title || wsConfig.slug, target: {kind: 'resource', workspace: wsConfig.slug, resource: item.id}})),
             },
             // Skills workspace: summary=skill ID, tags="disabled" pill, dot=enabled.
             ...(strategyType === 'skills' && {
@@ -695,6 +698,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const entryResource = (id: string) => isProjectWorkspace(id)
         ? '/' : managerCache.get(id)?.getActiveResourceId() ?? null;
 
+    cleanupFns.push(installAssistantNav(navigationSignal, id => reverseRouteMap[id] ?? id));
     document.querySelectorAll('.app-nav-btn[data-target]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -733,6 +737,15 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         rememberCurrentPage();
         const lastId = entryResource(id);
         updateHistory(id, lastId, 'push'); void performNavigation(id, lastId ?? undefined);
+    }));
+    cleanupFns.push(installAssistantMenu({services, backend, documents: uiDocs, signal: navigationSignal,
+        current: () => {
+            const workspace = reverseRouteMap[visibleWorkspaceId ?? ''] ?? resolvedDefault;
+            const resource = managerCache.get(visibleWorkspaceId ?? '')?.getActiveResourceId() ?? '';
+            const active = windows.items().find(item => item.active);
+            return {workspace, resource, title: active?.title ?? workspaces.find(item => item.elementId === visibleWorkspaceId)?.title ?? translate('assistant.currentPage')};
+        }, navigate: handleNavigationRequest,
+        home: options.startPage ? async () => {rememberCurrentPage(); updateHistory(START_PAGE_ID, null, 'push'); await performNavigation(START_PAGE_ID);} : undefined,
     }));
     const initialRoute = parseWorkspaceHash(location.hash, resolvedDefault);
     const initWs = resolveTarget(initialRoute.slug, initialRoute.resource);

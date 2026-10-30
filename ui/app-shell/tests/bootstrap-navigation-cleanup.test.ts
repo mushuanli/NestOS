@@ -210,8 +210,12 @@ it('starts at a lightweight page and loads a workspace only after choosing it', 
         document.querySelector<HTMLButtonElement>('.app-start__choice')!.click();
         await vi.waitFor(() => expect(lifecycle.start).toHaveBeenCalledOnce());
         expect(location.hash).toBe('#/settings');
-        document.querySelector<HTMLElement>('.app-sidebar__brand')!.click();
-        expect(location.hash).toBe('#/start');
+        HTMLDialogElement.prototype.showModal ??= function () {this.open = true;};
+        HTMLDialogElement.prototype.close ??= function () {this.open = false; this.dispatchEvent(new Event('close'));};
+        document.querySelector<HTMLButtonElement>('.app-sidebar__brand .assistant-launcher')!.click();
+        expect(location.hash).toBe('#/settings');
+        document.querySelector<HTMLButtonElement>('[data-assistant-action=home]')!.click();
+        await vi.waitFor(() => expect(location.hash).toBe('#/start'));
         expect(document.querySelector('.app-start')?.classList.contains('active')).toBe(true);
     } finally { await app.destroy(); }
 });

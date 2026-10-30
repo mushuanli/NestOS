@@ -18,17 +18,5 @@ export function installStartPage(workspaces: WorkspaceConfig[], signal: AbortSig
         choice.addEventListener('click', () => navigate(workspace.elementId), { signal }); choices.append(choice);
     });
     page.append(title, help, choices); (document.querySelector('.main-content-area') ?? document.body).append(page);
-    const brand = document.querySelector<HTMLElement>('.app-sidebar__brand');
-    const previous = { role: brand?.getAttribute('role'), tabindex: brand?.getAttribute('tabindex') };
-    brand?.setAttribute('role', 'button'); brand?.setAttribute('tabindex', '0');
-    brand?.addEventListener('click', () => navigate(START_PAGE_ID), { signal });
-    brand?.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); navigate(START_PAGE_ID); }
-    }, { signal });
-    return () => {
-        page.remove();
-        for (const [name, value] of Object.entries(previous)) {
-            if (value == null) brand?.removeAttribute(name); else brand?.setAttribute(name, value);
-        }
-    };
+    return () => page.remove();
 }

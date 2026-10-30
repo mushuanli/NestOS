@@ -1,3 +1,4 @@
+import {requestAssistantShortcut} from '../navigation/assistant-actions';
 import {readCollectionExecutor} from './collection-fields';
 import {sourceConnectionSettings, importConnection, type SourceConnections} from '../configuration/tool-connections';
 import {scannerFieldChange, updateExecutorMode, updateInputMode, readScannerExecutor, readScannerFile} from './scanner-fields';
@@ -28,6 +29,10 @@ export class TwinWorkbench {
     private tools: import('@itookit/app-contracts').TwinScannerTool[] = [];
     private page: TwinPage = 'overview';
     private selectedSession = '';
+    private workspaceRoute = false;
+    private routeWorkspaceId = '';
+    private focusPlanId?: string;
+    private focusRunId?: string;
     private sourcesTab: TwinSourcesTab = 'plans';
     private snapshot?: TwinSnapshot;
     private connections: Array<{ id: string; name: string }> = [];
@@ -48,7 +53,7 @@ export class TwinWorkbench {
         this.navigation = new TwinNavigation(options.sidebar, path => this.openResource(path), error => {
             if (this.abort.signal.aborted) return;
             this.error = label('loadError') + errorDetail(error); this.render();
-        });
+        }, path => this.snapshot ? `/workspace/${encodeURIComponent(this.snapshot.workspace.id)}${path}` : path);
     }
 
     async start(): Promise<void> {
@@ -67,15 +72,26 @@ export class TwinWorkbench {
         await this.autosave.flush();
         if (this.abort.signal.aborted) return;
         if (this.autosave.pending) { await this.navigation.sync('/' + this.page); return; }
+        if (path.startsWith('/workspace/')) {
+            const parts = path.split('/'), id = decodeURIComponent(parts[2] ?? '');
+            if (id !== this.snapshot?.workspace.id) {
+                if (this.dirty || this.busy) throw new Error(label('workspaceUnsaved'));
+                this.bindWorkspace(await this.options.service.openWorkspace(id));
+            }
+            this.workspaceRoute = true; this.routeWorkspaceId = id; path = '/' + parts.slice(3).join('/');
+        }
         this.dirty = false;
         const page = path.split('/')[1] as TwinPage;
         this.page = TWIN_PAGES.includes(page) ? page : 'overview';
         this.selectedSession = path.split('/')[2] ? decodeURIComponent(path.split('/')[2]) : '';
         this.sourcesTab = ['plans', 'runs', 'sources'].includes(this.selectedSession) ? this.selectedSession as TwinSourcesTab : 'plans';
+        this.focusRunId = this.page === 'runs' ? this.selectedSession || undefined : undefined;
+        this.focusPlanId = this.page === 'sources' && this.selectedSession.startsWith('plan:') ? this.selectedSession.slice(5) : undefined;
         this.options.selected(this.getActiveResourceId()); await this.refresh();
+        if (this.focusPlanId || this.focusRunId) {this.focusPlanId = undefined; this.focusRunId = undefined; throw new Error(this.error || label('scannerUnavailable'));}
         await this.navigation.sync('/' + this.page);
     }
-    getActiveResourceId(): string { return '/' + this.page + (this.selectedSession ? '/' + encodeURIComponent(this.selectedSession) : ''); }
+    getActiveResourceId(): string { return (this.workspaceRoute && this.snapshot ? '/workspace/' + encodeURIComponent(this.routeWorkspaceId || this.snapshot.workspace.id) : '') + '/' + this.page + (this.selectedSession ? '/' + encodeURIComponent(this.selectedSession) : ''); }
     captureRecovery(): unknown {
         if (this.busy || this.dirty || this.autosave.pending)
             throw Object.assign(new Error(t('httpApp.recoverySettings')), {code: 'RECOVERY_SETTINGS_FORM'});
@@ -117,7 +133,7 @@ export class TwinWorkbench {
         const previousSettings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         const snapshot = this.snapshot;
         const body = !snapshot ? '' : this.page === 'overview' ? overview(snapshot)
-            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab, this.targets, this.tools) + sourceConnectionSettings(this.sourceConnections) : memories(snapshot, this.page, this.selectedSession.startsWith('scan:') ? this.selectedSession.slice(5) : undefined);
+            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot, this.selectedSession) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab, this.targets, this.tools) + sourceConnectionSettings(this.sourceConnections) : memories(snapshot, this.page, this.selectedSession.startsWith('scan:') ? this.selectedSession.slice(5) : undefined);
         this.options.editor.innerHTML = `<div class="twin__body">${this.workspaces.length ? `<label>${escapeHTML(label('workspace'))}<select data-twin-workspace ${this.busy ? 'disabled' : ''}>${this.workspaces.map(space => `<option value="${escapeAttr(space.id)}" ${space.id === snapshot?.workspace?.id ? 'selected' : ''}>${escapeHTML(space.name)} · ${escapeHTML(label('workspaceKind.' + space.kind))}</option>`).join('')}</select></label>` : ''}${snapshot?.workspace?.readOnly ? `<p>${escapeHTML(label('workspaceReadOnly'))}</p>` : ''}<h2>${escapeHTML(label(this.page))}</h2>
             <p class="twin__status" role="status">${escapeHTML(this.loading ? t('status.loading') : this.busy ? label('busy') : this.message)}</p>
             <p class="twin__error" role="alert">${escapeHTML(this.error)}</p>${this.error ? `<button type="button" data-action="refresh">${escapeHTML(label('refresh'))}</button>` : ''}${body}</div>`;
@@ -126,6 +142,11 @@ export class TwinWorkbench {
         if (settings && previousSettings && previousSettings.dataset.configured === settings.dataset.configured) settings.open = previousSettings.open;
         this.options.editor.querySelectorAll<HTMLFormElement>('[data-form=scanPlan]').forEach(form => {updateInputMode(form); updateExecutorMode(form);});
         this.scanLists.restore(this.options.editor);
+        if (this.focusPlanId && this.scanLists.reveal(this.options.editor, this.focusPlanId)) this.focusPlanId = undefined;
+        if (this.focusRunId) {
+            const row = [...this.options.editor.querySelectorAll<HTMLElement>('[data-scan-run]')].find(row => row.dataset.scanRun === this.focusRunId);
+            if (row) {row.tabIndex = -1; row.setAttribute('data-assistant-focus', 'true'); row.scrollIntoView?.({block: 'center'}); row.focus({preventScroll: true}); this.focusRunId = undefined;}
+        }
         this.renderSaveState();
         this.applyReadOnly();
         if (this.page === 'memories' && this.selectedSession) {
@@ -138,10 +159,15 @@ export class TwinWorkbench {
         if (!this.snapshot?.workspace?.readOnly) return;
         this.options.editor.querySelectorAll<HTMLInputElement>('form input, form textarea, form select, form button')
             .forEach(control => {control.disabled = true;});
-        const readActions = new Set(['refresh', 'scanTab', 'openEntity', 'openMemories', 'openProfile', 'openUpdates', 'openScanResults']);
+        const readActions = new Set(['addShortcut', 'refresh', 'scanTab', 'openEntity', 'openMemories', 'openProfile', 'openUpdates', 'openScanResults']);
         this.options.editor.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach(button => {
             if (!readActions.has(button.dataset.action!)) button.disabled = true;
         });
+    }
+    private bindWorkspace(next: DigitalTwinService): void {
+        this.unsubscribe?.(); this.options.service = next;
+        this.autosave = new TwinSettingsAutosave(next, () => this.renderSaveState());
+        this.unsubscribe = next.onChange(() => this.serviceChanged());
     }
     private async switchWorkspace(control: HTMLSelectElement): Promise<void> {
         if (this.busy) return;
@@ -157,10 +183,8 @@ export class TwinWorkbench {
             const [snapshot, targets, spaces, sourceConnections, tools] = await Promise.all([next.snapshot(), next.scannerTargets(), next.workspaces(), next.listSourceConnections(), next.collectionTools()]);
             this.sourceConnections = sourceConnections;
             if (this.abort.signal.aborted || generation !== this.generation) return;
-            this.unsubscribe?.(); this.options.service = next;
-            this.autosave = new TwinSettingsAutosave(next, () => this.renderSaveState());
-            this.unsubscribe = next.onChange(() => this.serviceChanged());
-            this.tools = tools; this.snapshot = snapshot; this.targets = targets; this.workspaces = spaces; this.error = ''; this.selectedSession = '';
+            this.bindWorkspace(next); this.workspaceRoute = true;
+            this.tools = tools; this.snapshot = snapshot; this.routeWorkspaceId = snapshot.workspace.id; this.targets = targets; this.workspaces = spaces; this.error = ''; this.selectedSession = ''; this.options.selected(this.getActiveResourceId());
         } catch (error) {this.error = errorText(error);}
         finally {this.busy = false; if (!this.abort.signal.aborted) this.render();}
     }
@@ -184,6 +208,7 @@ export class TwinWorkbench {
             this.options.editor.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = false; });
             this.options.editor.querySelectorAll<HTMLFormElement>('[data-form=scanPlan]').forEach(form => {updateInputMode(form); updateExecutorMode(form);});
             this.scanLists.restore(this.options.editor);
+            if (this.focusPlanId && this.scanLists.reveal(this.options.editor, this.focusPlanId)) this.focusPlanId = undefined;
             const retry = document.createElement('button'); retry.type = 'button'; retry.dataset.action = 'refresh'; retry.textContent = label('refresh');
             this.applyReadOnly();
             if (!this.options.editor.querySelector('[data-action=refresh]')) this.options.editor.querySelector('[role=alert]')!.after(retry);
@@ -194,6 +219,11 @@ export class TwinWorkbench {
         const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
         if (!target || this.busy) return;
         const { action = '', id = '' } = target.dataset;
+        if (action === 'addShortcut') {
+            const plan = this.snapshot?.scans.plans.find(plan => plan.id === id);
+            if (plan && this.snapshot) requestAssistantShortcut({title: plan.data.name, context: this.snapshot.workspace.name, target: {kind: 'scanner', workspaceId: this.snapshot.workspace.id, scannerId: id}});
+            return;
+        }
         if (action === 'retrySettings') return this.autosave.flush();
         if (action === 'refresh') return this.refreshDraft();
         if (!this.snapshot) return;

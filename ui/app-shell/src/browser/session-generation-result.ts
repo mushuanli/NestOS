@@ -14,6 +14,6 @@ export async function sessionGenerationResult(backend: ApplicationBackend, reque
     });
     try {
         if (!backend.sessionResponse) return await transport;
-        return await Promise.race([transport, recoverGenerationResult(backend, request.sessionId, request.operationId, controller.signal, () => awaitingReply)]);
+        return await Promise.race([transport, recoverGenerationResult(backend, request.sessionId, request.operationId, controller.signal, () => awaitingReply, disconnected)]);
     } finally {settled = true; controller.abort(); signal.removeEventListener('abort', abort);}
 }

@@ -348,3 +348,9 @@ Anki 创建通过该通用正文 API 按本次 operationId 读取 main 分支结
 Anki 创建在提交后独立查询同一 operationId 的 Session 终态，以一秒间隔兜底；原生成 RPC 迟到、丢失或可选结束原因查询悬挂，不阻塞已有正文回填。读取有十秒等待边界，取消会释放观察计时器，不重发生成。Markdown 预览渲染与生成忙碌状态分离。
 
 mdxeditor 只暴露可选 `StudyCreation.draftStore`、`resumeGeneration` 和 `StudyCreationState`；宿主用已有 FileRecoveryStore 按认证用户、标签页、工作区隔离暂存输入。小草稿同步写入 sessionStorage，大草稿使用现有 IndexedDB 回退。原标签页刷新或异常中断后可恢复最近成功写入的草稿；取消/关闭、保存和清空新建会丢弃恢复记录。恢复进行中的生成只观察原操作，不重新调用模型。库中不依赖 NestOS、VFS、Session 或浏览器持久化实现。
+
+### 正文观察故障与客户端诊断
+
+正文辅助查询超过十秒或发生传输异常时，若原生成请求仍在等待确认，则记录 retrying 并继续观察，不将其抢先判为生成失败。悬挂查询保持单个进行中的请求；原请求正常返回仍可完成草稿回填。结束原因、空正文及真实任务失败继续独立处理。
+
+`ApplicationBackend.reportClientDiagnostic` 只接收 operation、operationId、sessionId、stage、code、result、durationMs、remoteCode、requestId 等限定元数据，校验长度/格式并拒绝额外字段。宿主输出带 `[ClientDiagnostic]` 和 source=client 的运行日志；HTTP 宿主写入既有 runtime log，审计日志仍记录该上报 RPC 的请求 ID 与认证用户。不会上传错误正文、堆栈、提示词、消息或令牌。客户端区分 TEXT_RESULT_QUERY_TIMEOUT、TRANSPORT_FAILED、REJECTED 和 CAPABILITY_UNAVAILABLE；上报失败不会再次触发上报或阻塞生成。

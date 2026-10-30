@@ -1501,7 +1501,7 @@ export const en: LocaleStrings = {
     'vfs.toolbar.directory': 'Folder',
     'editor.studySessionTitle': 'Anki creation: ',
     'editor.studySessionView': 'View generation session',
-    'editor.studyRecoveringResult': 'Connection interrupted. Checking the original result; view session.',
+    'editor.studyRecoveringResult': 'Checking the original generation result; view session.',
     'editor.studyOutputLimited': 'Model output limit reached. Draft retained; check its ending.',
     'editor.studyAlreadyCreated': "The file was created. Open it before changing its name or content.",
     'editor.studyInvalidName': "Enter a file name without path separators.",

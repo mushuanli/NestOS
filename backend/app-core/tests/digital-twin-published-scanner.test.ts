@@ -8,6 +8,20 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close(); vi.unstubAllGlobals();});
 const text = '我喜欢 TypeScript。';
 
+it('propagates the batch receipt from an actual durable Tool call into the scanner run', async () => {
+    const tool = buildTool({name: 'fixture.batch-collector', version: '1', inputSchema: TaskListTool.inputSchema,
+        async description() {return 'Batch collecting';}, async prompt() {return '';},
+        async call() {return {data: {collection: {version: 1, complete: false, processed: 3}}};},
+        mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};}});
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false,
+        kernelPlatform: {additionalTools: [tool]}}); cleanup.push(() => runtime.dispose());
+    const twin = runtime.digitalTwin!, target = (await twin.collectionTools()).find(item => item.target.id === tool.name)!.target;
+    const plan = await twin.saveScanRule(null, null, {name: 'Batch collecting', collection: {target}, mode: 'collect',
+        include: [], exclude: [], intervalMinutes: 30, enabled: true, trigger: 'manual'});
+    const run = await twin.runScanPlan(plan); await twin.waitScanRun(run);
+    expect((await twin.snapshot()).scans.runs.find(item => item.id === run)!.data.collectionProgress).toEqual({version: 1, complete: false, processed: 3});
+}, 30000);
+
 it('retains the specific failure code from a direct collector through the durable call and scanner report', async () => {
     const tool = buildTool({name: 'fixture.failing-collector', version: '1', inputSchema: TaskListTool.inputSchema,
         async description() {return 'Fail collecting';}, async prompt() {return '';},

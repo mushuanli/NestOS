@@ -1,10 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {collectGoogle} from '../node/collect.mjs';
+import {collectGoogle as collectOperation} from '../node/collect.mjs';
 import {mailMaterial} from '../node/materials.mjs';
 
 const message = id => ({id, payload: {mimeType: 'text/plain', headers: [{name: 'Subject', value: 'Private subject'}],
     body: {data: Buffer.from('I prefer TypeScript.').toString('base64url')}}});
+let operation = 0;
+async function collectGoogle(service, args, context, ...rest) {context.operationId = 'operation-' + ++operation; return collectOperation(service, args, context, ...rest);}
 function fixture(handler) {
     const files = new Map(), logs = [], calls = [];
     const context = {operationId: 'operation', vfs: {
@@ -19,40 +21,44 @@ function fixture(handler) {
         assert.equal(init.redirect, 'error');
         if (String(url).includes('oauth2')) return Response.json({access_token: 'private-access'});
         assert.equal(init.headers.Authorization, 'Bearer private-access');
+        if (String(url).endsWith('/profile')) return Response.json({historyId: '100', emailAddress: 'account@fixture.invalid'});
+        if (new URL(url).pathname.endsWith('/history')) return Response.json({historyId: '100'});
         return handler(new URL(url));
     };
     return {files, logs, calls, context, connections, fetcher};
 }
 const args = {connection: 'personal', directory: 'evidence/google', query: 'newer_than:30d', maxItems: 10};
-test('paginates Gmail, stores stable evidence, reconciles removed messages and keeps diagnostics private', async () => {
+test('paginates Gmail, stores stable evidence, retains archived messages and keeps diagnostics private', async () => {
     let removed = false;
     const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json(removed ? {} : url.searchParams.has('pageToken')
         ? {messages: [{id: 'b'}]} : {messages: [{id: 'a'}], nextPageToken: 'next'}) : Response.json(message(url.pathname.split('/').at(-1))));
     const first = await collectGoogle('gmail', args, f.context, f.connections, f.fetcher);
     assert.equal(first.count, 2); assert.equal(first.complete, true);
-    const before = [...f.files.entries()];
-    await collectGoogle('gmail', args, f.context, f.connections, f.fetcher); assert.deepEqual([...f.files.entries()], before);
+    const before = [...f.files.entries()].filter(([path]) => path.endsWith('.md'));
+    await collectGoogle('gmail', args, f.context, f.connections, f.fetcher); assert.deepEqual([...f.files.entries()].filter(([path]) => path.endsWith('.md')), before);
     removed = true;
     const next = await collectGoogle('gmail', args, f.context, f.connections, f.fetcher);
-    assert.equal(next.removed, 2); assert.ok([...f.files.values()].every(body => !body.includes('I prefer')));
+    assert.equal(next.removed, 0); assert.ok([...f.files.values()].some(body => body.includes('I prefer')));
     assert.doesNotMatch(f.logs.join(''), /private-|TypeScript|Private subject|newer_than/);
 });
-test('refuses incomplete results and permission failures before writing or invalidating existing evidence', async () => {
-    const f = fixture(() => Response.json({messages: [{id: 'a'}, {id: 'b'}]}));
-    await assert.rejects(collectGoogle('gmail', {...args, maxItems: 1}, f.context, f.connections, f.fetcher), /GOOGLE_COLLECTION_LIMIT_REFINE_RANGE/);
-    assert.equal(f.files.size, 0);
+test('saves a bounded batch with continuation and refuses permission failures before source writes', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}, {id: 'b'}]}) : Response.json(message(url.pathname.split('/').at(-1))));
+    const first = await collectGoogle('gmail', {...args, maxItems: 1}, f.context, f.connections, f.fetcher);
+    assert.equal(first.count, 1); assert.equal(first.complete, false);
+    assert.equal((await collectGoogle('gmail', {...args, maxItems: 1}, f.context, f.connections, f.fetcher)).complete, true);
     const denied = fixture(() => new Response('private upstream body', {status: 403}));
     await assert.rejects(collectGoogle('gmail', args, denied.context, denied.connections, denied.fetcher), /GOOGLE_MAIL_LIST_PERMISSION_DENIED/);
     assert.equal(denied.files.size, 0); assert.doesNotMatch(denied.logs.join(''), /private/);
 });
 test('collects dated and all-day calendar events including cancellations, and validates ranges', async () => {
+    const events = [{id: 'a', status: 'confirmed', summary: 'Meeting', start: {date: '2026-10-29'}, end: {date: '2026-10-30'}}, {id: 'b', status: 'cancelled'}];
     const f = fixture(url => {
+        if (!url.pathname.endsWith('/events')) return Response.json(events.find(item => item.id === url.pathname.split('/').at(-1)));
         assert.equal(url.searchParams.get('showDeleted'), 'true'); assert.equal(url.searchParams.get('singleEvents'), 'true');
-        return Response.json({items: [{id: 'a', status: 'confirmed', summary: 'Meeting', start: {date: '2026-10-29'}, end: {date: '2026-10-30'}}, {id: 'b', status: 'cancelled'}]});
+        return Response.json({items: events, nextSyncToken: 'sync'});
     });
     const input = {...args, calendarId: 'primary', timeMin: '2026-10-01T00:00:00Z', timeMax: '2026-11-01T00:00:00Z'};
-    assert.equal((await collectGoogle('calendar', input, f.context, f.connections, f.fetcher)).count, 2);
-    assert.ok([...f.files.values()].some(body => body.includes('cancelled')));
+    assert.equal((await collectGoogle('calendar', input, f.context, f.connections, f.fetcher)).count, 1);
     await assert.rejects(collectGoogle('calendar', {...input, timeMax: input.timeMin}, f.context, f.connections, f.fetcher), /GOOGLE_CALENDAR_RANGE_INVALID/);
 });
 test('rejects unsupported encoding and handles multipart alternatives without attachment content', () => {

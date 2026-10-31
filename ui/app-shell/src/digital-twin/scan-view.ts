@@ -49,10 +49,11 @@ function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name:
         ${!plan.data.executor ? `<p>${escapeHTML(plan.data.focus || label('allTopics'))}</p>` : ''}
         ${plan.data.executor ? `<p>${escapeHTML(plan.data.executor.target.kind)} · ${escapeHTML(plan.data.executor.target.id)} · ${escapeHTML(plan.data.executor.target.version)}</p>` : ''}
         <p>${escapeHTML(label('operation.' + (plan.data.mode === 'collect' ? 'collect' : 'analyze')))}</p>
-        <p>${escapeHTML(label('lastUpdate'))}: ${latest ? date(latest.data.finishedAt || latest.data.startedAt) + ' · ' + escapeHTML(label(`scanState.${latest.data.state}`)) : escapeHTML(label('neverUpdated'))}</p>
+        <p>${escapeHTML(label('lastUpdate'))}: ${latest ? date(latest.data.finishedAt || latest.data.startedAt) + ' · ' + escapeHTML(scanRunState(latest.data)) : escapeHTML(label('neverUpdated'))}</p>
         <p>${escapeHTML(label('scanNextAt'))}: ${date(next, plan.data.enabled && !['manual', 'event'].includes(plan.data.trigger))}</p>
         ${plan.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${plan.data.runTokenLimit}</p>` : ''}
-        ${latest ? `<p>${escapeHTML(label('updatedSources'))}: ${latest.data.completedSourceIds.length} · ${escapeHTML(label('newMemories'))}: ${snapshot.jobs.filter(job => job.data.scanScope?.runId === latest.id).reduce((sum, job) => sum + (job.data.addedMemories ?? 0), 0)}</p>` : ''}
+        ${latest && plan.data.mode !== 'collect' ? `<p>${escapeHTML(label('updatedSources'))}: ${latest.data.completedSourceIds.length} · ${escapeHTML(label('newMemories'))}: ${snapshot.jobs.filter(job => job.data.scanScope?.runId === latest.id).reduce((sum, job) => sum + (job.data.addedMemories ?? 0), 0)}</p>` : ''}
+        ${latest?.data.collectionProgress ? `<p>${escapeHTML(t('twin.collectionProcessed', {count: latest.data.collectionProgress.processed}))}</p>` : ''}
         ${plan.data.enabled ? button('runScanPlan', 'scanNow', plan.id) + button('pauseScanPlan', 'pauseScanPlan', plan.id) : button('enableScanPlan', 'enableScanPlan', plan.id)}
         <button type="button" data-action="addShortcut" data-id="${escapeAttr(plan.id)}">${escapeHTML(t('assistant.addToShortcuts'))}</button>
         ${button('removeScanPlan', 'removeScanPlan', plan.id)}<details><summary>${escapeHTML(label('editScanPlan'))}</summary>${planForm(snapshot, connections, plan, targets, tools)}</details></article>`;
@@ -111,14 +112,18 @@ export function scanRunPage(snapshot: TwinSnapshot, selected?: string): string {
     return `<p class="twin__error">${escapeHTML(snapshot.scans.discovery.errors.join(', '))}</p><p>${escapeHTML(label('scanHost'))}: ${escapeHTML(worker.host)} · ${escapeHTML(label(worker.online ? 'scanOnline' : 'scanOffline'))} · ${escapeHTML(worker.error)}</p>
         <p>${escapeHTML(label('scanLeaseHost'))}: ${escapeHTML(worker.ownerHost || label('scanIdle'))}</p>
         <p>${escapeHTML(label('scanHostHelp'))}</p>${rows.map(run => `<article class="twin__card" data-scan-run="${escapeAttr(run.id)}"><h3>${escapeHTML(run.data.name)}</h3>
-        <p>${escapeHTML(label(`scanState.${run.data.state}`))} · ${run.data.completedSourceIds.length} / ${run.data.sourceIds.length} · ${escapeHTML(twinError(run.data.error, run.data.errorDetail))}</p>
-        <p>${escapeHTML(label('spentTokens'))}: ${run.data.spentTokens} · ${escapeHTML(label('reservedTokens'))}: ${run.data.reservedTokens} · ${escapeHTML(label('tokenLimit'))}: ${run.data.budgetUnlimited ? escapeHTML(label('unlimited')) : run.data.tokenLimit}</p>
+        <p>${escapeHTML(scanRunState(run.data))}${run.data.mode === 'collect' ? '' : ' · ' + run.data.completedSourceIds.length + ' / ' + run.data.sourceIds.length} · ${escapeHTML(twinError(run.data.error, run.data.errorDetail))}</p>
+        ${run.data.collectionProgress ? `<p>${escapeHTML(t('twin.collectionProcessed', {count: run.data.collectionProgress.processed}))}</p>` : ''}
+        ${run.data.mode === 'collect' ? `<p>${escapeHTML(label('scanNoModel'))}</p>` : `<p>${escapeHTML(label('spentTokens'))}: ${run.data.spentTokens} · ${escapeHTML(label('reservedTokens'))}: ${run.data.reservedTokens} · ${escapeHTML(label('tokenLimit'))}: ${run.data.budgetUnlimited ? escapeHTML(label('unlimited')) : run.data.tokenLimit}</p>`}
         ${run.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${run.data.runTokenLimit}</p>` : ''}
         ${button('openScanResults', 'scannerResults', run.id)}
         <p>${date(run.data.createdAt)} · ${escapeHTML(label('scanFinishedAt'))}: ${date(run.data.finishedAt)}</p>
         ${['queued', 'running'].includes(run.data.state) ? button('cancelScanRun', 'cancel', run.id) : run.data.planId && snapshot.scans.plans.some(plan => plan.id === run.data.planId && plan.data.enabled) ? button('runScanPlan', 'scanContinue', run.data.planId) : ''}
         <details><summary>${escapeHTML(label('scanTaskRefs'))}</summary>${snapshot.jobs.filter(job => job.data.scanScope?.runId === run.id).map(job =>
         `<p>${escapeHTML(job.data.sessionId)} / ${escapeHTML(job.data.taskId)} · ${escapeHTML(label(`job.${job.data.state}`))} · ${job.data.offset}–${job.data.end}</p>`).join('') || escapeHTML(label('scanNoModel'))}</details></article>`).join('')}`;
+}
+export function scanRunState(run: TwinSnapshot['scans']['runs'][number]['data']): string {
+    return run.state === 'succeeded' && run.collectionProgress?.complete === false ? label('collectionPending') : label(`scanState.${run.state}`);
 }
 const date = (value: number, enabled = true) => value && enabled ? escapeHTML(new Date(value).toLocaleString()) : escapeHTML(label('scanNotScheduled'));
 const input = (name: string, title: string, value: string, type = 'text') => `<label>${escapeHTML(label(title))}<input name="${name}" type="${type}" value="${escapeAttr(value)}" required${type === 'number' ? ' min="1" max="10080" step="1"' : ' maxlength="200"'}></label>`;

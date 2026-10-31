@@ -212,6 +212,7 @@ export interface DigitalTwinService {
 }
 
 export interface TwinScanRun {
+    collectionProgress?: AppContracts.TwinCollectionProgress;
     executor?: AppContracts.TwinScannerExecutor;
     collection?: AppContracts.TwinCollectionExecutor;
     maxOutputTokens?: number;

@@ -16,6 +16,7 @@ export interface TwinScanPlanInput {
 export interface TwinScanPlan extends TwinScanPlanInput { connectionFingerprint: string; createdAt: number; updatedAt: number; }
 export type TwinScanState = 'queued' | 'running' | 'succeeded' | 'paused' | 'failed' | 'cancelled' | 'interrupted';
 export interface TwinScanRun {
+    collectionProgress?: import('@itookit/app-contracts').TwinCollectionProgress;
     executor?: import('@itookit/app-contracts').TwinScannerExecutor;
     collection?: import('@itookit/app-contracts').TwinCollectionExecutor;
     maxOutputTokens?: number;

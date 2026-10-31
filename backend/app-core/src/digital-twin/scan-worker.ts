@@ -7,10 +7,10 @@ import { type TwinScanPlan, type TwinScanRun, type TwinScanScope, scanError } fr
 import { TwinScanStore, conflict } from './scan-store';
 import { TwinScanPlans, scheduleId } from './scan-plans';
 import { TwinSources } from './sources';
-import type { TwinDataRecord } from './records';
+import {write, type TwinDataRecord} from './records';
 
 export interface TwinCollectionRunner {
-    collect(run: TwinDataRecord<TwinScanRun>, attached: (taskId: string) => Promise<void>): Promise<void>;
+    collect(run: TwinDataRecord<TwinScanRun>, attached: (taskId: string) => Promise<void>): Promise<import('@itookit/app-contracts').TwinCollectionProgress | void>;
     cancel(run: TwinDataRecord<TwinScanRun>): Promise<void>;
 }
 /** One online host coordinates scans; extraction still runs as native durable tasks. */
@@ -129,7 +129,7 @@ export class TwinScanWorker {
     private async collectSources(id: string, fence: number): Promise<void> {
         const run = (await this.store.records.get<TwinScanRun>('scan-run', id))!;
         if (!this.collection) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');
-        await this.collection.collect(run, async taskId => {
+        const progress = await this.collection.collect(run, async taskId => {
             const latest = (await this.store.records.get<TwinScanRun>('scan-run', id))!;
             if (latest.data.state !== 'running') throw new Error('TWIN_SCAN_CANCELLED');
             await this.store.records.save('checkpoint', 'collection-task:' + id, {taskId}, null, [await this.store.fence(fence)]);
@@ -141,7 +141,12 @@ export class TwinScanWorker {
         const plan = await this.store.records.get<TwinScanPlan>('scan-plan', latest.data.planId);
         if (!plan?.data.enabled || plan.revision !== latest.data.planRevision) throw new Error('TWIN_SCAN_PLAN_STALE');
         const selected = await this.plans.selected(plan.data);
-        await this.store.records.save('scan-run', id, {...latest.data, sourceIds: selected.map(source => source.id)}, latest.revision, [await this.store.fence(fence)]);
+        const writes = [write('scan-run', id, {...latest.data, ...(progress ? {collectionProgress: progress} : {}), sourceIds: selected.map(source => source.id)}, latest.revision)];
+        if (progress?.complete === false && plan.data.trigger === 'interval') {
+            const schedule = await this.plans.schedule(plan.id);
+            if (schedule) writes.push(write('checkpoint', schedule.id, {...schedule.data, nextAt: Math.min(schedule.data.nextAt, this.store.now() + 15000)}, schedule.revision));
+        }
+        await this.store.commit(writes, [await this.store.fence(fence), {family: 'scan-plan', id: plan.id, expectedRevision: plan.revision}]);
     }
     private async scanSources(id: string, scope: TwinScanScope): Promise<void> {
         const run = (await this.store.records.get<TwinScanRun>('scan-run', id))!;

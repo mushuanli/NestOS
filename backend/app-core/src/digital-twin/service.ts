@@ -549,11 +549,12 @@ export class DigitalTwinService {
             collect: async (run, attached) => {
                 if (!run.data.collection || !this.collector) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');
                 await this.authorizeCollection(run.id);
-                await this.collector.collect({runId: run.id, sessionId: 'twin-collection-' + run.id, executor: run.data.collection}, attached, async sessionId => {
+                const progress = await this.collector.collect({runId: run.id, sessionId: 'twin-collection-' + run.id, executor: run.data.collection}, attached, async sessionId => {
                     await this.authorizeCollection(run.id);
                     await records.save('checkpoint', 'collection-binding:' + sessionId, {runId: run.id}, null);
                 });
                 await this.authorizeCollection(run.id);
+                return progress;
             },
             cancel: async run => {if (this.collector) await this.collector.cancelCollection('twin-collection-' + run.id);},
         });

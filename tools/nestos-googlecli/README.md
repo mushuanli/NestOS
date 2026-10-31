@@ -54,8 +54,8 @@ node tools/nestos-googlecli/node/authorize.mjs --client "$HOME/Downloads/实际�
 - 邮件默认保存到 `imports/mail/<连接>/mail/<来源标识>/*.email`，日程默认保存到 `imports/calendar/<连接>/calendar/<来源标识>-<摘要>/*.md`。路径受当前工作区授权约束；这尚不是“选择邮件导航即自动获得写入权限”的资源目标绑定。
 - Gmail：默认查询 `newer_than:30d -in:trash -in:spam`。可用 Gmail 搜索语法调整日期、标签或联系人。
 - Calendar：默认日历为 `primary`，回看 7 天、未来 30 天；支持显式指定有读取权限的日历 ID。工具另接受 ISO `timeMin/timeMax`，用于固定日期范围的自定义 Flow。全天事件保留 date，带时间事件保留原时区信息，重复事件展开为实例，取消事件保存为取消状态。
-- 默认最多 100 条，可设为 1–500。超过上限或分页未完成时整次采集失败，不将已有材料错误标记为移除；请缩小采集范围后重试。
-- 更新频率：先“保存并运行”检查结果，再选择定时（例如每 30 分钟）。远程采集不支持“来源变化”触发，在线宿主按间隔运行。
+- “每批处理条数”默认 100，可设为 1–500，表示单轮工作量，不限制整个查询的总量。达到条数、4 MiB 批次材料或约 45 秒处理预算后保存进度，下批继续；单条材料仍最多 128 KiB。无需为数量超限反复缩小查询。
+- 更新频率：先“保存并运行”检查结果，再选择定时（例如每 30 分钟）。有未完成批次时，定时计划提前到约 15 秒后继续；完成一轮后恢复设置的间隔。手动或应用事件规则不会自行开启定时，可点击继续或等待下一次事件。远程采集不支持“来源变化”触发。
 - 可选知识处理：需要同步提取知识时，主动切换为“提取知识（可先采集）”，填写本地文件范围（邮件如 `file:**/imports/mail/**/*.email`），选择内置提取或已发布 Agent/Flow，并设置模型连接和预算。也可以为已保存材料建立独立规则，按变化处理；应用事件触发目前需要宿主显式调用授权接口，尚未自动接线到新邮件事件。
 
 点击“保存并运行”，在运行记录检查结果、来源及错误。范围预览只列出已存在文件，不访问 Google。直接采集工具无模型调用，采集阶段不消耗平台模型 token；知识提取阶段仍计量。工具自身或 Google 的服务限额不属于 token 账本。0.2.2 起不再向工具包面板提供两个单节点采集 Flow；源码模板、兼容 Tool ID 和用户已经安装的 Flow 保留，升级不删除用户定义。
@@ -63,6 +63,8 @@ node tools/nestos-googlecli/node/authorize.mjs --client "$HOME/Downloads/实际�
 ## 升级与 OAuth 复用
 
 升级 NestOS CLI、httpd 或 Google 工具包时，保留同一用户的数据目录、账号连接和 OAuth 客户端即可沿用授权；连接类型仍为 `google-workspace`，不按软件或工具包版本保存凭据。访问令牌到期后，宿主使用已保存的 refresh token 刷新。工具包升级仍需按宿主提示切换版本并重启，不能把旧运行实例当成新版。
+
+0.3.0 将数量上限改为每批预算，并加入续传与增量同步；已有 Tool ID、参数 Schema 和连接类型不变，OAuth 无需新增权限。宿主与前端也需更新，才能显示待续传状态并提前调度下一批。仅升级工具包时仍可按原计划间隔续传，但旧界面无法区分单批成功与整轮完成。
 
 已有连接可先点击“验证连接”，该操作使用现有凭据刷新令牌，不打开新的 Google 同意页，也不要求重新导入文件。验证成功只说明令牌可刷新，不能代替邮件或日历 API 权限验证；首次采集结果仍需检查。
 
@@ -72,9 +74,15 @@ node tools/nestos-googlecli/node/authorize.mjs --client "$HOME/Downloads/实际�
 
 HTTP 每个用户的连接文件位于该用户 `.nestos/private/tool-connections/connections.json`（以宿主实际 `authDir` 为准），目录 `0700`、文件 `0600`，不在 VFS、导出和静态目录中。`ToolConnectionAccess` 由 Node 宿主绑定当前用户，`resolve` 不属于 RPC 服务图。相同 `personal` 标识在两个用户下分别解析；模型、Flow 和 RPC 参数均不能选择用户目录。共享组织空间不共享凭据，运行时仍使用当前认证主体的连接。
 
-工具使用连接标识、资源类型、来源标识 `sourceKey` 与日历身份生成稳定命名空间；同账号多个独立范围须设置不同来源标识（默认 `default`）。同一用户的本包采集在进程内串行，避免同一来源交错写入；邮件查询改变时仍更新同一邮件来源集合。完整查询结果先在内存中通过数量和大小校验，写入前复验当前用户的连接仍存在且凭据未变，再保存稳定 ID 文件。上次存在但本次不再属于采集范围的文件被替换为不含旧正文的失效材料；这表示“不在当前采集范围”，不声称远端已物理删除。来源 hash 改变后沿用数字分身现有失效与重新提取机制。隐藏的 `.sources.json` 只保存文件身份，不作为知识来源。
+工具使用连接标识、资源类型、来源标识 `sourceKey` 与日历身份生成稳定命名空间；同账号多个独立范围须设置不同来源标识（默认 `default`）。同一用户的本包采集在进程内串行。邮件首次按查询范围分页，随后使用 Gmail history 获取变更；新邮件由 Google 查询继续核对范围，已归档邮件允许更新，不因相对时间窗口移动、查询变更或远端删除而清除本地历史。日历使用 sync token 接收变更与已归档事件的取消；滚动未来窗口新增部分单独补查。游标过期时自动重新分页核对，已有文件保留。当前仍是归档采集，不是具有删除镜像策略的完整邮箱客户端。
 
-单个材料最多 128 KiB，单次总材料最多 4 MiB，每个 HTTP JSON 响应最多 2 MiB。邮件只采集 MIME 文本，跳过附件；HTML 转成文本后作为本地证据快照。附件正文读取或不支持的字符编码明确失败，不把 snippet 当成完整邮件。每次按有界范围完整核对，复用稳定文件避免对未变材料反复调用模型；当前未实现 Gmail history / Calendar syncToken 的网络增量同步。
+隐藏的 `.sync.json` 保存版本化游标、待处理 ID 与上一操作回执；`.items/` 仅保存已归档身份；`.operations/` 保存按稳定操作 ID 摘要隔离的回执。它们不保存正文或 OAuth 凭据，也不进入知识扫描。先保存稳定 ID 文件及其身份，再复验连接并提交单文件游标；失败不会越过未提交的数据，同一操作重试返回原批次结果。下一个操作替换提交前先封存上一个回执，以恢复“文件已提交但调用方未收到响应”的情况。跨用户连接、跨来源目录与不同 sourceKey 不共用进度。旧 `.sources.json` 保留但不再用于清理归档；旧版已被清空的正文只能通过新的全量核对重新取得。
+
+支持 Task 资产端口的宿主在首次调用时冻结实际保存目录，后续核对不采用后来修改的连接默认目录。Gmail 还将邮箱身份摘要绑定到进度；同一个连接标识换成另一邮箱时明确拒绝复用游标，应建立独立连接或来源标识。
+
+新邮件的查询匹配使用 RFC Message-ID 和 Gmail 搜索；缺少可用 Message-ID 时明确返回 `GOOGLE_MAIL_QUERY_ID_REQUIRED`，不会跳过用户范围校验或悄悄推进游标。检查点损坏、保存失败、API 未启用、权限和网络错误仍按具体阶段失败；达到批次预算属于“本批已保存，等待继续采集”。
+
+单个材料最多 128 KiB，单批总材料最多 4 MiB，每个 HTTP JSON 响应最多 2 MiB；单次 API 请求最多等待 30 秒，采集总超时仍为 120 秒。邮件只采集 MIME 文本，跳过附件；HTML 转成文本后作为本地证据快照。不支持的字符编码明确失败，不把 snippet 当成完整邮件。未变化正文文件不重复写入，沿用来源 hash 避免重复调用提取模型。阶段诊断直接写宿主日志，并向可用的进度回调发送相同非敏感元数据；不依赖模型调用入口才记录错误。
 
 本包要求宿主提供用户连接服务与可写授权工作区。未注入服务的宿主（包括独立 CLI 执行运行时）明确报告 `GOOGLE_USER_CONNECTIONS_UNAVAILABLE`；不会退回共享环境变量账号。Node 应用宿主与多用户 HTTP 提供连接配置，浏览器独立宿主不保存 Google 私钥。
 
@@ -89,5 +97,7 @@ pnpm --filter @itookit/app-core exec vitest run tests/digital-twin-published-sca
 测试使用模拟 Google API，覆盖分页、数量超限、权限拒绝、文本编码、日程取消、稳定文件、范围移除与日志脱敏；宿主测试覆盖同标识用户隔离、秘密不回传、私有权限、删除及重开。真实账号需按上述流程授权后验收，不以模拟测试代替。
 
 Google 官方契约：[Gmail 列表](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)、[Gmail 服务端授权](https://developers.google.com/workspace/gmail/api/auth/web-server)、[Calendar 事件列表](https://developers.google.com/workspace/calendar/api/v3/reference/events/list)。
+
+增量与查询：[Gmail history 同步](https://developers.google.com/workspace/gmail/api/guides/sync)、[Gmail 搜索](https://developers.google.com/workspace/gmail/api/guides/filtering)、[Calendar 增量同步](https://developers.google.com/workspace/calendar/api/guides/sync)。
 
 统一接入边界见 [外部功能扩展](../../doc/design/function-extensions.md)。当前文件输出仍受原工作区授权约束；若将邮件目标改到邮件工作区，需要已有文件授权，不会自动扩大执行范围。统一 OAuth 已由宿主提供；完整的 ResourceTarget 绑定和邮箱模型仍待实现。包 0.2.0 不会静默覆盖已注册的 0.1.0，升级仍受宿主现有版本冲突策略约束。

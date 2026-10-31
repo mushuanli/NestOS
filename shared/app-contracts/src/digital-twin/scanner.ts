@@ -20,6 +20,8 @@ export interface TwinWorkspaceView {id: string; name: string; kind: 'personal' |
 
 export interface TwinToolTarget {kind: 'tool'; id: string; version: string; digest: string}
 export type TwinCollectionExecutor = TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>};
+/** Tool-owned cursors stay private; the platform only observes batch completion and work counts. */
+export interface TwinCollectionProgress {version: 1; complete: boolean; processed: number}
 export interface TwinScannerTool {
     hidden?: boolean;
     presentation?: Pick<import('../ports/flow-installation').ToolPackageConfiguration['tools'][number], 'parameters' | 'advanced' | 'optionLabels'>;

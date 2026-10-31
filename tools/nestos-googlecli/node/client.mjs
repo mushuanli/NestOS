@@ -82,7 +82,7 @@ export async function googleClient(connections, id, signal, fetcher = fetch) {
 function authenticatedRequest(connections, id, values, accessToken, signal, fetcher) {
     const request = async (url, stage) => {
         if (!['https://gmail.googleapis.com', 'https://www.googleapis.com'].includes(new URL(url).origin)) throw fail('GOOGLE_ENDPOINT_INVALID');
-        return jsonRequest(fetcher, url, {headers: {Authorization: 'Bearer ' + accessToken}, signal}, stage);
+        return jsonRequest(fetcher, url, {headers: {Authorization: 'Bearer ' + accessToken}, signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30000)])}, stage);
     };
     request.destinations = {mail: values.mailDirectory || 'imports/mail', calendar: values.calendarDirectory || 'imports/calendar'};
     request.verifyConnection = async () => {

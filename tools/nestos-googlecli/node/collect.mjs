@@ -1,15 +1,16 @@
 import {fail, googleClient} from './client.mjs';
 import {saveMaterials} from './materials.mjs';
-import {openSync, commitSync, freezeDestination} from './sync-store.mjs';
+import {openSync, commitSync, freezeDestination, collectionDirectory} from './sync-store.mjs';
 import {readBatch} from './sync-batch.mjs';
 import {mailSync} from './mail-sync.mjs';
 import {calendarSync} from './calendar-sync.mjs';
 
 export async function collectGoogle(service, args, context, connections, fetcher = fetch) {
-    const started = Date.now(); let stage = 'authorization';
+    const started = Date.now(); let stage = 'authorization', directory;
     const report = async (result, code, count) => {
-        const event = {operation: 'google.' + service + '.collect', operationId: context.operationId, stage, result, code, count, durationMs: Date.now() - started};
-        try {console[result === 'failure' ? 'warn' : 'info']('[GoogleCollection]', event);} catch {}
+        const event = {operation: 'google.' + service + '.collect', operationId: context.operationId, stage, result, code, count,
+            directory, cwd: context.cwd, durationMs: Date.now() - started};
+        try {console[result === 'failure' ? 'warn' : 'info']('[GoogleCollection]', JSON.stringify(event));} catch {}
         try {await context.onProgress?.({message: JSON.stringify(event)});} catch {}
     };
     try {
@@ -17,6 +18,7 @@ export async function collectGoogle(service, args, context, connections, fetcher
         context = {...context, signal, report, batchDeadline: started + 45000};
         const client = await googleClient(connections, args.connection, signal, fetcher);
         stage = 'destination'; args = await freezeDestination(service, args, client, context);
+        directory = collectionDirectory(service, args);
         stage = 'checkpoint'; const sync = await openSync(service, args, context);
         if (sync.receipt) {signal.throwIfAborted(); await report('replayed'); return sync.receipt;}
         stage = 'fetch';

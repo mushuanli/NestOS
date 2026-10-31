@@ -1,5 +1,6 @@
 import {t} from '@itookit/common';
 import {collectionFields} from './collection-fields';
+import {collectionDestinationSummary} from './collection-destination';
 import type {TwinScannerTool} from '@itookit/app-contracts';
 import {executorFields} from './scanner-fields';
 import type {RootCallTarget} from '@itookit/llm-session/contracts';
@@ -49,6 +50,7 @@ function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name:
         ${!plan.data.executor ? `<p>${escapeHTML(plan.data.focus || label('allTopics'))}</p>` : ''}
         ${plan.data.executor ? `<p>${escapeHTML(plan.data.executor.target.kind)} · ${escapeHTML(plan.data.executor.target.id)} · ${escapeHTML(plan.data.executor.target.version)}</p>` : ''}
         <p>${escapeHTML(label('operation.' + (plan.data.mode === 'collect' ? 'collect' : 'analyze')))}</p>
+        ${collectionDestinationSummary(plan.data.collection)}
         <p>${escapeHTML(label('lastUpdate'))}: ${latest ? date(latest.data.finishedAt || latest.data.startedAt) + ' · ' + escapeHTML(scanRunState(latest.data)) : escapeHTML(label('neverUpdated'))}</p>
         <p>${escapeHTML(label('scanNextAt'))}: ${date(next, plan.data.enabled && !['manual', 'event'].includes(plan.data.trigger))}</p>
         ${plan.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${plan.data.runTokenLimit}</p>` : ''}
@@ -113,6 +115,7 @@ export function scanRunPage(snapshot: TwinSnapshot, selected?: string): string {
         <p>${escapeHTML(label('scanLeaseHost'))}: ${escapeHTML(worker.ownerHost || label('scanIdle'))}</p>
         <p>${escapeHTML(label('scanHostHelp'))}</p>${rows.map(run => `<article class="twin__card" data-scan-run="${escapeAttr(run.id)}"><h3>${escapeHTML(run.data.name)}</h3>
         <p>${escapeHTML(scanRunState(run.data))}${run.data.mode === 'collect' ? '' : ' · ' + run.data.completedSourceIds.length + ' / ' + run.data.sourceIds.length} · ${escapeHTML(twinError(run.data.error, run.data.errorDetail))}</p>
+        ${collectionDestinationSummary(run.data.collection)}
         ${run.data.collectionProgress ? `<p>${escapeHTML(t('twin.collectionProcessed', {count: run.data.collectionProgress.processed}))}</p>` : ''}
         ${run.data.mode === 'collect' ? `<p>${escapeHTML(label('scanNoModel'))}</p>` : `<p>${escapeHTML(label('spentTokens'))}: ${run.data.spentTokens} · ${escapeHTML(label('reservedTokens'))}: ${run.data.reservedTokens} · ${escapeHTML(label('tokenLimit'))}: ${run.data.budgetUnlimited ? escapeHTML(label('unlimited')) : run.data.tokenLimit}</p>`}
         ${run.data.runTokenLimit !== undefined ? `<p>${escapeHTML(label('scannerRunLimit'))}: ${run.data.runTokenLimit}</p>` : ''}

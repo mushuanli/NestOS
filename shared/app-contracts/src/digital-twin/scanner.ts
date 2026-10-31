@@ -19,7 +19,9 @@ export type TwinScannerInput = {kind: 'text'; text: string} | {kind: 'file'; pat
 export interface TwinWorkspaceView {id: string; name: string; kind: 'personal' | 'organization'; readOnly: boolean}
 
 export interface TwinToolTarget {kind: 'tool'; id: string; version: string; digest: string}
-export type TwinCollectionExecutor = TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>};
+export const TWIN_COLLECTION_WORKSPACES = ['emails', 'notes', 'home'] as const;
+export type TwinCollectionWorkspace = typeof TWIN_COLLECTION_WORKSPACES[number];
+export type TwinCollectionExecutor = (TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>}) & {destination?: TwinCollectionWorkspace};
 /** Tool-owned cursors stay private; the platform only observes batch completion and work counts. */
 export interface TwinCollectionProgress {version: 1; complete: boolean; processed: number}
 export interface TwinScannerTool {
@@ -31,6 +33,8 @@ export interface TwinScannerTool {
 }
 export function collectionExecutor(value: TwinCollectionExecutor | undefined): TwinCollectionExecutor | undefined {
     if (value === undefined) return;
+    if (value.destination !== undefined && (value.target?.kind !== 'tool' || !TWIN_COLLECTION_WORKSPACES.includes(value.destination)))
+        throw new Error('TWIN_COLLECTION_DESTINATION_INVALID');
     if (value.target?.kind !== 'tool') {
         if (value.target?.kind !== 'flow') throw new Error('TWIN_COLLECTION_TARGET_INVALID');
         return scannerExecutor(value as TwinScannerExecutor);

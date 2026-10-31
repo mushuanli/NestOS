@@ -340,6 +340,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             storageResolver: new SessionDirectoryStorageResolver(systemFS),
             maxConcurrent: 20,
             fileContextForSession: async id => {
+                const collection = await (await executionTwin(id))?.collectionFiles(id);
+                if (collection) return collection;
                 const project = await projects.forFolder((await sessionRepository.getManifest(id)).folder);
                 const execution = project && await projects.execution?.acquire(project.project.id, id);
                 if (execution) return execution;

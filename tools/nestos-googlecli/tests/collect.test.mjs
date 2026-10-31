@@ -28,6 +28,14 @@ function fixture(handler) {
     return {files, logs, calls, context, connections, fetcher};
 }
 const args = {connection: 'personal', directory: 'evidence/google', query: 'newer_than:30d', maxItems: 10};
+test('reports the target-relative directory and cwd without logging query, message content or credentials', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]}) : Response.json(message('a')));
+    const result = await collectGoogle('gmail', {...args, resource: 'mail'}, {...f.context, cwd: '/workspace'}, f.connections, f.fetcher);
+    const event = JSON.parse(f.logs.at(-1));
+    assert.equal(event.directory, result.directory); assert.equal(event.cwd, '/workspace');
+    assert.equal(event.count, 1); assert.equal(event.stage, 'checkpoint-commit'); assert.equal(event.result, 'success');
+    assert.doesNotMatch(f.logs.join(''), /newer_than|TypeScript|Private subject|private-/);
+});
 test('paginates Gmail, stores stable evidence, retains archived messages and keeps diagnostics private', async () => {
     let removed = false;
     const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json(removed ? {} : url.searchParams.has('pageToken')

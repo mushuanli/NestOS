@@ -45,6 +45,7 @@ export type {ExecutableInputSource, InputSourceExecution, InputSourceReceipt} fr
 export {flowArgumentTokens, resolveFlowArguments, parameterSourceValue} from './vfs/flow-arguments';
 
 export {collectionExecutor, scannerExecutor} from './digital-twin/scanner';
-export type {TwinCollectionExecutor, TwinCollectionProgress, TwinScannerTool, TwinScannerExecutor, TwinScannerInput, TwinWorkspaceView} from './digital-twin/scanner';
+export {TWIN_COLLECTION_WORKSPACES} from './digital-twin/scanner';
+export type {TwinCollectionExecutor, TwinCollectionWorkspace, TwinCollectionProgress, TwinScannerTool, TwinScannerExecutor, TwinScannerInput, TwinWorkspaceView} from './digital-twin/scanner';
 export { CLOZE_SRS_PATH, CLOZE_DOCUMENT_KEY, clozeDocumentPrefix, parseClozeStorageKey } from './presets/cloze-storage';
 export type {ClozeDocumentRecord} from './presets/cloze-storage';

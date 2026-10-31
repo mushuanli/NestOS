@@ -5,6 +5,7 @@ import {renderParameterFields, readParameterFields} from '@itookit/llm-ui/forms'
 import {executorFields, readScannerExecutor} from './scanner-fields';
 import {collectionParameters, collectionVariant, selectedCollectionBranch} from './collection-schema';
 import {label} from './view';
+import {collectionDestinationFields, readCollectionDestination} from './collection-destination';
 export const collectionKey = (target: {kind: string; id: string; version: string; digest: string}) => JSON.stringify([target.kind, target.id, target.version, target.digest]);
 export function collectionFields(targets: RootCallTarget[], tools: TwinScannerTool[], selected?: TwinCollectionExecutor): string {
     const tool = tools.find(item => selected && collectionKey(item.target) === collectionKey(selected.target));
@@ -14,7 +15,7 @@ export function collectionFields(targets: RootCallTarget[], tools: TwinScannerTo
     let html = base.replace('<select name="collection">', '<select name="collection">' + options);
     if (selected?.target.kind === 'tool' && !tool) html = html.replace('<select name="collection">', `<select name="collection"><option selected value="${escapeAttr(collectionKey(selected.target))}">${escapeHTML(label('scannerTargetUnavailable'))}</option>`);
     if (tool) html = html.replace('<div data-scanner-parameters="collection"></div>', `<div data-scanner-parameters="collection">${toolFields(tool, selected?.values)}</div>`);
-    return html;
+    return html + collectionDestinationFields(selected);
 }
 export function toolFields(tool: TwinScannerTool, values?: TwinCollectionExecutor['values'], index = selectedCollectionBranch(tool, values)): string {
     const parameters = collectionParameters(tool, index), variant = collectionVariant(tool);
@@ -43,7 +44,8 @@ export function readCollectionExecutor(form: HTMLFormElement, targets: RootCallT
         values = args;
     }
     if (variant) values[variant.key] = variant.values[index];
-    return {target: tool.target, values};
+    const destination = readCollectionDestination(form);
+    return {target: tool.target, values, ...(destination ? {destination} : {})};
 }
 
 type DraftField = {name: string; value: string; checked?: boolean};

@@ -1,4 +1,5 @@
 import {assertCollectionPlan, type TwinCollectionPort} from './scanner-collector';
+import {acquireCollectionFiles} from './collection-files';
 import {saveScannerText, scannerInputReader} from './scanner-input';
 import {bindScannerSession, scannerJob, authorizeScannerExchange} from './scanner-authority';
 import {assertScannerPlan, type TwinScannerExecutionPort} from './scanner-executor';
@@ -71,6 +72,16 @@ export class DigitalTwinService {
         if (await records.get('checkpoint', 'collection-binding:' + sessionId)) return true;
         if (sessionId.startsWith('twin-collection-')) return !!await records.get('scan-run', sessionId.slice('twin-collection-'.length));
         return !!await scannerJob(records, sessionId);
+    }
+    async collectionFiles(sessionId: string) {
+        if (!await this.initialized()) return;
+        const {records} = await this.services('read');
+        const bound = await records.get<{runId: string}>('checkpoint', 'collection-binding:' + sessionId);
+        if (!bound) return;
+        const run = await records.get<import('./scan-domain').TwinScanRun>('scan-run', bound.data.runId);
+        if (!run?.data.collection?.destination) return;
+        await this.authorizeCollection(run.id);
+        return acquireCollectionFiles(this.deps.fs, sessionId, run.data.collection, () => this.authorizeCollection(run.id));
     }
     private sourceConnections?: import('@itookit/app-contracts/services').ToolConnections;
     setSourceConnections(port?: import('@itookit/app-contracts/services').ToolConnections): void {this.sourceConnections = port;}

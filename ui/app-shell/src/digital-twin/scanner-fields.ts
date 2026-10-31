@@ -31,6 +31,8 @@ export function scannerFieldChange(event: Event, targets: RootCallTarget[], tool
         const tool = control.name === 'collection' && tools.find(item => collectionKey(item.target) === control.value);
         const selected = targets.find(item => key(item.target) === control.value);
         form.querySelector(`[data-scanner-parameters="${control.name}"]`)!.innerHTML = tool ? toolFields(tool) : parameterFields(selected, undefined, control.name);
+        const destination = form.querySelector<HTMLElement>('[data-collection-destination]');
+        if (control.name === 'collection' && destination) destination.hidden = !tool;
         if (control.name === 'collection' && control.value) {
             form.querySelector<HTMLSelectElement>('[name=inputMode]')!.value = 'rules';
             const operation = form.querySelector<HTMLSelectElement>('[name=mode]');

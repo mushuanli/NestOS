@@ -3,6 +3,7 @@ import {expect, it} from 'vitest';
 import type {TwinScannerTool} from '@itookit/app-contracts';
 import {collectionFields, readCollectionExecutor} from '../src/digital-twin/collection-fields';
 import {scannerFieldChange} from '../src/digital-twin/scanner-fields';
+import {collectionDestinationSummary} from '../src/digital-twin/collection-destination';
 
 const tool: TwinScannerTool = {name: 'Resources', description: '', source: 'plugin', target: {kind: 'tool', id: 'fixture.resources', version: '1', digest: 'stable'},
     presentation: {advanced: ['limit'], optionLabels: {connection: {account: 'My account'}}, parameters: [
@@ -26,6 +27,21 @@ function change(root: HTMLElement, selector: string, value: string) {
     const control = root.querySelector<HTMLSelectElement>(selector)!; control.value = value;
     scannerFieldChange({target: control} as unknown as Event, [], [tool]);
 }
+it('explicitly saves an application workspace without treating tool arguments as write grants', () => {
+    const root = form();
+    expect(root.querySelector<HTMLElement>('[data-collection-destination]')!.hidden).toBe(true);
+    change(root, '[name=collection]', JSON.stringify(Object.values(tool.target)));
+    expect(root.querySelector<HTMLElement>('[data-collection-destination]')!.hidden).toBe(false);
+    root.querySelector<HTMLSelectElement>('[name=collectionDestination]')!.value = 'emails';
+    const selected = readCollectionExecutor(root, [], [tool])!;
+    expect(selected.destination).toBe('emails'); expect(selected.values).not.toHaveProperty('directory');
+    expect(collectionDestinationSummary(selected)).toContain('/home/admin/emails');
+    root.innerHTML = collectionFields([], [tool], selected);
+    expect(readCollectionExecutor(root, [], [tool])).toEqual(selected);
+    const select = root.querySelector<HTMLSelectElement>('[name=collectionDestination]')!;
+    select.add(new Option('Host path', '/home/li/nestos')); select.value = '/home/li/nestos';
+    expect(() => readCollectionExecutor(root, [], [tool])).toThrow();
+});
 it('collects directly with a tagged schema, account choices and collapsed advanced fields, without requiring a model', () => {
     const root = form(); change(root, '[name=collection]', JSON.stringify(Object.values(tool.target)));
     expect(root.querySelector<HTMLSelectElement>('[name=mode]')!.value).toBe('collect');

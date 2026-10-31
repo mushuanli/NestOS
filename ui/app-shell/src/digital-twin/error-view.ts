@@ -6,6 +6,7 @@ export function twinError(code: string, detail = ''): string {
         TWIN_SCANNER_TARGET_CHANGED: 'scannerTargetUnavailable', TWIN_COLLECTION_TARGET_INVALID: 'scannerTargetUnavailable',
         TWIN_COLLECTION_FAILED: 'collectionFailed', TWIN_COLLECTION_SCOPE_REQUIRED: 'collectionScopeRequired',
         TWIN_COLLECTION_RESULT_INVALID: 'collectionResultInvalid',
+        TWIN_COLLECTION_DESTINATION_INVALID: 'collectionDestinationInvalid',
         TWIN_COLLECTION_INTERVAL_REQUIRED: 'collectionIntervalRequired', TWIN_COLLECTION_STATIC_TOOLS_REQUIRED: 'collectionStaticRequired',
         TWIN_EXTRACTION_FAILED: 'extractionFailed', TWIN_EXTRACTION_TIMEOUT: 'extractionTimeout',
         TWIN_EXTRACTION_CANCELLED: 'extractionCancelled', TWIN_INVALID_EXTRACTION: 'extractionInvalid',

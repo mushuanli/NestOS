@@ -96,8 +96,11 @@ function structuredResultLimit(tool: Tool): number {
 export function toolFailure(toolId: string, error: unknown, started: number): ToolInvokeResult {
   const message = (error instanceof Error ? error.message : String(error)).slice(0, MAX_RESULT_CHARS - 7);
   const known = error instanceof ToolInputError;
+  const supplied = (error as {code?: unknown} | null)?.code;
+  const code = known || error instanceof ToolOutputError ? error.code
+    : typeof supplied === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(supplied) ? supplied : undefined;
   return { toolId, success: false, output: `Error: ${message}`, durationMs: Date.now() - started,
-    error: message, ...(known || error instanceof ToolOutputError ? { errorCode: error.code, recoverable: known } : {}) };
+    error: message, ...(code ? { errorCode: code, recoverable: known } : {}) };
 }
 
 export function invocationSignal(signal: AbortSignal | undefined, timeoutMs: number) {

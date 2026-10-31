@@ -27,6 +27,17 @@ it('runs semantic validation before permissions', async () => {
   expect(call).not.toHaveBeenCalled();
 });
 
+it.each(['RESOURCE_WRITE_DENIED', 'ACCOUNT_SCOPE_REQUIRED'])('preserves a tool failure category without making unknown effects recoverable: %s', async code => {
+  const {driver} = fixture({call: async () => {throw Object.assign(new Error('Tool failed'), {code});}});
+  expect(await driver.invoke({toolId: 'fixture', args: {value: 'x'}})).toMatchObject({success: false, errorCode: code, recoverable: false});
+});
+
+it.each(['Bearer PRIVATE_TOKEN', 'https://private.invalid/token', 'x'.repeat(81), 403])('does not promote arbitrary failure codes to diagnostic metadata: %s', async code => {
+  const {driver} = fixture({call: async () => {throw Object.assign(new Error('Tool failed'), {code});}});
+  const result = await driver.invoke({toolId: 'fixture', args: {value: 'x'}});
+  expect(result.success).toBe(false); expect(result.errorCode).toBeUndefined(); expect(result.recoverable).not.toBe(true);
+});
+
 it('enforces permission denial at execution', async () => {
   const { call, driver } = fixture({ checkPermissions: async () => ({ behavior: 'deny', reason: 'read only' }) });
   expect(await driver.invoke({ toolId: 'fixture', args: { value: 'x' } })).toMatchObject({ errorCode: 'PERMISSION_DENIED' });

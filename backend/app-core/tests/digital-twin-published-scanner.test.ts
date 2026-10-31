@@ -7,6 +7,22 @@ import {createApplicationRuntime} from '../src/runtime/create-application-runtim
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close(); vi.unstubAllGlobals();});
 const text = '我喜欢 TypeScript。';
+
+it('retains the specific failure code from a direct collector through the durable call and scanner report', async () => {
+    const tool = buildTool({name: 'fixture.failing-collector', version: '1', inputSchema: TaskListTool.inputSchema,
+        async description() {return 'Fail collecting';}, async prompt() {return '';},
+        async call() {throw Object.assign(new Error('PRIVATE_FAILURE_DETAIL'), {code: 'RESOURCE_WRITE_DENIED'});},
+        mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};}});
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false,
+        kernelPlatform: {additionalTools: [tool]}}); cleanup.push(() => runtime.dispose());
+    const twin = runtime.digitalTwin!, target = (await twin.collectionTools()).find(item => item.target.id === tool.name)!.target;
+    const plan = await twin.saveScanRule(null, null, {name: 'Fail collecting', collection: {target}, mode: 'collect',
+        include: [], exclude: [], intervalMinutes: 30, enabled: true, trigger: 'manual'});
+    const run = await twin.runScanPlan(plan); await expect(twin.waitScanRun(run)).rejects.toThrow('TWIN_COLLECTION_FAILED');
+    const record = (await twin.snapshot()).scans.runs.find(item => item.id === run)!;
+    expect(record.data).toMatchObject({state: 'failed', error: 'TWIN_COLLECTION_FAILED', errorDetail: 'RESOURCE_WRITE_DENIED', spentTokens: 0});
+    expect(record.data.errorDetail).not.toContain('PRIVATE_FAILURE_DETAIL');
+}, 30000);
 const result = {candidates: [{content: '偏好 TypeScript', kind: 'preference', subject: 'self', project: '', eventTime: '', quote: text}]};
 async function setup(withOrganization = false, additionalTools: Tool[] = []) {
     const backend = new MemoryBackend(); await backend.init();

@@ -147,3 +147,44 @@ it('rejects legacy transports when saving or testing stored configurations', asy
     await expect(manager.testMCPServer(legacy)).rejects.toThrow('legacy transports are not supported');
     expect(connect).not.toHaveBeenCalled(); expect(helpers.engineUpsert).not.toHaveBeenCalled();
 });
+
+
+it('emits correlated safe MCP connection diagnostics for failure and retry', async () => {
+    const diagnostic = vi.fn(), f = setup({diagnostic});
+    f.connect.mockRejectedValueOnce(Object.assign(new Error('PRIVATE_TOKEN https://private.invalid'), {code: 'EACCES'}));
+    try {
+        await expect(f.manager.connectMCPServer(f.server)).rejects.toMatchObject({code: 'EACCES'});
+        await f.manager.connectMCPServer(f.server);
+        const events = diagnostic.mock.calls.map(([event]) => event);
+        expect(events.map(event => event.result)).toEqual(['started', 'failure', 'started', 'success']);
+        expect(events[1]).toMatchObject({connectionId: 'one', stage: 'connect', code: 'EACCES', reason: 'authentication', operationId: events[0].operationId, durationMs: expect.any(Number)});
+        expect(events[2].operationId).not.toBe(events[0].operationId);
+        expect(JSON.stringify(events)).not.toContain('PRIVATE_TOKEN'); expect(JSON.stringify(events)).not.toContain('https:');
+    } finally {await f.manager.disconnectAll();}
+});
+
+
+it('explicitly refreshes live discovery for a saved server without changing auto-connect or configuration', async () => {
+    const configurationChanged = vi.fn(), f = setup({configurationChanged});
+    f.manager.setServers([{...f.server, autoConnect: false}]);
+    const discovery = {tools: [{name: 'fresh', inputSchema: {type: 'object' as const}}], resources: [], prompts: []};
+    vi.spyOn(MCPServerConnection.prototype, 'discover').mockResolvedValue(discovery);
+    try {
+        expect(await f.manager.initializeMCPServer('one')).toBe(false);
+        expect(await f.manager.initializeMCPServer('one', true, 1000)).toBe(true);
+        expect(f.manager.getMCPServers()[0]).toMatchObject({autoConnect: false, tools: discovery.tools, status: 'connected'});
+        expect(configurationChanged).toHaveBeenCalledOnce(); expect(f.helpers.engineUpsert).not.toHaveBeenCalled();
+    } finally {await f.manager.disconnectAll();}
+});
+
+
+it('reconnects for explicit discovery refresh so SDK metadata from an old authorization epoch cannot survive', async () => {
+    const f = setup(); vi.spyOn(MCPServerConnection.prototype, 'discover').mockResolvedValue({tools: [], resources: [], prompts: []});
+    try {
+        await f.manager.connectMCPServer(f.server); const original = f.manager.getActiveConn('one');
+        await f.manager.initializeMCPServer('one', true);
+        expect(f.disconnect).toHaveBeenCalledOnce(); expect(f.connect).toHaveBeenCalledTimes(2);
+        expect(f.manager.getActiveConn('one')).not.toBe(original);
+        expect(f.manager.getMCPServers()[0].connectionState?.status).toBe('connected');
+    } finally {await f.manager.disconnectAll();}
+});

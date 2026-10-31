@@ -17,10 +17,10 @@ export class MCPConnectionStates {
     forget(id: string): void { this.states.delete(id); }
 }
 
-function failureReason(error: unknown): MCPConnectionState['issues'][number]['reason'] {
+export function failureReason(error: unknown): MCPConnectionState['issues'][number]['reason'] {
     const detail = error instanceof Error ? `${error.name} ${error.message}` : String(error);
     const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-    if (/401|403|unauthori[sz]ed|authentication|credential|EACCESS/i.test(code + ' ' + detail)) return 'authentication';
+    if (/401|403|unauthori[sz]ed|authentication|credential|EACCES|EACCESS/i.test(code + ' ' + detail)) return 'authentication';
     if (/timeout|timed out|ETIMEDOUT/i.test(code + ' ' + detail)) return 'timeout';
     if (/closed|disconnected/i.test(detail)) return 'closed';
     if (/ECONN|ENOTFOUND|fetch|network|ENET|EHOST/i.test(code + ' ' + detail)) return 'network';

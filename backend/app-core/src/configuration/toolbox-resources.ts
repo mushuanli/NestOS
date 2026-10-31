@@ -29,7 +29,8 @@ export class ToolboxResources {
     constructor(readonly sources: Record<ToolboxKind, IFileSystem>, private readonly agents: ApplicationAgentPort, private readonly commands: ICommandBus, settings: IFileSystem,
         private readonly inventory?: ToolboxInventory & { refresh(): Promise<void> },
         private readonly defaultDrawers: readonly Drawer[] = [], providerTemplates: readonly LLMProvider[] = [],
-        installation: {toolPackages?: import('@itookit/app-contracts/services').ToolPackages; flowInstallations?: import('@itookit/app-contracts/services').FlowInstallations} = {}) {
+        installation: {toolPackages?: import('@itookit/app-contracts/services').ToolPackages; flowInstallations?: import('@itookit/app-contracts/services').FlowInstallations} = {},
+        private readonly remoteChanges?: (listener: () => void) => () => void) {
         this.toolPackages = installation.toolPackages; this.flowInstallations = installation.flowInstallations;
         this.drawers = new ToolboxDrawers(settings); this.templates = new ProviderTemplates(providerTemplates, () => this.agents.getProviders(), this.agents);
     }
@@ -52,7 +53,7 @@ export class ToolboxResources {
             return { directories, loadedDirectories, descriptions };
         } finally { stop(); await files.dispose(); }
     }
-    subscribe(listener: () => void): () => void { return this.agents.onChange(listener); }
+    subscribe(listener: () => void): () => void { const stops = [this.agents.onChange(listener), this.remoteChanges?.(listener)]; return () => {for (const stop of stops) stop?.();}; }
     setDefaultConnection(id: string | null): Promise<void> { return this.agents.setDefaultConnection(id); }
     setModelDefault(operation: import('@itookit/kernel-adapters/contracts').ModelOperation, id: string | null): Promise<void> { return this.agents.setModelDefault(operation, id); }
     toolGrant = toolGrant;

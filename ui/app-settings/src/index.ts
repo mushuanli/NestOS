@@ -11,3 +11,5 @@ export { createSettingsFactory, type LLMUIEditors, type SettingsFactoryOptions }
 export function createSettingsNavigation(options: { excludedPages?: readonly string[] } = {}) {
     return new SettingsEngine(options.excludedPages);
 }
+
+export {DiagnosticLogView, diagnosticReasonText} from './editors/log/DiagnosticLogView';

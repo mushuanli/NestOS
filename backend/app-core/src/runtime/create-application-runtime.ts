@@ -1,5 +1,6 @@
 import {UserEventService} from '../events/service';
 import {attachRuntimeEvents} from '../events/runtime-events';
+import {DiagnosticJournal} from '../diagnostics/journal';
 import {PublishedScannerCollector} from '../digital-twin/scanner-collector';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {recoverFlowSchedulers} from './flow-scheduler-recovery';
@@ -96,6 +97,7 @@ export interface ApplicationKernelPlatform {
 
 export interface ApplicationRuntime {
     events: UserEventService;
+    diagnostics: DiagnosticJournal;
     /** Host-only callback/token capability; it is never part of the frontend services graph. */
     toolConnections?: import('@itookit/app-contracts/services').ToolConnectionAccess;
     editorSwapStore?: import('@itookit/app-contracts/services').EditorSwapStore;
@@ -173,6 +175,7 @@ export interface ApplicationRuntimeOptions {
 
 /** Host-owned system startup. Contains no DOM, routing or editor initialization. */
 export async function createApplicationRuntime(options: ApplicationRuntimeOptions): Promise<ApplicationRuntime> {
+    const diagnostics = new DiagnosticJournal();
     const policy = applicationStartupPolicy(options.startupMode);
     const startup = new StartupCoordinator();
     const cleanupFns: Array<() => void | Promise<void>> = [];
@@ -180,6 +183,10 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
     let remoteConnections: ProjectRemoteMountService | undefined;
     const injectedMCP = options.mcp;
     options = { ...options,mcp:{ ...injectedMCP,
+        diagnostic: event => {
+            diagnostics.record({...event, module: 'mcp', operation: 'mcp.connection', level: event.result === 'failure' ? 'error' : 'info'});
+            injectedMCP?.diagnostic?.(event);
+        },
         extensions:[...(injectedMCP?.extensions ?? []),...(options.remoteSourceProvider ? [createNestOSNodeMCPExtension()] : [])],
         resolveCredential:injectedMCP?.resolveCredential ?? options.remoteSourceProvider?.resolveCredential?.bind(options.remoteSourceProvider),
         beforeSave:async (server,previous) => { await injectedMCP?.beforeSave?.(server,previous); await remoteConnections?.beforeMCPChange(server,previous); },
@@ -192,6 +199,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const { vfs, systemFS, llmDriver, logIO, closeCodexTransport } = await createInfrastructure({ ...options, llmInitialization: policy.llm, deviceInitialization: policy.devices, preloadDirectories: [] });
         // The VFS owns every other resource, so it is disposed last.
         sourceCleanupFns.push(() => vfs.dispose());
+        await diagnostics.attach(systemFS);
+        sourceCleanupFns.push(() => diagnostics.dispose());
         if (closeCodexTransport) cleanupFns.push(closeCodexTransport);
         if (policy.mcp === 'before-ready') await traceBoot('mcp.startup', () => llmDriver.waitForMCPStartup());
 
@@ -262,7 +271,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             };
             const remote = new ProjectRemoteMountService(systemFS, options.remoteSourceProvider,
                 async projectId => { for (const id of await affected(projectId)) await remoteGuard(id); },
-                async projectId => { for (const id of await affected(projectId)) { await sessionFiles.invalidate(id); await mountChanged(id); } }, new MCPRemoteConnections(agentService,options.remoteSourceProvider));
+                async projectId => { for (const id of await affected(projectId)) { await sessionFiles.invalidate(id); await mountChanged(id); } }, new MCPRemoteConnections(agentService,options.remoteSourceProvider), diagnostics);
             remote.estimateUsage = createUsageCostEstimator(() => agentService.getPricingConfig());
             sourceCleanupFns.push(() => remote.dispose());
             await remote.init(true); remoteConnections = remote; projects.remoteMounts = remote;
@@ -557,7 +566,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         });
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();
-        return { events, vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections, toolConnections: options.toolConnections,
+        diagnostics.record({module: 'application', operation: 'application.runtime', stage: 'ready', result: 'success', level: 'info'});
+        return { events, diagnostics, vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections, toolConnections: options.toolConnections,
             flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, independentCalls, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id), conversationObservation: conversationContexts };
     } catch (error) {

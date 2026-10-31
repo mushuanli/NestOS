@@ -9,7 +9,8 @@ import { MCPServerConnection } from '../skills/mcp-client';
 import type { MCPServerConfig } from '../skills/types';
 import { VFSHelpers } from './vfs-helpers';
 import { MCPConfigurationExtensions, mcpConnectionIdentity } from './mcp-extensions';
-import { MCPConnectionStates } from './mcp-connection-state';
+import { MCPConnectionStates, failureReason } from './mcp-connection-state';
+import {randomUUID} from '../../utils/random';
 
 const MCP_DIR = '/llm/.mcp';
 
@@ -144,14 +145,15 @@ export class MCPManager {
     }
 
     /** Refresh runtime capabilities before publishing readiness to dependent host services. */
-    initializeMCPServer(id: string): Promise<boolean> {
+    initializeMCPServer(id: string, force = false, timeoutMs?: number): Promise<boolean> {
         return this.serial(id, async () => {
             const server = this._mcpServers.find(item => item.id === id);
-            if (!server || server.autoConnect === false) return false;
+            if (!server || !force && server.autoConnect === false) return false;
             if (server.transport === 'stdio' && this.options.stdioTransport === false) return false;
             const target = server.transport === 'stdio' ? server.command : server.endpoint;
             if (!target?.trim()) return false;
-            const discovery = await this.discoverServer(server);
+            if (force) await this.closeServer(id);
+            const discovery = await this.discoverServer(timeoutMs === undefined ? server : {...server, timeout: timeoutMs, timeoutUnit: 'ms'});
             const verified = { ...server, ...discovery };
             await this.options.beforeSave?.(verified, server);
             this.discoveries.set(id, { identity: mcpConnectionIdentity(server), value: discovery });
@@ -166,15 +168,18 @@ export class MCPManager {
         const fingerprint = this.connectionFingerprint(server);
         if (this.fingerprints.get(server.id) !== fingerprint) await this.closeServer(server.id);
         if (this._activeMCPConns.get(server.id)?.isConnected()) return;
+        const started = Date.now(), operationId = randomUUID();
         const connection = new MCPServerConnection(this.mcpServerToConfig(server), this.options,
-            error => this.states.fail(server.id, 'connect', error));
+            error => this.failure(server.id, 'connect', operationId, started, error));
+        this.diagnostic(server.id, 'connect', operationId, started, 'started');
         this.states.set(server.id, 'connecting');
         try {
             await connection.connect();
             this.fingerprints.set(server.id, fingerprint);
             this._activeMCPConns.set(server.id, connection);
             this.states.set(server.id, 'connected');
-        } catch (error) { this.states.fail(server.id, 'connect', error); throw error; }
+            this.diagnostic(server.id, 'connect', operationId, started, 'success');
+        } catch (error) { this.failure(server.id, 'connect', operationId, started, error); throw error; }
     }
 
     async readMCPResource(id: string, uri: string): Promise<unknown> {
@@ -195,11 +200,23 @@ export class MCPManager {
     private async discoverServer(server: MCPServer): Promise<MCPDiscovery> {
         await this.connectServer(server);
         const connection = this._activeMCPConns.get(server.id)!;
+        const started = Date.now(), operationId = randomUUID();
+        this.diagnostic(server.id, 'discover', operationId, started, 'started');
         try {
             const discovered = await this.extensions.discover({server,discovery:await connection.discover(),
                 callTool:(name,args) => connection.callTool(name,args)});
-            this.states.set(server.id, 'connected'); return discovered;
-        } catch (error) { this.states.fail(server.id, 'discover', error); throw error; }
+            this.states.set(server.id, 'connected');
+            this.diagnostic(server.id, 'discover', operationId, started, 'success'); return discovered;
+        } catch (error) { this.failure(server.id, 'discover', operationId, started, error); throw error; }
+    }
+    private failure(id: string, stage: 'connect' | 'discover', operationId: string, started: number, error: unknown): void {
+        this.states.fail(id, stage, error);
+        this.diagnostic(id, stage, operationId, started, 'failure', {...mcpErrorMetadata(error), reason: failureReason(error)});
+    }
+    private diagnostic(connectionId: string, stage: 'connect' | 'discover', operationId: string, started: number,
+        result: 'started' | 'success' | 'failure', detail: {code?: string; reason?: string; rpcCode?: number; causeCodes?: string[]} = {}): void {
+        try {this.options.diagnostic?.({connectionId, stage, operationId, result, durationMs: Date.now() - started, ...detail});}
+        catch { /* Diagnostics cannot change connection results. */ }
     }
     private connectionFingerprint(server: MCPServer): string {
         const {name: _name,...config} = this.mcpServerToConfig(server);
@@ -309,4 +326,17 @@ function validateMCPServer(server: MCPServer): void {
     for (const map of [server.headers, server.env]) {
         if (map !== undefined && (!map || typeof map !== 'object' || Array.isArray(map) || Object.values(map).some(value => typeof value !== 'string'))) throw new Error('MCP headers and environment must be string maps');
     }
+}
+
+function mcpErrorMetadata(error: unknown): {code: string; rpcCode?: number; causeCodes: string[]} {
+    const codes: string[] = [], seen = new Set<unknown>(); let rpcCode: number | undefined;
+    for (let depth = 0; depth < 8 && error && typeof error === 'object' && !seen.has(error); depth++) {
+        seen.add(error);
+        const value = error as {code?: unknown; data?: {code?: unknown}; cause?: unknown};
+        if (typeof value.code === 'number' && Number.isSafeInteger(value.code)) rpcCode ??= value.code;
+        for (const code of [value.code, value.data?.code]) if (typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code)) codes.push(code);
+        error = value.cause;
+    }
+    return {code: codes[0] ?? (rpcCode !== undefined ? 'MCP_RPC_ERROR' : 'MCP_OPERATION_FAILED'),
+        ...(rpcCode !== undefined ? {rpcCode} : {}), causeCodes: [...new Set(codes.slice(1))]};
 }

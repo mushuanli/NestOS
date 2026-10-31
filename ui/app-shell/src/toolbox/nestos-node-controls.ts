@@ -1,3 +1,5 @@
+import {showDiagnostics} from '../diagnostics/dialog';
+import type {ApplicationDiagnostics} from '@itookit/app-contracts/services';
 import { nestosNodeConfiguration } from '@itookit/app-contracts';
 import type { ProjectRemoteMountPort, ProjectService } from '@itookit/app-contracts/services';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
@@ -9,7 +11,7 @@ export class NestOSNodeMCPControls {
     private readonly lifetime = new AbortController();
     private stopMounts?: () => void;
     private mountRead = 0;
-    constructor(private readonly remote: ProjectRemoteMountPort, private readonly projects?: ProjectService) {}
+    constructor(private readonly remote: ProjectRemoteMountPort, private readonly projects?: ProjectService, private readonly diagnostics?: ApplicationDiagnostics) {}
     render(parent: HTMLElement, server: MCPServer): void {
         const settings = nestosNodeConfiguration(server);
         if (!settings) return;
@@ -30,6 +32,8 @@ export class NestOSNodeMCPControls {
             if (this.lifetime.signal.aborted || revision !== this.mountRead) return;
             const rows = projects.flatMap(project => this.remote.list(project.project.id).filter(mount => mount.connectionId === connectionId).map(mount => {
                 const row = document.createElement('li'); row.textContent = `${project.name} · /${mount.alias}${mount.root === '/' ? '' : mount.root} → ${mount.at} · ${t(`remote.access.${mount.access}`)} · ${t(`remote.state.${this.remote.status(mount.mountId)}`)}`;
+                const status = document.createElement('button'); status.type = 'button'; status.textContent = t('diagnostics.projectStatus');
+                status.onclick = () => {void showDiagnostics({diagnostics: this.diagnostics, remote: this.remote, projectId: project.project.id, title: project.name, signal: this.lifetime.signal});}; row.append(status);
                 return row;
             }));
             list.replaceChildren(...rows); if (!rows.length) list.textContent = t('remote.noMounts');

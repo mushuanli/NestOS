@@ -1,3 +1,5 @@
+import {projectStatusLabel} from '../diagnostics/presentation';
+import {diagnosticReasonText} from '@itookit/app-settings';
 import { sessionCreationReason } from './session-creation-policy';
 import { fileFirst, projectItems } from './navigation-policy';
 import { remapProjectPath } from './project-paths';
@@ -14,6 +16,7 @@ import { showProjectDefaultSettings } from './project-default-settings';
 interface Actions {
     refresh?(): Promise<void>;
     projectRenamed?(from: ProjectFolder, to: ProjectFolder): void;
+    projectStatus?(projectId: string): Promise<void>;
     projectMenu?(event: MouseEvent, project: ProjectFolder): Promise<void>;
     projectsChanged?(projects: ProjectFolder[]): void;
     syncIndicator?(projectId: string): ProjectSyncIndicator | undefined;
@@ -46,6 +49,9 @@ export class ProjectNavigation {
     private readonly menuEvents = new AbortController();
     private transferPending = false;
     private scopeRevision = 0;
+    private readonly remoteState = document.createElement('button');
+    private stateRead = 0;
+    private stopRemote?: () => void;
     private readonly syncStatus: ProjectSyncStatusIndicator;
     private project?: ProjectFolder;
     private path = '/';
@@ -64,6 +70,7 @@ export class ProjectNavigation {
                 else await this.choose(value, signal);
             } });
         this.buildHeader();
+        this.stopRemote = this.projects.remoteMounts?.onChange(() => {void this.updateRemoteStatus();});
         this.updateHeader([], 0);
         this.options = {
             navigationToolbarOptions: { variant: 'plain', definitions: [
@@ -93,7 +100,7 @@ export class ProjectNavigation {
         this.header.className = 'workbench-project-navigation';
         this.button(this.create, t('project.createSession'), () => this.createSession());
         this.create.className = 'workbench-project-navigation__create';
-        decorateButton(this.create, FILE_BROWSER_ICONS.newSession, t('project.createSession'));
+        decorateButton(this.create, FILE_BROWSER_ICONS.newSession, t('project.createSession'), true);
         this.button(this.retry, '', () => this.actions.retryDeletions()); this.retry.hidden = true;
         this.buildMenu();
         this.selector.element.oncontextmenu = event => { if (this.project) { event.preventDefault(); this.showMenu(event); } };
@@ -103,7 +110,9 @@ export class ProjectNavigation {
         this.settings.dataset.projectAction = 'settings';
         decorateButton(this.settings, ACTION_ICONS.settings, t('project.default.settings'));
         this.menuContent.append(this.settings, this.retry);
-        this.header.append(this.selector.element, this.syncStatus.element, this.create, this.toolbarContainer);
+        this.button(this.remoteState, t('diagnostics.projectStatus'), async () => {if (this.project) await this.actions.projectStatus?.(this.project.project.id);});
+        this.remoteState.className = 'project-remote-status'; this.remoteState.hidden = true;
+        this.header.append(this.selector.element, this.remoteState, this.syncStatus.element, this.create, this.toolbarContainer);
     }
     private async configureDefaultProject(): Promise<void> {
         if (this.settingsPending) return;
@@ -173,7 +182,7 @@ export class ProjectNavigation {
         button.type = 'button'; button.textContent = label;
         button.onclick = () => { void action().catch(this.actions.report); };
     }
-    destroy(): void { this.cancelPending(); this.selector.destroy(); this.menuEvents.abort(); }
+    destroy(): void { ++this.stateRead; this.stopRemote?.(); this.cancelPending(); this.selector.destroy(); this.menuEvents.abort(); }
     cancelPending(): void { ++this.revision; ++this.scopeRevision; this.menu.open = false; }
     showDraft(project: ProjectFolder): void {
         this.cancelPending();
@@ -211,11 +220,26 @@ export class ProjectNavigation {
         this.projectChoices = [...projects].sort((a, b) => Number(b.project.id === this.defaultProjectId) - Number(a.project.id === this.defaultProjectId));
         const project = this.project;
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
+        void this.updateRemoteStatus();
         this.updateCreation();
         this.projectActions.hidden = !project || !this.actions.projectMenu;
         for (const button of this.menu.querySelectorAll<HTMLButtonElement>('[data-project-action="import"], [data-project-action="export"]')) button.hidden = !project;
         this.retry.hidden = !pending; this.retry.textContent = t('project.retryDeletion', { count: pending });
         this.updateSelector(); this.updateTransferControls();
+    }
+    private async updateRemoteStatus(): Promise<void> {
+        const projectId = this.project?.project.id, remote = this.projects.remoteMounts, revision = ++this.stateRead;
+        this.remoteState.hidden = !projectId || !this.actions.projectStatus || !remote?.list(projectId).length;
+        if (this.remoteState.hidden || !projectId) return;
+        decorateButton(this.remoteState, ACTION_ICONS.info, t('diagnostics.projectStatus'), true);
+        try {
+            const state = await remote?.projectStatus?.(projectId);
+            if (revision !== this.stateRead || !state) return;
+            this.remoteState.dataset.status = state.status;
+            const label = t('diagnostics.projectState', {state: projectStatusLabel(state)});
+            decorateButton(this.remoteState, state.status === 'offline' || state.status === 'degraded' ? FEEDBACK_ICONS.warning : ACTION_ICONS.info, label, true);
+            this.remoteState.title = [label, ...(state.issue ? [state.issue.code, diagnosticReasonText(state.issue.reason)] : []), ...state.mounts.flatMap(mount => mount.failure ? [mount.failure.code, mount.failure.reason ? diagnosticReasonText(mount.failure.reason) : ''] : []).filter(Boolean)].filter(Boolean).join(' · ');
+        } catch {if (revision === this.stateRead) decorateButton(this.remoteState, FEEDBACK_ICONS.warning, t('diagnostics.statusFailed'), true);}
     }
     private creationProject(): ProjectFolder | undefined {
         if (this.project) return this.project;

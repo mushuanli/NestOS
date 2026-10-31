@@ -1,3 +1,4 @@
+import {showDiagnostics} from '../diagnostics/dialog';
 import {withAssistantShortcut} from '../navigation/assistant-actions';
 import {projectAssistantShortcut} from './project-assistant-shortcut';
 import {backToPreviousPage} from '../navigation/page-history';
@@ -636,6 +637,11 @@ export class SessionWorkbench implements WorkspaceController {
         this.container.setAttribute('aria-disabled', String(offline));
     }
 
+    private showProjectStatus(projectId: string): Promise<void> {
+        return showDiagnostics({diagnostics: this.backend.diagnostics, remote: this.projects?.remoteMounts,
+            projectId, title: t('diagnostics.projectStatus'), signal: this.dialogs.signal, refreshBinding: () => this.refreshProjectBinding(projectId), remount: () => this.remountProjectDialog(projectId),
+            configureConnection: async id => {await this.hostContext?.navigate({target: 'mcp', resourceId: '/' + encodeURIComponent(id)});}});
+    }
     private projectHarnessMenu(id: string) {
         const remote=this.projects?.remoteMounts;
         const mount=remote?.list(id).find(mount => mount.at==='/');
@@ -648,11 +654,12 @@ export class SessionWorkbench implements WorkspaceController {
     private projectEntryMenu(item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]): MenuItem<VFSNodeUI>[] {
         const id = String(item.metadata.custom.projectId), remote = !!item.metadata.custom.remoteProject;
         const hidden = ['create-in-folder-session', 'create-in-folder-folder', ...(remote ? ['delete', 'moveTo', 'copyTo', 'duplicate'] : [])];
-        return [{id: 'create-session', label: t('project.createSession'), disabled: !!this.projects && !!sessionCreationReason(this.projects, id), onClick: () => this.startSessionDraft(item.id)},
+        return [...(remote || this.projects?.remoteMounts?.list(id).length ? [{id: 'project-status', label: t('diagnostics.projectStatus'), onClick: () => this.showProjectStatus(id)}] : []), {id: 'create-session', label: t('project.createSession'), disabled: !!this.projects && !!sessionCreationReason(this.projects, id), onClick: () => this.startSessionDraft(item.id)},
             { id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
             ...defaults.filter(entry => !('id' in entry) || !hidden.includes(entry.id))
                 .map(entry => 'id' in entry && entry.id === 'rename' ? {...entry, onClick: () => this.renameProjectDialog(id)} : entry),
             ...(remote ? [
+                {id: 'refresh-project-binding', label: t('diagnostics.refreshBinding'), onClick: () => this.refreshProjectBinding(id)},
                 {id: 'remount-project', label: t('remote.remountAs'), onClick: () => this.remountProjectDialog(id)},
                 {id: 'unmount-project', label: t('remote.unmountProject'), onClick: () => this.unmountProjectDialog(id)},
             ] : []),
@@ -672,6 +679,14 @@ export class SessionWorkbench implements WorkspaceController {
             await this.sidebarUI?.refresh(); await this.projectNavigation?.refresh();
             if (selected) await this.openResource('/');
         }, note, {hideName: true, confirmLabel: t('remote.unmountProject')});
+    }
+    private async refreshProjectBinding(id: string): Promise<void> {
+        const project = await this.projects!.get(id), remote = this.projects!.remoteMounts!, active = this.active;
+        const prefix = folderBrowserPath(project.path);
+        await remote.assertUnmountable(id); await this.closeProjectTabs(project.path);
+        try {await remote.refreshProjectBinding(id, {timeoutMs: 10000});}
+        finally {await this.sidebarUI?.refresh(); await this.projectNavigation?.refresh();}
+        if (active === prefix || active?.startsWith(prefix + '/')) await this.openResource(active);
     }
     private async remountProjectDialog(id: string): Promise<void> {
         const project = await this.projects!.get(id), remote = this.projects!.remoteMounts!;
@@ -1437,8 +1452,9 @@ export class SessionWorkbench implements WorkspaceController {
         this.projectNavigation = new ProjectNavigation(this.projects!, () => this.sidebarUI, {
             refresh: () => this.refresh(),
             projectRenamed: (from, to) => this.remapProjectRoutes(folderBrowserPath(from.path), folderBrowserPath(to.path), to.name),
+            projectStatus: id => this.showProjectStatus(id),
             projectMenu: async (event, project) => {
-                await this.syncMenu.refresh(project.project.id);
+                void this.syncMenu.refresh(project.project.id).catch(error => this.report(error));
                 if (!this.dialogs.signal.aborted && this.projectNavigation?.currentProject()?.project.id === project.project.id)
                     await this.sidebarUI?.showItemMenu(event, folderBrowserPath(project.path));
             },

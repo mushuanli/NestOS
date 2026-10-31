@@ -120,3 +120,13 @@ it('requires explicit anonymous authentication and a verified anonymous principa
     expect(remoteMCPConnection({...anonymous,auth:undefined})).toBeUndefined();
     expect(remoteMCPConnection({...anonymous,extensions:{[NESTOS_NODE_EXTENSION]:{...anonymous.extensions[NESTOS_NODE_EXTENSION],authorization:{...authorization,principalId:'alice'}}}})).toBeUndefined();
 });
+
+
+it('explicitly revalidates a saved MCP through live discovery without persisting shared configuration', async () => {
+    const refreshMCPServer = vi.fn(async () => {}), saveMCPServer = vi.fn();
+    const registry = new MCPRemoteConnections({getMCPServers: async () => [server], refreshMCPServer, saveMCPServer, deleteMCPServer: vi.fn()},
+        {setCredential: vi.fn(), dispose: vi.fn(), open: vi.fn()});
+    await registry.revalidate('office', {timeoutMs: 1000});
+    expect(refreshMCPServer).toHaveBeenCalledWith('office', {timeoutMs: 1000}); expect(saveMCPServer).not.toHaveBeenCalled();
+    expect(registry.list()).toEqual([expect.objectContaining({id: 'office'})]);
+});

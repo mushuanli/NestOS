@@ -12,16 +12,19 @@ export interface MCPConfigurationStore {
     getMCPServers(): Promise<MCPServer[]>;
     saveMCPServer(server: MCPServer): Promise<void>;
     testMCPServer?(server: MCPServer): Promise<MCPDiscovery>;
+    refreshMCPServer?(id: string, options?: {timeoutMs?: number}): Promise<void>;
     deleteMCPServer(id: string): Promise<void>;
 }
 /** A synchronous projection of the MCP catalog, never a second connection store. */
 export class MCPRemoteConnections {
     private entries: RemoteFileSystemConfig[] = [];
+    private protocol = new Map<string, Pick<import('@itookit/app-contracts/services').RemoteProjectStatus['mounts'][number], 'protocol' | 'protocolVersion' | 'fileProtocol' | 'projectProtocol'>>();
     private refreshRevision = 0;
     private loadedRevision = 0;
     private configured: MCPConnectionDiagnostic['configured'] = [];
     constructor(private readonly store: MCPConfigurationStore, private readonly provider: RemoteFileSourceProvider) {}
     list(): RemoteFileSystemConfig[] { return structuredClone(this.entries); }
+    evidence(id: string) { return structuredClone(this.protocol.get(id)); }
     diagnostic(id: string): MCPConnectionDiagnostic {
         const server = this.configured.find(server => server.id === id);
         return {connectionId: id, connectionName: server?.name,
@@ -33,6 +36,10 @@ export class MCPRemoteConnections {
         const servers = await this.store.getMCPServers();
         if (revision !== this.refreshRevision) return;
         this.loadedRevision = revision;
+        this.protocol = new Map(servers.map(server => {
+            const descriptor = nestosNodeConfiguration(server), protocolVersion = (server as MCPServer & Pick<MCPDiscovery, 'protocolVersion'>).protocolVersion;
+            return [server.id, {protocol: server.connectionState, protocolVersion, fileProtocol: descriptor?.fileProtocol, projectProtocol: descriptor?.projectProtocol}];
+        }));
         this.configured = servers.map(server => ({id: server.id, name: server.name, reason: remoteMCPReason(server)}));
         const previous = this.entries;
         this.entries = servers.flatMap(server => {
@@ -43,6 +50,12 @@ export class MCPRemoteConnections {
         for (const connection of previous) if (!this.entries.some(item => item.credentialRef === connection.credentialRef))
             this.provider.clearCredential?.(connection.credentialRef);
         remoteLog.debug('mcp.catalog.refreshed', {revision, configured: this.configured});
+    }
+    async revalidate(id: string, options?: OperationOptions): Promise<void> {
+        checkOperation(options);
+        if (!this.store.refreshMCPServer) throw new FSError('ECAPABILITY', 'MCP discovery refresh unavailable');
+        await this.store.refreshMCPServer(id, {timeoutMs: options?.timeoutMs});
+        checkOperation(options); await this.refresh();
     }
     async ensure(id: string, options?: OperationOptions): Promise<void> {
         checkOperation(options);

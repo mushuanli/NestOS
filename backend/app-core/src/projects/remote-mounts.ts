@@ -1,3 +1,7 @@
+import {inspectAuthorization} from './authorization-inspection';
+import {DiagnosticJournal} from '../diagnostics/journal';
+import {diagnosticFailure} from '../diagnostics/failure';
+import type {DiagnosticEvent, RemoteProjectStatus} from '@itookit/app-contracts/services';
 import {ConversationRegistry} from './conversation-registry';
 import {ConversationComposerStore, withConversationComposer} from './conversation-composer-store';
 import type { ProjectConversationPort } from '@itookit/app-contracts/services';
@@ -84,6 +88,10 @@ export class ProjectRemoteMountService {
     private closed = false;
     private readonly catalogStore: RemoteMountStore;
     private readonly states = new Map<string, RemoteConnectionStatus>();
+    private readonly projectIssues = new Map<string, Map<string, DiagnosticEvent>>();
+    private readonly guardedClients = new WeakSet<HarnessClient>();
+    private readonly authorizationInspections = new Map<string, {fingerprint: string; value: import('@itookit/app-contracts/services').RemoteAuthorizationInspection}>();
+    private readonly observations = new Map<string, {checkedAt: number; lastSuccessAt?: number; failure?: DiagnosticEvent}>();
     private readonly connectionStates = new Map<string, RemoteConnectionStatus>();
     private readonly listeners = new Set<() => void>();
     private readonly probes = new Map<string, Promise<void>>();
@@ -92,7 +100,7 @@ export class ProjectRemoteMountService {
     readonly loadWarnings: string[] = [];
     constructor(private readonly store: IFileSystem, private readonly provider: RemoteFileSourceProvider,
         private readonly beforeChange: (projectId: string) => Promise<void>,
-        private readonly afterChange: (projectId: string) => Promise<void>, private readonly mcpConnections?: MCPRemoteConnections) { this.catalogStore = new RemoteMountStore(store); }
+        private readonly afterChange: (projectId: string) => Promise<void>, private readonly mcpConnections?: MCPRemoteConnections, readonly eventLog = new DiagnosticJournal()) { this.catalogStore = new RemoteMountStore(store); }
     async init(deferMCP = false): Promise<void> {
         const saved = await this.catalogStore.load();
         if (!saved) { if (!deferMCP) await this.mcpConnections?.refresh(); return; }
@@ -159,7 +167,7 @@ export class ProjectRemoteMountService {
         const connection = this.connections().find(item => item.id === id);
         if (!connection) {
             const error = new RemoteConnectionUnavailableError(this.connectionDiagnostic(id), this.connectionProjects(id));
-            reportRemoteFailure(error, {stage: 'connection-lookup', connectionId: id});
+            this.recordFailure(error, {stage: 'connection-lookup', connectionId: id});
             throw error;
         }
         return connection;
@@ -167,21 +175,24 @@ export class ProjectRemoteMountService {
     async resolveConnection(id: string, options?: OperationOptions): Promise<RemoteFileSystemConfig> {
         try { await this.mcpConnections?.ensure(id, options); return this.connection(id); }
         catch (error) {
-            if (!options?.signal?.aborted) reportRemoteFailure(error, {stage: 'mcp-connection-recovery', connectionId: id});
+            if (!options?.signal?.aborted) this.recordFailure(error, {stage: 'mcp-connection-recovery', connectionId: id});
             throw error;
         }
     }
     async checkConnection(id: string, options?: OperationOptions): Promise<void> {
         let connection: RemoteFileSystemConfig;
         try { connection = await this.resolveConnection(id, options); }
-        catch (error) { if (options?.signal?.aborted) return; throw error; }
+        catch (error) { if (options?.signal?.aborted) return; this.setConnectionStatus(id, 'offline'); throw error; }
         const projects = this.connectionProjects(id), previous = this.connectionStatus(id);
         this.setConnectionStatus(id, 'checking');
         let handshakeFailed = false;
         try {
             if (this.provider.check) await this.provider.check(connection, options);
             else if (!projects.length) throw new FSError('ECAPABILITY', 'Connection checks unavailable');
-        } catch { handshakeFailed = !options?.signal?.aborted; }
+        } catch (error) {
+            handshakeFailed = !options?.signal?.aborted;
+            if (handshakeFailed) this.recordFailure(error, {stage: 'connection-check', connectionId: id});
+        }
         if (options?.signal?.aborted) { this.setConnectionStatus(id, previous); return; }
         // Probe the mounts either way: a failed handshake must not pin a reachable connection to
         // offline, and the mounts' own probes are what the workbench availability state derives from.
@@ -344,21 +355,22 @@ export class ProjectRemoteMountService {
         return this.provider.discover({endpoint,username,credentialRef},options);
     }
     forgetProject(projectId: string): Promise<void> {
-        return this.serial(async () => {
+        return this.trackProject('project.unmount', projectId, () => this.serial(async () => {
             const mounts = this.list(projectId);
             if (!mounts.length) return;
             await this.beforeChange(projectId);
             const projects = { ...this.catalog.projects }; delete projects[projectId];
             await this.persist({ ...this.catalog, projects });
             await this.changed(projectId);
-            this.diagnostics.delete(projectId);
+            this.diagnostics.delete(projectId); this.eventLog.endSource({projectId});
             for (const mount of mounts) await this.releaseSource(mount.mountId);
-        });
+        }));
     }
     private connectionProjects(id?: string): string[] {
         return id ? Object.keys(this.catalog.projects).filter(project => this.list(project).some(mount => mount.connectionId === id)) : [];
     }
     private async releaseSource(id: string): Promise<void> {
+        this.eventLog.endSource({mountId: id});
         const source = this.sources.get(id); this.sources.delete(id); this.states.delete(id);
         await (await source?.catch(() => undefined))?.dispose();
     }
@@ -375,7 +387,7 @@ export class ProjectRemoteMountService {
         return projectId;
     }
     bindProject(projectId: string, connectionId: string, path: string, access: 'ro' | 'rw', options?: OperationOptions & {createDirectory?: boolean; projectName?: string}): Promise<void> {
-        return this.serial(async () => {
+        return this.trackProject('project.binding', projectId, () => this.serial(async () => {
             if (this.findRemoteProject(connectionId, path)) throw new FSError('EEXIST', 'Remote path already belongs to a project');
             await this.beforeChange(projectId); checkOperation(options);
             const connection = this.connection(connectionId);
@@ -403,11 +415,31 @@ export class ProjectRemoteMountService {
                 if (access === 'rw' && (await owner.fs.capabilitiesAt(mount.root, options)).readonly) throw new FSError('EROFS', 'Source is read-only');
                 checkOperation(options); await this.save(projectId, grants);
             } catch (error) { await owner.dispose(); throw error; }
-            this.sources.set(mount.mountId, Promise.resolve(owner)); this.setStatus(mount.mountId, 'online');
+            this.sources.set(mount.mountId, Promise.resolve(owner));
+            this.observations.set(mount.mountId, {checkedAt: Date.now(), lastSuccessAt: Date.now()}); this.setStatus(mount.mountId, 'online');
             await this.changed(projectId);
-        });
+        }), connectionId);
     }
     async projectHarness(projectId: string, options?: OperationOptions & {requireRegistered?: boolean}): Promise<HarnessClient> {
+        const started = Date.now(), operationId = randomUUID();
+        try {
+            const client = await this.openProjectHarness(projectId, options);
+            if (this.clearIssue(projectId, 'harness-open')) {
+                this.eventLog.record({module: 'nestos-node', operation: 'project.harness', stage: 'harness-open', result: 'success', level: 'info', projectId, operationId, durationMs: Date.now() - started});
+                for (const listener of this.listeners) listener();
+            }
+            return this.guardHarness(client, projectId, JSON.stringify(this.list(projectId)), this.list(projectId).find(mount => mount.at === '/')!.connectionId!);
+        }
+        catch (error) {
+            if (!cancelledByCaller(options)) {
+                const changed = this.setIssue(projectId, this.recordFailure(error, {stage: 'harness-open', projectId, operationId, durationMs: Date.now() - started,
+                    connectionId: this.list(projectId).find(mount => mount.at === '/')?.connectionId}));
+                if (changed) for (const listener of this.listeners) listener();
+            }
+            throw error;
+        }
+    }
+    private async openProjectHarness(projectId: string, options?: OperationOptions & {requireRegistered?: boolean}): Promise<HarnessClient> {
         const mount=this.list(projectId).find(mount => mount.at==='/');
         if (!mount?.connectionId || !this.provider.projects) throw new FSError('ECAPABILITY','Project harness unavailable');
         if (options?.requireRegistered && (!mount.serverProjectId || !Number.isSafeInteger(mount.serverProjectRevision) || mount.serverProjectRevision! < 1 || !mount.authorization))
@@ -427,8 +459,19 @@ export class ProjectRemoteMountService {
             return harness;
         } catch(error) {await client.close();throw error;}
     }
+    async refreshProjectBinding(projectId: string, options?: OperationOptions): Promise<void> {
+        const root = this.list(projectId).find(mount => mount.at === '/');
+        if (!root?.connectionId) throw new FSError('ECAPABILITY', 'Registered project binding unavailable');
+        await this.trackProject('project.binding.refresh', projectId, async () => {
+            await this.beforeChange(projectId);
+            await this.mcpConnections?.revalidate(root.connectionId!, options);
+            checkOperation(options);
+            await this.remountProject(projectId, root.access, options);
+            await this.checkConnections(projectId, options);
+        }, root.connectionId);
+    }
     remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void> {
-        return this.serial(async () => {
+        return this.trackProject('project.remount', projectId, () => this.serial(async () => {
             if (!['ro', 'rw'].includes(access)) throw new FSError('EINVAL', 'Invalid project access');
             checkOperation(options); await this.beforeChange(projectId);
             const grants = this.list(projectId), root = grants.find(mount => mount.at === '/');
@@ -455,7 +498,7 @@ export class ProjectRemoteMountService {
                 try { await this.changed(projectId); }
                 finally { await this.releaseSources(grants); }
             } finally { await client.close(); }
-        });
+        }));
     }
     private async releaseSources(grants: readonly ProjectRemoteMount[]): Promise<void> {
         await Promise.all(grants.map(mount => this.releaseSource(mount.mountId)));
@@ -530,25 +573,47 @@ export class ProjectRemoteMountService {
         } catch (error) { await client.close(); throw error; }
     }
     private guardHarness(client: HarnessClient, projectId: string, fingerprint: string, connectionId: string): HarnessClient {
-        return new Proxy(client, {get: (target, key) => {
+        if (this.guardedClients.has(client)) return client;
+        const guarded = new Proxy(client, {get: (target, key) => {
             const value = Reflect.get(target, key);
             if (key === 'close' || typeof value !== 'function') return typeof value === 'function' ? value.bind(target) : value;
             if (key === 'subscribe' || key === 'subscribeDirectory' || key === 'directorySnapshot') return (...args: unknown[]) => {
-                if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
-                this.connection(connectionId); return value.apply(target,args);
+                this.checkHarnessAccess(projectId, fingerprint, connectionId); return value.apply(target, args);
             };
-            return async (...args: unknown[]) => {
-                try {
-                    if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
-                    this.connection(connectionId); return await value.apply(target, args);
-                } catch (error) {
-                    reportRemoteFailure(error, {stage: `harness.${String(key)}`, projectId, connectionId,
-                        ...(typeof args[0] === 'string' ? {profileId: args[0]} : {}),
-                        ...(['resume', 'turn', 'read', 'inspect'].includes(String(key)) && typeof args[1] === 'string' ? {sessionId: args[1]} : {})});
-                    throw error;
-                }
-            };
+            return (...args: unknown[]) => this.callHarness(() => value.apply(target, args), String(key), args, projectId, fingerprint, connectionId);
         }});
+        this.guardedClients.add(guarded); return guarded;
+    }
+    private checkHarnessAccess(projectId: string, fingerprint: string, connectionId: string): void {
+        if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
+        this.connection(connectionId);
+    }
+    private async callHarness(run: () => Promise<unknown>, method: string, args: unknown[], projectId: string, fingerprint: string, connectionId: string): Promise<unknown> {
+        const started = Date.now(), operationId = randomUUID(), profileId = typeof args[0] === 'string' ? args[0] : undefined;
+        try {
+            this.checkHarnessAccess(projectId, fingerprint, connectionId);
+            const result = await run(); this.clearIssue(projectId, `harness.${method}`, profileId); return result;
+        } catch (error) {
+            const failure = this.recordFailure(error, {stage: `harness.${method}`, projectId, connectionId, profileId, operationId, durationMs: Date.now() - started,
+                ...(['resume', 'turn', 'read', 'inspect'].includes(method) && typeof args[1] === 'string' ? {sessionId: args[1]} : {})});
+            if (['profiles', 'list', 'sessions'].includes(method)) {
+                if (this.setIssue(projectId, failure)) for (const listener of this.listeners) listener();
+            }
+            throw error;
+        }
+    }
+    private setIssue(projectId: string, failure: DiagnosticEvent): boolean {
+        if (!this.projectIssues.has(projectId)) this.projectIssues.set(projectId, new Map());
+        const issues = this.projectIssues.get(projectId)!, key = `${failure.stage}:${failure.profileId ?? ''}`;
+        const previous = issues.get(key); issues.set(key, failure);
+        return !previous || JSON.stringify([previous.code, previous.reason, previous.causeCodes]) !== JSON.stringify([failure.code, failure.reason, failure.causeCodes]);
+    }
+    private clearIssue(projectId: string, stage: string, profileId?: string): boolean {
+        const key = `${stage}:${profileId ?? ''}`, issues = this.projectIssues.get(projectId), previous = issues?.get(key);
+        if (!previous || !issues?.delete(key)) return false;
+        this.eventLog.record({module: 'nestos-node', operation: 'remote.operation.recovered', stage, projectId, profileId,
+            connectionId: previous.connectionId, result: 'success', level: 'info'});
+        for (const listener of this.listeners) listener(); return true;
     }
     projectOffline(projectId: string): boolean { return this.list(projectId).some(mount => this.status(mount.mountId) === 'offline'); }
     /** A project whose mounts shadow each other or lost a source; it stays usable and reports why. */
@@ -560,25 +625,109 @@ export class ProjectRemoteMountService {
     onChange(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
     async checkConnections(projectId: string, options?: OperationOptions): Promise<void> {
         if (this.closed) return;
-        await Promise.all(this.list(projectId).map(mount => this.probe(mount, options)));
+        const scope = operationScope({timeoutMs: 3000, ...options});
+        try {
+            await this.inspectProjectAccess(projectId, scope.options);
+            await Promise.all(this.list(projectId).map(mount => this.probe(mount, scope.options)));
+            const root = this.list(projectId).find(mount => mount.at === '/');
+            if (root?.serverProjectId && !this.projectOffline(projectId)) {
+                try {const client = await this.projectHarness(projectId, scope.options); await client.close();}
+                catch { /* The harness boundary records and publishes its own failure. */ }
+            }
+        } finally {scope.dispose();}
     }
     private probe(mount: ProjectRemoteMount, options?: OperationOptions): Promise<void> {
         const pending = this.probes.get(mount.mountId); if (pending) return pending;
-        const previous = this.status(mount.mountId);
-        if (previous === 'unknown') this.setStatus(mount.mountId, 'checking');
-        const work = (async () => {
-            // One budget for opening and probing: a 3s check must not spend 3s per step.
-            const scope = operationScope({ timeoutMs: 3000, ...options });
-            try {
-                checkOperation(scope.options);
-                const source = await this.resolve(mount, scope.options);
-                if ((await source.fs.driver.getNode(mount.root, scope.options))?.type !== 'directory') throw new FSError('ENOTDIR', 'Remote root unavailable');
-                this.setStatus(mount.mountId, 'online');
-            } catch {
-                this.setStatus(mount.mountId, scope.options.signal?.aborted ? previous : 'offline');
-            } finally { scope.dispose(); this.probes.delete(mount.mountId); }
-        })();
+        const previous = this.status(mount.mountId), scope = operationScope({timeoutMs: 3000, ...options});
+        this.setStatus(mount.mountId, 'checking');
+        const work = this.probeMount(mount, scope.options, previous, options).finally(() => {scope.dispose(); this.probes.delete(mount.mountId);});
         this.probes.set(mount.mountId, work); return work;
+    }
+    private async probeMount(mount: ProjectRemoteMount, scoped: OperationOptions, previous: RemoteConnectionStatus, parent?: OperationOptions): Promise<void> {
+        const started = Date.now(), context = {operationId: randomUUID(), projectId: this.mountProject(mount.mountId),
+            stage: 'root-probe', mountId: mount.mountId, connectionId: mount.connectionId};
+        try {
+            checkOperation(scoped);
+            const proof = this.authorizationInspections.get(mount.mountId);
+            if (proof?.fingerprint === JSON.stringify(this.list(context.projectId ?? ''))
+                && (proof.value.exportAccess === 'none' || proof.value.projectAccess === 'denied'))
+                throw new FSError('EACCES', 'Remote project access denied');
+            if (mount.connectionId) await this.resolveConnection(mount.connectionId, scoped);
+            checkOperation(scoped);
+            const source = await this.resolve(mount, scoped);
+            if ((await source.fs.driver.getNode(mount.root, scoped))?.type !== 'directory') throw new FSError('ENOTDIR', 'Remote root unavailable');
+            checkOperation(scoped);
+            this.observations.set(mount.mountId, {checkedAt: Date.now(), lastSuccessAt: Date.now()});
+            this.eventLog.record({...context, module: 'nestos-node', operation: 'project.connection', result: 'success', level: 'info', durationMs: Date.now() - started});
+            this.setStatus(mount.mountId, 'online');
+        } catch (error) {
+            if (cancelledByCaller(parent)) {this.setStatus(mount.mountId, previous); return;}
+            const failure = this.recordFailure(error, {...context, durationMs: Date.now() - started}, scoped.signal?.aborted ? 'timeout' : undefined);
+            this.observations.set(mount.mountId, {...this.observations.get(mount.mountId), checkedAt: Date.now(), failure});
+            // The remote file gate can reject reads during execution while the connection stays usable.
+            this.setStatus(mount.mountId, failure.reason === 'busy' ? 'online' : 'offline');
+        }
+    }
+    async inspectProjectAccess(projectId: string, options?: OperationOptions): Promise<void> {
+        const root = this.list(projectId).find(mount => mount.at === '/');
+        if (!root?.connectionId || !this.provider.projects) return;
+        const started = Date.now(), operationId = randomUUID(), fingerprint = JSON.stringify(this.list(projectId));
+        try {
+            const connection = await this.resolveConnection(root.connectionId, options);
+            const value = await inspectAuthorization(this.provider, connection, root, options); checkOperation(options);
+            if (fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project binding changed during authorization inspection');
+            this.authorizationInspections.set(root.mountId, {fingerprint, value});
+            if (value.exportAccess === 'none' || value.projectAccess === 'denied') this.setStatus(root.mountId, 'offline');
+            if (value.reason !== 'unverified') this.eventLog.record({module: 'nestos-node', operation: 'project.authorization', projectId, connectionId: root.connectionId,
+                mountId: root.mountId, stage: 'authorization-inspect', operationId, result: value.code ? 'failure' : 'success', level: value.code ? 'error' : 'info',
+                code: value.code, causeCodes: value.causeCodes, reason: value.reason, durationMs: Date.now() - started});
+            for (const listener of this.listeners) listener();
+        } catch (error) {
+            if (!cancelledByCaller(options)) this.recordFailure(error, {stage: 'authorization-inspect', projectId, connectionId: root.connectionId, operationId, durationMs: Date.now() - started});
+        }
+    }
+    async projectStatus(projectId: string): Promise<RemoteProjectStatus> {
+        const definitions = this.list(projectId), fingerprint = JSON.stringify(definitions);
+        const mounts = definitions.map(mount => {
+            const connection = this.connections().find(connection => connection.id === mount.connectionId), proof = this.authorizationInspections.get(mount.mountId);
+            const authorization = proof?.fingerprint === fingerprint ? proof.value : undefined;
+            const principalId = authorization?.principalId ?? connection?.authorization?.principalId;
+            const revision = authorization?.authorizationRevision ?? connection?.authorization?.revision;
+            return {...(mount.connectionId ? this.mcpConnections?.evidence(mount.connectionId) : {}), mountId: mount.mountId, connectionId: mount.connectionId, connectionName: connection?.name, alias: mount.alias, root: mount.root,
+                access: mount.access, serverId: mount.serverId, serverProjectId: mount.serverProjectId, boundProjectRevision: mount.serverProjectRevision,
+                boundPrincipalId: mount.authorization?.principalId, principalId, boundAuthorizationRevision: mount.authorization?.revision, authorizationRevision: revision,
+                authorizationChanged: !!mount.authorization && (mount.authorization.principalId !== principalId || mount.authorization.revision !== revision), authorization: authorization ? structuredClone(authorization) : undefined,
+                status: this.status(mount.mountId), ...structuredClone(this.observations.get(mount.mountId))};
+        });
+        const issues = [...(this.projectIssues.get(projectId)?.values() ?? [])].sort((a, b) => b.timestamp - a.timestamp), issue = issues[0];
+        const filesBusy = mounts.some(mount => mount.failure?.reason === 'busy');
+        const status = mounts.some(mount => mount.status === 'offline') ? 'offline' : issue || filesBusy ? 'degraded' : mounts.some(mount => mount.status === 'checking') ? 'checking'
+            : mounts.length && mounts.every(mount => mount.status === 'online') ? 'online' : 'unknown';
+        const times = [...mounts.flatMap(mount => mount.checkedAt ? [mount.checkedAt] : []), ...issues.map(issue => issue.timestamp)];
+        const problem: RemoteProjectStatus['problem'] = mounts.some(mount => mount.authorization?.exportAccess === 'none' || mount.authorization?.projectAccess === 'denied')
+            ? 'authorization-denied' : status === 'offline' && mounts.some(mount => mount.authorizationChanged) ? 'binding-outdated' : status === 'offline' ? 'connection-failed'
+                : filesBusy ? 'files-busy' : issue ? 'native-unavailable' : undefined;
+        return {projectId, status, problem, ...(issue ? {issue: structuredClone(issue), issues: structuredClone(issues)} : {}), ...(times.length ? {checkedAt: Math.max(...times)} : {}), mounts};
+    }
+    private async trackProject<T>(operation: string, projectId: string, run: () => Promise<T>, connectionId?: string): Promise<T> {
+        const operationId = randomUUID(), started = Date.now();
+        const context = {module: 'nestos-node' as const, operation, projectId, connectionId, operationId, stage: 'commit'};
+        this.eventLog.record({...context, result: 'started', level: 'info'});
+        try {
+            const value = await run();
+            this.eventLog.record({...context, result: 'success', level: 'info', durationMs: Date.now() - started}); return value;
+        } catch (error) {
+            this.recordFailure(error, {...context, durationMs: Date.now() - started}); throw error;
+        }
+    }
+    private mountProject(mountId: string): string | undefined {
+        return Object.keys(this.catalog.projects).find(id => this.catalog.projects[id].some(mount => mount.mountId === mountId));
+    }
+    private recordFailure(error: unknown, context: {stage: string; operation?: string; projectId?: string; connectionId?: string; mountId?: string;
+        operationId?: string; durationMs?: number; profileId?: string; sessionId?: string}, reason?: string): DiagnosticEvent {
+        reportRemoteFailure(error, context);
+        return this.eventLog.record({module: 'nestos-node', operation: 'remote.operation', result: 'failure', level: 'error',
+            ...diagnosticFailure(error), ...(error instanceof RemoteConnectionUnavailableError ? {reason: error.diagnostic.reason} : {}), ...context, ...(reason ? {reason, code: 'ETIMEDOUT'} : {})});
     }
     private setStatus(id: string, status: RemoteConnectionStatus) {
         if (this.status(id) === status || this.closed) return;
@@ -653,7 +802,11 @@ export class ProjectRemoteMountService {
             for (const mount of definitions) {
                 if (base && mount.at !== '/' && await base.fs.driver.exists(mount.at)) diagnostics.push(`MOUNT_SHADOW_CONFLICT:${mount.at}`);
                 const source = await (this.status(mount.mountId) === 'offline' ? Promise.reject(new FSError('EIO', 'Source unavailable')) : this.resolve(mount))
-                    .catch(() => { this.setStatus(mount.mountId, 'offline'); diagnostics.push(`SOURCE_UNAVAILABLE:${mount.at}`); return this.unavailable(mount.mountId); });
+                    .catch(error => {
+                        const failure = this.observations.get(mount.mountId)?.failure
+                            ?? this.recordFailure(error, {stage: 'source-open', projectId, mountId: mount.mountId, connectionId: mount.connectionId});
+                        this.observations.set(mount.mountId, {...this.observations.get(mount.mountId), checkedAt: Date.now(), failure});
+                        this.setStatus(mount.mountId, 'offline'); diagnostics.push(`SOURCE_UNAVAILABLE:${mount.at}`); return this.unavailable(mount.mountId); });
                 mounts.push({ ...mount, fs: this.statusView(mount, source.fs), root: mount.root });
             }
             if (this.closed || revision !== this.catalog.revision) throw new FSError('EBUSY', 'Project mounts changed while opening');
@@ -695,10 +848,14 @@ export class ProjectRemoteMountService {
                         return { type: 'directory', path, parentPath: path === '/' ? null : path.slice(0, path.lastIndexOf('/')) || '/',
                             name: path.split('/').pop() ?? '', version: 0, createdAt: 0, modifiedAt: 0, tags: [], metadata: { unavailable: true } };
                     }
-                    throw new FSError('EIO', 'Remote source unavailable');
+                    const failure = this.observations.get(mount.mountId)?.failure;
+                    throw new FSError('EIO', 'Remote source unavailable', undefined, undefined, failure ? Object.assign(new Error('Remote diagnostic'), {code: failure.code}) : undefined);
                 }
                 try { const fs = await current(); return await (fs.driver as any)[key](...args); }
                 catch (error) {
+                    const failure = this.recordFailure(error, {stage: `files.${key}`, projectId: this.mountProject(mount.mountId), mountId: mount.mountId, connectionId: mount.connectionId});
+                    this.observations.set(mount.mountId, {...this.observations.get(mount.mountId), checkedAt: Date.now(), failure});
+                    if (['network', 'timeout', 'authorization-changed'].includes(failure.reason ?? '')) this.setStatus(mount.mountId, 'offline');
                     let cause = error;
                     for (let depth = 0; depth < 16 && cause instanceof FSError; depth++, cause = cause.cause) {
                         if (cause.operation === 'connect') { this.setStatus(mount.mountId, 'offline'); break; }
@@ -718,7 +875,7 @@ export class ProjectRemoteMountService {
     }
     private resolve(mount: ProjectRemoteMount, options?: OperationOptions) {
         if (mount.connectionId) {
-            const current = this.connections().find(c => c.id === mount.connectionId);
+            const current = this.connection(mount.connectionId);
             if (mount.authorization && (current?.authorization?.principalId !== mount.authorization.principalId
                 || current.authorization.revision !== mount.authorization.revision)) return Promise.reject(new FSError('EACCES','Remote authorization changed; refresh the project binding'));
         }
@@ -764,4 +921,9 @@ function legacyGrantMatches(mount: ProjectRemoteMount, before?: RemoteFileSystem
     if (!before || !after || mount.authorization || after.authorization?.principalId !== 'owner') return false;
     return canReaddressConnection(before, after, true) && [before, mount].every(item => item.credentialRef === after.credentialRef
         && item.username === after.username && item.serverId === after.serverId && !!item.anonymous === !!after.anonymous);
+}
+
+function cancelledByCaller(options?: OperationOptions): boolean {
+    const signal = options?.signal;
+    return !!signal?.aborted && !(signal.reason?.timedOut === true || signal.reason?.name === 'TimeoutError');
 }

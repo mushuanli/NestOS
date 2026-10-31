@@ -8,6 +8,9 @@ export function mcpStatusIcon(custom: Record<string, unknown>): string {
     const detail = [t(`mcp.state.${status}`), ...(state?.issues ?? []).map(issue =>
         `${t(`mcp.stage.${issue.stage}`)}: ${t(`mcp.failure.${issue.reason}`)}`)];
     if (state?.checkedAt) detail.push(t('mcp.state.observedAt', {time: new Date(state.checkedAt).toLocaleString()}));
+    const health = custom.mcpProjectHealth as {total: number; offline: number; unknown: number; degraded?: number} | undefined;
+    if (health?.total) detail.push(t('diagnostics.mcpProjects', {total: health.total, offline: health.offline + (health.degraded ?? 0), unknown: health.unknown}));
+    const visual = status === 'connected' && health?.total ? health.offline || health.degraded ? 'error' : health.unknown ? 'idle' : status : status;
     const description = escapeAttr(detail.join('\n'));
-    return `<span class="mcp-status-icon" title="${description}" aria-label="${description}">${ENTITY_ICONS.mcp}<span class="mcp-status-icon__badge" style="color:${STATUS_META[status].color}" aria-hidden="true">${STATUS_META[status].dot}</span></span>`;
+    return `<span class="mcp-status-icon" title="${description}" aria-label="${description}">${ENTITY_ICONS.mcp}<span class="mcp-status-icon__badge" style="color:${STATUS_META[visual].color}" aria-hidden="true">${STATUS_META[visual].dot}</span></span>`;
 }

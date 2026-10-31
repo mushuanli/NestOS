@@ -387,3 +387,48 @@
         background: rgba(245, 158, 11, 0.08);
     }
 }
+.diagnostic-log { min-width: 0; padding: 12px; }
+.diagnostic-log__controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.diagnostic-log__controls input { flex: 1; min-width: 160px; }
+.diagnostic-log__controls :is(button, input, select) { min-height: 40px; padding: 6px 10px; color: inherit; background: var(--bg-primary, Canvas); border: 1px solid var(--border-color, #8885); border-radius: 6px; }
+.diagnostic-log__events { padding: 0; list-style: none; }
+.diagnostic-log__pagination { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; background: var(--bg-primary, Canvas); }
+.diagnostic-log__pagination[hidden] { display: none; }
+.diagnostic-log__pagination > span { flex: 1; min-width: 120px; text-align: center; font-size: 13px; }
+.diagnostic-log__pagination > button { flex: 0 0 auto; min-height: 44px; padding: 6px 10px; border: 1px solid var(--border-color, #8885); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.diagnostic-log__pagination > button:disabled { opacity: .5; cursor: default; }
+.diagnostic-log__pagination > button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: 2px; }
+.diagnostic-log__event { margin: 10px 0; padding: 12px; border: 1px solid var(--border-color, #8885); border-radius: 6px; overflow-wrap: anywhere; }
+.diagnostic-log__event--error { border-inline-start: 3px solid var(--color-error, #dc3545); }
+.diagnostic-log__event--warn { border-inline-start: 3px solid var(--color-warning, #d99100); }
+.diagnostic-log__event pre { max-height: 320px; overflow: auto; white-space: pre-wrap; }
+.diagnostic-log__series { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 4px 12px; color: var(--text-secondary, inherit); }
+.diagnostic-log__series p { margin: 2px 0; }
+.diagnostic-access { border-block-start: 1px solid var(--border-color, #8885); margin-block: 12px; padding-block: 8px; }
+.diagnostic-access__fields { display: grid; grid-template-columns: minmax(100px, 160px) minmax(0, 1fr); gap: 6px 12px; }
+.diagnostic-access__fields dd { margin: 0; overflow-wrap: anywhere; }
+.diagnostic-access__permissions { width: 100%; border-collapse: collapse; margin-block: 12px; }
+.diagnostic-access__permissions :is(th, td) { text-align: start; padding: 4px 8px; border-bottom: 1px solid var(--border-color, #8885); }
+.diagnostic-access pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.diagnostic-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); box-sizing: border-box; overflow: hidden; color: var(--text-primary, CanvasText); background: var(--bg-primary, Canvas); border: 1px solid var(--border-color, #8885); border-radius: 12px; padding: 0; }
+.diagnostic-dialog[open] { display: flex; flex-direction: column; }
+.diagnostic-dialog__header { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border-color, #8885); }
+.diagnostic-dialog__header h2 { flex: 1; min-width: 0; margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.diagnostic-dialog__close { flex: 0 0 auto; margin-inline-start: auto; min-width: 60px; min-height: 44px; padding: 6px 12px; border: 1px solid var(--border-color, #8885); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.diagnostic-dialog__close:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: 2px; }
+.diagnostic-dialog__content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px 20px; }
+.diagnostic-dialog__footer { flex: 0 0 auto; padding: 12px 20px; border-top: 1px solid var(--border-color, #8885); }
+.diagnostic-dialog__footer > p { margin: 0 0 8px; }
+.diagnostic-dialog__footer > p:empty { display: none; }
+.diagnostic-dialog__footer .diagnostic-log__controls { margin: 0; }
+.diagnostic-dialog__footer .diagnostic-log__controls > [hidden] { display: none; }
+.diagnostic-dialog::backdrop { background: #0006; }
+.diagnostic-dialog [data-status="offline"] { color: var(--color-error, #dc3545); }
+.project-remote-status { border: 0; background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
+.project-remote-status[data-status="offline"] { color: var(--color-error, #dc3545); }
+.project-remote-status[data-status="online"] { color: var(--color-success, #198754); }
+@media (max-width: 768px) {
+    .diagnostic-log__controls :is(button, input, select), .project-remote-status { min-height: 44px; }
+    .diagnostic-dialog__header, .diagnostic-dialog__footer { padding: 10px 12px; }
+    .diagnostic-dialog__content { padding: 12px; }
+}

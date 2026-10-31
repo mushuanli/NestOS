@@ -24,7 +24,7 @@ export class ToolboxInventory {
     defaultConnectionId?: string;
     modelDefaults: import('@itookit/kernel-adapters/contracts').ModelDefaults = {};
     readonly tools = new Map<string, ToolboxTool>();
-    constructor(private readonly servers: () => Promise<MCPServer[]>, private readonly catalog: Catalog, private readonly models?: IConnectionService, private readonly prompts?: () => Promise<SystemPromptDefinition[]>, private readonly harnesses?: () => Promise<RemoteHarnessAgent[]>) {}
+    constructor(private readonly servers: () => Promise<MCPServer[]>, private readonly catalog: Catalog, private readonly models?: IConnectionService, private readonly prompts?: () => Promise<SystemPromptDefinition[]>, private readonly harnesses?: () => Promise<RemoteHarnessAgent[]>, private readonly projectHealth?: (id: string) => Promise<{total: number; offline: number; unknown: number; degraded: number}>) {}
     async init(): Promise<void> {
         try {
             for (const kind of ['remoteAgents', 'mcp', 'tools', 'providers', 'connections', 'prompts'] as const) this.owners[kind] = await createFileSystemSource({
@@ -53,8 +53,8 @@ export class ToolboxInventory {
                 source: t(meta.type === 'plugin' ? 'toolbox.plugin' : 'toolbox.builtin'), parameters: definition?.function?.parameters ?? definition?.parameters });
         }
         for (const server of servers) this.addMCPTools(server);
-        await this.replace('mcp', servers.map(server => ({ id: server.id, name: server.name, description: server.description ?? '',
-            source: server.transport, icon: ENTITY_ICONS.mcp, status: server.status ?? 'idle', connectionState: server.connectionState })));
+        await this.replace('mcp', await Promise.all(servers.map(async server => ({ id: server.id, name: server.name, description: server.description ?? '',
+            source: server.transport, icon: ENTITY_ICONS.mcp, status: server.status ?? 'idle', connectionState: server.connectionState, projectHealth: await this.projectHealth?.(server.id) }))));
         await this.replace('tools', [...this.tools.values()].map(tool => ({ ...tool, icon: ENTITY_ICONS.tool })));
     }
     private async refreshModels(): Promise<void> {
@@ -102,7 +102,7 @@ export class ToolboxInventory {
                 serverId: server.id, enabled: server.status === 'connected', parameters: item.inputSchema });
         }
     }
-    private async replace(kind: 'remoteAgents' | 'mcp' | 'tools' | 'providers' | 'connections' | 'prompts', entries: Array<{ id: string; name: string; description: string; source: string; icon: string; status?: MCPServer['status']; connectionState?: MCPConnectionState }>): Promise<void> {
+    private async replace(kind: 'remoteAgents' | 'mcp' | 'tools' | 'providers' | 'connections' | 'prompts', entries: Array<{ id: string; name: string; description: string; source: string; icon: string; status?: MCPServer['status']; connectionState?: MCPConnectionState; projectHealth?: {total: number; offline: number; unknown: number; degraded: number} }>): Promise<void> {
         const backend = this.backends[kind], paths = new Set(entries.map(item => '/' + encodeURIComponent(item.id) + (kind === 'remoteAgents' ? '.agent' : '')));
         for (const old of await backend.list('/')) if (!paths.has(old.path)) { await backend.delete(old.path); this.contents.delete(kind + ':' + old.path); }
         for (const item of entries) {
@@ -112,7 +112,7 @@ export class ToolboxInventory {
             await backend.write(path, new TextEncoder().encode(content));
             await backend.updateMetadata(path, { title: item.name, description: item.description, source: item.source,
                 icon: item.icon, ...(kind === 'remoteAgents' ? {remoteHarnessAgent: true} : {}),
-                ...(kind === 'mcp' ? {mcpStatus: item.status, mcpConnectionState: item.connectionState} : {}), _readOnly: true, _showAll: true });
+                ...(kind === 'mcp' ? {mcpStatus: item.status, mcpConnectionState: item.connectionState, mcpProjectHealth: item.projectHealth} : {}), _readOnly: true, _showAll: true });
             this.contents.set(key, content);
         }
     }

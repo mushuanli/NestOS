@@ -325,6 +325,7 @@ export interface ProjectRemoteMountService {
     }): Promise<void>;
     projectHarness(projectId: string, options?: OperationOptions & {requireRegistered?: boolean}): Promise<HarnessClient>;
     projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<HarnessContracts.HarnessModelCatalog>;
+    refreshProjectBinding(projectId: string, options?: OperationOptions): Promise<void>;
     remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;
     projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean, draftId?: string): Promise<ProjectConversationPort>;
@@ -332,6 +333,8 @@ export interface ProjectRemoteMountService {
     degraded(projectId: string): boolean;
     status(mountId: string): RemoteConnectionStatus;
     connectionStatus(id: string): RemoteConnectionStatus;
+    inspectProjectAccess(projectId: string, options?: OperationOptions): Promise<void>;
+    projectStatus(projectId: string): Promise<import('./diagnostics').RemoteProjectStatus>;
     assertUnmountable(projectId: string): Promise<void>;
     onChange(listener: () => void): () => void;
     checkConnections(projectId: string, options?: OperationOptions): Promise<void>;

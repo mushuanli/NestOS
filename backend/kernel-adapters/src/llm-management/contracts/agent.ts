@@ -221,6 +221,8 @@ export interface ILLMManagementService extends IConnectionService {
     deleteMCPServer(id: string): Promise<void>;
     /** Connect with the supplied draft and discover the server capabilities. */
     testMCPServer(server: MCPServer): Promise<MCPDiscovery>;
+    /** Refresh live discovery for a saved identity without rewriting shared configuration. */
+    refreshMCPServer?(id: string, options?: {timeoutMs?: number}): Promise<void>;
     readMCPResource(serverId: string, uri: string): Promise<unknown>;
     getMCPPrompt(serverId: string, name: string, args?: Record<string, string>): Promise<unknown>;
 

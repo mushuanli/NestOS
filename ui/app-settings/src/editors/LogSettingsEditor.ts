@@ -1,3 +1,7 @@
+import {t} from '@itookit/common';
+import type {ApplicationDiagnostics} from '@itookit/app-contracts/services';
+import type {EditorOptions} from '@itookit/ui-common';
+import {DiagnosticLogView} from './log/DiagnosticLogView';
 /**
  * @file app-settings/editors/LogSettingsEditor.ts
  * @description 日志管理设置页面
@@ -10,6 +14,9 @@ import { LogLevelConfigSection } from './log/LogLevelConfigSection';
 import { LogViewerSection } from './log/LogViewerSection';
 
 export class LogSettingsEditor extends BaseSettingsEditor<SettingsService> {
+    constructor(container: HTMLElement, service: SettingsService, options: EditorOptions, private readonly diagnostics?: ApplicationDiagnostics) {
+        super(container, service, options);
+    }
     private sections: Array<{ destroy?: () => void }> = [];
     private isStructureInitialized = false;
 
@@ -33,6 +40,8 @@ export class LogSettingsEditor extends BaseSettingsEditor<SettingsService> {
                     </div>
                 </div>
 
+                <div id="section-host-log"></div>
+                <h3>${t('diagnostics.browserLogs')}</h3>
                 <div id="section-log-overview"></div>
                 <div id="section-log-level"></div>
                 <div id="section-log-viewer"></div>
@@ -47,7 +56,7 @@ export class LogSettingsEditor extends BaseSettingsEditor<SettingsService> {
         const levelSection = new LogLevelConfigSection(levelEl, this.service);
         const viewerSection = new LogViewerSection(viewerEl);
 
-        this.sections = [overviewSection, levelSection, viewerSection];
+        this.sections = [new DiagnosticLogView(this.container.querySelector('#section-host-log') as HTMLElement, this.diagnostics), overviewSection, levelSection, viewerSection];
 
         await Promise.all(this.sections.map((s: any) => s.init?.()));
 

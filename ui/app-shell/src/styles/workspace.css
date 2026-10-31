@@ -518,8 +518,7 @@
 .file-recovery button { margin-inline-end: 8px; padding: 6px 10px; cursor: pointer; }
 
 /* Page actions remain discoverable without relying on hover or native control styling. */
-.workbench-project-navigation__create { width: auto; white-space: nowrap; }
-.workbench-project-navigation > .workbench-project-navigation__create { flex-basis: auto; gap: 6px; padding-inline: 10px; }
+.workbench-project-navigation__create { white-space: nowrap; }
 .workbench-project-navigation__menu[hidden] { display: none; }
 .workbench-directory { box-sizing: border-box; color: var(--mm-text-color, #111827); }
 .workbench-directory__toolbar > button, .workbench-directory__selection > button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--mm-border-color, #d6dae2); background: var(--mm-bg-color, #fff); border-radius: 7px; font-size: 13px; }
@@ -593,7 +592,7 @@
 /* Shared workspace navigation and filter surface. */
 .workbench-navigation-header, .workbench-project-navigation { display: flex; align-items: center; width: 100%; min-width: 0; gap: 4px; padding: 0; box-sizing: border-box; }
 .workbench-navigation-header > select, .workbench-project-navigation > select { flex: 1; width: 0; min-width: 0; height: 44px; }
-.workbench-project-navigation > .workbench-project-navigation__create { height: 44px; min-height: 44px; padding: 8px; gap: 4px; }
+.workbench-project-navigation > button { flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; padding: 8px; }
 .workbench-filters__trigger { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; gap: 5px; min-height: 44px; padding: 8px; border: 1px solid var(--mm-border-color, #d6dae2); border-radius: 8px; background: var(--mm-bg-color, #fff); color: var(--mm-text-color, #111827); font: inherit; font-size: 13px; cursor: pointer; }
 .workbench-filters { position: fixed; inset: var(--filter-top) auto auto var(--filter-left); margin: 0; width: 320px; max-width: calc(100vw - 16px); max-height: min(70vh, 600px); padding: 0; box-sizing: border-box; border: 1px solid var(--mm-border-color, #d6dae2); border-radius: 12px; background: var(--mm-bg-color, #fff); color: var(--mm-text-color, #111827); box-shadow: 0 12px 40px #0003; }
 .workbench-filters::backdrop { background: #0001; }

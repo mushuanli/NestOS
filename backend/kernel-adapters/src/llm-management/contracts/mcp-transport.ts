@@ -17,7 +17,13 @@ export interface MCPConfigurationExtensionContext {
     /** Uses the authenticated connection that performed standard discovery. */
     callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
 }
+export interface MCPDiagnostic {
+    connectionId: string; operationId: string; stage: 'connect' | 'discover';
+    result: 'started' | 'success' | 'failure'; durationMs: number;
+    code?: string; reason?: string; rpcCode?: number; causeCodes?: string[];
+}
 export interface MCPConnectionOptions {
+    diagnostic?(event: MCPDiagnostic): void;
     /** Omitted: use Node stdio when available. False: disable stdio explicitly. */
     stdioTransport?: MCPStdioTransportFactory | false;
     resolveCredential?(reference: string): string | Promise<string>;

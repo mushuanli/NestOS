@@ -44,6 +44,7 @@ function resolveSettingsSlug(nodeId: string): string {
 }
 
 export interface SettingsFactoryOptions {
+    diagnostics?: import('@itookit/app-contracts/services').ApplicationDiagnostics;
     mediaProbeExamples?: MediaProbeExamples;
     ocr?: import('@itookit/ui-common').OcrControls;
     settingsService: SettingsService;
@@ -56,7 +57,7 @@ export interface SettingsFactoryOptions {
     requestDelete?: import('@itookit/ui-common').EditorHostContext['requestDelete'];
 }
 export const createSettingsFactory = ({ settingsService, agentService, connectionService, llmUiEditors,
-    connectBrowser, restoreFlows, initialFiles, requestDelete, ocr, mediaProbeExamples }: SettingsFactoryOptions): EditorFactory => {
+    connectBrowser, restoreFlows, initialFiles, requestDelete, ocr, mediaProbeExamples, diagnostics }: SettingsFactoryOptions): EditorFactory => {
     return async (container: HTMLElement, options: EditorOptions) => {
         if (requestDelete) options = { ...options, hostContext: { toggleSidebar: () => {}, navigate: async () => {}, ...options.hostContext, requestDelete } };
         const nodeId = resolveSettingsSlug(editorResourceId(options) || '');
@@ -74,7 +75,7 @@ export const createSettingsFactory = ({ settingsService, agentService, connectio
             case 'cost':        editor = new llmUiEditors.CostEditor(container, agentService, options); break;
             case 'system-prompts': editor = new llmUiEditors.SystemPromptSettingsEditor(container, agentService, options); break;
             case 'recovery':    editor = new RecoverySettingsEditor(container, agentService, options, restoreFlows, initialFiles); break;
-            case 'log':         editor = new LogSettingsEditor(container, settingsService, options); break;
+            case 'log':         editor = new LogSettingsEditor(container, settingsService, options, diagnostics); break;
             case 'about':       editor = new AboutSettingsEditor(container, settingsService, options); break;
             case 'fs-explorer': editor = new SystemFSExploreEditor(container, settingsService, options, connectBrowser); break;
             case 'appearance':  editor = new AppearanceSettingsEditor(container, settingsService, options); break;

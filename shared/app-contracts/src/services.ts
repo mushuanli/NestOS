@@ -24,4 +24,6 @@ export type {EditorSwap, EditorSwapSnapshot, EditorSwapFactory, EditorSwapStore}
 
 export type * from './ports/assistant';
 
+export type * from './ports/diagnostics';
+
 export type * from './ports/events';

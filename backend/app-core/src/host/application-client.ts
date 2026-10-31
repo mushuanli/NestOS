@@ -1,6 +1,6 @@
-import {reportClientDiagnostic} from './client-diagnostic';
-import {sessionResponse} from '../session/session-response';
 import {createTextGeneration, listTextModels} from '../configuration/text-generation';
+import {sessionResponse} from '../session/session-response';
+import {reportClientDiagnostic} from './client-diagnostic';
 import {assistantOverview} from '../assistant/overview';
 import {publicConfiguration} from './configuration-access';
 import {DocumentChatFileView} from '../document-chat/file';
@@ -49,7 +49,7 @@ export interface ApplicationViewOptions extends LocalBackendOptions { preload?: 
 export function createApplicationClient(services: LocalApplicationServices, options: ApplicationViewOptions = {}): ApplicationClient & { close(): Promise<void> } {
     if (options.configurationReadonly) services = {...services, agentService: publicConfiguration(services.agentService), llmDriver: publicConfiguration(services.llmDriver)};
     const scope = new ViewScope(), backend = bindApplicationBackend(services, options, scope);
-    const { acquireConversation: _acquireConversation, editorSwapStore: _editorSwapStore, events: _events, ...publicServices } = services;
+    const { acquireConversation: _acquireConversation, editorSwapStore: _editorSwapStore, diagnostics: _diagnostics, events: _events, ...publicServices } = services;
     return { services: { ...publicServices, agentService: withConfigurationImport(services.agentService),
         llmDriver: withConfigurationImport(services.llmDriver), flowEngine: { engine: services.flowEngine.engine }, kernel: { kernel: services.kernel.kernel,
             toolCatalog: {...services.kernel.toolCatalog, describeTools: async () => configuredToolCatalog(services.kernel.toolCatalog, await services.agentService.getMCPServers())} } },
@@ -62,9 +62,15 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     let opening = false;
     const backend: ApplicationBackend = {
         events: services.events,
+        diagnostics: services.diagnostics,
         assistantOverview: () => assistantOverview(services),
         sessionResponse: (id, query) => sessionResponse(repository, id, query),
-        reportClientDiagnostic: async diagnostic => reportClientDiagnostic(diagnostic),
+        reportClientDiagnostic: async diagnostic => {
+            reportClientDiagnostic(diagnostic);
+            services.diagnostics?.record?.({module: 'application', operation: diagnostic.operation, operationId: diagnostic.operationId,
+                stage: diagnostic.stage, result: diagnostic.result === 'failure' ? 'failure' : 'started', level: 'warn', code: diagnostic.code,
+                sessionId: diagnostic.sessionId, requestId: diagnostic.requestId, durationMs: diagnostic.durationMs});
+        },
         editorSwaps: services.editorSwapStore ? {openEditorSwap: async request => {
             const node = await request.files.driver.getNode(request.path);
             if (!node || node.type !== 'file') throw new FSError('ENOENT', 'Swap source file is unavailable');
@@ -147,7 +153,13 @@ function isMissingSession(error: unknown): boolean {
 async function toolboxView(services: LocalApplicationServices, scope: ViewScope): Promise<ToolboxView> {
     const { agentService, kernel, vfs, projects } = services;
     const inventory = new ToolboxInventory(() => agentService.getMCPServers(), kernel.toolCatalog, agentService,
-        () => agentService.listSystemPrompts(), () => listRemoteHarnessAgents(projects?.remoteMounts));
+        () => agentService.listSystemPrompts(), () => listRemoteHarnessAgents(projects?.remoteMounts), async connectionId => {
+            const remote = projects?.remoteMounts;
+            const ids = [...new Set((await remote?.mcpReferences([connectionId]) ?? []).map(reference => reference.projectId))];
+            const states = await Promise.all(ids.map(id => remote!.projectStatus(id)));
+            return {total: ids.length, offline: states.filter(state => state.status === 'offline').length, degraded: states.filter(state => state.status === 'degraded').length,
+                unknown: states.filter(state => ['unknown', 'checking'].includes(state.status)).length};
+        });
     const resources = new ViewScope(); await resources.own(inventory);
     try {
         await inventory.init();
@@ -156,7 +168,8 @@ async function toolboxView(services: LocalApplicationServices, scope: ViewScope)
             { mountId: 'remote', at: '/@remote', fs: inventory.remoteAgentSource, access: 'ro' }] }));
         const skills = await resources.own(new SkillsEngine(agentService));
         const toolbox = new ToolboxResources({ ...inventory.sources, agents, skills, flows: services.flowEngine.engine },
-            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createNestosFlowDrawers(), createNestosProviderTemplates(), {toolPackages: services.toolPackages, flowInstallations: services.flowInstallations});
+            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createNestosFlowDrawers(), createNestosProviderTemplates(), {toolPackages: services.toolPackages, flowInstallations: services.flowInstallations},
+            listener => projects?.remoteMounts?.onChange(listener) ?? (() => {}));
         const files = await resources.own(createToolboxFiles(toolbox.sources));
         const initial = await toolbox.navigation(false);
         return scope.own({ inventory, resources: toolbox, files, initial, dispose: () => resources.close() });

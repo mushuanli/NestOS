@@ -5,7 +5,7 @@ import type { ApplicationRuntime } from '../runtime/create-application-runtime';
 export function bindLocalApplicationServices(runtime: ApplicationRuntime): LocalApplicationServices {
     const { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, flowInstallations, toolPackages,
         directoryMounts, projects, projectSync, digitalTwin, kernel, sessionManager, commandBus } = runtime;
-    return { events: runtime.events, editorSwapStore: runtime.editorSwapStore, vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, flowInstallations, toolPackages,
+    return { events: runtime.events, diagnostics: runtime.diagnostics, editorSwapStore: runtime.editorSwapStore, vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, flowInstallations, toolPackages,
         directoryMounts, projects, projectSync, digitalTwin, kernel, sessionManager, commandBus,
         acquireConversation: id => runtime.openConversation(id),
         prepareSession: async id => {

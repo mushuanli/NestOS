@@ -85,3 +85,13 @@ it('rejects busy projects and unsupported servers without changing the stored gr
         expect(f.remote.list('project')).toEqual(original); expect(f.after).not.toHaveBeenCalled();
     } finally { await f.dispose(); }
 });
+
+
+it('refreshes a project binding without increasing its access or replacing its remote identity', async () => {
+    const f = await fixture();
+    try {
+        await f.remote.refreshProjectBinding('project', {timeoutMs: 1000});
+        expect(f.remote.list('project')[0]).toMatchObject({serverProjectId: 'native', access: 'ro', connectionId: 'node'});
+        expect(f.remount).not.toHaveBeenCalled();
+    } finally {await f.dispose();}
+});

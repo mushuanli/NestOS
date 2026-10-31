@@ -810,6 +810,11 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     async getMCPPrompt(id: string, name: string, args?: Record<string, string>) {
         await this.ensureReady(); return this.mcpManager.getMCPPrompt(id, name, args); }
 
+    async refreshMCPServer(id: string, options?: {timeoutMs?: number}): Promise<void> {
+        await this.ensureReady();
+        if (!await this.mcpManager.initializeMCPServer(id, true, options?.timeoutMs))
+            throw Object.assign(new Error('MCP discovery refresh unavailable'), {code: 'MCP_REFRESH_UNAVAILABLE'});
+    }
     async testMCPServer(server: MCPServer) {
         await this.ensureReady();
         return this.mcpManager.testMCPServer(server);

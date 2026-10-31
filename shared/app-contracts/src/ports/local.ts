@@ -13,6 +13,7 @@ import type { SessionFilesService, DirectoryMountService } from './files';
 import type { ProjectSyncService } from './sync';
 
 export interface LocalApplicationServices {
+    events?: import('./events').ApplicationEvents;
     editorSwapStore?: import('./editor-swap').EditorSwapStore;
     flowInstallations?: import('./flow-installation').FlowInstallations;
     toolPackages?: import('./flow-installation').ToolPackages;

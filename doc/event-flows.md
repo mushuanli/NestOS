@@ -144,3 +144,6 @@ UI 挂接恢复通过 EditorTaskControlPlane 获取状态和事件，每次异�
 历史分页入口通过 `HistoryViewOptions.header` 放在历史滚动区顶部；点击才读取下一页，保留原卡片实例及阅读锚点。对话正文禁用“近期活跃”的时间推测，侧栏保留原有观察策略。
 
 本地多 Session 待办总览由 `Kernel.sessionActivity` → SessionBrowser 的 `metadata.sessionActivity` → SessionWorkbench / 本地状态投影呈现。初次加载和显式刷新从持久活动索引读基线；后续 structure 通知按 Session 失效，HTTP 沿既有观察通知与 SSE 刷新，content 不扫描导航。跨进程补扫批读活动修订和 Session 控制记录，状态变化发 structure，纯事件追加发 content。完整交互验收见[Flow/CLI 验收记录](./design/flow-cli-capabilities-verification.md)。
+
+
+每用户持久事件、多个浏览器的独立游标、通知已读状态与启动恢复，见[用户事件日志](./design/user-event-journal.md)。现有同步 EventBus 与 View 观察保持原语义。

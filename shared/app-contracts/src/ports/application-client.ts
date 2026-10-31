@@ -43,6 +43,7 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    events?: import('./events').ApplicationEvents;
     reportClientDiagnostic?(diagnostic: ClientDiagnostic): Promise<void>;
     sessionResponse(sessionId: string, query?: SessionResponseQuery): Promise<SessionResponse | undefined>;
     listTextModels(): Promise<Array<{id: string; name: string; model?: string; models: Array<{id: string; name: string}>; available: boolean; reason?: string; default: boolean}>>;

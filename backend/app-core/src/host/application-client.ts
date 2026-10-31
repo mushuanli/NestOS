@@ -49,7 +49,7 @@ export interface ApplicationViewOptions extends LocalBackendOptions { preload?: 
 export function createApplicationClient(services: LocalApplicationServices, options: ApplicationViewOptions = {}): ApplicationClient & { close(): Promise<void> } {
     if (options.configurationReadonly) services = {...services, agentService: publicConfiguration(services.agentService), llmDriver: publicConfiguration(services.llmDriver)};
     const scope = new ViewScope(), backend = bindApplicationBackend(services, options, scope);
-    const { acquireConversation: _acquireConversation, editorSwapStore: _editorSwapStore, ...publicServices } = services;
+    const { acquireConversation: _acquireConversation, editorSwapStore: _editorSwapStore, events: _events, ...publicServices } = services;
     return { services: { ...publicServices, agentService: withConfigurationImport(services.agentService),
         llmDriver: withConfigurationImport(services.llmDriver), flowEngine: { engine: services.flowEngine.engine }, kernel: { kernel: services.kernel.kernel,
             toolCatalog: {...services.kernel.toolCatalog, describeTools: async () => configuredToolCatalog(services.kernel.toolCatalog, await services.agentService.getMCPServers())} } },
@@ -61,6 +61,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     const textGeneration = scope.own(createTextGeneration(services));
     let opening = false;
     const backend: ApplicationBackend = {
+        events: services.events,
         assistantOverview: () => assistantOverview(services),
         sessionResponse: (id, query) => sessionResponse(repository, id, query),
         reportClientDiagnostic: async diagnostic => reportClientDiagnostic(diagnostic),

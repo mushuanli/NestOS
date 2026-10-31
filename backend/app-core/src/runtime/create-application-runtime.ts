@@ -1,3 +1,5 @@
+import {UserEventService} from '../events/service';
+import {attachRuntimeEvents} from '../events/runtime-events';
 import {PublishedScannerCollector} from '../digital-twin/scanner-collector';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {recoverFlowSchedulers} from './flow-scheduler-recovery';
@@ -93,6 +95,7 @@ export interface ApplicationKernelPlatform {
 }
 
 export interface ApplicationRuntime {
+    events: UserEventService;
     /** Host-only callback/token capability; it is never part of the frontend services graph. */
     toolConnections?: import('@itookit/app-contracts/services').ToolConnectionAccess;
     editorSwapStore?: import('@itookit/app-contracts/services').EditorSwapStore;
@@ -200,7 +203,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             vfs.openFileSystem('/home/admin/.config/nestos/prompt-history'),
         ]));
         await traceBoot('notes.migrate', () => migrateNotes(homeFiles));
-        cleanupFns.push(trackNotesCloze(await vfs.openFileSystem(workspaceRoot('notes'))));
+        const notesFiles = await vfs.openFileSystem(workspaceRoot('notes'));
+        cleanupFns.push(trackNotesCloze(notesFiles));
         const agentService   = new VFSAgentService(agentFiles, llmDriver, { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot });
         cleanupFns.push(() => agentService.dispose());
         const projectSync = options.sync ? new ProjectSyncService(options.sync.provider, options.sync.coordinator) : undefined;
@@ -528,6 +532,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             };
         }
 
+        const events = await UserEventService.open(systemFS);
+        const eventSources = await attachRuntimeEvents(events, {kernel, sessionRepository, digitalTwin}, notesFiles);
+        cleanupFns.push(() => eventSources.dispose());
         let disposed = false;
         const dispose = async () => {
             if (disposed) return;
@@ -550,7 +557,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         });
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();
-        return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections, toolConnections: options.toolConnections,
+        return { events, vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections, toolConnections: options.toolConnections,
             flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, independentCalls, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id), conversationObservation: conversationContexts };
     } catch (error) {

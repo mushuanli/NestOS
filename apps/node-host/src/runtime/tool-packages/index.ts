@@ -2,7 +2,7 @@ import {ToolHistory} from './history';
 import {stageVersionSwitch} from './version-switch';
 import {migratePackageSettings} from './settings-migration';
 import {ToolPreferences, validateSettings} from './preferences';
-import {copyToolbox, readToolbox, toolboxParameters, validateToolDefaults, type ToolboxDeclaration} from './toolbox';
+import {copyToolbox, readToolbox, toolboxParameters, toolboxOptionLabels, validateToolDefaults, type ToolboxDeclaration} from './toolbox';
 import {userTool} from './user-tools';
 import {packageGuide, copyPackageGuide} from './guide';
 import {mkdir, realpath} from 'node:fs/promises';
@@ -322,7 +322,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
             const declaration = this.declarations.get(packageKey(source)), installed = this.installed.get(id)!;
             const connections = declaration ? (await this.options.connections?.snapshot())?.connections ?? [] : [];
             if (declaration) result.configuration = {...this.preferences.get(packageKey(source)), tools: installed.tools.map(tool => ({id: tool.name, enableWith: declaration.tools[tool.name]?.enableWith, label: declaration.tools[tool.name]?.label, hidden: declaration.tools[tool.name]?.hidden, advanced: declaration.tools[tool.name]?.advanced,
-                optionLabels: Object.fromEntries((declaration.tools[tool.name]?.parameters ?? []).filter(field => field.connectionType).map(field => [field.name, Object.fromEntries(connections.filter(connection => connection.type === field.connectionType).map(connection => [connection.id, connection.name + ' (' + connection.id + ')']))])),
+                optionLabels: toolboxOptionLabels(declaration.tools[tool.name]?.parameters ?? [], connections),
                 parameters: toolboxParameters(tool, declaration.tools[tool.name]?.parameters ?? [], connections)}))};
             return {...result, status: 'registered'};
         }

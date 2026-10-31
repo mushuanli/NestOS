@@ -487,7 +487,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             () => createConversationSystem(conversationOptions));
         for (const twin of twinServices) twin.setSourceConnections(options.toolConnections);
         if (independentCalls) for (const twin of twinServices) {
-            twin.setCollector(new PublishedScannerCollector({kernel: kernelCore, repository: sessionRepository, ready: () => ({calls: independentCalls}),
+            twin.setCollector(new PublishedScannerCollector({kernel: kernelCore, packages: options.toolDependencies, repository: sessionRepository, ready: () => ({calls: independentCalls}),
                 tools: {kernel: kernelCore, repository: sessionRepository, tools: kernel.toolCatalog, prepareSession: prepareChildExecution}}));
             twin.setScannerExecution(new PublishedScannerExecutor({kernel: kernelCore, repository: sessionRepository,
             ready: () => ({commands: commandBus, calls: independentCalls}), exchanges: job => twin.scannerExchangeCount(job), bind: (job, sessionId) => twin.bindScanner(job, sessionId)}));

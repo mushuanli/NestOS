@@ -5,7 +5,8 @@ import {packageError, type ToolPackageSource} from './manifest';
 import {readYamlSidecar, writeYamlSidecar} from './yaml-sidecar';
 type FlowParameter = ToolPackageConfiguration['tools'][number]['parameters'][number];
 
-const parameter = z.object({name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/), label: z.string().max(160).optional(), description: z.string().max(2000).optional(), connectionType: z.string().max(100).optional()}).strict();
+const parameter = z.object({name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/), label: z.string().max(160).optional(), description: z.string().max(2000).optional(), connectionType: z.string().max(100).optional(),
+    optionLabels: z.record(z.string().max(160), z.string().max(160)).optional()}).strict();
 const toolDisplay = {enableWith: z.string().max(160).optional(), label: z.string().max(160).optional(), hidden: z.boolean().optional(), advanced: z.array(z.string().max(80)).max(100).optional(), parameters: z.array(parameter).max(100)};
 const declaration = z.object({version: z.union([z.literal(1), z.literal(2)]), connections: z.record(z.string(), z.array(z.enum(['browser', 'import'])).min(1).max(2)).optional(), preinstall: z.boolean().default(false), tools: z.record(z.string(), z.object(toolDisplay).strict())}).strict();
 export type ToolboxDeclaration = z.infer<typeof declaration>;
@@ -36,14 +37,25 @@ export function toolboxParameters(tool: Tool, fields: ToolboxDeclaration['tools'
         const schemas = propertySchemas(schema, field.name);
         if (!schemas.length) throw packageError('TOOL_PACKAGE_TOOLBOX_INVALID', 'Configured default parameter is absent from its Tool schema');
         const value = schemas[0], type = value.type;
-        const {connectionType, ...display} = field;
+        const {connectionType, optionLabels: _labels, ...display} = field;
         const choices = connectionType ? connections.filter(connection => connection.type === connectionType) : [];
         const sameDefault = schemas.every(item => JSON.stringify(item.default) === JSON.stringify(value.default));
+        const options = propertyOptions(schemas);
         return {...display, ...(sameDefault && value.default !== undefined ? {default: value.default as never} : {}),
             ...(connectionType ? {widget: 'select' as const, options: choices.map(item => item.id), ...(choices.length === 1 ? {default: choices[0].id} : {})} : {}), type: type === 'number' || type === 'integer' ? 'number' : type === 'boolean' ? 'boolean' : type === 'string' ? 'string' : 'json',
-            ...(type === 'integer' ? {integer: true} : {}), ...(Array.isArray(value.enum) ? {options: value.enum as never[]} : {}),
+            ...(type === 'integer' ? {integer: true} : {}), ...(options ? {options: options as never[]} : {}),
             ...(typeof value.minimum === 'number' ? {minimum: value.minimum} : {}), ...(typeof value.maximum === 'number' ? {maximum: value.maximum} : {})};
     });
+}
+function propertyOptions(schemas: Record<string, unknown>[]): unknown[] | undefined {
+    const choices = schemas.map(field => Array.isArray(field.enum) ? field.enum : Object.hasOwn(field, 'const') ? [field.const] : undefined);
+    if (choices.some(value => !value)) return;
+    return [...new Map(choices.flat().map(value => [JSON.stringify(value), value])).values()];
+}
+export function toolboxOptionLabels(fields: ToolboxDeclaration['tools'][string]['parameters'], connections: ToolConnectionView[]): Record<string, Record<string, string>> {
+    return Object.fromEntries(fields.filter(field => field.connectionType || field.optionLabels).map(field => [field.name, field.connectionType
+        ? Object.fromEntries(connections.filter(connection => connection.type === field.connectionType).map(connection => [connection.id, connection.name + ' (' + connection.id + ')']))
+        : {...field.optionLabels}]));
 }
 export function validateToolDefaults(tool: Tool, names: string[], values: Record<string, unknown>): void {
     const schema = z.toJSONSchema(tool.inputSchema) as Record<string, unknown>;

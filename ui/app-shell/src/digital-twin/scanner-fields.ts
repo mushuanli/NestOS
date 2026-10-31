@@ -1,4 +1,4 @@
-import {collectionKey, toolFields} from './collection-fields';
+import {changeCollectionVariant, collectionKey, toolFields} from './collection-fields';
 import type {TwinScannerTool} from '@itookit/app-contracts';
 import {readUtf8File} from '../files/read-text-file';
 import {escapeHTML, escapeAttr} from '@itookit/common';
@@ -26,11 +26,16 @@ function parameterFields(target?: RootCallTarget, values?: TwinScannerExecutor['
 export function scannerFieldChange(event: Event, targets: RootCallTarget[], tools: TwinScannerTool[] = []): boolean {
     const control = event.target as HTMLSelectElement, form = control.closest<HTMLFormElement>('[data-form=scanPlan]');
     if (!form) return false;
+    if (control instanceof HTMLSelectElement && changeCollectionVariant(control, tools)) return true;
     if (control.name === 'executor' || control.name === 'collection') {
         const tool = control.name === 'collection' && tools.find(item => collectionKey(item.target) === control.value);
         const selected = targets.find(item => key(item.target) === control.value);
         form.querySelector(`[data-scanner-parameters="${control.name}"]`)!.innerHTML = tool ? toolFields(tool) : parameterFields(selected, undefined, control.name);
-        if (control.name === 'collection' && control.value) form.querySelector<HTMLSelectElement>('[name=inputMode]')!.value = 'rules';
+        if (control.name === 'collection' && control.value) {
+            form.querySelector<HTMLSelectElement>('[name=inputMode]')!.value = 'rules';
+            const operation = form.querySelector<HTMLSelectElement>('[name=mode]');
+            if (operation) operation.value = 'collect';
+        }
         updateExecutorMode(form); updateInputMode(form); return true;
     }
     if (control.name === 'trigger' || control.name === 'enabled' || control.name === 'mode') {updateInputMode(form); return true;}

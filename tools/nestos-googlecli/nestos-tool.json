@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "nestos-googlecli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "name": "Google 邮件与日历",
   "description": "使用当前用户的只读 Google 连接采集 Gmail 与 Calendar，并保存可核验的工作区来源。",
   "module": "node/extension.mjs",
@@ -21,9 +21,5 @@
       "id": "google.calendar.collect",
       "version": "1"
     }
-  ],
-  "flows": [
-    "flows/google-gmail-collect.flow",
-    "flows/google-calendar-collect.flow"
   ]
 }

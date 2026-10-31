@@ -1,5 +1,5 @@
 import {collectWithTool, type ToolCollectorOptions} from './tool-collector';
-import {collectionTools, validateCollectionTool} from './collection-tools';
+import {collectionTools, presentCollectionTools, validateCollectionTool} from './collection-tools';
 import type {TwinCollectionExecutor} from '@itookit/app-contracts';
 import type {IndependentCallService, SessionRepository} from '@itookit/llm-session';
 import {KernelError, KernelErrorCode, type Kernel, type TaskCallResult} from '@itookit/durable-kernel';
@@ -8,17 +8,20 @@ import {traceAnalysis, TwinDiagnosticError} from './diagnostics';
 
 export interface TwinCollectionRequest {runId: string; sessionId: string; executor: TwinCollectionExecutor}
 export interface TwinCollectionPort {
-    tools?(): import('@itookit/app-contracts').TwinScannerTool[];
+    tools?(): import('@itookit/app-contracts').TwinScannerTool[] | Promise<import('@itookit/app-contracts').TwinScannerTool[]>;
     validate?(executor: TwinCollectionExecutor): void;
     collect(request: TwinCollectionRequest, attached: (taskId: string) => Promise<void>, bind: (sessionId: string) => Promise<void>): Promise<void>;
     cancelCollection(sessionId: string, taskId?: string): Promise<void>;
 }
-interface Options {tools?: ToolCollectorOptions; kernel: Kernel; repository: SessionRepository; ready(): {calls: IndependentCallService}}
+interface Options {tools?: ToolCollectorOptions; packages?: Pick<import('@itookit/app-contracts/services').ToolDependencyResolver, 'list'>; kernel: Kernel; repository: SessionRepository; ready(): {calls: IndependentCallService}}
 
 /** Collection runs a fixed Tool or a published static Tool Flow, without model access. */
 export class PublishedScannerCollector implements TwinCollectionPort {
     constructor(private readonly options: Options) {}
-    tools() {return this.options.tools ? collectionTools(this.options.tools.tools) : [];}
+    async tools() {
+        const tools = this.options.tools ? collectionTools(this.options.tools.tools) : [];
+        return presentCollectionTools(tools, await this.options.packages?.list?.() ?? []);
+    }
     validate(executor: TwinCollectionExecutor): void {
         if (executor.target.kind === 'tool') {
             if (!this.options.tools) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');

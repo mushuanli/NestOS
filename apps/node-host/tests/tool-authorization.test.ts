@@ -119,6 +119,23 @@ it('verifies imported credentials with a fresh token request and persists a reda
     expect((await store.snapshot()).connections[0].verification).toBeUndefined();
 });
 
+it('refreshes saved OAuth credentials after a host restart and updated display metadata without a consent flow', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'tool-upgrade-auth-')); cleanups.push(() => rm(root, {recursive: true, force: true}));
+    const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = init!.body as URLSearchParams;
+        expect(body.get('grant_type')).toBe('refresh_token'); expect(body.get('refresh_token')).toBe('PRIVATE_SAVED_REFRESH');
+        return Response.json({access_token: 'PRIVATE_NEW_ACCESS', expires_in: 3600});
+    });
+    const first = new NodeToolConnections(root, {fetcher}); first.register(type);
+    await first.save({id: 'personal', type: type.id, name: 'Personal', values: {clientId: 'client', secret: 'PRIVATE_SECRET', refresh: 'PRIVATE_SAVED_REFRESH'}});
+    await first.close();
+    const upgraded = new NodeToolConnections(root, {fetcher}); cleanups.push(() => upgraded.close());
+    upgraded.register({...type, name: 'Updated package display name'});
+    expect(await upgraded.accessToken('personal', type.id)).toBe('PRIVATE_NEW_ACCESS');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(await upgraded.snapshot())).not.toContain('PRIVATE_');
+});
+
 it('reports host network failure as verification failure without deleting saved credentials', async () => {
     const fetcher = vi.fn(async () => {throw new Error('PRIVATE_PROXY_URL');});
     const store = await setup(fetcher as typeof fetch);

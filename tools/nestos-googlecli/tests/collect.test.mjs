@@ -99,11 +99,11 @@ test('publishes mail as account-scoped email files and leaves calendar material 
     assert.ok([...f.files.keys()].some(file => file.endsWith('.email')));
     assert.equal(result.include[0], 'file:evidence/google/personal/mail/default/*.email');
 });
-test('ships workflows inside the extension with visible graph layouts and one resource-discriminated tool', async () => {
+test('advertises direct collection without installing single-node workflows and retains old templates for compatibility', async () => {
     const {readFile} = await import('node:fs/promises');
     const manifest = JSON.parse(await readFile(new URL('../nestos-tool.json', import.meta.url), 'utf8'));
-    assert.equal(manifest.flows.length, 2);
-    for (const file of manifest.flows) {
+    assert.equal(manifest.flows, undefined);
+    for (const file of ['flows/google-gmail-collect.flow', 'flows/google-calendar-collect.flow']) {
         const flow = JSON.parse(await readFile(new URL('../' + file, import.meta.url), 'utf8'));
         assert.equal(flow.nodes[0].config.toolId, 'google.collect');
         assert.ok(['mail', 'calendar'].includes(flow.nodes[0].config.args.resource));

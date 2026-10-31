@@ -26,13 +26,15 @@ export interface ConversationModelCatalog {
     current?: ConversationModelSelection; default?: ConversationModelSelection;
 }
 export interface ConversationInstructionQueue {
+    recoveries?: Array<{id: string; turnId: string; recoveredAt: number; outcome: 'unknown'}>;
+    recovery?: {id: string};
     reason?: string;
     revision: number; paused: boolean; acceptedIds: string[];
     submissions?: Array<{id: string; turnId?: string; commandId?: string; createdAt?: number; dispatchedAt?: number; acceptedAt?: number}>;
     items: Array<{id: string; text: string; files: Array<{name: string}>; createdAt: number; dispatchedAt?: number; acceptedAt?: number; state: 'pending' | 'dispatching' | 'failed' | 'uncertain'; error?: string}>;
 }
 export type ConversationQueueEdit = {expectedRevision: number} & (
-    {action: 'pause' | 'resume'} | {action: 'remove' | 'retry'; id: string} | {action: 'update'; id: string; text: string} | {action: 'reorder' | 'merge'; ids: string[]});
+    {action: 'pause' | 'resume'} | {action: 'remove' | 'retry' | 'recover'; id: string} | {action: 'update'; id: string; text: string} | {action: 'reorder' | 'merge'; ids: string[]});
 export interface ConversationSnapshot {
     writerLock?: {status: 'held' | 'not-held' | 'unknown'; checkedAt: number; acquiredAt?: number | null;
         lockFileModifiedAt?: number | null; code?: string; owner?: {pid: number; uid?: number | null; processStartedAt?: number | null}};
@@ -60,6 +62,8 @@ export interface ConversationSnapshot {
     attachments?: Array<'text' | 'image'>;
     archived?: boolean; canRename?: boolean; canArchive?: boolean; canUnarchive?: boolean;
     observation?: {
+        historyRevision?: string;
+        activity?: {turnId: string; phase: 'working' | 'reasoning' | 'tool' | 'responding' | 'compacting'; updatedAt?: number};
         scope?: 'controlled' | 'external'; loaded?: boolean; activeTurnId?: string | null;
         rawStatus?: string | null;
         updatedAt?: number | null;

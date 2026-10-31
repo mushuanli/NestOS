@@ -7,6 +7,17 @@ import {NativeComposerCapabilities} from './native-composer';
 import {getLogger} from '@itookit/common';
 
 vi.mock('@itookit/llm-ui', async () => ({ ...(await vi.importActual<typeof import('@itookit/llm-ui')>('@itookit/llm-ui')), createChatView: vi.fn() }));
+it('explicitly reloads external history instead of waiting for another process to emit local events', async () => {
+    const host = fixture();
+    host.emit({observation: {scope: 'external', execution: 'unknown', source: 'history', observedAt: Date.now(),
+        connection: 'online', stale: false, receiptUnknown: false}});
+    const read = vi.spyOn(host.controls, 'read'), refresh = vi.spyOn(host.controls, 'refresh');
+    const binding = await createNativeChatBinding(host.options);
+    const before = read.mock.calls.length;
+    await binding.source.refresh();
+    expect(read).toHaveBeenCalledTimes(before + 1); expect(refresh).not.toHaveBeenCalled();
+    binding.dispose();
+});
 it('reconciles query reports through the read-only owner without consulting native mutation receipts', async () => {
     const host = fixture(), operations = createOperationLedger();
     await operations.register({context: {operationId: 'query', viewId: 'old'}, conversationId: 'native', kind: 'command',

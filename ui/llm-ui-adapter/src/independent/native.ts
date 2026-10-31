@@ -1,3 +1,5 @@
+import {nativeObservationDiagnostics} from './native-observation-diagnostics';
+import {NativeExecutionNotice} from '../components/NativeExecutionNotice';
 import {messageState, toolState} from './message-state';
 import {prepareImageChatOptions, type ImageChatOptions} from './image-chat-view';
 import {createChatView, type ChatOptions, type ChatView} from '@itookit/llm-ui';
@@ -47,7 +49,12 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
     const commands = (state: NativeSnapshot) => capabilities.compose(state, contributions(state)).filter(command =>
         command.source.id !== 'harness' || !options.reservedNativeCommands?.includes(command.name));
     const requests = new Map<string, { encoded: string; revision: number }>();
+    const diagnose = nativeObservationDiagnostics(options.conversationId);
     const publish = (state: NativeSnapshot) => {
+        diagnose('receive', state, () => {});
+        diagnose('receive_project', state, () => project(state));
+    };
+    const project = (state: NativeSnapshot) => {
         if (closed) return;
         native = state;
         const catalog = commands(state);
@@ -58,6 +65,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             submissionMode: state.canQueue && options.controls.enqueue && (!state.canSend || state.active) ? 'queue' : 'send',
             messages: state.messages.map(message => nativeMessage(message, options.operations, state, options.conversationId)),
             interactions: state.requests.map(request => interaction(request, requests)),
+            executionActivity: state.observation?.activity ? {label: t(`harness.activity.${state.observation.activity.phase}`), updatedAt: state.observation.activity.updatedAt} : undefined,
             loading: false, executionRef: state.observation?.activeTurnId ?? undefined, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
             connection: state.disconnected ? 'offline' : 'online', hasEarlier: state.hasEarlier ?? false,
             allowed: options.readOnly ? [] : [...(nativeCanSubmit(state, options.controls) && !options.operations.getSnapshot().some(record => record.conversationId === options.conversationId
@@ -225,7 +233,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             }
         } : undefined,
     };
-    return { images: options.images, source: Object.assign(source, { refresh: () => refresh() }), actions, operations: options.operations,
+    return { images: options.images, source: Object.assign(source, { refresh: () => refresh(native?.observation?.scope === 'external') }), actions, operations: options.operations,
         instructionQueue: options.readOnly ? undefined : createNativeQueuePort(options.controls, () => native, async action => {
             if (closed) throw Object.assign(new Error('Native queue binding closed'), {code: 'QUEUE_VIEW_CLOSED'});
             const captured = generation, state = await action();
@@ -233,6 +241,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             publishResponse(state, captured); return state;
         }),
         resultError: () => native?.resultError,
+        observationSnapshot: () => native,
         commandOutputs: {readCommandOutput: options.controls.readCommandOutput ? async (id: string, readOptions?: {offset?: number; limit?: number}) => {
             if (closed) throw Object.assign(new Error(), {code: 'COMMAND_OUTPUT_VIEW_CLOSED'});
             const page = await options.controls.readCommandOutput!(id, readOptions);
@@ -252,7 +261,7 @@ export function replaceNativeChatBinding(view: ChatView, binding: NativeBinding,
     return view.replaceBinding(prepareNativeView(binding, options), {draft: options.initialDraft});
 }
 function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): ChatOptions {
-    const outputs = new Set<NativeCommandOutput>(), repairs = new Set<NativeResultRepair>();
+    const outputs = new Set<NativeCommandOutput>(), repairs = new Set<NativeResultRepair>(), notices = new Set<NativeExecutionNotice>();
     const queue = nativeQueueToolbar(binding.instructionQueue, options);
     const renderer: ExtensionRenderer = (root, part) => {
         const output = new NativeCommandOutput(binding.commandOutputs); root.append(output.element); outputs.add(output);
@@ -262,9 +271,9 @@ function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): C
     const images = prepareImageChatOptions({...options, source: binding.source, actions: binding.actions, operations: binding.operations,
         messageActions: queue.messageActions,
         renderers: {...options.renderers, 'native-command-output': renderer},
-        mountToolbar: nativeToolbar(binding, {...options, mountToolbar: queue.mount}, repairs)}, options.images ?? binding.images);
+        mountToolbar: nativeToolbar(binding, {...options, mountToolbar: queue.mount}, repairs, notices)}, options.images ?? binding.images);
     return {...images, setActive: value => {
-        queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value); options.setActive?.(value);
+        queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value); for (const notice of notices) notice.setActive(value); options.setActive?.(value);
     }};
 }
 export async function adoptNativeChatView(view: ChatView, binding: NativeBinding, options: ImageChatOptions = {}): Promise<ChatView> {
@@ -296,12 +305,19 @@ function nativeResultNotice(state: NativeSnapshot): {code: string; message: stri
     return state.resultError ? {code: state.resultError.code, message: t('harness.resultPending', {code: state.resultError.code})} : undefined;
 }
 
-function nativeToolbar(binding: Awaited<ReturnType<typeof createNativeChatBinding>>, options: ImageChatOptions, repairs: Set<NativeResultRepair>): NonNullable<ImageChatOptions['mountToolbar']> {
+function nativeToolbar(binding: Awaited<ReturnType<typeof createNativeChatBinding>>, options: ImageChatOptions, repairs: Set<NativeResultRepair>, notices: Set<NativeExecutionNotice>): NonNullable<ImageChatOptions['mountToolbar']> {
+    const diagnose = nativeObservationDiagnostics(binding.source.getSnapshot().conversationId);
     return (root, context) => {
         const host = options.mountToolbar?.(root, context);
+        const notice = new NativeExecutionNotice(); notices.add(notice); root.append(notice.element); notice.update(binding.observationSnapshot());
         const repair = new NativeResultRepair(id => binding.actions.reconcile!(id)); repairs.add(repair); root.append(repair.element); repair.update(binding.resultError());
-        return {update: current => {host?.update?.(current); repair.update(binding.resultError());},
-            destroy: async () => {repairs.delete(repair); repair.destroy(); await host?.destroy();}};
+        return {update: current => {
+            const state = binding.observationSnapshot();
+            const update = () => {host?.update?.(current); repair.update(binding.resultError()); notice.update(state);};
+            if (state) diagnose('render_toolbar', state, update, {revision: current.snapshot.revision, viewId: current.snapshot.viewId,
+                mounted: root.isConnected, renderedMessageCount: root.closest('.llm-chat')?.querySelectorAll('.llm-chat__message').length ?? 0}); else update();
+        },
+            destroy: async () => {notices.delete(notice); notice.destroy(); repairs.delete(repair); repair.destroy(); await host?.destroy();}};
     };
 }
 function interaction(request: NativeSnapshot['requests'][number], versions: Map<string, { encoded: string; revision: number }>): InteractionView {

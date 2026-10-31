@@ -1,3 +1,4 @@
+import {NativeExecutionNotice} from '../components/NativeExecutionNotice';
 import {nativeCatalogNotice} from '../independent/native-catalog';
 import {awaitNativeAdmission} from '../independent/native-admission';
 import {NativeInstructionQueuePanel} from '../components/NativeInstructionQueuePanel';
@@ -24,6 +25,7 @@ const observationLog = createModuleLogger('native-observation');
 export class RemoteConversationEditor extends BaseSettingsEditor<ConversationControls> {
     private view!: ConversationWorkspaceView;
     private instructionQueuePanel?: NativeInstructionQueuePanel;
+    private executionNotice?: NativeExecutionNotice;
     private branches?: RemoteBranches;
     private historyBranches?: RemoteHistoryBranches;
     private snapshot?: ConversationSnapshot;
@@ -66,6 +68,8 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     async render() {
         this.composer = ConversationComposer.create(this.service);
         this.layout();
+        this.executionNotice?.destroy(); this.executionNotice = new NativeExecutionNotice();
+        this.view.status.before(this.executionNotice.element);
         try { await this.show(await this.service.read()); } catch (error) { this.showError(error); }
         if (!this.closed && this.active) {
             if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
@@ -140,6 +144,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             await this.acceptSubmission(this.submittedDraft.text, this.submittedDraft.files, this.submittedDraft.revision); this.submittedDraft = undefined;
         }
         this.snapshot = snapshot;
+        this.executionNotice?.update(snapshot);
         this.instructionQueuePanel?.update(snapshot);
         await this.restoreDraft(snapshot);
         await this.reconcileComposer(snapshot);
@@ -531,8 +536,9 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         const message = error instanceof Error ? error.message : t('harness.failed');
         this.view.setStatus(t('harness.updateFailed', {message}));
     }
-    async destroy(preserveInput = false) { if (this.closed) return; this.cancelPendingRender(); await this.flushPendingSave(); this.closed = true; this.admissions.abort(); this.instructionQueuePanel?.destroy(); this.historyBranches?.destroy(); this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions); await this.service.close().catch(error => {if (!this.recoveringView) throw error;}); await this.tail.catch(() => {}); await this.renderTail.catch(() => {}); this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
+    async destroy(preserveInput = false) { if (this.closed) return; this.executionNotice?.destroy(); this.cancelPendingRender(); await this.flushPendingSave(); this.closed = true; this.admissions.abort(); this.instructionQueuePanel?.destroy(); this.historyBranches?.destroy(); this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions); await this.service.close().catch(error => {if (!this.recoveringView) throw error;}); await this.tail.catch(() => {}); await this.renderTail.catch(() => {}); this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
     cancelPendingRender(): void {
+        this.executionNotice?.setActive(false);
         ++this.branchRevision;
         this.historyBranches?.setActive(false);
         this.view?.input.hideNativeModelPicker();
@@ -543,6 +549,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     async activate(): Promise<void> {
         if (this.closed || this.active) return;
+        this.executionNotice?.setActive(true);
         this.historyBranches?.setActive(true);
         this.view?.history.view.setActive(true);
         this.view?.history.setActive(true);

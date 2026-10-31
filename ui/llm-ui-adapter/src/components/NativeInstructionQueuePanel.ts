@@ -21,7 +21,12 @@ export class NativeInstructionQueuePanel {
             read: async () => apply(await controls.read()),
             edit: async (edit: InstructionQueueEdit) => {
                 if (this.readOnly || edit.action === 'update-input') throw new Error(t('session.instructions.editFailed'));
-                return apply(await controls.editInstructionQueue!(edit));
+                try {return await apply(await controls.editInstructionQueue!(edit));}
+                catch (error) {
+                    if ((error as {remoteCode?: string})?.remoteCode === 'HARNESS_RECOVERY_NOT_DETACHED')
+                        throw new Error(t('session.instructions.recoveryBlocked'));
+                    throw error;
+                }
             },
         });
     }

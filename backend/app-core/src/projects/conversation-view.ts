@@ -23,6 +23,8 @@ class ConversationView {
     private polling: Promise<unknown> = Promise.resolve();
     private quoteFailed = false;
     private failures = 0;
+    private readonly diagnosticTimes = new Map<string, number>();
+    private diagnosticRevision = 0;
     constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate, private readonly conversationId?: string,
         private readonly activityChanged?: () => void) {
         this.current = immutableData(undefined, this.project(source.snapshot()));
@@ -97,6 +99,8 @@ class ConversationView {
         if (this.closed) return Promise.reject(new FSError('EIO', 'Conversation view closed'));
         const execute = async () => {
             if (this.closed) throw new FSError('EIO', 'Conversation view closed');
+            const started = Date.now();
+            this.diagnose('refresh_start', key, started);
             const starting = key === 'send' || key === 'command';
             if (starting) {++this.starting; clearTimeout(this.timer); this.timer = undefined; this.schedule();}
             let result: any, succeeded = false;
@@ -107,7 +111,7 @@ class ConversationView {
                     const state = this.source.snapshot();
                     this.failures = !succeeded || state.disconnected || state.observation?.refreshError ? this.failures + 1 : 0;
                 }
-                if (!this.closed) {this.update(); this.schedule(); if (key === 'enqueue' || key === 'editInstructionQueue') this.invalidate();}
+                if (!this.closed) {this.update(); this.diagnose('refresh_end', key, started, succeeded); this.schedule(); if (key === 'enqueue' || key === 'editInstructionQueue') this.invalidate();}
             }
             return result && typeof result === 'object' && 'messages' in result ? this.current : result;
         };
@@ -123,10 +127,31 @@ class ConversationView {
         if (next === this.current) return;
         const activityChanged = this.isActive(this.current) !== this.isActive(next);
         this.current = next;
+        ++this.diagnosticRevision;
         if (activityChanged) this.activityChanged?.();
         if (activityChanged) {clearTimeout(this.timer); this.timer = undefined;}
         this.schedule();
-        for (const listener of this.listeners) { try { listener(); } catch (error) { console.warn('[Conversation] View listener failed', error); } }
+        for (const listener of this.listeners) { try { listener(); } catch { this.diagnose('notify', 'snapshot', Date.now(), false); } }
+        this.diagnose('publish', 'snapshot', Date.now());
+    }
+    private diagnose(stage: string, method: string, started: number, succeeded = true): void {
+        const now = Date.now();
+        const state = this.current;
+        const code = !succeeded ? state.observation?.refreshError?.code ?? 'CONVERSATION_OBSERVATION_FAILED'
+            : stage === 'refresh_end' || stage === 'publish' ? state.observation?.refreshError?.code : undefined;
+        if (succeeded && !code && now - (this.diagnosticTimes.get(stage) ?? 0) < 5_000) return;
+        this.diagnosticTimes.set(stage, now);
+        try {const fields = {operation: 'conversation.observe', operationId: `${state.sessionId ?? 'draft'}:${started}`,
+            conversationId: this.conversationId, sessionId: state.sessionId, turnId: state.observation?.activeTurnId,
+            stage, method, result: succeeded && !code ? 'success' : 'failure', code,
+            revision: this.diagnosticRevision, observedAt: state.observation?.observedAt,
+            execution: state.observation?.execution, messageCount: state.messages.length,
+            historyRevision: state.observation?.historyRevision,
+            activityPhase: state.observation?.activity?.phase, activityAt: state.observation?.activity?.updatedAt,
+            textLength: state.messages.reduce((size, message) => size + message.text.length, 0),
+            queueRevision: state.instructionQueue?.revision, listenerCount: this.listeners.size, durationMs: now - started};
+            if (succeeded && !code) console.info('[Conversation] Observation', fields); else console.warn('[Conversation] Observation', fields);
+        } catch { /* Diagnostics cannot block snapshot delivery. */ }
     }
     private close(): Promise<void> {
         if (!this.closing) {

@@ -3,6 +3,7 @@ import type {InstructionQueueViewOptions} from '@itookit/llm-ui';
 
 export function instructionQueueLabels(): InstructionQueueViewOptions['labels'] {
     return {
+        recovered: t('session.instructions.recovered'), recover: t('session.instructions.recover'), confirmRecovery: t('session.instructions.confirmRecovery'),
         title: t('session.instructions.title'), resume: t('session.instructions.resume'), pause: t('session.instructions.pause'),
         expand: t('session.instructions.expand'), collapse: t('session.instructions.collapse'),
         merge: t('session.instructions.merge'), paused: t('session.instructions.paused'), hint: t('session.instructions.hint'),

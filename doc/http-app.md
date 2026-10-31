@@ -329,6 +329,12 @@ pnpm --filter @itookit/llm-ui-adapter test --minWorkers=1 --maxWorkers=4
 
 前端启动与导航诊断默认静默；需要排查时设置 `localStorage['vfs:debug']='1'` 后重新加载页面。进度回调与错误处理不依赖诊断输出，Node 宿主的启动日志保持原有行为。
 
+原生聊天标题状态显示事件投影的执行阶段及距最近活动的秒数。整理上下文时，独立视图和兼容视图在聊天区额外显示醒目提示与等待秒数，结束后自动撤下；阶段变化由读屏状态区播报，秒数不反复播报。空正文思考项仍提供阶段；没有时间证据时不补造计时。秒数只更新状态文本，不轮询、不重绘消息、不判断执行存活；隐藏、关闭或终态停止计时。Codex 摘要由节点 profile 的 `[harnesses.codex] reasoning_summary` 显式启用，新轮次生效；摘要改善可见反馈，不承诺模型提速。
+
+外部 CLI/桌面写入的 Codex 会话不依赖本节点的本地事件流更新正文。既有 15 秒状态核对比较 `historyRevision`，有变化才补读；外部会话的显式刷新和重新激活直接读取历史。节点与驱动需配套更新才能自动核对版本；旧节点仍可显式刷新。内部会话继续消费实时事件和游标，空闲时的版本核对及事件故障后的历史补齐也覆盖没有指令队首的会话。观察成功不能代替历史版本已同步的证据。
+
+原生聊天界面停止更新时，对照运行日志 `[Conversation] Observation` 的 `refresh_start` / `refresh_end` / `publish` 与浏览器内存日志 `native-observation` 模块的 `chat.native.pipeline`：`receive` 表示浏览器绑定已收到快照，`receive_project` 表示投影通知返回，`render_toolbar` 表示同步消息 DOM 更新已推进到工具栏更新阶段，不证明异步 Markdown 渲染或浏览器绘制完成。按 sessionId、turnId、observedAt、messageCount、textLength 和 queueRevision 对照，前端另记视图 revision、挂载状态、消息 DOM 数量和页面可见性。每个观察实例的每阶段成功日志最多每 5 秒一条，失败不节流；日志不含正文或原始异常。后端 publish 只证明已通知本地订阅者，不能代替浏览器接收证据；一分钟核查恢复入口保持原有行为。
+
 默认 Flow 由后端初始化按安装回执准备，用户删除或修改的模板不会在刷新页面时重新覆盖；前端只保留显式恢复与运行交互。
 
 ```mermaid

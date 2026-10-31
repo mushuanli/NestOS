@@ -213,6 +213,8 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 项目聊天和草稿的 Agent 选择器通过宿主注入 `RemoteAgentControls` 获取可用远程目标；本地会话仍使用原执行链。选择远程目标后，输入直接进入远程会话，不创建本地 Session、不经本地模型 Provider，也不把本地 Slash 工具提前执行。远程模式隐藏本地模型/执行模式设置，使用原生 harness 的配置。原生 capability 声明附件时可发送内联 UTF-8 文本及 PNG/JPEG/WebP 图片：每次最多 5 个，文本每个 64 KiB、图片解码每个 256 KiB、全部编码内容 512 KiB。浏览器和服务端分别核验格式、容量与文件名，不接受远程 URL 或宿主路径。附件草稿与输入一起保存在客户端，不支持的格式在发送前拒绝并保留输入。
 
+统一草稿视图按当前远程智能体的原生模型目录生成独立模型选择器，思考强度只依赖模型，符合 llm-ui 的单级 variants 约束。切换智能体时保留文字与附件，清除旧模型选择并使用目标目录默认值；目录已缓存或包含相同模型 ID 时仍须隔离。目录读取失败保留可编辑草稿与具体错误，浏览器诊断记录操作 ID、阶段、结果、错误码、模型数量和耗时，不记录正文或原始异常内容。回归见 `ui/app-shell/tests/remote-draft-selectors.test.ts`。
+
 `nestos-node-driver/HarnessConversation` 封装原生会话读取、创建/恢复、turn、事件、审批、中断和回执查询；`app-core` 为它提供项目授权及恢复记录，调用前检查当前本地挂载授权与连接仍与打开时一致。`ui-common/ConversationControls` 是注入 llm-ui 的展示接口，UI 不调用 MCP 或设备协议。远程编辑器显示原生 user/assistant 历史、工具摘要、增量回复及审批/人工输入卡片。内容通过共享 MDx 渲染，远端 HTML 按字面显示。打开历史不自动恢复执行；读档不可恢复、只读绑定、运行中、失联或结果未知时禁用发送，中断与审批按授权和网关原生会话控制权开放。
 
 事件按原生 item ID 合并；完成内容替换增量，迟到增量不覆写已完成卡片。事件游标缺口或 epoch 改变时重读原生历史，避免把已经记录的 delta 再附加一次。关闭编辑器只释放客户端，不隐式中断远程 turn。
@@ -382,3 +384,109 @@ stateDiagram-v2
 远程分支操作在保存草稿后、调用原生端口前再次检查生命周期版本、绑定身份和只读状态；隐藏、销毁或权限切换使已排队操作失效，快速重新激活也不能恢复旧操作。宿主斜杠命令的识别与候选位于 `commands/native-branch-command.ts`，编辑器只负责接线和草稿接纳。
 
 公共 [HarnessConversationSnapshot](../../libraries/nestos-node-driver/src/harness/conversation-snapshot.ts) 是独立 DTO，不从实现类返回值派生。操作能力集中计算，发送与分支使用一致的新鲜度条件；顶层 active/pending/disconnected 是 observation 的兼容投影。应用端口显式透传 submissionId，确保冻结提交与回执始终对应同一次用户操作。
+
+## 多用户、事件持久化与队列重启恢复
+
+以下描述当前源码及回归证据，不表示某个线上 release 已部署。指定线上会话的实际阻塞原因必须结合已认证快照、原回执及运行版本判断，不能根据 URL、最后一条消息或界面空闲状态推断完成。
+
+### 用户隔离边界（C4 Container）
+
+```mermaid
+C4Container
+    title NestOS 多用户与远端身份边界
+    Person(alice, "用户 A", "独立客户端证书")
+    Person(bob, "用户 B", "独立客户端证书")
+    System_Boundary(host, "NestOS HTTPS 宿主") {
+        Container(tls, "证书身份路由", "node-host", "指纹映射 userId，拒绝浏览器伪造身份")
+        Container_Boundary(bundleA, "用户 A 私有数据包") {
+            Container(runtimeA, "Runtime A / ViewApi A", "app-core", "私有队列、会话、观察和恢复")
+            ContainerDb(homeA, "home/A/.nestos", "LocalFS + SQLite SeqFile", "state / meta / private")
+        }
+        Container_Boundary(bundleB, "用户 B 私有数据包") {
+            Container(runtimeB, "Runtime B / ViewApi B", "app-core", "相同 clientId 不共享能力句柄")
+            ContainerDb(homeB, "home/B/.nestos", "LocalFS + SQLite SeqFile", "独立 journal、OAuth、元数据")
+        }
+        ContainerDb(shared, "公共定义", "etc/llm、agents、flows", "管理员写入，普通用户只读")
+    }
+    System_Ext(node, "远程 nestos-node / Codex", "按 MCP principal 和项目授权控制；原生会话保留写者约束")
+    Rel(alice, tls, "mTLS")
+    Rel(bob, tls, "mTLS")
+    Rel(tls, runtimeA, "证书属于 A")
+    Rel(tls, runtimeB, "证书属于 B")
+    Rel(runtimeA, homeA, "仅操作自己的数据包")
+    Rel(runtimeB, homeB, "仅操作自己的数据包")
+    Rel(runtimeA, shared, "读取公共定义")
+    Rel(runtimeB, shared, "读取公共定义")
+    Rel(runtimeA, node, "绑定连接的 principal")
+    Rel(runtimeB, node, "绑定连接的 principal")
+```
+
+多用户模式通过 `http.usersDir` 启用。userId 只来自已登记证书，不从 body、query、clientId 或自报身份请求头选取；启动先初始化 admin/公共定义，再恢复所有已登记用户，完成后监听。用户配置、队列、恢复记录与诊断按 Runtime 和私有文件系统隔离。
+
+NestOS 用户隔离不等于远端身份隔离：公共 MCP 配置若复用同一凭据，两个用户在远端仍可能代表同一 principal，并可观察同一个授权的原生会话。原生写锁、当前执行与审批约束仍生效；遇到占用不能通过放行队列或删除锁绕过。需要远端主体隔离时应使用不同的已授权连接身份。
+
+### 哪些记录需要持久化
+
+| 数据 | 当前归属与位置 | 重启语义 |
+| --- | --- | --- |
+| 浏览器能力通知、SSE 帧、回调句柄 | node-host 的 `ViewEventStream`，最多 256 帧 / 2 MiB 内存 | 仅续接存活视图；httpd 重启后作废，重新 bootstrap，不重放写命令 |
+| 原生流式正文增量 | nestos-node/driver 的 epoch 事件缓冲；正文权威来源仍是原生历史 | 缺口或 epoch 改变时按历史与精确回执重建，不能把过期帧当执行凭据 |
+| 待执行指令、冻结输入、提交/控制回执、草稿 | 每用户逻辑 `/etc/fs/harness-conversations.seq` | SeqFile CAS 保存；启动主动恢复，不再依赖打开页面 |
+| 已确认队首终态 | 原队列项的 `terminal`，含精确 turnId、结果与 observedAt | 复用原 journal 的 save/load 原子写；重启后可结算同一队首，不能替另一个 turn 解锁 |
+| UI 草稿与操作台账 | 用户的 conversation composer SeqFile | 原提交身份不变；观察恢复不重新发送 |
+| 用户级精简事件与通知已读状态 | 每用户逻辑 `/var/lib/events/events.seq`，`UserEventService` + 通用 `SeqEventJournal` | 保留 streamId、递增游标与消费源 checkpoint；启动补读 Kernel 事实并追加 `runtime.reset`，过期游标要求重读快照 |
+| 安全诊断 | 每用户 `/var/log/application-diagnostics.seq`；宿主请求审计另行记录 userId | 有界保留用于定位，不作为任务完成或接纳证据 |
+
+HTTP 多用户物理根是 `<usersDir>/<userId>/.nestos/state`，元数据位于同一数据包的 `.nestos/meta`，凭据在 `.nestos/private`。逻辑 SeqFile 的记录由对应用户的 SQLite record backend 保存，不能把空 `.seq` 标记文件的字节内容当作完整备份；复制整个 home 才包含相关数据。
+
+当前工作树已增加用户级精简事件日志，路径由 app-core 选择为逻辑 `/var/lib/events/events.seq`，由用户私有 home 的后端持久化，无需另建物理 `home/.nestos/events.seq`。默认保留 1000 条，单条有大小限制；只保存事件类型、资源身份、操作身份、源序号及通知等级，不保存消息正文或凭据。每个浏览器持有独立游标；同一用户的通知已读状态共享并落盘，不能用一个浏览器的消费进度替其他窗口确认送达。
+
+启动时打开原 journal，按持久 checkpoint 补读 Kernel 事件，事件投影与 checkpoint 在同一 SeqFile 事务提交。文件和 repository 回调仍是提交后的提示，不能承诺每个瞬时变化无损落盘；重启追加 `runtime.reset`，消费者据此重新读取领域快照。若领域要求逐项不可丢失的事实，需要把业务状态和 outbox 写入同一事务，普通 afterCommit 通知回调不能单独保证这一点。不得保存原始 SSE 回调或逐 token 正文作为恢复执行依据。
+
+app-shell 通过 `ShellApplicationEvents` 装配 `ApplicationEventFeed`：加载工作区前获取 baseline，首屏挂载后订阅并补读；预加载快照和 baseline 获取失败的恢复路径先标记领域快照失效。在线、焦点和可见性恢复时补读，并每 15 秒对可见窗口核对一次，修复唤醒提示丢失。新工作区装配期间若有事件到达，装配后补一次失效标记。事件按工作区归属分流，隐藏视图只记 dirty；恢复可见时刷新原目录/导航，保留编辑器及未提交草稿。视图读取失败按 1 至 15 秒退避重试，不依赖下一条事件。关闭或恢复替换原 View 时释放订阅和定时器，不取消后台执行。
+
+用户级事件仍只覆盖当前已接入的来源；远程会话流沿自身订阅、原生历史与回执恢复，不能把用户事件提示当作原生执行完成证据。
+
+### 恢复职责与回调边界（C4 Component）
+
+```mermaid
+C4Component
+    title 当前用户 Runtime 内的远程队列恢复
+    Container_Boundary(user, "一个经过认证的用户 Runtime") {
+        Component(startup, "StartupCoordinator", "app-core", "instructions.recover：先准备项目与连接")
+        Component(scan, "Remote queue recovery", "app-core", "扫描当前用户 journal；最多 4 路重建观察")
+        Component(retry, "RecoveryLoop", "app-core", "只重试暂时失败目标；关闭时排空当前扫描")
+        Component(registry, "ConversationRegistry", "app-core", "按授权身份共享原生会话；持有后台队列")
+        Component(driver, "HarnessConversation / InstructionRuntime", "独立 driver", "先恢复，再核对原回执和终态；不盲目重发")
+        Component(store, "RemoteConversationStore", "app-core", "每用户 key、CAS、未知写入核对")
+        Component(vfs, "SeqFile / Record transaction", "vfs-core", "通用读写、事务和 compareAndSet")
+        ComponentDb(db, "用户私有记录", "LocalFS / SQLite", "原 journal 与元数据")
+    }
+    System_Ext(native, "远程执行器", "原生 history、inspect、事件与 operation 回执")
+    Rel(startup, scan, "1. 每用户启动恢复")
+    Rel(startup, retry, "装配后台恢复生命周期")
+    Rel(retry, scan, "15 至 60 秒退避；重新读取原 journal")
+    Rel(scan, store, "2. 找到仍有工作且有原生身份的记录")
+    Rel(scan, registry, "3. 重验项目、连接、principal、稳定会话身份")
+    Rel(registry, driver, "4. 建立后台观察并读取基线")
+    Rel(driver, native, "5. 精确终态事件；缺失时核对 inspect/history")
+    Rel(driver, store, "6. 注入 load/save 回调，持久确认终态和队列迁移")
+    Rel(store, vfs, "SeqFile CAS 事务")
+    Rel(vfs, db, "用户绑定的存储适配器")
+```
+
+vfs-core 提供文件、SeqFile、Record transaction、通用文件提交事件及不带业务 schema 的 `SeqEventJournal<T>`；不接管用户路由、Codex 状态、队列调度或应用启动策略。`UserEventService`、事件筛选、源 checkpoint 与启动恢复属于 app-core。队列状态机属于 driver，租户与路径选择、授权重验及启动装配属于 app-core，Node SQLite、mTLS 和物理目录属于 node-host。独立 driver 使用已注入的 journal 回调，保持浏览器与其他宿主可复用。
+
+恢复流程只扫描当前用户已有记录；只有当前授权连接、serverProjectId、principal 与稳定会话身份都匹配，才重建同一原生会话观察。暂停、失败、未知提交不会被启动逻辑改成成功；无原生身份或失效绑定会记为 deferred 并保留记录。已成功建立的后台观察沿既有事件/定时核对继续工作。
+
+`RemoteConversationRecoveryLoop` 对暂时性网络/存储错误和尚未加载的连接目录按 15、30、60 秒有界退避，仅重试失败目标；每次重新扫描原 journal 并复验授权，记录已清空时不再打开。授权错误、身份冲突和坏记录不自动重试。重试集合是进程内调度缓存，原 journal 是跨重启恢复索引，因此不另建恢复任务存储；每次启动重新扫描。关闭服务先停止重试并等待本轮回收，再销毁会话 Registry，避免后台打开资源泄漏。重试只重建观察，不直接发送指令。
+
+### 阻塞分类与剩余限制
+
+队列投影的 `reason` 区分 `paused`、`rejected`、`recovery`、`active-turn`、`awaiting-interaction`、`remote-offline`、`admission-unconfirmed` 与 `terminal-unconfirmed`。原因可在相同队列 revision 下随观察更新；展示更新不能提升编辑 CAS 的旧 revision。
+
+对“原生已空闲，但队首一直 dispatching”的路径，driver 先使用同一 turn 的 inspect 终态；如果 inspect 没有给出精确终态，再有界读取原生历史。只有匹配 turnId 的终态才解除队首屏障，空闲本身不是完成证据。已观察到的精确终态存到原队列项，避免仅内存 turnResults 在 httpd 重启后丢失。
+
+需区分 httpd 重启与远端 nestos-node 重启：前者可从用户 journal 重建观察；后者可能产生新 epoch，使旧操作回执不可查询。旧提交没有可靠原生身份或历史证据时仍保持 unknown，不能仅凭本地落盘或新增 events.seq 自动重发。运行中即时追加输入（steer）也尚未接入，普通输入仍按轮次排队。
+
+验证覆盖：driver 的 terminal-observation、instruction-queue、history-completion；app-core 的 remote-conversation-recovery、conversation-registry、remote-conversation-store；HTTP 的 multi-user、remote-queue-restart、user-events 与 user-events-restart。物理存储测试分别关闭再打开两个用户的 home 数据包，确认相同项目/会话 key 不串户且终态仍在；真实 mTLS 宿主重启测试确认旧事件游标仍可补读，通知已读状态跨 SQLite 关闭重开保留。线上指定会话仍需认证快照与版本核对后才能宣布解除阻塞。

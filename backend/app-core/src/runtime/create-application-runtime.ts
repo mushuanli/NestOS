@@ -1,6 +1,7 @@
 import {UserEventService} from '../events/service';
 import {attachRuntimeEvents} from '../events/runtime-events';
 import {DiagnosticJournal} from '../diagnostics/journal';
+import {seedStudyFiles} from '../presets/study-files';
 import {PublishedScannerCollector} from '../digital-twin/scanner-collector';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {recoverFlowSchedulers} from './flow-scheduler-recovery';
@@ -214,6 +215,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         await traceBoot('notes.migrate', () => migrateNotes(homeFiles));
         const notesFiles = await vfs.openFileSystem(workspaceRoot('notes'));
         cleanupFns.push(trackNotesCloze(notesFiles));
+        await traceBoot('notes.seedStudyFiles', () => seedStudyFiles(notesFiles));
         const agentService   = new VFSAgentService(agentFiles, llmDriver, { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot });
         cleanupFns.push(() => agentService.dispose());
         const projectSync = options.sync ? new ProjectSyncService(options.sync.provider, options.sync.coordinator) : undefined;
@@ -470,15 +472,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const executionActivity = new SessionExecutionActivity();
         cleanupFns.push(() => executionActivity.dispose());
         let flowInstallations: FlowInstallationService | undefined;
-        let independentContexts: ConversationContexts | undefined;
         const conversationOptions = {
                 projects,
-                submitIndependentCall: async request => {
-                    if (!independentContexts || !request.expectedSessionId) throw new Error('Independent call host is not ready');
-                    const context = await independentContexts.open(request.expectedSessionId);
-                    try {return await context.commandBus.execute<string>('session.submit', request);}
-                    finally {await context.dispose();}
-                },
                 executionConnections,
                 prepareSessionExecution: prepareChildExecution,
                 ensureFlowDependencies: async (id: string) => {await flowInstallations?.ensure(id);}, executionActivity, instructionQueueSessions, vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
@@ -511,11 +506,11 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         };
         const conversationContexts = new ConversationContexts(() => startup.task('host.conversation', createConversationView)(),
             id => recovery.acquireMetadataLease(id), { canRelease: id => conversationIdle(kernel.kernel, id) });
-        independentContexts = conversationContexts;
         cleanupFns.push(disposeConversations);
         cleanupFns.push(() => conversationContexts.close());
         await startup.schedule(policy.invocations, 'instructions.recover', async () => {
             await initializeProjects();
+            await traceBoot('remote.instructions.recover', async () => remoteConnections?.recoverConversations());
             cleanupFns.push(await recoverFlowSchedulers(kernel.kernel, commandBus, id => recovery.acquireLater(id)));
             await recoverInstructionQueues(instructionQueueSessions, kernel.kernel, conversationContexts);
         });

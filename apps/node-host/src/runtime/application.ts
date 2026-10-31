@@ -32,7 +32,7 @@ export async function openNodeApplication(options: NodeApplicationOptions): Prom
             applications: new ToolOAuthApplications(applicationDirectory),
             manageApplications: options.runtime?.configurationReadonly !== true});
         const ownedConnections = connections;
-        const runtime = await createNodeRuntime(resources.backend, resources.root, {...options.runtime, providerAuthorization: resources.authorization, toolConnections: connections}, options.toolPackages);
+        const runtime = await createNodeRuntime(resources.backend, resources.root, {...options.runtime, providerAuthorization: resources.authorization, toolConnections: connections}, {preferencesFile: path.join(options.authDir, 'tool-preferences', 'preferences.json'), ...options.toolPackages});
         let closing: Promise<void> | undefined;
         return {runtime, audit: resources.audit, close: () => closing ??= closeHostResources([resources.close, () => ownedConnections.close(), () => runtime.dispose()])};
     } catch (error) { await connections?.close(); await resources.close(); throw error; }
@@ -48,8 +48,8 @@ export async function createNodeRuntime(source: IStorageBackend, root?: string, 
     const packages = new NodeToolPackages({...toolPackages, connections: options.toolConnections});
     try {
         await packages.initialize();
-        const additionalTools = mergeNodePackageTools([...createStandardNodeTools(), ...await loadNodeToolModules(undefined, options.toolConnections),
-            ...options.kernelPlatform?.additionalTools ?? []], packages.initialTools(), BUILTIN_TOOLS);
+        const additionalTools = mergeNodePackageTools(packages.userTools([...createStandardNodeTools(), ...await loadNodeToolModules(undefined, options.toolConnections),
+            ...options.kernelPlatform?.additionalTools ?? []]), packages.initialTools(), BUILTIN_TOOLS);
         const runtime = await createApplicationRuntime({remoteSourceProvider: createNestOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
             toolDependencies: options.toolDependencies ?? packages,
             kernelPlatform: { ...options.kernelPlatform, additionalTools, configure: async (kernel, services) => {

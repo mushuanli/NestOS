@@ -97,3 +97,38 @@ it('validates registered handlers against their JSON Schema', async () => {
   expect(handler).not.toHaveBeenCalled();
   expect(await driver.invoke({ toolId: 'legacy', args: { value: 42 } })).toMatchObject({ success: true, output: 'ok' });
 });
+
+it('uses live enablement in metadata, definitions and execution when an existing tool is toggled', async () => {
+  let enabled = false;
+  const {driver, call} = fixture({isEnabled: () => enabled});
+  expect(driver.getToolMeta('fixture')?.enabled).toBe(false); expect(driver.getToolDefinitions()).toEqual([]);
+  enabled = true;
+  expect(driver.getToolMeta('fixture')?.enabled).toBe(true); expect(driver.getToolDefinitions()).toHaveLength(1);
+  expect(await driver.invoke({toolId: 'fixture', args: {value: 'enabled'}})).toMatchObject({success: true});
+  enabled = false;
+  expect(driver.listTools()[0].enabled).toBe(false);
+  expect(await driver.invoke({toolId: 'fixture', args: {value: 'disabled'}})).toMatchObject({errorCode: 'TOOL_DISABLED'});
+  expect(call).toHaveBeenCalledTimes(1);
+});
+
+it('freezes ordinary defaults per execution identity across retries and reconciliation while explicit arguments take precedence', async () => {
+  let defaults = {value: 'original'};
+  const reconcile = vi.fn(async args => ({status: 'completed' as const, data: args}));
+  const {driver} = fixture({inputDefaults: () => defaults, reconcile});
+  const records = new Map<string, unknown>();
+  driver.setAssetStore({getRecord: async (key, identity) => records.get(identity.operationId + key),
+    putRecord: async (key, value, identity) => {expect(key).toMatch(/^[a-zA-Z0-9._:/-]{1,256}$/); records.set(identity.operationId + key, structuredClone(value));}} as never);
+  const executionIdentity = {operationId: 'operation', sessionId: 's', taskId: 't', effectId: 'e'};
+  expect(await driver.invoke({toolId: 'fixture', args: {}, executionIdentity})).toMatchObject({data: {value: 'original'}});
+  defaults = {value: 'changed'};
+  expect(await driver.invoke({toolId: 'fixture', args: {}, executionIdentity})).toMatchObject({data: {value: 'original'}});
+  expect(await driver.reconcile({toolId: 'fixture', args: {}, ...executionIdentity})).toMatchObject({status: 'completed', result: {data: {value: 'original'}}});
+  expect(await driver.invoke({toolId: 'fixture', args: {value: 'explicit'}, executionIdentity})).toMatchObject({data: {value: 'explicit'}});
+  expect(await driver.invoke({toolId: 'fixture', args: {}, executionIdentity: {...executionIdentity, operationId: 'new'}})).toMatchObject({data: {value: 'changed'}});
+});
+
+it('does not adopt current defaults when reconciling an old operation with no saved defaults', async () => {
+  const {driver} = fixture({inputDefaults: () => ({value: 'new-account'}), reconcile: async args => ({status: 'completed', data: args})});
+  driver.setAssetStore({getRecord: async () => undefined, putRecord: vi.fn()} as never);
+  await expect(driver.reconcile({toolId: 'fixture', args: {}, operationId: 'old', sessionId: 's', taskId: 't', effectId: 'e'})).rejects.toMatchObject({code: 'INVALID_ARGUMENTS'});
+});

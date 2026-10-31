@@ -1,6 +1,5 @@
 import {cancelFlowRun, readFlowCancellationReceipt, cancelRemainingFlowRun, readFlowTreeCancellationReceipt} from './run-cancellation';
 import {taskStat} from '@itookit/durable-kernel';
-import {readFlowRunMembers} from './run-members';
 import {checkFlowSource, checkFlowSyntax} from './syntax-check';
 import { hasLocalScheduler, withFlowControl } from './control-session';
 import { workspaceFinalizationKey, type WorkspaceFinalization } from './workspace-finalization';
@@ -112,11 +111,8 @@ export class DagCommandService {
             const input = args as { sessionId: string; taskId: string; targetTaskId: string; query?: FlowTranscriptQuery };
             return readFlowTaskTranscript(this.options.kernel, input.sessionId, input.taskId, input.targetTaskId, input.query);
         });
-        bus.register(FlowCommand.RunCancel, async args => {
-            const input = args as import('../contracts/flow-control').FlowCancellationRequest;
-            return input && ['requestId', 'expectedEpoch', 'sessionId'].some(key => Object.hasOwn(input, key))
-                ? cancelFlowRun(this.options, input) : this.cancel(String(input?.taskId));
-        });
+        bus.register(FlowCommand.RunCancel, args => cancelFlowRun(this.options,
+            args as import('../contracts/flow-control').FlowCancellationRequest));
         bus.register(FlowCommand.RunCancellationReceipt, args =>
             readFlowCancellationReceipt(this.options.kernel, args as import('../contracts/flow-control').FlowCancellationQuery));
         bus.register(FlowCommand.RunCancelRemaining, args =>
@@ -368,18 +364,6 @@ export class DagCommandService {
         });
     }
 
-    private async cancel(taskId: string) {
-        await this.snapshot(taskId);
-        const handle = this.requireHandle(taskId);
-        return withFlowControl(this.options.kernel, handle.sessionId, taskId, this.options.canWriteSession, async session => {
-            const ids = await currentControlTaskIds(session, handle);
-            const results = await Promise.allSettled(ids.map(async id => (await session.attachTask(id)).cancel()));
-            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-            if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'Run cancellation failed');
-            return { taskId, cancelled: true };
-        });
-    }
-
     private requireHandle(taskId: string): FlowExecutionHandle {
         const handle = this.handles.get(taskId);
         if (!handle) throw new Error(`DAG task is not attached: ${taskId}`);
@@ -478,10 +462,4 @@ async function createRevision(
 
 function jsonValue(value: unknown): import('@itookit/durable-kernel').JsonValue {
     return JSON.parse(JSON.stringify(value ?? null));
-}
-
-/** Display caches never expand the set of Tasks eligible for control. */
-async function currentControlTaskIds(session: SessionHandle, handle: FlowExecutionHandle): Promise<string[]> {
-    const root = (await (await session.attachTask(handle.root.id)).status()).task;
-    return [...new Set([root.id, ...(await readFlowRunMembers(session, root)).map(member => member.taskId)])];
 }

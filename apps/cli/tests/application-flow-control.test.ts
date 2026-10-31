@@ -16,7 +16,7 @@ function client(execute: (command: string, args?: unknown) => Promise<unknown>):
 
 it.each([
     ['pause', 's', 'root'], ['resume', 's', 'root', 'id', '-1'], ['pause', 's', 'root', 'id', '1.5'],
-    ['withdraw-pause', 's', 'root', 'id', '9007199254740992'], ['cancel', 's', 'root', 'extra'], ['receipt', 's', 'root', ''],
+    ['withdraw-pause', 's', 'root', 'id', '9007199254740992'], ['cancel', 's', 'root'], ['cancel', 's', 'root', 'extra'], ['cancel', 's', 'root', 'id', '-1'], ['receipt', 's', 'root', ''],
 ])('rejects malformed controls before querying or mutating: %j', async (...args) => {
     const execute = vi.fn();
     await expect(flowControlCommand(client(execute), args)).rejects.toMatchObject({code: 'FLOW_CONTROL_REQUEST_INVALID'});
@@ -69,7 +69,7 @@ it('controls a real Flow, preserves its receipt across callers, and rejects a st
     expect(await flowControlCommand(port(), ['receipt', 's', run.root.id, 'pause-one'])).toMatchObject({outcome: 'observed', receipt: {action: 'pause', accepted: {mode: 'pause'}}});
     await flowControlCommand(port(), ['pause', 's', run.root.id, 'pause-one', '0']);
     await expect(flowControlCommand(port(), ['resume', 's', run.root.id, 'stale-resume', '0'])).rejects.toMatchObject({code: 'CONFLICT'});
-    await flowControlCommand(port(), ['cancel', 's', run.root.id]);
+    await flowControlCommand(port(), ['cancel', 's', run.root.id, 'cancel-one', '1']);
     expect((await run.root.wait({timeoutMs: 2000})).status).toBe('cancelled');
     expect(await flowControlCommand(port(), ['receipt', 's', run.root.id, 'pause-one'])).toMatchObject({outcome: 'observed', receipt: {action: 'pause'}});
 });
@@ -77,6 +77,16 @@ it('controls a real Flow, preserves its receipt across callers, and rejects a st
 
 it('does not issue a mutation after target lookup or authorization fails', async () => {
     const execute = vi.fn(async () => {throw Object.assign(new Error('Access denied'), {code: 'FORBIDDEN'});});
-    await expect(flowControlCommand(client(execute), ['cancel', 's', 'root'])).rejects.toMatchObject({code: 'FORBIDDEN'});
+    await expect(flowControlCommand(client(execute), ['cancel', 's', 'root', 'cancel-one', '0'])).rejects.toMatchObject({code: 'FORBIDDEN'});
     expect(execute).toHaveBeenCalledOnce();
+});
+
+it('forwards cancellation with caller-owned identity and never retries a lost acknowledgement', async () => {
+    const execute = vi.fn(async (name: string) => {
+        if (name === FlowCommand.RunGet) return {};
+        throw Object.assign(new Error('Reply lost'), {code: 'ECONNECTION'});
+    });
+    await expect(flowControlCommand(client(execute), ['cancel', 's', 'root', 'cancel-one', '3'])).rejects.toMatchObject({code: 'ECONNECTION'});
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenLastCalledWith(FlowCommand.RunCancel, {sessionId: 's', taskId: 'root', requestId: 'cancel-one', expectedEpoch: 3});
 });

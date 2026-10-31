@@ -10,8 +10,10 @@ it('uses ordinary Session output settings instead of imposing a generation-speci
  expect(await view.backend.generateText(input)).toBe('--complete--');
  expect(JSON.parse(fetch.mock.calls[0][1].body).max_tokens).toBeUndefined();expect(fetch).toHaveBeenCalledOnce();
 },20000);
-it('persists repeat generations as rounds with the selected model',async()=>{
+it('persists repeat generations as rounds in the personal project with the selected model',async()=>{
  const {runtime,view,input,fetch}=await fixture();
+ const other=await runtime.projects.create('Other default');await runtime.projects.setDefaultProject(other.project.id);
+ input.sessionId=await view.backend.createSessionDraft({title:'Generated in Personal',inputText:''});
  expect(await view.backend.generateText({...input,connectionId:'default',modelId:'alternate'})).toBe('--generated--');
  expect(await view.backend.generateText({...input,operationId:'second',previousDraft:'Old draft'})).toBe('--generated--');
  const rounds=(await runtime.sessionRepository.readHistoryChain(input.sessionId)).rounds;
@@ -20,6 +22,7 @@ it('persists repeat generations as rounds with the selected model',async()=>{
  expect(JSON.stringify(rounds[0].input)).toContain(input.prompt);
  expect(JSON.stringify(JSON.parse(fetch.mock.calls[0][1].body).messages)).toContain(input.prompt);
  expect(JSON.stringify(rounds[1].input)).toContain('Old draft');
+ const personal=await runtime.projects.personal();expect((await runtime.sessionRepository.getManifest(input.sessionId)).folder).toBe(await runtime.projects.sessionFolder(personal));
 },20000);
 it('rejects invalid models without provider calls and reports empty or truncated output',async()=>{
  const {view,input,fetch}=await fixture();

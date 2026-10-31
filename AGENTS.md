@@ -44,6 +44,7 @@ pnpm --filter @itookit/<pkg> typecheck
 
 - 日常开发保持源码模式：`pnpm dev` 和 `pnpm cli` 直接使用本地 libraries 源码；修改库后无需先执行 `lib:build`。CLI 再次执行加载最新修改，已运行的 CLI 进程需要重启。
 - `pnpm lib:build` 首次准备全部库，之后仅更新有修改的库及需要重建的依赖方；`pnpm lib:build driver-llm`（也接受完整包名）仅更新指定库及必要依赖方，未选中的库复用原制品。无变化时复用已有快照。
+- 库构建摘要按每个库的锁文件依赖闭包计算；业务包依赖变化不触发全部库重建，根构建工具链与共享编译配置变化仍会全量重建。`stage=plan-library` 日志记录逐库重建原因；旧摘要算法首次迁移会重建一次。
 - `lib:build` 仅准备不可变本地库制品，不修改开发依赖或切换开发模式。`pnpm httpd:build` 先自动运行增量 `lib:build`，成功后在隔离目录使用该快照安装、编译，不受后续 libraries 源码修改影响；库构建失败不会继续构建 HTTP release。
 - `pnpm libraries:use <ID>` 是显式切换整个工作区的制品验收模式，会影响 dev、CLI 等命令；验收后用 `pnpm libraries:source` 恢复源码联调。`pnpm libraries:status` 可检查开发模式和 HTTP 已准备快照。
 - 快照、模式选择与 prepared 指针位于忽略的 `release/local-libraries/`，不随 Git 提交；构建不会重启运行中的 httpd。设计与 Mermaid C4 见 [独立库消费模式](./doc/design/npm-library-consumption.md)。

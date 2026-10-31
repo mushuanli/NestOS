@@ -93,15 +93,16 @@ it('loads and saves the standalone editor controls through the existing Session 
     } finally {await editor.destroy();}
 });
 
-it('keeps cancel available if the control ledger cannot be read without enabling unpersisted pause', async () => {
+it('does not send an untracked cancellation when the control ledger cannot be read', async () => {
     const error = vi.spyOn(Toast, 'error').mockImplementation(() => {});
     const execute = vi.fn(async (_name: string, _args?: unknown) => snapshot()), root = document.createElement('div');
     const view = new DagWorkbench(root, {commands: {execute} as never, operations: async () => {throw new Error('Ledger unavailable');}});
     views.push(view); await view.openRun('root', 's');
     expect(error).toHaveBeenCalledWith('Ledger unavailable');
     expect(root.querySelector('[data-run-control="pause"]')).toBeNull();
-    root.querySelector<HTMLButtonElement>('[data-run-action="cancel"]')!.click();
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith(FlowCommand.RunCancel, {taskId: 'root'}));
+    const cancel = root.querySelector<HTMLButtonElement>('[data-run-action="cancel"]')!;
+    expect(cancel.disabled).toBe(true); cancel.click();
+    expect(execute.mock.calls.some(([name]) => name === FlowCommand.RunCancel)).toBe(false);
 });
 
 it('keeps read-only details free of control and ledger access', async () => {
@@ -123,4 +124,12 @@ it('distinguishes reattaching an active run from releasing a confirmed pause', a
     await vi.waitFor(() => expect(f.saved()[0]?.status).toBe('accepted'));
     const commands = f.execute.mock.calls.map(([name]) => name);
     expect(commands.indexOf(FlowCommand.RunResume)).toBeLessThan(commands.indexOf(FlowCommand.RunGoalUpdate));
+});
+
+it('cancels through the retained control ledger with the observed epoch and Session', async () => {
+    const f = await fixture(snapshot({epoch: 4})), {view} = await f.open();
+    await view.cancel();
+    expect(f.execute).toHaveBeenCalledWith(FlowCommand.RunCancel, {sessionId: 's', taskId: 'root', expectedEpoch: 4,
+        requestId: expect.stringMatching(/^flow-control:/)});
+    expect(f.saved().some(record => record.status === 'accepted')).toBe(true);
 });

@@ -91,11 +91,17 @@ export class ToolAuthorization {
             attempt.view.code = this.code(error); this.report(attempt, 'exchange', 'failure', started); throw authFailure(attempt.view.code);
         } finally {attempt.verifier = '';}
     }
-    async accessToken(id: string, type: string): Promise<string> {
+    async verify(id: string, type: string): Promise<string | undefined> {
+        await this.accessToken(id, type, true);
+        const token = this.tokens.get(id), current = await this.store.get(id);
+        if (!token || token.revision !== current.revision) throw authFailure('TOOL_AUTH_CONNECTION_CHANGED');
+        return token.revision;
+    }
+    async accessToken(id: string, type: string, forceRefresh = false): Promise<string> {
         if (this.closed) throw authFailure('TOOL_AUTH_CLOSED');
         const record = await this.store.get(id); if (record.type !== type) throw authFailure('TOOL_CONNECTION_NOT_FOUND');
         const cached = this.tokens.get(id);
-        if (cached && cached.revision === record.revision && cached.expiresAt > Date.now() + 30000) return cached.value;
+        if (!forceRefresh && cached && cached.revision === record.revision && cached.expiresAt > Date.now() + 30000) return cached.value;
         const existing = this.refreshes.get(id); if (existing) return existing;
         const work = this.diagnose('refresh', () => this.refresh(record)).finally(() => {if (this.refreshes.get(id) === work) this.refreshes.delete(id);});
         this.refreshes.set(id, work); return work;

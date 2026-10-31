@@ -36,6 +36,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     private readonly ledger = createOperationLedger();
     private readonly targets?: SessionCallTargets;
     private selectorTarget?: string;
+    private remoteExecutor?: string;
     private delegate?: IEditor;
     private prepared?: Promise<Materialized>;
     private resume?: (createEditor?: EditorFactory) => Promise<IEditor>;
@@ -131,14 +132,14 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
 
     private remoteSelectors(agentId: string): SelectorView[] {
         const effective = this.executors.some(item => item.id === agentId) ? agentId : this.executors[0]?.id ?? '';
+        this.remoteExecutor ??= effective;
         const catalog = this.nativeModels.get(effective);
         const selectors: SelectorView[] = [{id: 'executorId', label: t('harness.remoteAgents'), value: effective,
             choices: this.executors.map(item => ({id: item.id, label: item.name}))}];
         if (!catalog?.models.length) return selectors;
         const current = catalog.current ?? catalog.default, models = catalog.models;
         selectors.push({id: 'modelId', placement: 'end', label: t('chatInput.model'), value: current?.modelId ?? models[0].id,
-            choices: [], variants: {selectorId: 'executorId', values: Object.fromEntries([...this.nativeModels].map(([id, value]) => [id,
-                {value: value.current?.modelId ?? value.default?.modelId ?? value.models[0]?.id ?? '', choices: value.models.map(model => ({id: model.id, label: model.label}))}]))}});
+            choices: models.map(model => ({id: model.id, label: model.label}))});
         selectors.push({id: 'reasoningEffort', placement: 'more', label: t('thinking.effort.label'), value: current?.reasoningEffort ?? '', choices: [], variants: {selectorId: 'modelId',
             values: Object.fromEntries(models.map(model => [model.id, {value: current?.modelId === model.id ? current.reasoningEffort ?? model.defaultReasoningEffort ?? '' : model.defaultReasoningEffort ?? '',
                 choices: [{id: '', label: t('chatSettings.followDefault')}, ...model.reasoningEfforts]}]))}});
@@ -154,10 +155,22 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
             const selected = this.view?.getDraft().selection?.executorId ?? this.store.preferences().agentId;
             const executor = executors.find(item => item.id === selected) ?? executors[0];
             if (executor?.supportsModels !== false && executor && !this.nativeModels.has(executor.id)) {
-                const catalog = await this.config.remoteAgents.models(executor.id); this.check(); if (generation !== this.configurationGeneration) return; this.nativeModels.set(executor.id, catalog);
+                const catalog = await this.loadRemoteModels(executor.id); this.check(); if (generation !== this.configurationGeneration) return; this.nativeModels.set(executor.id, catalog);
             }
         }
         await this.targets?.refresh();
+    }
+    private async loadRemoteModels(executorId: string) {
+        const started = Date.now(), operationId = randomUUID();
+        try {
+            const catalog = await this.config.remoteAgents!.models!(executorId);
+            log.info('chat.draft.models', {operationId, stage: 'catalog', result: 'success', modelCount: catalog.models.length, durationMs: Date.now() - started});
+            return catalog;
+        } catch (error) {
+            log.warn('chat.draft.models', {operationId, stage: 'catalog', result: 'failure',
+                code: safeCode(error) === 'DRAFT_VIEW_FAILED' ? 'DRAFT_MODELS_READ_FAILED' : safeCode(error), durationMs: Date.now() - started});
+            throw error;
+        }
     }
     private draftChanged(): void {
         this.emit('interactiveChange', undefined);
@@ -165,8 +178,22 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         if (this.view && this.selectorTarget !== target) {this.selectorTarget = target; this.publish();}
         if (this.config.sessionDraft?.executorScope !== 'remote' || this.transferred) return;
         const selected = this.view?.getDraft().selection?.executorId;
+        if (selected && selected !== this.remoteExecutor) {this.switchRemoteExecutor(selected); return;}
         if (selected && !this.nativeModels.has(selected))
             void this.refreshConfiguration().then(() => this.publish()).catch(error => this.report(error));
+    }
+    private switchRemoteExecutor(executorId: string): void {
+        const started = Date.now(); this.remoteExecutor = executorId;
+        const catalog = this.nativeModels.get(executorId), current = catalog?.current ?? catalog?.default;
+        const model = catalog?.models.find(item => item.id === current?.modelId) ?? catalog?.models[0];
+        this.publish();
+        const draft = this.view.getDraft();
+        const selection = {...draft.selection}; delete selection.modelId; delete selection.reasoningEffort;
+        if (model) {selection.modelId = model.id;
+            selection.reasoningEffort = current?.modelId === model.id ? current.reasoningEffort ?? model.defaultReasoningEffort ?? '' : model.defaultReasoningEffort ?? '';}
+        this.view.configureInput({selection}, draft.revision);
+        log.info('chat.draft.executor', {operationId: randomUUID(), stage: 'selection', result: 'success',
+            catalogCached: !!catalog, modelCount: catalog?.models.length ?? 0, durationMs: Date.now() - started});
     }
     private async save(draft: ComposerDraft): Promise<void> {
         if (this.transferred || this.closed || this.rebuilding) return;
@@ -237,7 +264,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         await this.flushPendingSave(); this.rebuilding = true;
         try {
             await this.config.sessionDraft?.clear?.();
-            this.store = new ChatDraftStore({...this.config.sessionDraft!, initialData: undefined}); await this.store.open();
+            this.store = new ChatDraftStore({...this.config.sessionDraft!, initialData: undefined}); await this.store.open(); this.remoteExecutor = undefined;
             this.source = new ChatProjection(this.config.sessionDraft?.id ?? randomUUID(), error => this.report(error)); this.publish();
             await this.view.replaceBinding(this.viewOptions(), {draft: this.store.draft});
         } finally {this.rebuilding = false;}
@@ -269,7 +296,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         if (this.transferred || this.view.inputBusy || this.view.getDraft().revision !== revision) return;
         this.rebuilding = true;
         try {
-            this.config.sessionDraft = next; this.store = store;
+            this.config.sessionDraft = next; this.store = store; this.remoteExecutor = undefined;
             this.source = new ChatProjection(next.id ?? this.source.conversationId, error => this.report(error)); this.publish();
             await this.view.replaceBinding(this.viewOptions(), {draft: store.draft});
         } finally {this.rebuilding = false;}

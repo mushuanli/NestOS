@@ -1,4 +1,4 @@
-import {createModuleLogger, randomUUID} from '@itookit/common';
+import {createModuleLogger, randomUUID, t} from '@itookit/common';
 import {FlowCommand, collectFlowToolDependencies, flowParameterValues, type FlowDraft, type FlowRevision, type FlowToolDependency} from '@itookit/llm-flow/contracts';
 import {checkFlowSource, externalFlowReferences, validateFlowParameters} from '@itookit/llm-flow';
 import {SessionCommand, type ICommandBus} from '@itookit/llm-session/contracts';
@@ -13,7 +13,14 @@ const messageOf = (error: unknown): string => error instanceof Error ? error.mes
 /** One dependency and configuration check shared by import, recovery and explicit installation. */
 export class FlowInstallationService implements FlowInstallations {
     private readonly pending = new Map<string, Promise<FlowInstallationReport>>();
-    constructor(private readonly commands: ICommandBus, readonly toolPackages: FlowToolPackages) {}
+    constructor(private readonly commands: ICommandBus, readonly toolPackages: FlowToolPackages) {
+        toolPackages.existingFlowIds = async () => new Set((await commands.execute<FlowDraft[]>(FlowCommand.DraftList, {})).map(flow => String(flow.id)));
+        toolPackages.assertRemovable = async tools => {
+            const reports = await this.list();
+            if (reports.some(report => report.tools.some(tool => tools.includes(tool.id))))
+                throw Object.assign(new Error(t('toolbox.packages.inUse')), {code: 'TOOL_PACKAGE_IN_USE'});
+        };
+    }
     async list(): Promise<FlowInstallationReport[]> {
         const drafts = await this.commands.execute<FlowDraft[]>(FlowCommand.DraftList, {});
         return Promise.all(drafts.map(flow => this.check(flow.id)));
@@ -38,8 +45,8 @@ export class FlowInstallationService implements FlowInstallations {
             report.tools = ensure ? (await this.toolPackages.ensure(dependencies)).tools : dependencies.map(item => this.toolPackages.inspect(item));
             stage = 'parameters'; report.parameters = parameterIssues(checked.flow);
             stage = 'connections'; report.connections = await this.connectionIssues(checked.flow, !report.parameters.length);
-            report.status = report.tools.some(item => item.status === 'failed') ? 'failed' : report.tools.some(item => item.status === 'missing') ? 'missingTools'
-                : report.parameters.length || report.connections.length ? 'needsConfiguration' : 'ready';
+            report.status = report.tools.some(item => item.status === 'failed' && !['TOOL_DISABLED', 'TOOL_PACKAGE_TOOL_DISABLED'].includes(item.code ?? '')) ? 'failed' : report.tools.some(item => item.status === 'missing') ? 'missingTools'
+                : report.tools.some(item => item.status !== 'ready') || report.parameters.length || report.connections.length ? 'needsConfiguration' : 'ready';
             return report;
         } catch (error) {report.errors.push({code: codeOf(error), message: messageOf(error)}); return report;}
         finally {log.info('flow.install.completed', {operation: 'flow.install', operationId, stage, outcome: report.status,

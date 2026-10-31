@@ -28,7 +28,9 @@ function setup(initial = [event('done'), event('approval', 'approval', 0), event
 }
 it('shows the same count on desktop/mobile, only previews the three most important items, and leaves approvals actionable', async () => {
     const f = setup(); await vi.waitFor(() => expect(document.querySelector('[data-assistant-count]')!.textContent).toBe('4'));
-    expect(document.querySelectorAll('.assistant-launcher')).toHaveLength(2); f.open();
+    expect(document.querySelectorAll('.assistant-launcher')).toHaveLength(2);
+    expect(document.querySelector('.app-sidebar__brand .assistant-launcher__icon')).toBeNull();
+    expect(document.querySelector('.app-sidebar__brand')!.textContent).toContain('NestOS'); f.open();
     expect([...document.querySelectorAll<HTMLElement>('[data-assistant-event]')].map(item => item.dataset.assistantEvent)).toEqual(['approval', 'failed', 'done']);
     expect(document.querySelector('img')).toBeNull(); expect(document.querySelector('[data-assistant-read="approval"]')).toBeNull();
     document.querySelector<HTMLButtonElement>('[data-assistant-action=all]')!.click(); expect(document.querySelectorAll('[data-assistant-event]')).toHaveLength(4);

@@ -74,11 +74,12 @@ export interface KernelAdaptersRuntimeOptions extends KernelAdapterDiagnostics {
 
 export interface KernelAdaptersRuntime {
     llmService: ILLMService;
-    toolCatalog: Pick<IToolService, 'getToolDefinitions' | 'getToolMeta' | 'listTools'>;
+    toolCatalog: Pick<IToolService, 'getToolDefinitions' | 'getToolMeta' | 'listTools' | 'getToolDefaults'>;
     skillCatalog: Pick<ISkillService, 'getSkillNames' | 'saveSkill' | 'deleteSkill'>;
     sessions: SessionCapabilityRegistry;
     plugin: KernelAdaptersPlugin;
     registerTools(tools: Tool[]): Promise<void>;
+    unregisterTools(ids: string[]): Promise<void>;
     disposeSession(sessionId: string): Promise<void>;
     disposeScope(sessionId: string, scopeId: string): Promise<void>;
     dispose(): Promise<void>;
@@ -111,7 +112,9 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
     return {
         llmService,
         registerTools: tools => liveTools.register(tools),
+        unregisterTools: ids => liveTools.unregister(ids),
         toolCatalog: {
+            getToolDefaults: id => catalogTools.getToolDefaults(id),
             listTools: () => catalogTools.listTools(),
             getToolDefinitions: () => catalogTools.getToolDefinitions(),
             getToolMeta: id => catalogTools.getToolMeta(id),

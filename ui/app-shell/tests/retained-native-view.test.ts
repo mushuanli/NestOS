@@ -3,6 +3,8 @@ import {expect, it, vi} from 'vitest';
 import {createOperationLedger} from '@itookit/llm-ui';
 import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
 import {createNativeChatBinding, createNativeChatView, replaceNativeChatBinding} from '../../llm-ui-adapter/src/independent/native';
+import {IndependentConversationEditor} from '../../llm-ui-adapter/src/shell/IndependentConversationEditor';
+import {NativeChatStore} from '../../llm-ui-adapter/src/independent/native-store';
 
 function fixture(title: string) {
     const listeners = new Set<() => void>();
@@ -40,4 +42,55 @@ it('rebinds native presentation and preserves the composer without closing eithe
     } finally {await view.destroy(); old.dispose(); next.dispose(); host.remove();}
     expect(newRelease).toHaveBeenCalledOnce(); expect(first.listeners.size).toBe(0); expect(second.listeners.size).toBe(0);
     expect(first.controls.close).not.toHaveBeenCalled(); expect(second.controls.close).not.toHaveBeenCalled();
+});
+
+it('catches up buffered native output after hiding and keeps receiving subsequent streaming updates', async () => {
+    vi.stubGlobal('matchMedia', () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
+    const f = fixture('Streaming'), initial = structuredClone(f.state);
+    let buffered = initial.messages;
+    f.controls.read = vi.fn(async () => {f.state.messages = initial.messages; return f.state;});
+    f.controls.refresh = vi.fn(async () => {f.state.messages = buffered; return f.state;});
+    const binding = await createNativeChatBinding({conversationId: 'native', controls: f.controls, operations: createOperationLedger(), reconcile: vi.fn()});
+    const host = document.createElement('div'); document.body.append(host);
+    const view = await createNativeChatView(host, binding);
+    const emit = (text: string, notify = true) => {
+        buffered = [{id: 'stream', role: 'assistant', text, status: 'running', turnId: 'turn'}];
+        if (notify) {f.state.messages = buffered; f.listeners.forEach(listener => listener());}
+    };
+    try {
+        view.setText('Unsent draft'); emit('Before leaving');
+        await vi.waitFor(() => expect(host.textContent).toContain('Before leaving'));
+        const input = host.querySelector('.llm-chat__input');
+        view.setActive(false); emit('Received while hidden', false);
+        view.setActive(true); await binding.source.refresh();
+        await vi.waitFor(() => expect(host.textContent).toContain('Received while hidden'));
+        emit('Streaming continues after returning');
+        await vi.waitFor(() => expect(host.textContent).toContain('Streaming continues after returning'));
+        expect(host.querySelector('.llm-chat__input')).toBe(input); expect(view.getDraft().text).toBe('Unsent draft');
+        expect(f.controls.read).toHaveBeenCalledOnce(); expect(f.controls.refresh).toHaveBeenCalledOnce();
+        expect(f.controls.send).not.toHaveBeenCalled(); expect(f.controls.close).not.toHaveBeenCalled();
+    } finally {await view.destroy(); binding.dispose(); host.remove(); vi.unstubAllGlobals();}
+});
+
+it('resumes the fallback observer even when activation catch-up fails', async () => {
+    vi.stubGlobal('matchMedia', () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
+    const f = fixture('Polling'); f.controls.subscribe = undefined;
+    f.controls.read = vi.fn(async () => f.state); f.controls.refresh = vi.fn(async () => f.state);
+    let documentState = {revision: '0', data: '', acceptedOperationIds: [] as string[]};
+    f.controls.readComposerDraft = async () => documentState;
+    f.controls.saveComposerDraft = async (data, _revision, id) => {
+        documentState = {revision: String(Number(documentState.revision) + 1), data, acceptedOperationIds: [id]}; return documentState;
+    };
+    const store = (await NativeChatStore.open(f.controls))!, host = document.createElement('div'); document.body.append(host);
+    const editor = new IndependentConversationEditor(host, f.controls, {}, store);
+    try {
+        await editor.init(host); editor.setText('Keep the draft'); editor.cancelPendingRender();
+        f.state.messages = [{id: 'later', role: 'assistant', text: 'Output after catch-up retry'}];
+        vi.mocked(f.controls.refresh).mockRejectedValueOnce(Object.assign(new Error('Temporarily unavailable'), {code: 'ETIMEDOUT'}));
+        await expect(editor.activate()).rejects.toThrow('Temporarily unavailable');
+        await vi.waitFor(() => expect(host.textContent).toContain('Output after catch-up retry'), {timeout: 2500});
+        expect(f.controls.refresh).toHaveBeenCalledTimes(2); expect(f.controls.read).toHaveBeenCalledOnce();
+        expect(host.querySelector<HTMLTextAreaElement>('.llm-chat__input')!.value).toBe('Keep the draft');
+        expect(f.controls.send).not.toHaveBeenCalled(); expect(f.controls.close).not.toHaveBeenCalled();
+    } finally {await editor.destroy(); host.remove(); vi.unstubAllGlobals();}
 });

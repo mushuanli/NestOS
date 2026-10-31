@@ -14,7 +14,7 @@ import {nativeQueueMessages} from './native-queue-messages';
 import {nativeCatalogNotice} from './native-catalog';
 import { ChatProjection } from './projection';
 import {nativeInteraction, nativeResponse} from '../native-interactions';
-import {createModuleLogger} from '@itookit/common';
+import {createModuleLogger, randomUUID} from '@itookit/common';
 import {t} from '@itookit/common';
 import {NativeCommandOutput} from '../components/history/NativeCommandOutput';
 import {NativeResultRepair} from '../components/history/NativeResultRepair';
@@ -22,6 +22,7 @@ import type {ConversationCommandOutput} from '@itookit/ui-common';
 import type {ExtensionRenderer, JsonValue} from '@itookit/llm-ui';
 
 const log = createModuleLogger('native-submission');
+const observationLog = createModuleLogger('native-observation');
 
 export interface NativeChatBindingOptions {
     readonly readAttachment?: ImageEditingHost['read'];
@@ -67,9 +68,19 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
     const loadCapabilities = async (state: NativeSnapshot, force = false) => {
         if (await capabilities.load(state, force) && !closed && native) publish(options.controls.snapshot?.() ?? native);
     };
-    const refresh = async () => {
-        const captured = ++generation, state = await options.controls.read();
-        if (captured === generation) {publish(state); await loadCapabilities(state, true);}
+    const refresh = async (initial = false) => {
+        const captured = ++generation, started = Date.now(), operationId = randomUUID(), stage = initial ? 'history' : 'events';
+        try {
+            const state = await (initial ? options.controls.read() : options.controls.refresh());
+            if (captured === generation) {publish(state); await loadCapabilities(state, true);}
+            observationLog.info('chat.native.observe', {operationId, conversationId: options.conversationId, stage,
+                result: captured === generation ? 'success' : 'superseded', messageCount: state.messages.length, durationMs: Date.now() - started});
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            observationLog.warn('chat.native.observe', {operationId, conversationId: options.conversationId, stage, result: 'failure',
+                code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'NATIVE_OBSERVATION_FAILED', durationMs: Date.now() - started});
+            throw error;
+        }
     };
     const publishResponse = (state: NativeSnapshot, captured: number) => {
         if (captured !== generation) return;
@@ -82,7 +93,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
     });
     const providerStops = options.commandProviders?.flatMap(provider => provider.subscribe ? [provider.subscribe(() => {if (native) publish(native);})] : []) ?? [];
     const offLedger = options.operations.subscribe(() => { if (native) publish(native); });
-    try { await refresh(); } catch (error) { closed = true; capabilities.dispose();
+    try { await refresh(true); } catch (error) { closed = true; capabilities.dispose();
         try {releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]);}
         catch (cleanup) {throw new AggregateError([error, cleanup], 'Native binding initialization failed');}
         throw error; }
@@ -214,7 +225,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             }
         } : undefined,
     };
-    return { images: options.images, source: Object.assign(source, { refresh }), actions, operations: options.operations,
+    return { images: options.images, source: Object.assign(source, { refresh: () => refresh() }), actions, operations: options.operations,
         instructionQueue: options.readOnly ? undefined : createNativeQueuePort(options.controls, () => native, async action => {
             if (closed) throw Object.assign(new Error('Native queue binding closed'), {code: 'QUEUE_VIEW_CLOSED'});
             const captured = generation, state = await action();

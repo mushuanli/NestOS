@@ -138,8 +138,11 @@ export class DagWorkbench {
     }
 
     async cancel(): Promise<void> {
-        if (!this.run) return;
-        await this.options.commands.execute(FlowCommand.RunCancel, { taskId: this.run.root.task.id });
+        if (!this.run || this.options.readOnly) return;
+        if (!this.controlOperations) throw new Error('Flow control operation ledger is unavailable');
+        const task = this.run.root.task, view = this.viewRequest;
+        await new FlowRunControl(this.options.commands, task.sessionId, this.controlOperations)
+            .execute(task.id, 'cancel', task.control?.epoch ?? 0, () => this.visible && view === this.viewRequest && this.mode === 'run');
     }
 
     setVisible(visible: boolean): void {
@@ -712,7 +715,15 @@ export class DagWorkbench {
                 .catch(error => { if (view === this.viewRequest) { button.disabled = false; Toast.error(String(error)); } });
         });
         this.root.querySelector('[data-run-action="back"]')?.addEventListener('click', () => { this.viewRequest++; this.stopRunRefresh(); this.setMode('design'); });
-        this.root.querySelector('[data-run-action="cancel"]')?.addEventListener('click', () => void this.cancel());
+        const cancelButton = this.root.querySelector<HTMLButtonElement>('[data-run-action="cancel"]');
+        if (cancelButton) {
+            cancelButton.disabled = !this.controlOperations;
+            cancelButton.addEventListener('click', () => {
+                const view = this.viewRequest;
+                void this.cancel().then(() => {if (view === this.viewRequest) return this.refreshRun(run.id);})
+                    .catch(error => {if (view === this.viewRequest) Toast.error(error instanceof Error ? error.message : t('flow.run.controlFailed'));});
+            });
+        }
         this.root.querySelector('[data-run-action="goal"]')?.addEventListener('click', () => this.openGoalDialog());
         this.root.querySelectorAll<HTMLElement>('[data-run-retry]').forEach(button => button.addEventListener('click', () =>
             void this.retryRunTask(button.dataset.runRetry!)));

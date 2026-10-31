@@ -20,7 +20,7 @@ import {prepareInstruction, instructionDigest} from '../src/session/instruction-
 
 let manager: IVFSManager, kernel: Kernel, repository: SessionRepository, parent: string, service: IndependentCallService;
 let transfers: ContentTransferService, fs: Awaited<ReturnType<IVFSManager['openFileSystem']>>;
-const submit = vi.fn(async (_request: SubmissionRequest) => 'call'), logger = {debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()};
+const logger = {debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()};
 const model = vi.fn(async () => ({choices: [{message: {role: 'assistant', content: 'Done'}, finish_reason: 'stop'}]}));
 const native = vi.fn(async () => ({text: 'Native done', sessionId: 'native', turnId: 'turn'}));
 const target = {kind: 'agent' as const, id: 'reviewer', version: '1', digest: 'a'.repeat(64)};
@@ -29,7 +29,7 @@ function input(): IndependentCallInput {return {title: 'PRIVATE TITLE', request:
     target: {kind: 'agent', id: target.id, version: target.version}, expectedTarget: target, source: {kind: 'composer', text: 'PRIVATE INPUT', attachments: [], values: {}},
     submission: {id: 'call', source: {kind: 'conversation', ownerId: parent, id: 'call'}}}};}
 function createService(canWrite?: (id: string) => Promise<boolean>) {
-    return new IndependentCallService({kernel, repository, transfers, submit, canWrite, hostPorts: {logger}});
+    return new IndependentCallService({kernel, repository, transfers, canWrite, hostPorts: {logger}});
 }
 async function createKernel() {
     const result = new Kernel({catalog: {fs}, maxConcurrentEffects: 1, onDiagnostic: () => {}});
@@ -88,7 +88,7 @@ it('freezes one business Invocation and a ready Kernel plan in the existing rout
     expect(await repository.list()).toHaveLength(2); expect(await repository.listHistory(ready.executionSessionId)).toEqual([]);
     expect(await service.inspect(input())).toMatchObject({status: 'unknown', executionSessionId: ready.executionSessionId});
     expect(await kernel.listSessionTasks(parent)).toEqual([]); expect(await kernel.listSessionTasks(ready.executionSessionId)).toEqual([]);
-    expect(submit).not.toHaveBeenCalled(); expect(model).not.toHaveBeenCalled(); expect(native).not.toHaveBeenCalled();
+    expect(model).not.toHaveBeenCalled(); expect(native).not.toHaveBeenCalled();
 });
 it.each(['chat', 'agent', 'harness'] as const)('reloads the original %s plan after a Kernel restart and executes it without preparation', async kind => {
     const first = await service.prepareTaskCall(input(), options(kind)); kernel.dispose(); await kernel.waitIdle(); kernel = await createKernel();
@@ -145,14 +145,11 @@ it('rejects a changed request or deadline policy before re-reading providers or 
     expect(configured.prepare).not.toHaveBeenCalled(); expect(await repository.list()).toHaveLength(2);
 });
 it('prevents both directions of queue/Kernel reinterpretation under one call identity', async () => {
-    await service.prepareTaskCall(input(), options()); await expect(service.submit(input())).rejects.toHaveProperty('code', 'CALL_EXECUTION_MODE_CONFLICT');
+    await service.prepareTaskCall(input(), options());
+    await expect(service.submit(input())).rejects.toHaveProperty('code', 'CALL_EXECUTION_MODE_CONFLICT');
     const legacy = input(); legacy.request.submission!.id = legacy.request.submission!.source.id = 'queue-call';
-    submit.mockImplementationOnce(async request => {const store = new InstructionQueueStore(kernel), queue = await store.read(request.expectedSessionId!);
-        const item = prepareInstruction(submissionInstruction(request), request.expectedSessionId!, 'main');
-        await store.write({...queue, accepted: [{id: item.id, digest: await instructionDigest(item)}]}); return item.id;});
-    expect((await service.submit(legacy)).status).toBe('accepted');
-    await expect(service.prepareTaskCall(legacy, options())).rejects.toHaveProperty('code', 'CALL_EXECUTION_MODE_CONFLICT');
-    expect(submit).toHaveBeenCalledOnce();
+    await expect(service.submit(legacy)).rejects.toHaveProperty('code', 'CALL_PREPARATION_UNAVAILABLE');
+
 });
 it.each(['target', 'invocation', 'round', 'context'] as const)('rejects a host-prepared %s mismatch without persisting it or executing', async mismatch => {
     const configured = options(); configured.prepare = async (request, invocation) => {
@@ -230,7 +227,7 @@ it('assigns a different Invocation and child for an explicit new call rather tha
     next.request.submission!.id = next.request.submission!.source.id = 'next';
     const second = await service.prepareTaskCall(next, options());
     expect(second.executionSessionId).not.toBe(first.executionSessionId); expect(second.invocation.invocationId).not.toBe(first.invocation.invocationId);
-    expect(await repository.list()).toHaveLength(3); expect(submit).not.toHaveBeenCalled();
+    expect(await repository.list()).toHaveLength(3);
 });
 
 it('keeps the frozen plan when the caller changes its live branch and refuses to rebuild it under new settings', async () => {
@@ -273,7 +270,7 @@ it('recovers a lost deferred caller submission reply after restart using the sam
 it('requires a committed plan before trusted dispatch and keeps missing admission read-only', async () => {
     expect(await service.inspectTaskCallSubmission(input())).toBeUndefined();
     await expect(service.submitPreparedTaskCall(input())).rejects.toHaveProperty('code', 'CALL_PREPARATION_REQUIRED');
-    expect(await kernel.listSessionTasks(parent)).toEqual([]); expect(submit).not.toHaveBeenCalled();
+    expect(await kernel.listSessionTasks(parent)).toEqual([]);
 });
 it.each(['chat', 'agent', 'harness'] as const)('submits a persisted %s route through the host API and observes the original caller', async kind => {
     const ready = await service.prepareTaskCall(input(), options(kind)), admitted = await service.submitPreparedTaskCall(input());
@@ -284,7 +281,7 @@ it.each(['chat', 'agent', 'harness'] as const)('submits a persisted %s route thr
     expect(await service.inspectTaskCallSubmission(input())).toEqual(admitted);
     expect(await service.submitPreparedTaskCall(input())).toEqual(admitted);
     expect(await kernel.listSessionTasks(parent)).toHaveLength(1); expect(await kernel.listSessionTasks(ready.executionSessionId)).toHaveLength(1);
-    expect(submit).not.toHaveBeenCalled();
+
 });
 it('observes actual admission after a lost caller response and resumes that deferred caller without queue fallback', async () => {
     const ready = await service.prepareTaskCall(input(), options()), original = kernel.submit.bind(kernel); let lost = false;
@@ -295,7 +292,7 @@ it('observes actual admission after a lost caller response and resumes that defe
     expect(await kernel.listSessionTasks(ready.executionSessionId)).toEqual([]);
     const resumed = await service.submitPreparedTaskCall(input()); expect(resumed).toEqual(observed);
     const caller = await kernel.attachTask(parent, resumed.submission.task.taskId); await caller.wait({until: 'settled', timeoutMs: 3000});
-    expect(model).toHaveBeenCalledOnce(); expect(submit).not.toHaveBeenCalled();
+    expect(model).toHaveBeenCalledOnce();
     expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('PRIVATE LOST REPLY');
 });
 it('reconciles a lost binding response without granting or executing again', async () => {
@@ -333,13 +330,13 @@ it('does not expose prepared dispatch through the legacy RPC registry', async ()
 });
 it('uses the injected host preparer when the caller supplies only frozen policy', async () => {
     const configured = options(), compile = vi.fn(configured.prepare);
-    const host = new IndependentCallService({kernel, repository, transfers, submit, hostPorts: {logger}, prepareTaskCall: compile});
+    const host = new IndependentCallService({kernel, repository, transfers, hostPorts: {logger}, prepareTaskCall: compile});
     const ready = await host.prepareTaskCall(input(), {maxDepth: 3, timeoutMs: null});
     expect(await host.prepareTaskCall(input(), {maxDepth: 3, timeoutMs: null})).toEqual(ready); expect(compile).toHaveBeenCalledOnce();
-    expect(submit).not.toHaveBeenCalled(); expect(model).not.toHaveBeenCalled();
+    expect(model).not.toHaveBeenCalled();
 });
 it('does not silently replace an explicitly invalid preparer with the injected host callback', async () => {
-    const compile = vi.fn(options().prepare), host = new IndependentCallService({kernel, repository, transfers, submit, prepareTaskCall: compile});
+    const compile = vi.fn(options().prepare), host = new IndependentCallService({kernel, repository, transfers, prepareTaskCall: compile});
     await expect(host.prepareTaskCall(input(), {maxDepth: 3, prepare: undefined} as never)).rejects.toHaveProperty('code', 'CALL_PREPARATION_UNAVAILABLE');
     expect(compile).not.toHaveBeenCalled(); expect(await kernel.listSessionTasks(parent)).toEqual([]);
 });
@@ -441,4 +438,22 @@ it('keeps cancellation independent of damaged history when the Kernel target ide
         taskId, expectedEpoch: 0, requestId: 'stop-without-history'});
     expect((await kernel.task(ready.executionSessionId, taskId)).status).toBe('cancelled');
     expect(await service.inspect(input())).toMatchObject({status: 'accepted', evidence: 'kernel', callerExecution: admitted.submission.task});
+});
+
+it('reads historical queue calls alongside prepared calls without resubmitting or acquiring a writer', async () => {
+    const original = input(), {executionSessionId} = await service.prepareTaskCall(original, options());
+    const owner = await kernel.openSession(parent), stored = (await owner.getShared(key))!;
+    const route = stored.value as unknown as {childRequest: SubmissionRequest; kernelPreparation?: unknown};
+    delete route.kernelPreparation;
+    await owner.setShared(key, JSON.parse(JSON.stringify(route)), {expectedVersion: stored.version});
+    const instruction = prepareInstruction(submissionInstruction(route.childRequest), executionSessionId, 'main');
+    const store = new InstructionQueueStore(kernel), queue = await store.read(executionSessionId);
+    await store.write({...queue, accepted: [{id: 'call', digest: await instructionDigest(instruction)}]});
+    const current = input(); current.request.submission!.id = current.request.submission!.source.id = 'new-call';
+    await service.prepareTaskCall(current, options());
+    const open = vi.spyOn(kernel, 'openSession'), recover = vi.spyOn(kernel, 'recoverSession');
+    expect(await service.inspect(original)).toMatchObject({status: 'accepted', evidence: 'queue', executionSessionId});
+    expect(await service.list({sessionId: parent})).toHaveLength(2);
+    expect(open).not.toHaveBeenCalled(); expect(recover).not.toHaveBeenCalled(); expect(model).not.toHaveBeenCalled();
+    await expect(service.prepareTaskCall(original, options())).rejects.toHaveProperty('code', 'CALL_EXECUTION_MODE_CONFLICT');
 });

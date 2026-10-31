@@ -1,7 +1,7 @@
 import type {TwinCollectionExecutor, TwinScannerTool} from '@itookit/app-contracts';
 import {sha256HexSync} from '@itookit/llm-context';
 import type {IToolService} from '@itookit/tools/contracts';
-export type CollectionToolCatalog = Pick<IToolService, 'listTools' | 'getToolDefinitions'>;
+export type CollectionToolCatalog = Pick<IToolService, 'listTools' | 'getToolDefinitions' | 'getToolDefaults'>;
 /** Catalog metadata is safe to project; executable handlers and credentials remain in the Session scope. */
 export function collectionTools(catalog: CollectionToolCatalog): TwinScannerTool[] {
     const definitions = catalog.getToolDefinitions();
@@ -9,7 +9,8 @@ export function collectionTools(catalog: CollectionToolCatalog): TwinScannerTool
         const definition = definitions.find(item => (item.function?.name ?? item.name) === meta.id);
         if (!definition) return [];
         const parameters = definition.function?.parameters ?? definition.parameters ?? {type: 'object', properties: {}};
-        return [{name: meta.name || meta.id, description: meta.description, source: meta.type,
+        const defaults = catalog.getToolDefaults?.(meta.id);
+        return [{...(defaults && Object.keys(defaults).length ? {defaults: defaults as TwinScannerTool['defaults']} : {}), name: meta.name || meta.id, description: meta.description, source: meta.type,
             target: {kind: 'tool' as const, id: meta.id, version: meta.version!, digest: sha256HexSync(JSON.stringify([meta, definition]))},
             parameters: structuredClone(parameters) as TwinScannerTool['parameters']}];
     });

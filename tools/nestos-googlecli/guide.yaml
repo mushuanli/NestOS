@@ -1,0 +1,28 @@
+version: 1
+connectionTypes: [google-workspace]
+title: 在电脑上连接 Google 账号
+description: 没有域名也可使用。完成一次授权后，由 httpd 自动刷新令牌并采集，这台电脑可以关闭。
+steps:
+  - title: 下载客户端文件（首次）
+    description: |
+      打开下方 Google OAuth 客户端页面，选择项目，创建“桌面应用”（Desktop app）并下载 JSON。无需填写回调地址。
+      首次使用需启用要读取的 API；应用处于测试状态时，将自己的 Google 账号加入测试用户。
+    links:
+      - label: 创建 Google OAuth 客户端
+        url: https://console.cloud.google.com/auth/clients
+      - label: 启用 Gmail API
+        url: https://console.cloud.google.com/apis/library/gmail.googleapis.com
+      - label: 启用 Calendar API
+        url: https://console.cloud.google.com/apis/library/calendar-json.googleapis.com
+      - label: 添加测试用户
+        url: https://console.cloud.google.com/auth/audience
+  - title: 打开电脑终端，运行这条命令
+    description: |
+      在有 NestOS 项目源码和 Node 22+ 的电脑上，进入项目根目录后运行。粘贴下载的 JSON 文件路径，读取范围直接按回车默认“邮件和日历”，再用这台电脑的浏览器打开命令显示的链接，同意授权。
+      浏览器提示收到授权后，请等终端显示文件已保存；命令仍需联网换取令牌。Node 24.14+ / 25.4+ 自动沿用终端已配置的 HTTP(S) 代理。
+      httpd 可以在另一台机器；命令和授权浏览器必须在同一台电脑。仅在手机操作或电脑没有源码时，此命令不能直接使用，需先在电脑上准备项目。
+    command: node tools/nestos-googlecli/node/authorize.mjs
+  - title: 在下方选择授权结果，保存连接
+    description: |
+      命令完成后会显示生成文件的完整路径。用这台电脑的浏览器打开 NestOS，在下方选择这个结果 JSON（不是第一步下载的客户端 JSON），点击“保存连接”。名称、标识和保存目录无需填写。
+      浏览器将凭据提交到 httpd 的当前用户私有目录，两台机器无需共享路径。随后在工具包中“为我启用”并保存，扫描器选择此连接即可。

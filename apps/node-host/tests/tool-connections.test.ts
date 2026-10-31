@@ -1,7 +1,7 @@
 import {mkdtemp, rm, stat, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {expect, it} from 'vitest';
+import {expect, it, vi} from 'vitest';
 import {NodeToolConnections} from '../src/runtime/tool-connections';
 
 it('isolates identical connection IDs by user, redacts secrets and preserves them on edit and reopen', async () => {
@@ -43,4 +43,20 @@ it('reports corrupt credential storage without returning a JSON excerpt containi
         const failure = await new NodeToolConnections(root).snapshot().catch(error => error);
         expect(String(failure)).not.toContain('PRIVATE_TOKEN');
     } finally {await rm(root, {recursive: true, force: true});}
+});
+
+it('reports unsupported online verification for generic keys and never logs invalid verification input', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'tool-check-'));
+    const fetcher = vi.fn(async () => {throw new Error('must not call provider');});
+    const store = new NodeToolConnections(root, {fetcher});
+    try {
+        store.register({id: 'key-account', name: 'Key account', description: '', fields: [{name: 'token', label: 'Token', secret: true, required: true}]});
+        await store.save({id: 'account', type: 'key-account', name: 'Account', values: {token: 'PRIVATE_TOKEN'}});
+        expect(await store.verify('account')).toMatchObject({status: 'unsupported'}); expect(fetcher).not.toHaveBeenCalled();
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            await expect(store.verify({private: 'PRIVATE_ARGUMENT'} as never)).rejects.toThrow('TOOL_CONNECTION_INVALID');
+            expect(JSON.stringify(warning.mock.calls)).not.toContain('PRIVATE_ARGUMENT');
+        } finally {warning.mockRestore();}
+    } finally {await store.close(); await rm(root, {recursive: true, force: true});}
 });

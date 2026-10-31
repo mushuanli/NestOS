@@ -123,3 +123,5 @@ Harness 节点允许结构化消息和标准 image/file 资产块，图层只保
 Flow 根任务提交可能先持久化再丢回执；发起根提交后且未取得 scheduler lease 的宿主，不得失败化根任务或清理已引用工作区。准入前序列化失败仍清理私有工作区，取得租约后的真实执行失败仍正常收尾。FLOW_SCHEDULER_BUSY 区分租约竞争；诊断异常不改变原结果。
 
 prepareFlowRun 统一解析 arguments/composer，再编译原执行图；来源信封未知字段拒绝，不静默丢弃。默认值按 Flow、Agent、本次显式值覆盖，只有缺少才继承；来源、签名及有效值冻结。onMissing=interact 保留接纳后补参，节点消费前验证完整值。global/local 由定义和根准入共同约束，local 只允许 Flow 内部调用；省略 exposure 保留原全局语义和旧摘要。文件声明校验内容身份和限制，实际资产授权/读取仍在宿主边界。
+
+RunCancel 统一调用 cancelFlowRun，必须显式携带 Session、根 Task、稳定 requestId 和观察到的 expectedEpoch；不得按字段存在与否选择旧控制协议，也不得恢复缓存句柄后自行枚举取消。

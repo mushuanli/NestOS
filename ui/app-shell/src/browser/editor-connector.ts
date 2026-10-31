@@ -41,7 +41,7 @@ const replacePrefix = (path: string, old: string, next: string) => path === old 
 
 /** Each open file owns its editor and save coordinator independently of navigation. */
 export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, container: HTMLElement,
-    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string, mode?: 'edit' | 'render'): Promise<void>; getActiveResourceId(): string | null; assertRecovery(): void; captureRecovery(): unknown; restoreRecovery(state: unknown): void; suspendForRecovery(): void } {
+    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; refreshDirectory(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string, mode?: 'edit' | 'render'): Promise<void>; getActiveResourceId(): string | null; assertRecovery(): void; captureRecovery(): unknown; restoreRecovery(state: unknown): void; suspendForRecovery(): void } {
     const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, windows, emptyMessage, navigationLabel, onBeforeNavigate, saveDebounceMs: _debounce, ...extra } = options;
     if (files.fs !== engine) throw new Error('Editor file context differs from its file tree');
     const revisions = new Map<string, string | undefined>();
@@ -130,7 +130,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 void (parent === '/' ? openDirectory(parent) : openResource(parent)).catch(report);
             },
             refresh: () => directoryEntries(item.id).catch(error => { report(error); throw error; }) }));
-        tab.subscriptions.push(watchDirectoryList(engine, tab.panel, report));
+        tab.subscriptions.push(watchDirectoryList(engine, tab.panel, report, () => visible && !closed && tabs.current?.id === tab.id));
         tab.subscriptions.push(watchDirectorySelection(tab.panel, vfs));
     }
     async function create(tab: WorkbenchTab<OpenView>, item: VFSNodeUI, load: ViewLoad): Promise<void> {
@@ -169,7 +169,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         if (!item) { if (!tabs.current?.value) placeholder(); return; }
         if (item.type === 'file' && tabs.current?.value?.node.type === 'directory') tabs.keep(tabs.current.id);
         const existing = tabs.get(item.id);
-        if (existing?.value && !reload) { tabs.activate(item.id); await refreshDirectoryList(existing.panel); onEditorCreated?.(existing.value.editor ?? null); return; }
+        if (existing?.value && !reload) { tabs.activate(item.id); await existing.value.editor?.activate?.(); await refreshDirectoryList(existing.panel); onEditorCreated?.(existing.value.editor ?? null); return; }
         if (existing && reload) await tabs.close(existing.id, false);
         const preview = options.virtualViews?.find(view => view.id === item.id)?.preview ?? true;
         const tab = await tabs.open(item.id, item.metadata.title || item.id, preview);
@@ -240,9 +240,11 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         selectionWork = select({item}); await selectionWork;
         if (mode && tabs.current?.id === path) {await tabs.current.value?.editor?.switchToMode(mode); tabs.current.value?.editor?.focus();}
     }
-    return Object.assign(dispose, { assertRecovery: () => tabs.assertRecovery(), captureRecovery: () => tabs.captureRecovery(), restoreRecovery: (state: unknown) => tabs.restoreRecovery(state), suspendForRecovery: () => tabs.suspendForRecovery(), openDirectory, openResource, getActiveResourceId: () => tabs.current?.value?.node.id ?? null, async whenReady(): Promise<void> { await selectionWork; }, async setVisible(next: boolean): Promise<void> {
+    const refreshDirectory = async () => {if (!closed && visible && tabs.current) await refreshDirectoryList(tabs.current.panel);};
+    return Object.assign(dispose, {refreshDirectory, assertRecovery: () => tabs.assertRecovery(), captureRecovery: () => tabs.captureRecovery(), restoreRecovery: (state: unknown) => tabs.restoreRecovery(state), suspendForRecovery: () => tabs.suspendForRecovery(), openDirectory, openResource, getActiveResourceId: () => tabs.current?.value?.node.id ?? null, async whenReady(): Promise<void> { await selectionWork; }, async setVisible(next: boolean): Promise<void> {
         if (visible === next) return; visible = next;
         if (!next) { loads.cancel(); await Promise.all(tabs.values().map(tab => flush(tab.value?.editor))); }
         else if (pendingItem && (tabs.current?.id !== pendingItem.id || !tabs.current?.value)) await select({ item: pendingItem });
+        else {await refreshDirectory(); await tabs.current?.value?.editor?.activate?.();}
     } });
 }

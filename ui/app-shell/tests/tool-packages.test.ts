@@ -47,7 +47,8 @@ it('installs package-owned workflows through a trusted identity and configures u
     await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-flows]')).not.toBeNull());
     f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.click();
     await vi.waitFor(() => expect(installFlows).toHaveBeenCalledWith(available.id, available.version));
-    await vi.waitFor(() => expect(f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(false));
+    await vi.waitFor(() => expect(f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(true));
+    await vi.waitFor(() => expect(f.dialog.querySelector<HTMLButtonElement>('[data-packages-refresh]')!.disabled).toBe(false));
     const form = f.dialog.querySelector<HTMLFormElement>('[data-form=sourceConnection]')!;
     form.querySelector<HTMLInputElement>('[name=id]')!.value = 'personal'; form.querySelector<HTMLInputElement>('[name=name]')!.value = 'My service';
     form.querySelector<HTMLInputElement>('[name=key]')!.value = 'private-key';
@@ -123,4 +124,157 @@ it.each(['package', 'flow'])('refreshes both package and Flow states after prepa
     });
     expect(listPackages).toHaveBeenCalledTimes(2); expect(listFlows).toHaveBeenCalledTimes(2);
     expect(f.dialog.querySelector('[data-package-ensure]')).toBeNull(); expect(f.dialog.querySelector('[data-flow-ensure]')).toBeNull();
+});
+
+const guide: NonNullable<ToolPackageInfo['guide']> = {version: 1, title: '<img src=x>', description: 'Setup remains available after registration', steps: [
+    {title: 'Register', description: '<script>private</script>', command: 'example <input> & echo done', links: [{label: 'Documentation', url: 'https://docs.example.com/setup'}]},
+    {title: 'Authenticate', description: 'Configure your own account'},
+]};
+it('retains the full escaped guide before and after registration and preserves its expanded state on refresh', async () => {
+    let registered = false;
+    const f = setup({toolPackages: {list: async () => [{...available, guide, status: registered ? 'registered' : 'available'}],
+        ensure: async () => {registered = true; return {tools: [{id: 'document.inspect', status: 'ready'}]};}}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-guide]')).not.toBeNull());
+    f.dialog.querySelector<HTMLDetailsElement>('[data-package-guide]')!.open = true;
+    expect(f.dialog.querySelector('img, script')).toBeNull();
+    expect(f.dialog.querySelector('pre')!.textContent).toBe('example <input> & echo done');
+    expect(f.dialog.querySelector('a')!.rel).toBe('noopener noreferrer'); expect(f.dialog.querySelector('a')!.target).toBe('_blank');
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-ensure]')!.click();
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-status]')!.textContent).toBe('已注册'));
+    expect(f.dialog.querySelector<HTMLDetailsElement>('[data-package-guide]')!.open).toBe(true);
+    expect(f.dialog.textContent).toContain('Authenticate'); expect(f.dialog.textContent).toContain('Register');
+    f.dialog.querySelector<HTMLButtonElement>('[data-packages-refresh]')!.click();
+    await vi.waitFor(() => expect(f.dialog.querySelector<HTMLButtonElement>('[data-packages-refresh]')!.disabled).toBe(false));
+    expect(f.dialog.querySelector<HTMLDetailsElement>('[data-package-guide]')!.open).toBe(true);
+});
+
+it('reports guide errors without removing package registration controls', async () => {
+    const f = setup({toolPackages: {list: async () => [{...available, guideError: 'TOOL_PACKAGE_GUIDE_INVALID'}], ensure: vi.fn()}});
+    await vi.waitFor(() => expect(f.dialog.textContent).toContain('指南暂不可用'));
+    expect(f.dialog.textContent).toContain('TOOL_PACKAGE_GUIDE_INVALID'); expect(f.dialog.querySelector('[data-package-ensure]')).not.toBeNull();
+});
+
+it('lets a user save enablement and ordinary defaults while keeping the guide visible and expanded', async () => {
+    let configuration: NonNullable<ToolPackageInfo['configuration']> = {enabled: false, defaults: {}, tools: [{id: 'document.inspect', parameters: [{name: 'directory', type: 'string', label: 'Directory'}]}]};
+    const configure = vi.fn(async (_id, _version, settings) => {configuration = {...configuration, ...settings};});
+    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', guide, configuration}], ensure: vi.fn(), configure}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-form=toolPackage]')).not.toBeNull());
+    const form = f.dialog.querySelector<HTMLFormElement>('[data-form=toolPackage]')!;
+    f.dialog.querySelector<HTMLDetailsElement>('[data-package-guide]')!.open = true;
+    form.querySelector<HTMLDetailsElement>('details')!.open = true;
+    form.querySelector<HTMLInputElement>('[name=enabled]')!.checked = true;
+    form.querySelector<HTMLInputElement>('[data-parameter]')!.value = 'my-imports';
+    form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+    await vi.waitFor(() => expect(configure).toHaveBeenCalledWith(available.id, available.version, {enabled: true, defaults: {'document.inspect': {directory: 'my-imports'}}}));
+    await vi.waitFor(() => expect(f.changed).toHaveBeenCalledOnce());
+    expect(f.dialog.querySelector<HTMLInputElement>('[name=enabled]')!.checked).toBe(true);
+    expect(f.dialog.querySelector<HTMLInputElement>('[data-parameter]')!.value).toBe('my-imports');
+    expect(f.dialog.querySelector<HTMLDetailsElement>('[data-package-guide]')!.open).toBe(true);
+    expect(f.dialog.querySelector<HTMLDetailsElement>('[data-package-preferences]')!.open).toBe(true);
+    expect(f.dialog.querySelector('[data-package-status]')!.textContent).toBe('已注册');
+});
+
+it('merges package versions, reads run history and toggles only user settings', async () => {
+    let enabled = false;
+    const configure = vi.fn(async (_id, _version, input) => {enabled = input.enabled;});
+    const history = vi.fn(async () => [{id: 'run', toolId: 'document.inspect', version: '2', startedAt: 1000, durationMs: 120, status: 'succeeded' as const}]);
+    const f = setup({toolPackages: {list: async () => [{...available, version: '0.1.0', status: 'available'},
+        {...available, status: 'registered', configuration: {enabled, defaults: {}, tools: []}}, {...available, version: '2.0.0', status: 'available'}], ensure: vi.fn(), configure, history}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-toggle]')).not.toBeNull());
+    expect(f.dialog.querySelectorAll('[data-package-id][class=tool-packages-dialog__item]')).toHaveLength(1);
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-toggle]')!.click();
+    await vi.waitFor(() => expect(configure).toHaveBeenCalledWith(available.id, available.version, {enabled: true, defaults: {}}));
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-toggle]')!.getAttribute('aria-pressed')).toBe('true'));
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-history]')!.click();
+    await vi.waitFor(() => expect(history).toHaveBeenCalledWith(available.id, available.version));
+    await vi.waitFor(() => expect(f.dialog.textContent).toContain('120 ms'));
+    expect(f.dialog.textContent).toContain('0.1.0'); expect(f.dialog.textContent).toContain('2.0.0');
+});
+it('offers enablement for disabled dependencies while retaining other disabled tools', async () => {
+    const configure = vi.fn(async () => {});
+    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', configuration: {enabled: false, defaults: {}, disabledTools: ['document.inspect', 'other'], tools: [{id: 'document.inspect', parameters: []}]}}], ensure: vi.fn(), configure},
+        flowInstallations: {list: async () => [{flowId: 'flow', status: 'needsConfiguration', tools: [{id: 'document.inspect', status: 'failed', code: 'TOOL_DISABLED'}], parameters: [], connections: [], errors: []}], check: vi.fn(), ensure: vi.fn()}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-enable-dependency]')).not.toBeNull());
+    expect(f.dialog.querySelector('[data-flow-ensure]')).toBeNull();
+    f.dialog.querySelector<HTMLButtonElement>('[data-enable-dependency]')!.click();
+    await vi.waitFor(() => expect(configure).toHaveBeenCalledWith(available.id, available.version, {enabled: true, defaults: {}, disabledTools: ['other']}));
+});
+
+it('shows progress, completion and installed state after reopening for bundled workflows', async () => {
+    let finish!: (count: number) => void, installed = false;
+    const installFlows = vi.fn(() => new Promise<number>(resolve => {finish = count => {installed = true; resolve(count);};}));
+    const controls = {toolPackages: {list: async () => [{...available, status: 'registered' as const, flowCount: 2,
+        flowResources: [{id: 'mail', name: 'Mail flow', installed}, {id: 'calendar', name: 'Calendar flow', installed}]}], ensure: vi.fn(), installFlows}};
+    const f = setup(controls);
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-flows]')).not.toBeNull());
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.click();
+    expect(f.dialog.querySelector('[data-package-flows]')!.textContent).toContain('正在添加');
+    expect(f.dialog.querySelector('[data-package-flows]')!.getAttribute('aria-busy')).toBe('true');
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.click(); expect(installFlows).toHaveBeenCalledOnce();
+    finish(2);
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-flow-status]')!.textContent).toContain('已新增 2'));
+    expect(f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(true);
+    expect(f.dialog.querySelector('[data-package-flows]')!.textContent).toContain('已添加');
+    f.dialog.close(); const reopened = setup(controls);
+    await vi.waitFor(() => expect(reopened.dialog.querySelector('[data-package-flows]')!.textContent).toContain('已添加'));
+    expect(reopened.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(true);
+    expect(installFlows).toHaveBeenCalledOnce();
+});
+it('explains a zero-addition result and reports missing host capability instead of silent success', async () => {
+    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', flowCount: 1}], ensure: vi.fn(), installFlows: async () => 0}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-flows]')).not.toBeNull());
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.click();
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-flow-status]')!.textContent).toContain('已在流程库中'));
+    f.dialog.close();
+    const unsupported = setup({toolPackages: {list: async () => [{...available, status: 'registered', flowCount: 1}], ensure: vi.fn()}});
+    await vi.waitFor(() => expect(unsupported.dialog.querySelector('[data-package-flows]')).not.toBeNull());
+    unsupported.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.click();
+    await vi.waitFor(() => expect(unsupported.dialog.querySelector('[role=alert]')!.textContent).toContain('当前宿主不支持'));
+    expect(unsupported.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(false);
+});
+it('refreshes actual library presence after a partially failed install and allows a retry', async () => {
+    let partial = false;
+    const installFlows = vi.fn(async () => {partial = true; throw new Error('FLOW_PUBLISH_UNAVAILABLE');});
+    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', flowCount: 2,
+        flowResources: [{id: 'one', name: 'First', installed: partial}, {id: 'two', name: 'Second', installed: false}]}], ensure: vi.fn(), installFlows}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-flows]')).not.toBeNull());
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.click();
+    await vi.waitFor(() => expect(f.dialog.querySelector('[role=alert]')!.textContent).toContain('FLOW_PUBLISH_UNAVAILABLE'));
+    expect(f.dialog.querySelector('[data-package-flow-status]')!.textContent).toContain('1/2');
+    expect(f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(false);
+});
+
+it('offers an explicit version switch, shows the pending restart and keeps OAuth settings inside the active package', async () => {
+    let pending = false;
+    const switchVersion = vi.fn(async () => {pending = true;});
+    const type: ToolConnectionType = {id: 'external-account', name: 'External account', description: '',
+        fields: [{name: 'client', label: 'Client', required: true}, {name: 'secret', label: 'Secret', secret: true, required: true}, {name: 'refresh', label: 'Refresh', secret: true}],
+        authorization: {kind: 'oauth2', authorizationEndpoint: 'https://fixture.invalid/authorize', tokenEndpoint: 'https://fixture.invalid/token',
+            clientIdField: 'client', clientSecretField: 'secret', refreshTokenField: 'refresh', permissionGroups: [{id: 'read', label: 'Read', scopes: ['read']}]},
+        application: {configured: false, canManage: true}};
+    const save = vi.fn();
+    const controls = {toolPackages: {list: async () => [
+        {...available, version: '0.2.0', status: 'registered' as const, ...(pending ? {pendingVersion: '0.2.1'} : {})},
+        {...available, version: '0.2.1', status: 'available' as const, canSwitch: !pending, connectionTypes: [type.id], connectionMethods: {[type.id]: ['browser', 'import'] as Array<'browser' | 'import'>}}],
+        ensure: vi.fn(), switchVersion, connections: {snapshot: async () => ({types: [type], connections: []}), save, remove: vi.fn()}}};
+    const f = setup(controls);
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-switch]')).not.toBeNull());
+    const settings = f.dialog.querySelector('[data-connection-details="package:external-package"]')!;
+    expect(settings.querySelector('[data-connection-method]')).not.toBeNull();
+    expect(settings.querySelector('[data-form=oauthApplication]')).not.toBeNull();
+    expect(f.dialog.querySelectorAll('[data-connection-details=connections]')).toHaveLength(1);
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-switch]')!.click();
+    await vi.waitFor(() => expect(switchVersion).toHaveBeenCalledWith(available.id, '0.2.1', '0.2.0'));
+    await vi.waitFor(() => expect(f.dialog.textContent).toContain('已准备 0.2.1'));
+    expect(f.dialog.textContent).toContain('重启 NestOS 宿主后生效'); expect(f.dialog.querySelector('[data-package-switch]')).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+    f.dialog.close(); const reopened = setup(controls);
+    await vi.waitFor(() => expect(reopened.dialog.textContent).toContain('已准备 0.2.1'));
+});
+
+it('keeps factory-owned account settings visible even when an older package has no guide or connection YAML', async () => {
+    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', connectionTypes: ['account']}], ensure: vi.fn(),
+        connections: {snapshot: async () => ({types: [{id: 'account', name: 'Account', description: '', fields: [{name: 'key', label: 'Key', secret: true}]}], connections: []}), save: vi.fn(), remove: vi.fn()}}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-connection-details="package:external-package"] [data-form=sourceConnection]')).not.toBeNull());
+    expect(f.dialog.querySelectorAll('[data-connection-details=connections]')).toHaveLength(1);
 });

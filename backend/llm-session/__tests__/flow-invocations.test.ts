@@ -305,7 +305,7 @@ it('runs three calls in one Session, deduplicates admission, and routes identica
     await expect(commands.execute(FlowCommand.RunRespond, { taskId: a.rootTaskId, targetTaskId: targetB, requestId: 'same', value: 'wrong' })).rejects.toThrow('outside');
     await commands.execute(FlowCommand.RunRespond, { taskId: a.rootTaskId, targetTaskId: targetA, requestId: 'same', value: 'A' });
     expect((await (await kernel.openTask(a.rootTaskId!)).wait({ timeoutMs: 3000 })).status).toBe('succeeded');
-    await commands.execute(FlowCommand.RunCancel, { taskId: b.rootTaskId });
+    await commands.execute(FlowCommand.RunCancel, {sessionId: 's', taskId: b.rootTaskId, requestId: 'cancel-b', expectedEpoch: 0});
     expect((await (await kernel.openTask(b.rootTaskId!)).status()).task.status).toBe('cancelled');
     expect((await (await kernel.openTask(c.rootTaskId!)).status()).task.status).not.toBe('cancelled');
     await expect(service.invoke(input('a', 'changed'))).rejects.toThrow('different arguments');

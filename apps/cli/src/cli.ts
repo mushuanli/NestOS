@@ -160,8 +160,8 @@ function help(): string {
         `  nestos project list|create [name] [--profile data-root] [--json]\n` +
         `  nestos session list | create <project-id> <title> | show <session-id>\n` +
         `  nestos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
-        `  nestos flow-run show|cancel|reattach <session-id> <root-task-id>\n` +
-        `  nestos flow-run pause|resume|withdraw-pause <session-id> <root-task-id> <request-id> <observed-epoch>\n` +
+        `  nestos flow-run show|reattach <session-id> <root-task-id>\n` +
+        `  nestos flow-run pause|resume|withdraw-pause|cancel <session-id> <root-task-id> <request-id> <observed-epoch>\n` +
         `  nestos flow-run receipt <session-id> <root-task-id> <request-id>\n` +
         `  nestos session targets\n` +
         `  nestos session call-prepare <session-id> [text] --agent id | --flow id --call-title title --submission-file call.json [--transfer reference.json]\n` +

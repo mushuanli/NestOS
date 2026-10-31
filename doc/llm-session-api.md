@@ -709,7 +709,7 @@ C4Dynamic
 
 ### 独立根调用路由
 
-`IndependentCallCommand.Submit`（session.call.submit）接收 `IndependentCallInput`：`request` 是带 expectedSessionId、expectedBranch、expectedTarget 与 submission 的原冻结请求，另有 title 和可选 transfer。宿主通过 `submitIndependentCall` 提供独立执行上下文，将子请求送入原 Session 队列，不改变调用方 UI 绑定。
+`IndependentCallCommand.Submit`（session.call.submit）接收 `IndependentCallInput`：`request` 是带 expectedSessionId、expectedBranch、expectedTarget 与 submission 的原冻结请求，另有 title 和可选 transfer。宿主注入可信准备器与调用策略，冻结 Kernel Task 计划后沿同一 Kernel 调用协议提交；不再将独立调用退回普通 Session 队列，也不改变调用方 UI 绑定。
 
 `IndependentCallCommand.Inspect`（session.call.inspect）携带同一输入，只读核对原路由与子队列/历史；返回 IndependentCallReceipt 的 callerSessionId、可用时的 executionSessionId 与实际 ExecutionRef。unknown 不证明未创建或未提交；accepted 只证明子队列持久接纳。路由不复制 Task 状态，关闭观察不取消执行。父子默认不继承历史，材料经 transfer 显式传入；附件通过原存储冻结与校验。参见[合入计划第 37 节](design/functional-merge-plan.md#37-f16-统一独立调用的宿主路由与接纳查询)。
 
@@ -778,14 +778,11 @@ authorization、cancel-remaining 和 receipt；不记录参数、取消原因或
 机制、C4 与未完成的跨 Session 受管控制见 [合入计划第 80 节](design/functional-merge-plan.md#80-子-session-创建完成事实与只读回执)。
 
 
-## 受管独立调用准入接点（内部）
+## 独立调用的统一准入
 
-Session 内部的 `IndependentCallService.submitManaged(input, guard)` 复用独立调用路由、子 Session 创建及正式提交端口；它不是新 RPC 命令或根导出。guard 接收实际子 Session 的冻结 Submission 副本，在附件准备完成、即将提交时执行。受信父 Effect 应先通过 `sessionState.setIfRunning` 持久保存派发意图，再明确返回 `true`。
+独立调用只保留 prepare → 持久冻结 Kernel 计划 → 提交/核对原 Kernel 调用的路径。未配置准备器或策略时明确拒绝；没有普通 Session 队列降级。已移除无人使用的 guard 提交接点及宿主队列提交端口。跨 Session 执行归属、期限、取消与结算由 Kernel 机制承担。
 
-已有接纳优先返回，不再次调用 guard 或发送。guard 未明确允许时再次核对原接纳，无事实才返回 `held`；held 不证明原调用未执行，也不能用于确认清理。guard/附件错误原样保留，丢提交回执仍核对原请求；日志错误不覆盖持久结果。输入与回调副本不改变实际冻结请求。
-
-派发意图先于取消时仍可能发生迟到提交；后续受管 Effect 必须持有核对和实际收尾责任。该接点本身不实现跨 Session 取消、暂停传播或完成等待。边界与 C4 见 [合入计划第 81 节](design/functional-merge-plan.md#81-受管调用提交前的-kernel-准入接点)。
-
+旧记录缺少 Kernel 准备事实时返回模式冲突，不补造执行身份、不自动重新提交。接纳查询与执行投影分离；Web 和 CLI 读取同一 `session.calls.list` 投影。
 
 ## 准备直接运行的 Task 定义
 
@@ -861,6 +858,8 @@ initializeConversationSystem 在已配置独立调用宿主时返回 independent
 
 
 ### 独立调用的恢复目录
+
+历史队列调用保留只读回执与列表投影，缺少 `kernelPreparation` 不影响同一来源 Session 的新调用查询；新的提交仍只接受持久冻结的 Kernel 计划，不恢复队列提交降级。
 
 createFlowInvocationSessions(fs, "independent") 提供独立调用恢复索引，供 ConversationSystemOptions.independentCallSessions 注入。事务 SeqFile 在路由写入前标记来源 Session，完整兼容扫描后才确认目录完整；索引不可用时继续扫描原 Kernel 路由。目录仅优化恢复定位，不代替 Kernel 接纳或执行事实。
 

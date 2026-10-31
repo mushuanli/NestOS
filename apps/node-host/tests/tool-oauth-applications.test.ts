@@ -100,3 +100,18 @@ it('keeps a personal legacy client working and refuses both managed-field overri
     await chmod(path.join(f.root, 'private-apps', 'applications.json'), 0o644);
     await expect(f.applications.get('fixture')).rejects.toThrow('TOOL_AUTH_APPLICATION_STORAGE_NOT_PRIVATE');
 });
+
+it('exposes redacted verification over RPC and invalidates it when the shared application changes', async () => {
+    const fetcher = vi.fn(async () => Response.json({access_token: 'PRIVATE_ACCESS', refresh_token: 'PRIVATE_REFRESH', expires_in: 3600}));
+    const f = await fixture(fetcher as typeof fetch); await f.admin.saveApplication(input); const alice = f.user('alice');
+    await connect(alice, 'first'); let server!: RpcPeer;
+    const client = new RpcPeer('client', call => server.handle(call), () => {});
+    server = new RpcPeer('server', call => client.handle(call), () => {}); cleanups.push(() => client.close(), () => server.close());
+    const port = client.decode(await server.expose(alice));
+    expect(await port.verify('personal')).toMatchObject({status: 'verified', checkedAt: expect.any(Number)});
+    const snapshot = await port.snapshot(); expect(snapshot.connections[0].verification?.status).toBe('verified');
+    expect(JSON.stringify(snapshot)).not.toMatch(/PRIVATE_ACCESS|PRIVATE_REFRESH|private-application-secret/);
+    expect(port.accessToken).toBeUndefined(); expect(port.resolve).toBeUndefined();
+    await f.admin.saveApplication({...input, clientId: 'replacement-client'});
+    expect((await port.snapshot()).connections[0].verification).toBeUndefined();
+});

@@ -45,6 +45,7 @@ export class SessionLifecycleService {
     }
 
     async deleteFolder(path: string, recursive = false): Promise<void> {
+        await this.deps.repository.assertFolderDeletable?.(path);
         if (!recursive) {
             await this.deps.repository.deleteFolder(path, false);
             return;

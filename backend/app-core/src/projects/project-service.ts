@@ -1,3 +1,4 @@
+import {PersonalProject} from './personal-project';
 import { projectFileSource, projectWorkspaceAccess, projectNavigation } from '@itookit/app-contracts';
 import { trackFavoriteFiles } from './favorites/lifecycle';
 import type { MCPDeletedProject } from '../configuration/model-commands';
@@ -21,7 +22,7 @@ import type { ISessionRepository, SessionFolder } from '@itookit/llm-session';
 import type { DirectoryMountService } from '@itookit/app-contracts/services';
 import type { SessionFilesService } from '@itookit/app-contracts/services';
 
-export type ProjectFolder = SessionFolder & { displayName?: string } & { project: NonNullable<SessionFolder['project']> };
+export type ProjectFolder = SessionFolder & { displayName?: string; protected?: boolean } & { project: NonNullable<SessionFolder['project']> };
 export type ProjectFileSource = { kind: 'local'; directory: string } | { kind: 'remote'; reference: string };
 
 /** Project identity and file roots survive navigation-folder renames and moves. */
@@ -41,6 +42,7 @@ export class ProjectService {
         };
     }
     private startupId?: string;
+    private readonly personalProject: PersonalProject;
     private readonly defaultProjects: ProjectDefaults;
     private remoteCreation: Promise<unknown> = Promise.resolve();
     private localCreation: Promise<unknown> = Promise.resolve();
@@ -69,6 +71,12 @@ export class ProjectService {
         this.projectRepository = new ProjectRepository(root, directories);
         this.defaultProjects = new ProjectDefaults(root, () => this.list(), replacement => this.createUnique(t(replacement ? 'project.default.replacementName' : 'project.defaultName')),
             project => this.fileSource(project).kind === 'local');
+        this.personalProject = new PersonalProject(root, () => this.list(), () => this.createUnique(t('project.defaultName')), t('project.defaultName'));
+        repository.setFolderDeletionGuard?.(async path => {
+            const personal = await this.personal();
+            if (personal.path === path || personal.path.startsWith(path.replace(/\/$/, '') + '/'))
+                throw new FSError('EACCES', t('project.personalProtected'));
+        });
         repository.setStorageDirectoryResolver?.(async folder => {
             const project = folder === null ? await this.current() : await this.forFolder(folder);
             if (!project) return undefined;
@@ -135,12 +143,12 @@ export class ProjectService {
         const path = `${cached?.parentPath ?? ''}/${project.navigationName ?? project.name}`;
         const connection = this.remoteMounts?.list(project.id).find(mount => mount.at === '/')?.connectionId;
         const server = this.remoteMounts?.connections().find(item => item.id === connection);
-        return { path, name: project.name,displayName:server ? `${server.name}:${project.name}` : project.name, parentPath: cached?.parentPath ?? null, updatedAt: project.createdAt,
+        return { protected: project.id === this.personalProject.id, path, name: project.name,displayName:server ? `${server.name}:${project.name}` : project.name, parentPath: cached?.parentPath ?? null, updatedAt: project.createdAt,
             project: { id: project.id, directory: project.directory, source: { kind: project.kind } } };
     }
     navigationFromIndex = false;
     listNavigation(folders: readonly SessionFolder[]): ProjectFolder[] {
-        return projectNavigation(folders, this.remoteMounts);
+        return projectNavigation(folders, this.remoteMounts).map(project => ({...project, protected: project.project.id === this.personalProject.id}));
     }
     async navigationFolders(folders?: readonly SessionFolder[]): Promise<SessionFolder[]> {
         const cached = folders ?? await this.repository.listFolders();
@@ -197,6 +205,7 @@ export class ProjectService {
         }
     }
     async removeProjectSource(project: ProjectFolder): Promise<void> {
+        if (project.project.id === (await this.personal()).project.id) throw new FSError('EACCES', t('project.personalProtected'));
         const next = await this.defaultProjects.remove(project.project.id, async () => {
             const stored = (await this.projectRepository.list()).find(item => item.id === project.project.id);
             if (stored) await this.projectRepository.remove(stored);
@@ -359,13 +368,10 @@ export class ProjectService {
         for (let n = 2; folders.some(folder => folder.path === '/' + name); n++) name = `${base} (${n})`;
         return this.create(name, null, directory);
     }
-    /** Compatibility entry point for callers that require a local default project. */
-    async personal(): Promise<ProjectFolder> {
-        const project = await this.defaultProjects.ensure();
-        if (!project) throw new FSError('ENOENT', 'No local project is available as the default');
-        return project;
-    }
+    /** The reserved personal project never follows the user's default-project preference. */
+    async personal(): Promise<ProjectFolder> {return this.personalProject.ensure();}
     async ensureStartup(directory?: string): Promise<void> {
+        await this.personal();
         const explicit = directory ? await this.ensureDirectory(directory) : undefined;
         const existing = explicit ?? await this.defaultProjects.ensure();
         if (explicit) await this.defaultProjects.ensure();

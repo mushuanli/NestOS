@@ -1,6 +1,7 @@
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
 import type { HarnessAttachment, HarnessRecovery } from '@itookit/nestos-node-driver';
 export interface RemoteConversationRecovery extends HarnessRecovery { submittedTurnId?: string }
+export const remoteConversationRecoveryPath = '/etc/fs/harness-conversations.seq';
 /** Persist native references and pending receipts; never native conversation histories. */
 export class RemoteConversationStore {
     private raw: string | null = null;
@@ -9,7 +10,7 @@ export class RemoteConversationStore {
     private conflicted = false;
     private writes: Promise<void> = Promise.resolve();
     constructor(private readonly fs: IFileSystem, private readonly key: string) {}
-    private readonly path = '/etc/fs/harness-conversations.seq';
+    private readonly path = remoteConversationRecoveryPath;
     load(): Promise<RemoteConversationRecovery | undefined> {
         return this.serialize(() => this.read());
     }

@@ -12,6 +12,8 @@ NativeCommandOutput 在原命令消息锚点展示截断预览和按需完整读
 
 项目草稿的 `selectDraftAgent` 命令只切换明确指定且仍可用的智能体，沿用 ChatInput 的配置通知与保存队列，保留文字、附件和模型偏好；不创建正式 Session、不发送内容。工作台快捷入口消费此命令，项目选择和资源列表不进入聊天组件。
 
+远程 ChatDraftEditor 按当前智能体投影独立模型选择器，仅思考强度通过 variants 依赖模型；不能组成智能体→模型→思考强度的多级 variants。切换智能体时清除旧模型偏好并应用目标目录默认值，缓存目录及同名模型也要隔离；模型目录读取失败保留草稿，诊断只记录阶段、结果、错误码、数量与耗时。
+
 默认 chat 工厂使用 IndependentSessionEditor/ChatDraftEditor，具备持久草稿端口的原生会话使用 IndependentConversationEditor，三者共用独立 ChatView。旧原生宿主或不可恢复的旧 pending 提交显式使用 RemoteConversationEditor；LLMWorkspaceEditor/SessionDraftEditor 仅保留兼容导出与旧消费者。本包承接 NestOS 的 Session、Task、原生会话、配置和权限接线。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
 
 提问目录的视图、交互和 CSS 统一由独立 llm-ui 的 PromptNavigator 提供；本包 components/PromptNavigator 只投影产品文案、图标、历史身份及 reveal 回调。滚动、尺寸追踪、定时器、事件清理和 DOMCache 直接从独立库公开入口导入；components/common 只保留业务 EventBatchProcessor。ChatInput 的回车与高度规则复用 shouldSubmitMessage/resizeMessageInput；不要在适配层复制通用规则。独立 ChatView 的默认外观归 llm-ui，styles/independent-chat.css 仅补宿主自行创建的控件。
@@ -43,6 +45,8 @@ HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已�
 会话中通过更多菜单切换执行方式，宿主注入 `onStartConversationDraft`。编辑器先保存原输入，再将输入及附件交给项目草稿；已存在的草稿追加内容，不覆盖原文字/附件，不自动发送，不中断当前任务，也不自动迁移跨执行器历史。普通模型、连接和智能体选择继续在两轮之间生效，当前轮执行配置保持冻结。回归见 app-shell 的 execution-configuration、project-workbench-ui 与 remote-conversation-editor。
 
 远程会话快照和渲染更新异常显示「会话更新失败」及原因，不推断连接断开；连接状态消费端口 observation。成功更新清除临时错误，失败保留输入草稿且不自动重发。
+
+原生绑定首次用 read 建立历史基线，返回保留标签用 refresh 补齐已有事件游标，避免重读历史覆盖流式消息。兼容视图恢复观察不能等待发送/命令 tail；先恢复订阅再补齐，补齐失败仍继续接收通知，迟到结果核对激活代次；无订阅宿主的激活失败也要恢复回退观察调度。日志使用 native-observation，只记录操作身份、阶段、结果、错误码、数量与耗时。
 
 原生会话的被动运行状态、累计 token 和估算费用收进标题栏「更多 → 会话信息」，由 ConversationInformation 消费已有快照，不额外请求或改变执行状态。基础信息与本地会话统一为创建时间、最后活动，复用 project 字段文案及 ui-common.setTimePresentation；远端缺失时间显示「暂无记录」，不以页面刷新时间代替。详情说明未加载与外部活动不可见的含义，区分累计用量、正文长度和实际账单；金额通常保留两位小数，非零分以下估算保留必要精度。运行和等待状态保留标题栏指标，错误、离线、历史缺口及未知回执继续在正文显示；打开或更新详情不重建历史和输入，关闭编辑器清理弹层。回归见 app-shell 的 remote-conversation-editor、session-toolbar 与本包 conversation-usage。
 
@@ -233,3 +237,5 @@ Flow 参数 presentation.group 与连接 presentation.group 按声明合并显�
 输入插件注册与候选使用库 InputPluginRegistry/PopupPanel，适配层只扩展业务上下文。折叠、TTY、SchemaForm 与 GraphCanvas 均复用独立库；Flow 表达式、repeat 路由、Agent 徽标和执行授权保留在本包。绑定的 setActive/release 交由 ChatView 管理，禁止覆写实例方法包装生命周期。
 
 Flow InvocationPanel 的取消与暂停共用持久 ControlOperations；取消携带实际执行 Session、requestId 与 expectedEpoch，核对使用原 RunCancellationReceipt，不能先恢复执行再取消。FlowCallDocument 终态结果读取失败保留失败状态，仅显式重试，不随父卡片轮询重复读取。DraftFilesCodec 对跨执行环境的 ArrayBuffer 使用内部品牌校验，仍校验资源摘要、大小及稳定附件身份。
+
+DAG 运行页取消与调用卡片共用 FlowRunControl/ControlOperations，传入原 Session、稳定 requestId 和观察到的 control epoch。操作台账读取失败时禁用取消，不降级发送缺少身份的命令；失败通过现有 Toast 显示具体原因。

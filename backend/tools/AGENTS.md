@@ -103,3 +103,5 @@ pnpm --filter @itookit/tools test        # vitest
 Grep/Glob 优先消费 `ToolVFSContext.walkFiles`，达到结果上限立即关闭发现迭代器；`listFiles` 仅为旧适配器兼容回退。不得在搜索前把完整目录树收集成数组，否则桌面端 IPC 开销可能用尽 30 秒工具预算。
 
 Grep 的 `onProgress` 发出 cwd/搜索路径、扫描与跳过计数、匹配快照（约 250ms 限频；首次匹配及时发出）。`ToolCallEffectAdapter` 用真实 callId 转为 `tool:progress`，UI 不能将其当作最终结果。Grep 搜索单文件最多 2 MiB，超限返回 skippedFiles 和 truncated，显式 Read 不受此搜索上限影响。
+
+- Tool.inputDefaults 是宿主提供的普通参数默认值，显式调用参数优先；适配器在 Task 记录中按工具/版本/Effect 冻结默认值供重试与 reconcile 使用。历史核对无记录时不采用当前新默认值。元数据启用状态实时读取 Tool.isEnabled，并保留显式 metadata 停用门禁。

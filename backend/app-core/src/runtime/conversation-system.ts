@@ -24,7 +24,6 @@ export interface OwnedConversationView { sessionManager: SessionManager; command
 export interface ConversationSystemOptions {
     projects?: import('@itookit/app-contracts/services').ProjectService;
     independentCalls?: import('@itookit/llm-session').IndependentCallService;
-    submitIndependentCall?: import('@itookit/llm-session/contracts').IndependentCallSubmitter;
     ensureFlowDependencies?(flowId: string): Promise<void>;
     executionActivity?: import('@itookit/llm-session').SessionExecutionActivity;
     instructionQueueSessions?: import('@itookit/llm-session').InstructionQueueSessions;
@@ -65,16 +64,8 @@ export async function createConversationSystem(
     const artifacts = createTaskArtifactServices(kernel.kernel, systemFS);
     const system = await initializeConversationSystem({
         executionActivity: options.executionActivity,
-        submitIndependentCall: options.submitIndependentCall,
         independentCalls: options.independentCalls,
-        independentTaskCallPolicy: async request => {
-            const target = request.expectedTarget;
-            if (!target) return;
-            if (target.kind === 'flow') return {maxDepth: 8, timeoutMs: null};
-            const published = await agentService.getAgentRevision?.(target.id, target.version);
-            if (!published) return;
-            return {maxDepth: 8, timeoutMs: null};
-        },
+        independentTaskCallPolicy: async () => ({maxDepth: 8, timeoutMs: null}),
         instructionQueueSessions: options.instructionQueueSessions,
         scheduleAgentInitialization: options.scheduleAgentInitialization,
         scheduleInvocationRecovery: options.scheduleInvocationRecovery,

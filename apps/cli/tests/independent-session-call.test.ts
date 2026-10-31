@@ -22,6 +22,9 @@ async function setup(rpc = false, interact = false) {
         parameters: [{name: 'count', type: 'number', ...(interact ? {required: true, onMissing: 'interact'} : {default: 2})}], nodes: [...(interact ? [{id: 'collect', name: 'Collect', plugin: 'builtin.input', pluginVersion: '1.0.0', inputs: {}, config: {fields: {count: {type: 'number'}}}}] : []), {id: 'return', name: 'Return', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: '${param.count}'}}],
         edges: interact ? [{id: 'collected', from: 'collect', to: 'return', output: 'result', input: 'input', kind: 'data'}] : [], outputs: {result: {value: '${nodes.return.outputs.result}'}}}]});
     await runtime.agentService.saveAgent({id: 'worker-agent', name: 'Worker Agent', type: 'workflow', config: {}, execution: {kind: 'flow', flowId: 'worker'}});
+    const publication = await runtime.agentService.getAgentPublicationStatus('worker-agent');
+    await runtime.agentService.publishAgent({agentId: 'worker-agent', operationId: `publish-${publication.sourceDigest}`,
+        expectedSourceDigest: publication.sourceDigest, expectedRevisionDigest: publication.draftDigest, expectedPublishedVersion: null});
     let services = bindLocalApplicationServices(runtime);
     const calls: Array<{name: string; query: boolean}> = [];
     if (rpc) {

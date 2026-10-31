@@ -1,3 +1,4 @@
+import {sha256HexSync} from '@itookit/llm-context';
 import type { ToolInvokeResult } from '../contracts';
 import type { Tool } from '../core/Tool';
 import type { ToolUseContext } from '../core/types';
@@ -17,7 +18,8 @@ async function validate(tool: Tool, args: Record<string, unknown>, context: Tool
 
 export async function prepareToolInput(tool: Tool, args: Record<string, unknown>, context: ToolUseContext) {
   context.signal?.throwIfAborted();
-  const input = await validate(tool, args, context);
+  const defaults = await operationDefaults(tool, context, 'invoke');
+  const input = await validate(tool, {...defaults, ...args}, context);
   const permission = await tool.checkPermissions?.(input, context);
   if (permission && permission.behavior !== 'allow') {
     throw new ToolInputError('PERMISSION_DENIED', permission.reason ?? 'Tool execution denied');
@@ -30,7 +32,8 @@ export async function prepareToolInput(tool: Tool, args: Record<string, unknown>
 /** Recovery checks authority without rerunning business preconditions or changing the original arguments. */
 export async function prepareToolReconciliation(tool: Tool, args: Record<string, unknown>, context: ToolUseContext) {
   context.signal?.throwIfAborted();
-  const parsed = tool.inputSchema.safeParse(args);
+  const defaults = await operationDefaults(tool, context, 'reconcile');
+  const parsed = tool.inputSchema.safeParse({...defaults, ...args});
   if (!parsed.success) throw new ToolInputError('INVALID_ARGUMENTS', parsed.error.message);
   const permission = await tool.checkPermissions?.(parsed.data, context);
   if (permission && (permission.behavior !== 'allow' || permission.updatedInput)) {
@@ -104,4 +107,15 @@ export function invocationSignal(signal: AbortSignal | undefined, timeoutMs: num
   else signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(new DOMException('Tool execution timed out', 'TimeoutError')), timeoutMs);
   return { controller, dispose() { clearTimeout(timer); signal?.removeEventListener('abort', abort); } };
+}
+
+/** Defaults are part of one operation, so retries and reconciliation never adopt later preferences. */
+async function operationDefaults(tool: Tool, context: ToolUseContext, phase: 'invoke' | 'reconcile'): Promise<Record<string, unknown>> {
+  if (!tool.inputDefaults) return {};
+  if (!context.executionIdentity || !context.getAssetRecord || !context.putAssetRecord) return phase === 'invoke' ? tool.inputDefaults() : {};
+  const key = 'tool-input-defaults/' + sha256HexSync(JSON.stringify([tool.name, tool.version ?? '1', context.executionIdentity.effectId]));
+  const stored = await context.getAssetRecord(key) as {version?: number; defaults?: Record<string, unknown>} | undefined;
+  if (stored?.version === 1 && stored.defaults) return stored.defaults;
+  if (phase === 'reconcile') return {};
+  const defaults = tool.inputDefaults(); await context.putAssetRecord(key, {version: 1, defaults}); return defaults;
 }

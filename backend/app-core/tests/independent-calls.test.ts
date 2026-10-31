@@ -1,6 +1,5 @@
 import {coldQuery} from './helpers/cold-query';
 import {getLogger} from '@itookit/common';
-import {ConversationContexts} from '../src/runtime/conversation-contexts';
 import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
 import {ArtifactCommand, type ExecutionArtifactPage, type ExecutionArtifactChunk, FlowLibraryCommand} from '@itookit/app-contracts';
@@ -34,6 +33,9 @@ async function fixture(model = false, bind = true, wait = false) {
         edges: [], outputs: {result: {value: wait ? '${nodes.return.outputs.response}' : '${nodes.return.outputs.result}'}}}]});
     await runtime.agentService.saveAgent(model ? {id: 'worker', name: 'Worker', type: 'agent', config: {}}
         : {id: 'worker', name: 'Worker', type: 'workflow', config: {}, execution: {kind: 'flow', flowId: 'independent'}});
+    const publication = await runtime.agentService.getAgentPublicationStatus('worker');
+    await runtime.agentService.publishAgent({agentId: 'worker', operationId: `publish-${publication.sourceDigest}`,
+        expectedSourceDigest: publication.sourceDigest, expectedRevisionDigest: publication.draftDigest, expectedPublishedVersion: null});
     const parent = await runtime.sessionRepository.createSession('Caller');
     if (bind) await runtime.commandBus.execute(SessionCommand.Bind, {sessionId: parent});
     const catalog = await runtime.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets);
@@ -45,7 +47,7 @@ async function fixture(model = false, bind = true, wait = false) {
     };
     const submit = (call: IndependentCallInput) => runtime.commandBus.execute<IndependentCallReceipt>(IndependentCallCommand.Submit, call);
     const inspect = (call: IndependentCallInput) => runtime.commandBus.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, call);
-    // List projects the execution target for both queued Agents and prepared Flows.
+    // List projects the execution target of the shared prepared Kernel protocol.
     const executionOf = async (call: IndependentCallInput) =>
         (await runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: parent}))
             .find(view => view.input.request.submission?.id === call.request.submission?.id)?.receipt.execution;
@@ -62,8 +64,7 @@ it.each(['agent', 'flow'] as const)('routes an independent %s to its own Session
         expect(rounds).toHaveLength(1); expect(rounds[0].status).toBe('completed');
     }, {timeout: 10000});
     const observed = await f.inspect(input), executed = await f.executionOf(input);
-    if (kind === 'flow') {expect(observed.execution).toBeUndefined(); expect(observed.callerExecution).toBeTruthy();}
-    else expect(observed.execution).toEqual(executed);
+    expect(observed.execution).toBeUndefined(); expect(observed.callerExecution).toBeTruthy();
     expect(executed?.invocation?.invocationId).toBeTruthy();
     expect(executed?.taskId).toBeTruthy();
     expect(await f.submit(input)).toEqual(observed);
@@ -108,19 +109,17 @@ it('copies declared attachments into the child and reconciles without rereading 
 
 it('reconciles a lost child admission reply and preserves the caller binding', async () => {
     const f = await fixture(), input = f.input('lost-child-reply');
-    const open = ConversationContexts.prototype.open;
-    let submissions = 0;
-    vi.spyOn(ConversationContexts.prototype, 'open').mockImplementation(async function (id) {
-        const context = await open.call(this, id), submit = context.sessionManager.submit.bind(context.sessionManager);
-        vi.spyOn(context.sessionManager, 'submit').mockImplementationOnce(async request => {
-            ++submissions; await submit(request); throw new Error('Lost child admission reply');
-        });
-        return context;
+    const calls = f.runtime.independentCalls!, dispatch = calls.submitPreparedTaskCall.bind(calls);
+    let lost = false;
+    vi.spyOn(calls, 'submitPreparedTaskCall').mockImplementation(async request => {
+        const result = await dispatch(request);
+        if (!lost) {lost = true; throw new Error('Lost Kernel admission reply');}
+        return result;
     });
     const accepted = await f.submit(input);
-    expect(accepted.status).toBe('accepted'); expect(submissions).toBe(1);
-    expect(await f.submit(input)).toMatchObject({status: 'accepted', executionSessionId: accepted.executionSessionId});
-    expect(submissions).toBe(1);
+    expect(accepted.status).toBe('accepted'); expect(lost).toBe(true);
+    expect(await f.submit(input)).toEqual(accepted);
+    expect((await f.runtime.kernel.kernel.listSessionTasks(f.parent)).filter(task => task.program.kind === 'kernel.call')).toHaveLength(1);
     expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
 }, 15000);
 

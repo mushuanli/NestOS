@@ -5,6 +5,7 @@ import { libraries } from './npm-libraries.mjs';
 import { packBuiltLibrary } from './library-artifacts.mjs';
 import { excluded, sourceHash, buildHash, preparedSnapshot, planSnapshot } from './local-library-plan.mjs';
 import state from './local-library-state.mjs';
+import { buildSupportFiles } from './local-library-inputs.mjs';
 
 function captureLibrary(root, work, library, plan) {
     const target = join(work, 'libraries', library.directory);
@@ -24,7 +25,10 @@ function captureSources(root, work, plan) {
     const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
     delete manifest.scripts;
     writeFileSync(join(work, 'package.json'), JSON.stringify(manifest, null, 2));
-    for (const file of ['pnpm-workspace.yaml', 'pnpm-lock.yaml', 'tsconfig.base.json']) cpSync(join(root, file), join(work, file));
+    for (const file of ['pnpm-workspace.yaml', 'pnpm-lock.yaml', 'tsconfig.base.json', ...buildSupportFiles(root)]) {
+        mkdirSync(join(work, file, '..'), { recursive: true });
+        cpSync(join(root, file), join(work, file));
+    }
     if (buildHash(root) !== plan.buildHash) throw new Error('LOCAL_LIBRARIES_BUILD_INPUT_CHANGED: retry after saving build configuration');
 }
 function buildCaptured(work, log, selected) {
@@ -72,6 +76,8 @@ export function prepareSnapshot(root, operationId, log, { incremental = false, r
     const base = incremental ? incrementalBase(root, operationId) : null;
     const plan = log('plan', () => planSnapshot(root, libraries, { base, requested, full: !incremental }));
     console.log(`[local-libraries] operationId=${operationId} stage=plan result=success base=${base?.id ?? 'none'} rebuild=${plan.selected.length} reuse=${plan.records.length - plan.selected.length} libraries=${plan.selected.join(',')}`);
+    for (const name of plan.selected)
+        console.log(`[local-libraries] operationId=${operationId} stage=plan-library result=rebuild library=${name} reasons=${plan.reasons[name].join(',')}`);
     if (!plan.selected.length) return base;
     const work = join(state.localRoot(root), 'work', operationId), output = join(work, 'artifact');
     mkdirSync(work, { recursive: true });

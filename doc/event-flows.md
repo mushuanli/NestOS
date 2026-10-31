@@ -143,6 +143,48 @@ UI 挂接恢复通过 EditorTaskControlPlane 获取状态和事件，每次异�
 
 历史分页入口通过 `HistoryViewOptions.header` 放在历史滚动区顶部；点击才读取下一页，保留原卡片实例及阅读锚点。对话正文禁用“近期活跃”的时间推测，侧栏保留原有观察策略。
 
+默认独立 ChatView 的原生队列失败消息在用户卡片上提供「重新提交」，与队列面板共用 `editInstructionQueue({action: 'retry', id, expectedRevision})`。只对明确 failed 显示；uncertain 必须核对原回执。保留 instructionId，后端持久分配新的 attemptId，原 requestId 的拒绝事实不变；不能另行 enqueue 同一消息。重试冲突只刷新快照，不自动重放。队列失败变化即使不改变临时消息正文修订，也更新卡片动作；成功领取后移除按钮，后来输入的草稿不参与重试消费。回归见 `ui/app-shell/tests/independent-native-composer.test.ts`。
+
+### 多用户、持久事件与重启边界
+
+HTTP 的 `usersDir` 配合 mTLS 证书登记启用多用户；每个 userId 独立 Runtime、VFS 侧车、Kernel 和队列，同一用户的窗口共享宿主执行。逻辑 `/home/admin` 映射当前用户的物理 home，不表示所有用户共用 admin 数据。共享 MCP 凭据在远端仍代表同一 principal，可能访问同一 Codex 原生会话；本地多用户隔离不能消除远端 active writer 冲突。配置及物理布局见 [HTTP 多用户](http-app.md#mtls-多用户与可迁移-home)。
+
+| 事实或通知 | 当前归属与持久性 | 重启处理 |
+|---|---|---|
+| Kernel Session/Task 事件 | Session 内 `kernel/events.seq`，数据归本用户 sidecar | 结合 Task/Effect/receipt/lease 恢复；不能只重放事件重建执行 |
+| 本地 Session 指令队列 | Kernel shared 与恢复索引 | Runtime 启动调用 recoverInstructionQueues，恢复仍遵守暂停和租约 |
+| 远程原生指令队列、pending 请求与回执关联 | 本用户逻辑 `/etc/fs/harness-conversations.seq` | 启动扫描有待办的已有记录，重验绑定后重建后台观察；同一 turn 的确认终态随队列持久化，未知提交仍需精确回执核对 |
+| 用户级精简事件与通知已读状态 | 本用户逻辑 `/var/lib/events/events.seq` | 启动打开原 stream，补读持久 Kernel 源并原子保存投影/checkpoint，追加 runtime.reset 提示快照重建 |
+| 网页 SSE 通知、VFS 失效通知 | ViewEventStream 等进程内缓冲 | 短暂断线有界补读；daemon 重启后重新绑定并读取持久快照，不能恢复旧能力句柄 |
+| nestos-node 诊断日志 | 配置文件所在目录的 `logs/`（可配置），JSONL | 保留排障证据；不是事件消费或执行恢复的权威存储 |
+
+当前用户级 journal 只保存精简事件，默认保留 1000 条；原始 SSE、消息正文与逐 token 增量不复制进去。app-core 负责 schema、路径、源 checkpoint 和启动恢复，宿主注入按用户隔离的文件系统；每个浏览器使用独立游标，通知已读状态按用户共享落盘。事件与对应 SeqFile 状态需要在同一事务提交才能保证原子性；当前 Kernel 投影与 checkpoint 满足此条件，但文件等提交后 callback 仍可能在崩溃时丢失提示，由 runtime.reset 触发快照重建，不能称为无损审计。
+
+`vfs-core` 提供通用 SeqFile、事务、提交观察和 `SeqEventJournal<T>`；用户目录策略、Harness 锁归属、队列重试和业务事件 schema 留在各领域服务及宿主。app-shell 的 `ShellApplicationEvents` 已装配独立游标消费，首屏后补读，在线/焦点/可见性恢复和可见窗口的 15 秒核对修复漏提示；事件使已有工作区快照失效，隐藏视图延后刷新，不重建编辑器。远程启动观察的暂时性失败按 15 至 60 秒退避，只重试失败目标且重新校验授权。用户级业务 outbox 与领域状态同事务提交仍需按具体领域接入，不能由提交后 callback 自动保证。详细 C4 与剩余限制见 [多用户与重启恢复](design/nestos-node-project-model.md#多用户事件持久化与队列重启恢复)。
+
+```mermaid
+C4Container
+    title 多用户执行、事件与诊断的当前边界
+    Person(user, "用户", "不同证书选择不同 userId")
+    System_Boundary(host, "NestOS HTTP 宿主") {
+        Container(auth, "mTLS 身份路由", "node-host", "选择本用户 Runtime")
+        Container(runtime, "每用户 ApplicationRuntime", "app-core", "领域提交、队列、租约与恢复")
+        Container(vfs, "每用户 VFS", "vfs-core + 存储适配器", "通用事务、SeqFile、提交观察")
+        ContainerDb(home, "用户 home 与 .nestos", "文件 + sidecar", "Session 事实、事件、队列及原生恢复记录")
+        Container(view, "ViewApi / SSE", "内存缓冲", "视图通知与短暂断线补读")
+    }
+    System_Ext(node, "nestos-node / Codex", "远端 principal、原生会话、写入权与回执")
+    ContainerDb(log, "tools/logs", "JSONL", "关联请求、原生 RPC 与子进程生命周期")
+    Rel(user, auth, "认证请求")
+    Rel(auth, runtime, "按 userId 路由")
+    Rel(runtime, vfs, "事务提交和读取恢复事实")
+    Rel(vfs, home, "持久化")
+    Rel(runtime, view, "发布可重读投影的通知")
+    Rel(view, user, "推送与重新绑定")
+    Rel(runtime, node, "授权调用及原 requestId 核对")
+    Rel(node, log, "记录安全诊断元数据")
+```
+
 本地多 Session 待办总览由 `Kernel.sessionActivity` → SessionBrowser 的 `metadata.sessionActivity` → SessionWorkbench / 本地状态投影呈现。初次加载和显式刷新从持久活动索引读基线；后续 structure 通知按 Session 失效，HTTP 沿既有观察通知与 SSE 刷新，content 不扫描导航。跨进程补扫批读活动修订和 Session 控制记录，状态变化发 structure，纯事件追加发 content。完整交互验收见[Flow/CLI 验收记录](./design/flow-cli-capabilities-verification.md)。
 
 

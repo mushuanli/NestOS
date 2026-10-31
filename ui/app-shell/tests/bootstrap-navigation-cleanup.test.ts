@@ -7,8 +7,11 @@ import { bindApplicationBackend } from '@itookit/app-core/host';
 import { themeService } from '../src/ThemeService';
 import type { WorkspaceConfig } from '../src/types';
 import { fileContentFormat } from '../src/browser/file-format';
+import {createVFS, MemoryBackend} from '@itookit/vfs-core';
+import {UserEventService} from '../../../backend/app-core/src/events/service';
 
 const visibility = vi.hoisted(() => vi.fn());
+const invalidateEvents = vi.hoisted(() => vi.fn());
 const lifecycle = vi.hoisted(() => ({ start: vi.fn(async () => {}), open: vi.fn(async (_id: string) => {}),
     destroy: vi.fn(async () => {}), scope: '/', restoreScope: vi.fn(async (_scope: string) => {}), before: undefined as (() => void) | undefined, configure: vi.fn(), selection: undefined as ((id: string) => void) | undefined }));
 
@@ -35,6 +38,8 @@ vi.mock('../src/core/Workbench', () => ({
     Workbench: class {
         constructor(config: any) { lifecycle.selection = config.onSessionChange; lifecycle.before = config.onBeforeNavigate; lifecycle.configure(config); }
         setVisible = visibility;
+        invalidateFromEvents = invalidateEvents;
+        suspendForRecovery = vi.fn();
         start = lifecycle.start;
         destroy = lifecycle.destroy;
         openFile = lifecycle.open;
@@ -49,6 +54,7 @@ vi.mock('../src/projects/SessionWorkbench', () => ({
     SessionWorkbench: class {
         constructor(config: any) {lifecycle.selection = config.onSelect; lifecycle.before = config.onBeforeNavigate;}
         getNavigationScope = () => lifecycle.scope;
+        invalidateFromEvents = invalidateEvents;
         restoreNavigationScope = lifecycle.restoreScope;
         start = vi.fn(async () => {});
         destroy = vi.fn(async () => {});
@@ -372,4 +378,29 @@ it('returns from a directly opened file to the original sidebar scope and forwar
         await vi.waitFor(() => expect(lifecycle.open).toHaveBeenCalledWith('direct-file'));
         await vi.waitFor(() => expect(layout.dataset.mobileView).toBe('detail'));
     } finally {await app.destroy();}
+});
+
+it('wires durable event replay and focus catch-up without reopening resources, and releases it on recovery', async () => {
+    navigationDOM(); invalidateEvents.mockClear();
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const events = await UserEventService.open(await manager.openFileSystem('/'));
+    const runtime = makeRuntime(); runtime.events = events;
+    vi.spyOn(events, 'onChange').mockImplementation(() => () => {});
+    lifecycle.start.mockImplementationOnce(async () => {await events.journal.append('opening', {type: 'node:created'});});
+    const app = await initTestApp({services: runtime, workspaces: [workspace], ui: testUI()});
+    try {
+        expect(invalidateEvents).toHaveBeenCalledOnce();
+        expect(lifecycle.open).not.toHaveBeenCalled();
+        await events.journal.append('missed', {type: 'node:deleted'});
+        window.dispatchEvent(new Event('focus'));
+        await vi.waitFor(() => expect(invalidateEvents).toHaveBeenCalledTimes(2));
+        await events.journal.append('irrelevant', {type: 'task.failed'});
+        window.dispatchEvent(new Event('online'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(invalidateEvents).toHaveBeenCalledTimes(2);
+        app.suspendForRecovery();
+        await events.journal.append('after-suspend', {type: 'node:created'});
+        window.dispatchEvent(new Event('focus'));
+        expect(invalidateEvents).toHaveBeenCalledTimes(2);
+    } finally {await app.destroy(); events.journal.close(); await manager.dispose();}
 });

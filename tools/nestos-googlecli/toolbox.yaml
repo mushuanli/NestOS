@@ -1,0 +1,34 @@
+version: 2
+preinstall: true
+connections:
+  google-workspace: [browser, import]
+tools:
+  google.collect:
+    label: 邮件与日历采集
+    advanced: [directory, maxItems, sourceKey]
+    parameters:
+      - {name: connection, label: 我的 Google 连接, connectionType: google-workspace}
+      - {name: directory, label: 保存目录, description: 留空使用所选连接的保存目录；未设置时邮件为 imports/mail，日历为 imports/calendar。}
+      - {name: resource, label: 资源类型（mail 或 calendar）}
+      - {name: maxItems, label: 最多采集条数}
+      - {name: sourceKey, label: 来源标识}
+  google.gmail.collect:
+    hidden: true
+    enableWith: google.collect
+    parameters:
+      - {name: connection, label: 我的 Google 连接, connectionType: google-workspace}
+      - {name: directory, label: 保存目录, description: 留空使用所选连接的保存目录；未设置时邮件为 imports/mail，日历为 imports/calendar。}
+      - {name: query, label: 邮件查询条件}
+      - {name: maxItems, label: 最多采集条数}
+      - {name: sourceKey, label: 来源标识}
+  google.calendar.collect:
+    hidden: true
+    enableWith: google.collect
+    parameters:
+      - {name: connection, label: 我的 Google 连接, connectionType: google-workspace}
+      - {name: directory, label: 保存目录, description: 留空使用所选连接的保存目录；未设置时邮件为 imports/mail，日历为 imports/calendar。}
+      - {name: calendarId, label: 日历标识}
+      - {name: pastDays, label: 回看天数}
+      - {name: futureDays, label: 未来天数}
+      - {name: maxItems, label: 最多采集条数}
+      - {name: sourceKey, label: 来源标识}

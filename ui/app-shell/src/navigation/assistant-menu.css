@@ -43,3 +43,6 @@
 .assistant-menu__search { display: grid; gap: 5px; font-size: 13px; margin-bottom: 8px; }
 .assistant-menu__search input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; background: var(--bg-primary, #fff); color: inherit; font-size: 16px; }
 .assistant-menu__shortcut small { display: block; color: var(--text-secondary, #64748b); }
+
+
+.assistant-launcher .assistant-launcher__count[hidden] { display: none; }

@@ -653,7 +653,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private projectEntryMenu(item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]): MenuItem<VFSNodeUI>[] {
         const id = String(item.metadata.custom.projectId), remote = !!item.metadata.custom.remoteProject;
-        const hidden = ['create-in-folder-session', 'create-in-folder-folder', ...(remote ? ['delete', 'moveTo', 'copyTo', 'duplicate'] : [])];
+        const hidden = ['create-in-folder-session', 'create-in-folder-folder', ...(item.metadata.custom.protectedProject ? ['delete', 'moveTo'] : []), ...(remote ? ['delete', 'moveTo', 'copyTo', 'duplicate'] : [])];
         return [...(remote || this.projects?.remoteMounts?.list(id).length ? [{id: 'project-status', label: t('diagnostics.projectStatus'), onClick: () => this.showProjectStatus(id)}] : []), {id: 'create-session', label: t('project.createSession'), disabled: !!this.projects && !!sessionCreationReason(this.projects, id), onClick: () => this.startSessionDraft(item.id)},
             { id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
             ...defaults.filter(entry => !('id' in entry) || !hidden.includes(entry.id))
@@ -716,6 +716,10 @@ export class SessionWorkbench implements WorkspaceController {
         if (navigation) this.navigationDirty = true;
         this.viewRefresh.mark(source, this.resourceNavigationVisible || !!this.active);
     }
+    invalidateFromEvents(): void {
+        if (this.closed) return;
+        this.scheduleRefresh('events');
+    }
     private async refresh(): Promise<void> { await this.remoteStatus?.refresh(); await this.viewRefresh.flush(); }
     private async refreshView(sources: readonly string[]): Promise<void> {
         if (debugEnabled()) {
@@ -739,7 +743,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private async refreshResourceNavigation(sources: readonly string[]): Promise<void> {
         if (!this.resourceNavigationVisible || !this.navigationReady) return;
-        await this.browser?.invalidateNavigation({activity: sources.length === 0});
+        await this.browser?.invalidateNavigation({activity: sources.length === 0 || sources.includes('events')});
         if (!this.resourceNavigationVisible || !this.visible || this.closed) { this.navigationDirty = true; return; }
         await this.sidebarUI?.refresh();
         if (!this.resourceNavigationVisible || !this.visible || this.closed) { this.navigationDirty = true; return; }
@@ -802,6 +806,7 @@ export class SessionWorkbench implements WorkspaceController {
             const pending = this.pendingTarget;
             if (pending) await this.openResource(pending.id, pending.options);
             else await this.editor?.activate?.();
+            if (this.viewRefresh.dirty) void this.viewRefresh.flush().catch(error => this.report(error));
         }
     }
     private finishReads(cleanup: Promise<void>): void {
@@ -1275,7 +1280,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.tabs.setIcon(this.tabs.current!.id, this.sidebarUI?.getNode(path)?.icon ?? FILE_ICONS.folder);
         if (!this.closed) this.tabs.content.replaceChildren(panel);
         if (this.navigationFiles?.on && target.kind !== 'files' && target.kind !== 'project-files')
-            this.tabs.current!.subscriptions.push(watchDirectoryList(this.navigationFiles, panel, error => this.report(error)));
+            this.tabs.current!.subscriptions.push(watchDirectoryList(this.navigationFiles, panel, error => this.report(error), () => this.visible && !this.closed && this.tabs.current?.panel === panel));
     }
     private async directoryEntries(path: string, update?: (nodes: FSNode[]) => void) {
         await this.browser?.invalidateNavigation();

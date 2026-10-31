@@ -16,7 +16,7 @@ export function collectionFields(targets: RootCallTarget[], tools: TwinScannerTo
     return html;
 }
 export function toolFields(tool: TwinScannerTool, values?: TwinCollectionExecutor['values']): string {
-    return renderParameterFields(toolParameters(tool), {mode: 'run', values, namePrefix: 'scanner.collection.argument.'});
+    return renderParameterFields(toolParameters(tool), {mode: 'run', values: {...tool.defaults, ...values}, namePrefix: 'scanner.collection.argument.'});
 }
 export function readCollectionExecutor(form: HTMLFormElement, targets: RootCallTarget[], tools: TwinScannerTool[]): TwinCollectionExecutor | undefined {
     const value = form.querySelector<HTMLSelectElement>('[name=collection]')!.value;

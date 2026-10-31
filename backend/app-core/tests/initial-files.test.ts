@@ -1,3 +1,4 @@
+import yaml from 'js-yaml';
 import { afterEach, expect, it } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
@@ -20,7 +21,7 @@ it('lists exact files, restores only selected notes and preserves edits', async 
     const { runtime, notes, library } = await setup();
     await runtime.flowEngine.engine.driver.delete(['/essay-review.flow']);
     const entries = await library.list();
-    expect(entries.map(entry => entry.name)).toEqual(['readme.md', 'person-agent-demo.md', 'flow文件格式说明.md', 'essay-review.flow', 'anki-generate.flow']);
+    expect(entries.map(entry => entry.name)).toEqual(['readme.md', 'person-agent-demo.md', 'flow文件格式说明.md', 'anki/学习示例-背单词.md', 'anki/学习示例-背概念.md', 'anki/学习示例-背古文.md', 'Anki 提示词模板', 'essay-review.flow', 'anki-generate.flow']);
     expect(entries[1]).toMatchObject({ path: '/home/admin/notes/person-agent-demo.md', exists: false });
     expect(await library.restore(['note:demo'])).toEqual([{ id: 'note:demo', status: 'restored' }]);
     expect(await notes.driver.readContent('/person-agent-demo.md', { encoding: 'utf-8' })).toBe(demo.content);
@@ -135,4 +136,21 @@ it('restores the Flow authoring guide as a note and validates its complete examp
     await notes.driver.writeContent('/flow文件格式说明.md', 'My additions');
     expect(await library.restore(['note:flow-format'])).toEqual([{id: 'note:flow-format', status: 'preserved'}]);
     expect(await notes.driver.readContent('/flow文件格式说明.md', {encoding: 'utf-8'})).toBe('My additions');
+});
+
+it('seeds study examples and prompts, preserves edits, and explicitly restores deleted notes', async () => {
+    const {notes, library} = await setup();
+    expect(await notes.driver.exists('/anki/学习示例-背概念.md')).toBe(true);
+    const prompts = yaml.load(String(await notes.driver.readContent('/.nestos/cloze/prompts.yaml', {encoding:'utf-8'}))) as Array<{id:string;name:string;content:string}>;
+    expect(prompts.map((item: {name:string}) => item.name)).toEqual(['背单词','背概念','背古文']);
+    await notes.driver.writeContent('/anki/学习示例-背概念.md', 'Personal');
+    expect(await library.restore(['note:study-concepts'])).toEqual([{id:'note:study-concepts',status:'preserved'}]);
+    await notes.driver.delete(['/anki/学习示例-背古文.md']);
+    const {seedStudyFiles} = await import('../src/presets/study-files'); await seedStudyFiles(notes);
+    expect(await notes.driver.exists('/anki/学习示例-背古文.md')).toBe(false);
+    expect(await library.restore(['note:study-classical-chinese'])).toEqual([{id:'note:study-classical-chinese',status:'restored'}]);
+    await notes.driver.writeContent('/.nestos/cloze/prompts.yaml', JSON.stringify([{id:'custom',name:'Mine',content:'Mine'}]));
+    expect(await library.restore(['note:study-prompts'])).toEqual([{id:'note:study-prompts',status:'restored'}]);
+    expect(yaml.load(String(await notes.driver.readContent('/.nestos/cloze/prompts.yaml',{encoding:'utf-8'})))).toEqual(prompts);
+    expect(await notes.driver.readContent('/anki/学习示例-背概念.md',{encoding:'utf-8'})).toBe('Personal');
 });

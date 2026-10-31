@@ -184,7 +184,11 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
     isDirty(): boolean {return !!this.view && this.store.dirty(this.view.getDraft());}
     async flushPendingSave(): Promise<void> {if (!this.suspended) {await this.view?.flushDraft(); this.emit('saved', undefined);}}
     cancelPendingRender(): void {this.active = false; clearTimeout(this.timer); this.view?.setActive(false); this.historyBranches?.setActive(false);}
-    async activate(): Promise<void> {if (this.closed) return; this.active = true; this.historyBranches?.setActive(true); this.view?.setActive(true); await this.binding?.source.refresh(); this.schedule();}
+    async activate(): Promise<void> {
+        if (this.closed) return;
+        this.active = true; this.historyBranches?.setActive(true); this.view?.setActive(true);
+        try {await this.binding?.source.refresh();} finally {this.schedule();}
+    }
     setReadOnly(value: boolean): void {this.options.readOnly = value; void this.binding?.source.refresh().catch(error => this.fail(error));}
     suspendForRecovery(): void {this.suspended = true; this.store.suspend(); this.cancelPendingRender();}
     captureRecovery(): unknown {this.ocr?.assertRecoverable(); return this.view?.captureRecovery();}

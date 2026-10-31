@@ -52,6 +52,9 @@ export interface Tool<
 
   // ── Lifecycle ──
 
+  /** Host defaults are resolved once per operation, then explicit arguments take precedence. */
+  inputDefaults?(): Record<string, unknown>;
+
   /** Core execution logic. */
   call(args: z.infer<Input>, context: ToolUseContext): Promise<ToolResult<Output>>;
 

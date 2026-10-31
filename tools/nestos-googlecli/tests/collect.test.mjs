@@ -110,3 +110,11 @@ test('ships workflows inside the extension with visible graph layouts and one re
         assert.ok(flow.layout.nodes.collect);
     }
 });
+test('uses the connection mail directory when a Gmail tool omits directory and resource', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: []}) : Response.json(message('a')));
+    const original = f.connections.resolve;
+    f.connections.resolve = async (...parameters) => ({...await original(...parameters), mailDirectory: 'mail-inbox'});
+    const {directory, ...input} = args;
+    const result = await collectGoogle('gmail', input, f.context, f.connections, f.fetcher);
+    assert.match(result.directory, /^mail-inbox\/gmail-[a-f0-9]{24}$/);
+});

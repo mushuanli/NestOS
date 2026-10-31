@@ -1,5 +1,7 @@
-import {studyGeneration} from './browser/study-generation';
 import {studyDraftStore} from './persistence/study-draft-store';
+import {ShellApplicationEvents, workspaceConsumesEvent} from './lifecycle/application-events';
+import {studySources} from './browser/study-sources';
+import {studyGeneration} from './browser/study-generation';
 import {withAssistantShortcut} from './navigation/assistant-actions';
 import {installAssistantMenu} from './navigation/assistant-menu';
 import {createEditorSwapFactory} from './browser/editor-swap';
@@ -103,6 +105,14 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     if (!options.services || !options.backend) throw new Error('AppOptions.services and AppOptions.backend are required');
     let services = options.services, backend = options.backend;
+    const applicationEvents = backend.events ? new ShellApplicationEvents(backend.events, event => {
+        for (const [id, manager] of managerCache) {
+            const kind = workspaces.find(workspace => workspace.elementId === id)?.type;
+            if (workspaceConsumesEvent(kind, event)) manager.invalidateFromEvents?.();
+        }
+    }, () => !document.hidden) : undefined;
+    cleanupFns.push(() => applicationEvents?.close());
+    await applicationEvents?.prepare(!!options.initialView);
     const startupRoute = parseWorkspaceHash(location.hash, resolvedDefault);
     const startupWorkspace = workspaces.find(ws => ws.elementId === routeMap[startupRoute.slug]);
     const initialDocuments = startupWorkspace?.type === 'chat'
@@ -424,7 +434,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             editorContainer: editorEl,
             files,
             editorFactory: factory,
-            studyGeneration: {recovery: studyDraftStore(elementId), ...studyGeneration(backend, services.sessionRepository), ...options.studyGeneration},
+            studyGeneration: {recovery: studyDraftStore(elementId), ...studyGeneration(backend, services.sessionRepository), sources: studySources(services, workspaces.filter(workspace => workspace.mentionAble || workspace.workspaceName === 'notes').map(workspace => ({id: workspace.workspaceName, label: workspace.title || workspace.workspaceName, files: async () => workspace.files?.fs ?? vfs.openFileSystem(workspaceRoot(workspace.workspaceName))}))), ...(plugins?.includes('cloze:cloze') ? {prompts: {presets: await backend.studyPromptPresets()}} : {}), ...options.studyGeneration},
             scopeId:       elementId, deferNavigation: !!initialResource,
             uiPersistence, workbenchState, windows: windowBinding,
             fileTypes,
@@ -453,6 +463,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         const controller: WorkspaceHandle & WorkspaceCreation = {
             start: () => manager.start(), destroy: () => manager.destroy(),
+            invalidateFromEvents: () => manager.invalidateFromEvents(),
             captureRecovery: () => manager.captureRecovery(), restoreRecovery: state => manager.restoreRecovery(state),
             suspendForRecovery: () => manager.suspendForRecovery(), assertRecovery: () => manager.assertRecovery(),
             setVisible: visible => manager.setVisible?.(visible),
@@ -486,10 +497,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (pendingLoads.has(elementId)) return pendingLoads.get(elementId)!;
         if (managerCache.has(elementId)) return Promise.resolve(managerCache.get(elementId));
         const owned = cleanupGroup();
+        const eventGeneration = applicationEvents?.generation;
         const loading = doLoadWorkspace(wsConfig, owned.own, initialResource).then(manager => {
             if (options.recovery?.workspaces.has(elementId)) {
                 managerCache.get(elementId)?.restoreRecovery?.(options.recovery.workspaces.get(elementId));
             }
+            if (applicationEvents?.generation !== eventGeneration) managerCache.get(elementId)?.invalidateFromEvents?.();
             cleanupFns.push(owned.close); return manager;
         }).catch(async error => {
             if (options.recovery) managerCache.get(elementId)?.suspendForRecovery?.();
@@ -769,6 +782,13 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     // ── AppHandle ──────────────────────────────────────────────────────────────
 
     projection?.finishHydration();
+    if (applicationEvents) {
+        const refresh = () => {if (!document.hidden) void applicationEvents.refresh();};
+        window.addEventListener('online', refresh, {signal: navigationSignal});
+        window.addEventListener('focus', refresh, {signal: navigationSignal});
+        document.addEventListener('visibilitychange', refresh, {signal: navigationSignal});
+        await applicationEvents.start();
+    }
     return {
         vfs,
         sessionFiles,
@@ -788,6 +808,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 navigationScope: managerCache.get(id)?.getNavigationScope?.()} : undefined};
         },
         suspendForRecovery() {
+            applicationEvents?.close();
             recoveringView = true; uiDocs.suspend();
             navigationAbort.abort();
             for (const id of managerCache.keys()) {const root = document.getElementById(id); if (root) root.inert = true;}
@@ -828,6 +849,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         },
 
         async destroy(): Promise<void> {
+            applicationEvents?.close();
             closed = true; ++navigationRevision; navigationAbort.abort();
             await Promise.allSettled(pendingLoads.values());
             for (const fn of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,8 @@ function fixture(t) {
     t.after(() => rmSync(root, { recursive: true, force: true }));
     cpSync(join(repository, '.pnpmfile.cjs'), join(root, '.pnpmfile.cjs'));
     cpSync(join(repository, 'scripts'), join(root, 'scripts'), { recursive: true });
+    mkdirSync(join(root, 'node_modules'));
+    symlinkSync(join(repository, 'node_modules/yaml'), join(root, 'node_modules/yaml'));
     write(join(root, 'scripts/npm-libraries.json'), catalog);
     write(join(root, 'package.json'), { name: 'fixture', private: true });
     write(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - libraries/*\n  - ui/*\noverrides:\n  "@itookit/core": "workspace:*"\n  "@itookit/parent": "workspace:*"\n');

@@ -17,8 +17,6 @@ export interface IndependentCallReceipt extends SubmissionReceipt {
     executionSessionId?: string;
     execution?: ExecutionRef;
 }
-/** The host leases a separate execution context without rebinding the caller's view. */
-export type IndependentCallSubmitter = (request: SubmissionRequest) => Promise<string>;
 
 export interface IndependentCallListQuery {sessionId: string; branchId?: string}
 /** Single Task facts only; not an aggregate stop/settlement acknowledgement for its children. */

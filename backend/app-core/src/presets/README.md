@@ -31,4 +31,10 @@ UI 不附带业务模板。NestOS 产品 Flow 以本目录的 JSON 定义保存�
 
 `flow-format-guide.json` 是笔记 `flow文件格式说明.md` 的唯一内容源，通过系统恢复 `note:flow-format` 写入 `/home/admin/notes/`，包含供用户与 AI 使用的完整示例与参数说明。恢复保留已有笔记；测试以实际 Flow 校验器验证文档首个完整示例。系统恢复内置 Flow 则覆盖当前草稿并发布新修订，保留历史版本。
 
+学习预设内容源是 `study-prompts.json`（背单词、背概念、背古文），启动序列化到笔记 `/.nestos/cloze/prompts.yaml`，多行提示词使用 YAML block scalar。用户命名模板统一保存在此 YAML；不读取旧 `prompts.json`。创建页面由宿主提供三套基础模板，和已保存列表按稳定 ID 合并；用户已有同 ID 内容优先。显式保存才写回。
+
+实际学习示例在 `study-notes.json`，新安装与恢复的目标位于 `anki/`；不移动或修改用户已有的根目录示例。`seedStudyFiles` 只创建缺失文件，示例安装回执 `/.nestos/cloze/examples-v1.installed` 防止重启复活被删除的示例；提示词文件缺失则单独初始化。
+
+设置 → 系统恢复 → 笔记将提示词集合显示为一个「Anki 提示词模板」条目。显式恢复完整覆盖 YAML，包括用户修改与自定义模板，列表明确显示覆盖行为；其他已存在示例笔记保留。正常启动不覆盖已有 YAML。
+
 Flow 格式说明的预设内容包含文档 AI Chat 的真实独立行 `::@` 输入，使用完整文件上下文引导需求澄清和 Flow JSON 生成。生成进入普通 Session，不自动执行、发布或写入 Flow；文档作为应用资源，不在独立 mdxeditor 中内置业务提示。

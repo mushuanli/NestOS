@@ -672,3 +672,5 @@ TaskCallSubmitOptions.beforeBind(caller) 在原 caller 已接纳且仍为 create
 `FlowParameter.role` 可选为 `input`、`option`、`policy`，分别用于材料、业务设置和高级执行策略。role 不改变实参结构或约束；未声明时兼容旧表单。`inputSource` 只能用于 input 或未声明 role 的旧字段。UI 必须继续校验收起的 policy，错误时展开定位。
 
 `FlowLayout.steps?: Array<{name: string; nodes: string[]}>` 是设计器概览分组；仅引用草稿内原节点，不参与执行编译和发布修订。运行依赖仍由 edges、内联函数与已有控制节点决定。
+
+`FlowCommand.RunCancel` 仅接受完整的 `FlowCancellationRequest`（sessionId、taskId、requestId、expectedEpoch），缺字段在读取或修改任务前拒绝。已删除仅按 taskId 从本地缓存枚举并逐项取消的兼容实现，Web、CLI、HTTP 使用同一持久取消入口及回执。

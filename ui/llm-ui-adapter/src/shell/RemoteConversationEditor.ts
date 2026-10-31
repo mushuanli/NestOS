@@ -5,7 +5,7 @@ import {ConversationComposer} from './drafts/conversation-composer';
 import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
 interface SubmittedInput {text: string; files: File[]; revision: number; config: IChatInputConfig}
 import { BaseSettingsEditor, Toast, conversationStatus, type ConversationControls, type ConversationSnapshot, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap } from '@itookit/ui-common';
-import { escapeHTML, randomUUID, t } from '@itookit/common';
+import { createModuleLogger, escapeHTML, randomUUID, t } from '@itookit/common';
 import {renderConversationRequests, clearConversationRequests} from './remote-interactions';
 import { ConversationWorkspaceView } from './ConversationWorkspaceView';
 import { RemoteBranches } from './remote-branches';
@@ -17,6 +17,8 @@ import type { WorkspaceHandoff } from './drafts/workspace-handoff';
 import {isCommandInput} from '@itookit/llm-ui';
 import {resolveNativeCommand, submitNativeCommand} from '../independent/native-command';
 import {nativeBranchCommand, withNativeBranchCommands} from '../commands/native-branch-command';
+
+const observationLog = createModuleLogger('native-observation');
 
 /** Native histories remain remote; this editor only owns a view and input draft. */
 export class RemoteConversationEditor extends BaseSettingsEditor<ConversationControls> {
@@ -544,9 +546,21 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.historyBranches?.setActive(true);
         this.view?.history.view.setActive(true);
         this.view?.history.setActive(true);
-        this.active = true; await this.tail; await this.show(await this.service.read());
-        if (!this.active || this.closed) return;
+        this.active = true; const revision = this.branchRevision;
         if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
+        const started = Date.now(), operationId = randomUUID();
+        try {
+            const snapshot = await this.service.refresh();
+            const current = this.active && !this.closed && revision === this.branchRevision;
+            if (current) await this.show(this.service.snapshot?.() ?? snapshot);
+            observationLog.info('chat.native.resume', {operationId, stage: 'events', result: current ? 'success' : 'superseded',
+                messageCount: snapshot.messages.length, durationMs: Date.now() - started});
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            observationLog.warn('chat.native.resume', {operationId, stage: 'events', result: 'failure',
+                code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'NATIVE_OBSERVATION_FAILED', durationMs: Date.now() - started});
+            throw error;
+        }
     }
     getText() { return remoteRounds(this.snapshot?.messages ?? []).map(group => group.content ?? group.executionRoot?.data.output ?? '').join('\n\n'); }
     private recoveringView = false;

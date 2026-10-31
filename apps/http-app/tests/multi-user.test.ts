@@ -45,6 +45,16 @@ async function view(fetcher: typeof fetch, id = 'same-client') {
     const client = new HttpViewClient(id, origin() + '/api/application', fetcher); clients.push(client);
     return client.start();
 }
+
+it('returns persisted diagnostic events only from the authenticated user runtime', async () => {
+    const [a, b] = await Promise.all([view(admin.fetcher, 'diagnostic-admin'), view(alice.fetcher, 'diagnostic-alice')]);
+    await a.backend.reportClientDiagnostic!({operation: 'diagnostic.test', operationId: 'admin-diagnostic', stage: 'query', code: 'ADMIN_TEST_FAILURE', result: 'failure', durationMs: 1});
+    await b.backend.reportClientDiagnostic!({operation: 'diagnostic.test', operationId: 'alice-diagnostic', stage: 'query', code: 'ALICE_TEST_FAILURE', result: 'failure', durationMs: 1});
+    const first = await a.backend.diagnostics!.query({search: 'diagnostic.test'}), second = await b.backend.diagnostics!.query({search: 'diagnostic.test'});
+    expect(first.events.map(event => event.code)).toEqual(['ADMIN_TEST_FAILURE']);
+    expect(second.events.map(event => event.code)).toEqual(['ALICE_TEST_FAILURE']);
+    expect(first.persistence).toBe('ready'); expect(second.persistence).toBe('ready');
+});
 it('routes equal client IDs into separate runtimes and stores complete state inside each home', async () => {
     expect(await (await admin.fetcher(origin() + '/api/identity')).json()).toEqual({userId: 'admin'});
     expect(await (await alice.fetcher(origin() + '/api/identity')).json()).toEqual({userId: 'alice'});

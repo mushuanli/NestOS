@@ -1877,7 +1877,7 @@ describe('DurableFlowExecutor', () => {
         const session = await kernel.openSession('session-one');
         const retries = await Promise.all(['one', 'two'].map(request => prepareFlowTaskRetry(session, execution.root.id,
             execution.nodes.get('left')!.id, request)));
-        await handlers.get(FlowCommand.RunCancel)!({ taskId: execution.root.id });
+        await handlers.get(FlowCommand.RunCancel)!({sessionId: 'session-one', taskId: execution.root.id, requestId: 'cancel-retries', expectedEpoch: 0});
         for (const retry of retries) expect((await retry.status()).task.status).toBe('cancelled');
     });
 

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import state from './local-library-state.mjs';
+import { buildSupportFiles, libraryBuildInputs } from './local-library-inputs.mjs';
 
 export const excluded = new Set(['node_modules', 'dist', '.git', 'target', 'coverage', '.vite', 'release']);
 export function sourceHash(directory, digest = createHash('sha256'), prefix = '') {
@@ -22,7 +23,8 @@ export function sourceHash(directory, digest = createHash('sha256'), prefix = ''
 export function buildHash(root) {
     const digest = createHash('sha256');
     for (const file of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'tsconfig.base.json',
-        'scripts/library-artifacts.mjs', 'scripts/npm-libraries.mjs', 'scripts/build-source-policy.mjs', 'scripts/local-library-build.mjs', 'scripts/local-library-plan.mjs']) {
+        'scripts/library-artifacts.mjs', 'scripts/npm-libraries.mjs', 'scripts/build-source-policy.mjs', 'scripts/local-library-build.mjs',
+        'scripts/local-library-plan.mjs', 'scripts/local-library-inputs.mjs', ...buildSupportFiles(root)]) {
         digest.update(file + '\0'); digest.update(readFileSync(join(root, file))); digest.update('\0');
     }
     return digest.digest('hex');
@@ -44,7 +46,7 @@ function sourceRecord(root, library, catalog, hash) {
     const directory = join(root, 'libraries', library.directory);
     const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
     if (manifest.name !== library.name) throw new Error(`LOCAL_LIBRARIES_SOURCE_IDENTITY: ${library.name}`);
-    return { ...library, version: manifest.version, sourceHash: sourceHash(directory), buildHash: hash,
+    return { ...library, version: manifest.version, sourceHash: sourceHash(directory), buildHash: hash(library),
         libraryDependencies: dependencies(manifest, catalog) };
 }
 function baseRecords(base, catalog) {
@@ -55,13 +57,14 @@ function baseRecords(base, catalog) {
         return { ...previous, directory: library.directory, libraryDependencies: dependencies(manifest, catalog) };
     });
 }
-function selectDependents(root, records, selected, catalog, hash) {
+function selectDependents(root, records, selected, catalog, hash, reasons) {
     let added = true;
     while (added) {
         added = false;
         for (let index = 0; index < records.length; index++) {
             if (selected.has(records[index].name) || !records[index].libraryDependencies.some(name => selected.has(name))) continue;
             selected.add(records[index].name);
+            reasons[records[index].name] = ['dependency-rebuilt'];
             records[index] = sourceRecord(root, records[index], catalog, hash);
             added = true;
         }
@@ -71,17 +74,27 @@ function selectDependents(root, records, selected, catalog, hash) {
 export function planSnapshot(root, catalog, { base = null, requested, full = false } = {}) {
     const target = requested && catalog.find(item => item.name === requested || item.directory === requested);
     if (requested && !target) throw new Error(`LOCAL_LIBRARIES_UNKNOWN: ${requested}; use a library name, not a snapshot ID`);
-    const hash = buildHash(root), records = base ? baseRecords(base, catalog) : [];
-    const selected = new Set();
+    const captureHash = buildHash(root), hash = libraryBuildInputs(root, catalog), records = base ? baseRecords(base, catalog) : [];
+    const selected = new Set(), reasons = {};
     for (const library of catalog) {
         const index = catalog.indexOf(library), previous = records[index];
         const inspect = full || !base || !requested || library.name === target.name;
         if (!inspect || (base && !full && !requested && !existsSync(join(root, 'libraries', library.directory, 'package.json')))) continue;
         const current = sourceRecord(root, library, catalog, hash);
-        if (full || !base || requested || previous.sourceHash !== current.sourceHash || previous.buildHash !== hash) {
+        const changes = rebuildReasons(previous, current, { full, requested });
+        if (changes.length) {
             records[index] = current; selected.add(library.name);
+            reasons[library.name] = changes;
         }
     }
-    selectDependents(root, records, selected, catalog, hash);
-    return { base, records, selected: [...selected], buildHash: hash };
+    selectDependents(root, records, selected, catalog, hash, reasons);
+    return { base, records, selected: [...selected], reasons, buildHash: captureHash };
+}
+
+function rebuildReasons(previous, current, { full, requested }) {
+    if (full) return ['full-build'];
+    if (!previous) return ['no-baseline'];
+    if (requested) return ['requested'];
+    return [previous.sourceHash !== current.sourceHash && 'source-changed',
+        previous.buildHash !== current.buildHash && 'build-inputs-changed'].filter(Boolean);
 }

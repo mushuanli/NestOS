@@ -1,13 +1,25 @@
 import {mkdir, lstat, readFile, open, rename, unlink} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
-import type {ToolConnectionAccess, ToolConnectionInput, ToolConnectionType, ToolOAuthApplicationInput} from '@itookit/app-contracts/services';
+import type {ToolConnectionAccess, ToolConnectionInput, ToolConnectionType, ToolOAuthApplicationInput, ToolConnectionVerification} from '@itookit/app-contracts/services';
 import {ToolAuthorization, type PrivateConnection} from './tool-authorization';
 import {validateOAuth} from './tool-oauth-client';
 import {ToolOAuthApplications} from './tool-oauth-applications';
 import {bindOAuthApplication, connectionValues, usesApplication, type OAuthConnectionRecord as ConnectionRecord} from './tool-oauth-binding';
 
 const failure = (code: string) => Object.assign(new Error(code), {code});
+const verificationCode = (error: unknown): string => /^(TOOL_AUTH|TOOL_CONNECTION)_[A-Z_]+$/.test((error as {code?: string})?.code ?? '') ? (error as {code: string}).code : 'TOOL_CONNECTION_VERIFICATION_FAILED';
+function publicVerification(value: ConnectionRecord['verification'], revision?: string): ToolConnectionVerification | undefined {
+    if (!value || value.revision !== revision || !['verified', 'failed', 'unsupported'].includes(value.status)
+        || typeof value.checkedAt !== 'number' || !Number.isFinite(value.checkedAt) || value.checkedAt < 0 || value.checkedAt > 8.64e15) return;
+    return {status: value.status, checkedAt: value.checkedAt, ...(typeof value.code === 'string' && /^(TOOL_AUTH|TOOL_CONNECTION)_[A-Z_]+$/.test(value.code) ? {code: value.code} : {})};
+}
+export function validateToolConnectionDefinition(type: ToolConnectionType): void {
+    if (!/^[a-z][a-z0-9.-]{0,79}$/.test(type.id) || !type.fields.length
+        || new Set(type.fields.map(field => field.name)).size !== type.fields.length
+        || type.fields.some(field => !/^[a-zA-Z][a-zA-Z0-9]{0,79}$/.test(field.name))) throw failure('TOOL_CONNECTION_TYPE_INVALID');
+    validateOAuth(type);
+}
 /** Created per runtime from its private auth directory; caller input never selects a user or path. */
 export class NodeToolConnections implements ToolConnectionAccess {
     private readonly types = new Map<string, ToolConnectionType>();
@@ -50,10 +62,7 @@ export class NodeToolConnections implements ToolConnectionAccess {
         if (!this.applications) throw failure('TOOL_AUTH_APPLICATION_UNAVAILABLE');
     }
     register(type: ToolConnectionType): void {
-        if (!/^[a-z][a-z0-9.-]{0,79}$/.test(type.id) || !type.fields.length
-            || new Set(type.fields.map(field => field.name)).size !== type.fields.length
-            || type.fields.some(field => !/^[a-zA-Z][a-zA-Z0-9]{0,79}$/.test(field.name))) throw failure('TOOL_CONNECTION_TYPE_INVALID');
-        validateOAuth(type); this.types.set(type.id, structuredClone(type));
+        validateToolConnectionDefinition(type); this.types.set(type.id, structuredClone(type));
     }
     async snapshot() {
         const records = await this.read();
@@ -66,7 +75,10 @@ export class NodeToolConnections implements ToolConnectionAccess {
             const type = this.types.get(record.type), fields = type?.fields ?? [];
             const application = applications.get(record.type), managed = type && usesApplication(record, type, application);
             const connected = type?.authorization && Boolean(record.values[type.authorization.refreshTokenField]) && (!managed || Boolean(application && record.oauthApplicationRevision === application.revision));
+            const revision = managed ? application && `${record.revision ?? ''}:${application.revision}` : record.revision;
+            const verification = publicVerification(record.verification, revision);
             return {id: record.id, type: record.type, name: record.name,
+                ...(verification && (!managed || application) ? {verification} : {}),
                 ...(type?.authorization ? {authorization: {scopes: connected ? record.authorizedScopes ?? [] : [], connected: Boolean(connected), clientMode: managed ? 'application' as const : 'personal' as const, operation: this.authorization.current(record.id)}} : {}),
                 values: Object.fromEntries(fields.filter(field => !field.secret).map(field => [field.name, record.values[field.name] ?? ''])),
                 configuredSecrets: fields.filter(field => field.secret && record.values[field.name]).map(field => field.name)};
@@ -90,11 +102,40 @@ export class NodeToolConnections implements ToolConnectionAccess {
             const auth = type.authorization, credentialFields = auth ? [auth.clientIdField, auth.clientSecretField, auth.refreshTokenField].filter(Boolean) : type.fields.map(field => field.name);
             const unchanged = previous && credentialFields.every(name => previous.values[name!] === values[name!]);
             const managed = usesApplication({...input, values, oauthApplicationRevision: previous?.oauthApplicationRevision}, type, application);
-            return [...records.filter(record => record.id !== input.id), {...previous, id: input.id, type: input.type, name: input.name.trim(), values, revision: randomUUID(), authorizedScopes: unchanged ? previous.authorizedScopes : undefined,
+            return [...records.filter(record => record.id !== input.id), {...previous, verification: undefined, id: input.id, type: input.type, name: input.name.trim(), values, revision: randomUUID(), authorizedScopes: unchanged ? previous.authorizedScopes : undefined,
                 ...(managed ? {oauthApplicationRevision: previous?.oauthApplicationRevision ?? application?.revision} : {})}];
         }).then(() => {this.authorization.invalidate(input.id);});
     }
     remove(id: string): Promise<void> {return this.mutate('remove', records => records.filter(record => record.id !== id)).then(() => {this.authorization.invalidate(id);});}
+    async verify(id: string): Promise<ToolConnectionVerification> {
+        const operationId = randomUUID(), started = Date.now(); let stage = 'validate-id';
+        const connectionId = typeof id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(id) ? id : undefined;
+        try {
+            if (!connectionId) throw failure('TOOL_CONNECTION_INVALID');
+            stage = 'load-connection';
+            const record = await this.privateRecord(id); let revision = record.revision;
+            let result: ToolConnectionVerification = {status: 'unsupported', checkedAt: Date.now()};
+            if (this.types.get(record.type)?.authorization) {
+                stage = 'token-refresh';
+                try {revision = await this.authorization.verify(id, record.type); result = {status: 'verified', checkedAt: Date.now()};}
+                catch (error) {result = {status: 'failed', checkedAt: Date.now(), code: verificationCode(error)};}
+            }
+            stage = 'persist-verification'; await this.saveVerification(id, revision, result);
+            console.info('[ToolConnections]', {operation: 'verify', operationId, connectionId, stage, result: result.status, code: result.code, durationMs: Date.now() - started});
+            return result;
+        } catch (error) {
+            console.warn('[ToolConnections]', {operation: 'verify', operationId, connectionId, stage, result: 'failure', code: verificationCode(error), durationMs: Date.now() - started}); throw error;
+        }
+    }
+    private saveVerification(id: string, revision: string | undefined, verification: ToolConnectionVerification): Promise<void> {
+        return this.mutate('verify', async records => {
+            const record = records.find(row => row.id === id), type = record && this.types.get(record.type);
+            if (!record || !type) throw failure('TOOL_CONNECTION_NOT_FOUND');
+            const bound = bindOAuthApplication(record, type, await this.applications?.get(type.id));
+            if (bound.revision !== revision) throw failure('TOOL_AUTH_CONNECTION_CHANGED');
+            return records.map(row => row.id === id ? {...row, verification: {...verification, revision}} : row);
+        });
+    }
     private async privateRecord(id: string): Promise<PrivateConnection> {
         const record = (await this.read()).find(item => item.id === id);
         const type = record && this.types.get(record.type);

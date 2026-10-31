@@ -1,3 +1,5 @@
+import {copyToolbox} from './toolbox';
+import {copyPackageGuide} from './guide';
 import type {ToolConnectionAccess} from '@itookit/app-contracts/services';
 import {access, mkdir, mkdtemp, rename, rm, stat} from 'node:fs/promises';
 import {constants} from 'node:fs';
@@ -11,7 +13,7 @@ import {withPackageEnvironment} from './environment';
 
 export interface InstalledToolPackage {source: ToolPackageSource; registration: RegisteredToolPackage; tools: Tool[];}
 
-export async function restoreToolPackage(directory: string, registration: RegisteredToolPackage, connections?: ToolConnectionAccess): Promise<InstalledToolPackage> {
+export async function restoreToolPackage(directory: string, registration: RegisteredToolPackage, connections?: ToolConnectionAccess, factoryBindings?: ExecutableBinding[]): Promise<InstalledToolPackage> {
     const source = await readToolPackage(directory); validateBindings(source, registration.bindings);
     for (const binding of registration.bindings) {
         try {await access(binding.path, constants.X_OK); if (!(await stat(binding.path)).isFile()) throw new Error('not a file');}
@@ -21,16 +23,18 @@ export async function restoreToolPackage(directory: string, registration: Regist
     if (source.manifest.id !== registration.id || source.manifest.version !== registration.version
         || await packageFingerprint(source, files) !== registration.fingerprint)
         throw packageError('TOOL_PACKAGE_CONTENT_CONFLICT', `Installed package ${registration.id}@${registration.version} differs from its registration`);
-    return {source, registration, tools: await packageTools(source, registration.bindings, connections)};
+    const environment = registration.bindings.map(binding => factoryBindings?.find(previous => previous.env === binding.env) ?? binding);
+    return {source, registration, tools: await packageTools(source, environment, connections)};
 }
 
-export async function stageToolPackage(source: ToolPackageSource, directory: string, env: NodeJS.ProcessEnv, connections?: ToolConnectionAccess): Promise<InstalledToolPackage> {
+export async function stageToolPackage(source: ToolPackageSource, directory: string, env: NodeJS.ProcessEnv, connections?: ToolConnectionAccess, factoryBindings?: ExecutableBinding[]): Promise<InstalledToolPackage> {
     const resolved = await resolvePackageExecutables(source, env);
     const files = await packageFiles(source, resolved), fingerprint = await packageFingerprint(source, files);
     const parent = path.dirname(directory); await mkdir(parent, {recursive: true});
     const staged = await mkdtemp(path.join(parent, '.install-'));
     try {
         const copied = await copyPackageFiles(source, staged, files, resolved);
+        await copyPackageGuide(source, staged); await copyToolbox(source, staged);
         const bindings = copied.map(binding => binding.source === 'package' && binding.relative ? {...binding, path: path.join(directory, binding.relative)} : binding);
         const registration = {id: source.manifest.id, version: source.manifest.version, fingerprint, bindings};
         try {await rename(staged, directory);}
@@ -40,7 +44,7 @@ export async function stageToolPackage(source: ToolPackageSource, directory: str
             if (await packageFingerprint(installed, await packageFiles(installed, bindings)) !== fingerprint)
                 throw packageError('TOOL_PACKAGE_CONTENT_CONFLICT', `Package ${registration.id}@${registration.version} is already installed with different contents`);
         }
-        return restoreToolPackage(directory, registration, connections);
+        return restoreToolPackage(directory, registration, connections, factoryBindings);
     } finally {await rm(staged, {recursive: true, force: true});}
 }
 

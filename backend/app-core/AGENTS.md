@@ -1,5 +1,9 @@
 # @itookit/app-core
 
+远程原生队列启动恢复由 projects/remote-conversation-recovery 扫描当前用户已有 journal，重验连接、项目、principal 与稳定会话身份后挂入 ConversationRegistry。恢复只建立观察和读取基线，不直接重发原指令；失效绑定或不可用远端保留 deferred 与原记录。所有存储沿注入 IFileSystem 的 SeqFile CAS，不创建跨用户全局 events.seq，也不把会话恢复策略放进 vfs-core。
+
+projects/remote-conversation-retry 对暂时性观察接线失败按 15 至 60 秒退避，仅重试失败目标并重新读取原 journal；授权变化/身份冲突不自动放行。原 journal 是跨重启索引，重试集合只用于进程内调度；dispose 先关闭重试循环并等待当前扫描，再释放 Registry。
+
 平台无关的**应用用例与装配层**：封装项目组织、配置关联操作等应用策略，并把 VFS / LLM 设备驱动 / durable-kernel / kernel-adapters / llm-session / llm-flow 装配成运行时，供 Tauri、Web 与 CLI 共用。详见 [运行时架构](../../doc/runtime-architecture.md)、[包结构](../../doc/pkgstructure.md)。
 
 本地项目首次草稿可选择已发布 Flow，materialize 保持原 UUID，通过正式 Session 同一提交队列运行；Flow 目标不写 createdWithAgentId。草稿配置与参数正文由 UI 不透明编解码，宿主不解释参数或伪造 Agent 身份；远程原生草稿继续使用原 journal 和持久接纳转正规则。
@@ -226,4 +230,6 @@ configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、�
 
 - assistant/overview 在用户绑定的服务图中读取摘要与 sessionActivity，聚合优先级和目标路由，不启动 Session、模型或扫描器。DigitalTwin.activitySummary 只投影空间、扫描器和最近运行元数据，不返回证据、提示词或凭据。
 
-configuration/text-generation 与 text-session 使用正式 Session 提交与持久轮次结果，不设置独立的 8192 输出预算或重复上下文预算；协议必需的输出参数来自模型声明，显式用户限制优先。length 且有正文时保留结果并记录安全诊断；空正文仍返回 TEXT_OUTPUT_EMPTY。
+configuration/text-generation 校验连接、模型及上下文预算，再由 text-session 走正式 Session Submit；按 submission ID 观察持久轮次结果。同一文档草稿复用 Session，多次生成追加轮次，不自动保存笔记。取消按该提交的队列项和 Task 定位，不中断同 Session 的其他任务；视图关闭等待取消清理。日志仅保留 operationId、sessionId、阶段及安全错误码。学习预设由 presets/study-files 初始化，YAML 提示词在显式恢复时完整覆盖。
+
+projects/personal-project 用 /etc/system-personal-project.json 保存保留项目身份，与 /etc/personal-project.json 的用户默认项目选择独立。启动确保保留项目存在；项目来源删除、Session 文件夹删除和浏览器删除在副作用前校验。导航 protected 标记隐藏删除入口，后端仍强制保护。

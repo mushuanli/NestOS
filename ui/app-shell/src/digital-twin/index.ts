@@ -42,6 +42,8 @@ export class TwinWorkbench {
     private busy = false;
     private loading = false;
     private refreshQueued = false;
+    private visible = true;
+    private eventsDirty = false;
     private dirty = false;
     private error = '';
     private message = '';
@@ -106,11 +108,17 @@ export class TwinWorkbench {
     }
 
     private serviceChanged(): void {
-        if (this.busy || this.dirty || this.error || this.autosave.pending
+        this.eventsDirty = true;
+        if (!this.visible || this.busy || this.dirty || this.error || this.autosave.pending
             || this.options.editor.querySelector('[data-scan-filter]:focus')
             || this.options.editor.querySelector('[data-form=settings]')?.contains(document.activeElement)) return;
         if (this.loading) { this.refreshQueued = true; return; }
-        void this.refreshDraft();
+        this.eventsDirty = false; void this.refreshDraft();
+    }
+    invalidateFromEvents(): void {if (!this.abort.signal.aborted) this.serviceChanged();}
+    setVisible(visible: boolean): void {
+        this.visible = visible;
+        if (visible && this.eventsDirty && !this.abort.signal.aborted) this.serviceChanged();
     }
     private async refresh(): Promise<void> {
         const generation = ++this.generation;

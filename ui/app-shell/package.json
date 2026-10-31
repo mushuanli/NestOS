@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@itookit/app-contracts": "workspace:*"
+    "@itookit/app-contracts": "workspace:*",
+    "@itookit/app-transport": "workspace:*"
   },
   "peerDependencies": {
     "@itookit/app-settings": "workspace:*",
@@ -59,7 +60,7 @@
     "@types/node": "^20.19.25",
     "vitest": "^3.2.4",
     "@itookit/ui-common": "workspace:*",
-    "jsdom": "^27.2.0",
+    "jsdom": "^27.4.0",
     "tsx": "^4.20.6",
     "@itookit/mdx-adapter": "workspace:*",
     "@itookit/llm-tasks": "workspace:*",
@@ -70,7 +71,6 @@
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
     "@itookit/nestos-node-driver": "workspace:*",
-    "@itookit/node-host": "workspace:*",
-    "@itookit/app-transport": "workspace:*"
+    "@itookit/node-host": "workspace:*"
   }
 }

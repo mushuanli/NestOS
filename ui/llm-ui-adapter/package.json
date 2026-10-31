@@ -135,12 +135,11 @@
     "@itookit/mdxeditor": "workspace:*",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.25",
-    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/coverage-v8": "^4.1.12",
     "typescript": "^5.9.3",
-    "vite": "^5.4.21",
-    "vite-plugin-checker": "^0.11.0",
-    "vite-plugin-dts": "^3.9.1",
-    "vitest": "^1.6.1"
+    "vite": "^7.2.4",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^4.1.12"
   },
   "peerDependenciesMeta": {
     "@itookit/llm-settings-ui": {

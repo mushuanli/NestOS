@@ -4,6 +4,16 @@ import type {ExecutableBinding} from './files';
 interface BindingLease {path: string; original?: string; users: Set<symbol>}
 const leases = new Map<string, BindingLease>();
 
+/** Runtime-injected executable leases are not user overrides for the next package version. */
+export function packageSourceEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    const source = {...env};
+    if (env !== process.env) return source;
+    for (const [key, lease] of leases) if (source[key] === lease.path) {
+        if (lease.original === undefined) delete source[key]; else source[key] = lease.original;
+    }
+    return source;
+}
+
 export function assertPackageEnvironment(bindings: ExecutableBinding[]): void {
     for (const binding of bindings) {
         const current = leases.get(binding.env);

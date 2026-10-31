@@ -96,3 +96,48 @@ it('refuses replaced credentials during exchange and clears credentials only aft
     expect((await revoked.resolve('personal', 'fixture')).refresh).toBe('');
     expect((await revoked.snapshot()).connections[0].authorization?.connected).toBe(false);
 });
+
+it('verifies imported credentials with a fresh token request and persists a redacted result across reopen', async () => {
+    let fail = false;
+    const fetcher = vi.fn(async () => fail ? Response.json({error: 'invalid_grant', error_description: 'PRIVATE_RESPONSE'}, {status: 400})
+        : Response.json({access_token: 'PRIVATE_ACCESS', refresh_token: 'PRIVATE_ROTATED_REFRESH', expires_in: 3600}));
+    const root = await mkdtemp(path.join(tmpdir(), 'tool-verify-')); cleanups.push(() => rm(root, {recursive: true, force: true}));
+    const store = new NodeToolConnections(root, {fetcher}); store.register(type); cleanups.push(() => store.close());
+    await store.save({id: 'personal', type: 'fixture', name: 'Personal', values: {clientId: 'client', secret: 'PRIVATE_SECRET', refresh: 'PRIVATE_REFRESH'}});
+    expect((await store.snapshot()).connections[0].verification).toBeUndefined();
+    expect(await store.verify('personal')).toMatchObject({status: 'verified', checkedAt: expect.any(Number)});
+    const snapshot = await store.snapshot(); expect(snapshot.connections[0].verification?.status).toBe('verified');
+    expect(JSON.stringify(snapshot)).not.toMatch(/PRIVATE_ACCESS|PRIVATE_REFRESH|PRIVATE_SECRET|PRIVATE_ROTATED_REFRESH/);
+    const reopened = new NodeToolConnections(root, {fetcher}); reopened.register(type); cleanups.push(() => reopened.close());
+    expect((await reopened.snapshot()).connections[0].verification?.status).toBe('verified');
+    fail = true;
+    expect(await store.verify('personal')).toMatchObject({status: 'failed', code: 'TOOL_AUTH_REAUTHORIZE_REQUIRED'});
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect((await store.snapshot()).connections[0].verification).toMatchObject({status: 'failed', code: 'TOOL_AUTH_REAUTHORIZE_REQUIRED'});
+    expect((await store.resolve('personal', 'fixture')).refresh).toBe('PRIVATE_ROTATED_REFRESH');
+    await store.save({id: 'personal', type: 'fixture', name: 'Updated', values: {clientId: 'client', secret: ''}});
+    expect((await store.snapshot()).connections[0].verification).toBeUndefined();
+});
+
+it('reports host network failure as verification failure without deleting saved credentials', async () => {
+    const fetcher = vi.fn(async () => {throw new Error('PRIVATE_PROXY_URL');});
+    const store = await setup(fetcher as typeof fetch);
+    await store.save({id: 'personal', type: 'fixture', name: 'Personal', values: {clientId: 'client', secret: '', refresh: 'PRIVATE_REFRESH'}});
+    expect(await store.verify('personal')).toMatchObject({status: 'failed', code: 'TOOL_AUTH_TRANSPORT_FAILED'});
+    expect((await store.resolve('personal', 'fixture')).refresh).toBe('PRIVATE_REFRESH');
+    expect(JSON.stringify((await store.snapshot()).connections[0].verification)).not.toContain('PRIVATE_');
+});
+
+it('does not attach verification to credentials replaced while the token request was pending', async () => {
+    let finish!: (response: Response) => void;
+    const fetcher = vi.fn(() => new Promise<Response>(resolve => {finish = resolve;}));
+    const store = await setup(fetcher as typeof fetch);
+    await store.save({id: 'personal', type: 'fixture', name: 'Personal', values: {clientId: 'client', secret: '', refresh: 'first'}});
+    const checking = store.verify('personal');
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    await store.save({id: 'personal', type: 'fixture', name: 'Changed', values: {clientId: 'other-client', secret: '', refresh: 'replacement'}});
+    finish(Response.json({access_token: 'PRIVATE_OLD_ACCESS', expires_in: 3600}));
+    await expect(checking).rejects.toThrow('TOOL_AUTH_CONNECTION_CHANGED');
+    expect((await store.snapshot()).connections[0].verification).toBeUndefined();
+    expect((await store.resolve('personal', 'fixture')).refresh).toBe('replacement');
+});

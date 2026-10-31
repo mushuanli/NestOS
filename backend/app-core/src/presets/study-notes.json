@@ -1,0 +1,17 @@
+[
+  {
+    "id": "note:study-vocabulary",
+    "name": "anki/学习示例-背单词.md",
+    "content": "# 背单词示例\n\n| 中文 | 单词 |\n| :--- | :--- |\n| vt. 保护 | --[word-protect] protect /prəˈtekt/¶名词：protection（保护）；形容词：protective（保护性的）¶protect…from…：保护……免受……¶Trees protect the soil from heavy rain.¶树木保护土壤免受暴雨侵蚀。--^^audio:protect. Trees protect the soil from heavy rain.^^ |\n"
+  },
+  {
+    "id": "note:study-concepts",
+    "name": "anki/学习示例-背概念.md",
+    "content": "# 背概念示例\n\n1. 杠杆的五要素：--[lever-effort] 动力--、--[lever-effort-arm] 动力臂--、--[lever-load] 阻力--、--[lever-load-arm] 阻力臂--、--[lever-fulcrum] 支点--。\n"
+  },
+  {
+    "id": "note:study-classical-chinese",
+    "name": "anki/学习示例-背古文.md",
+    "content": "# 背古文示例\n\n# 三峡\n**【北魏】郦道元**\n\n## 原文\n自三峡七百里中，两岸连山，略无阙(quē)处。\n\n## 译文\n第1段译文：--[sanxia-translation-1] 在三峡七百里之间，两岸都是连绵的高山，完全没有中断的地方。--\n\n## 字词解释\n| 古文 | 解释 |\n| :--- | :--- |\n| 自（自三峡七百里中） | --[sanxia-zi] 于。这里是“在”的意思。-- |\n| 略无 | --[sanxia-luewu] 完全没有。-- |\n| 阙 | --[sanxia-que] 同“缺”，空隙、缺口。-- |\n"
+  }
+]

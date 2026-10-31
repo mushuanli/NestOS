@@ -2,7 +2,7 @@ import type {ApplicationClient} from '@itookit/app-contracts/services';
 import {IndependentCallCommand, type IndependentCallInput, type IndependentCallReceipt} from '@itookit/llm-session/contracts';
 import type {CommandOptions} from './commands';
 import {assertFrozenCallOptions, prepareSessionSubmission, readCallJson, validateSubmissionFile, writeCallJson} from './application-submission';
-import {watchSubmissionExecution} from './submission-execution';
+import {waitIndependentCall} from './independent-call-execution';
 import {recordRuntimeDiagnostic} from './diagnostics';
 
 /** CLI owns files and observation; the host alone chooses and admits the execution Session. */
@@ -70,14 +70,9 @@ async function observe(client: ApplicationClient, input: IndependentCallInput, r
     try {
         opened = await client.backend.openSessionView(receipt.executionSessionId!);
         await opened.activate(); stage = 'execution';
-        const request = {...input.request, expectedSessionId: receipt.executionSessionId, expectedBranch: 'main',
-            submission: {id: receipt.operationId, source: {kind: 'independent-call', ownerId: receipt.callerSessionId, id: receipt.operationId}}};
-        const watching = watchSubmissionExecution(client, request, follow);
-        try {
-            const execution = await watching.wait();
-            recordRuntimeDiagnostic('call.independent.observe', {operationId: receipt.operationId, stage, outcome: execution.status, durationMs: Date.now() - started});
-            return {...receipt, admission: receipt.status, executionRef: receipt.execution, execution, waitingForInput: execution.waitingForInput};
-        } finally {watching.dispose();}
+        const result = await waitIndependentCall(client, input, receipt, follow);
+        recordRuntimeDiagnostic('call.independent.observe', {operationId: receipt.operationId, stage, outcome: result.execution.status, durationMs: Date.now() - started});
+        return {...receipt, admission: receipt.status, ...result};
     } catch (error) {
         const supplied = (error as {code?: unknown})?.code;
         const code = typeof supplied === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(supplied) ? supplied : 'CLI_CALL_OBSERVATION_FAILED';

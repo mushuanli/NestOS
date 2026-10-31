@@ -40,4 +40,6 @@ InputAssetCommand.ImportFile/Inspect 为通用文件上传及只读核对端口�
 
 `presets/cloze-storage.ts` 只定义笔记共享复习存储的位置与文档路径 key 编解码；不包含调度算法、卡片格式或 I/O。
 
+- ToolPackageConfiguration/ToolPackageSettings 只携带用户启用状态、普通默认参数与参数表单声明；认证仍归 ToolConnections。TwinScannerTool.defaults 用于预填，不参与已固定 Tool 目标的 digest。
+
 - ports/assistant 提供助手待处理读模型与轻量 TwinActivitySummary；ApplicationBackend.assistantOverview 是可选只读能力，目标仍通过已有工作区导航执行，不包含任意命令或客户端用户身份。

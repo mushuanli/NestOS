@@ -60,7 +60,8 @@
         "@itookit/vfsdriver-indexeddb": "workspace:*",
         "@itookit/vfsdriver-local": "workspace:*",
         "@itookit/driver-llm": "workspace:*",
-        "@itookit/mdxeditor": "workspace:*"
+        "@itookit/mdxeditor": "workspace:*",
+        "yaml": "^2.8.2"
     },
     "dependencies": {
         "jsdoc-tsimport-plugin": "^1.0.5",

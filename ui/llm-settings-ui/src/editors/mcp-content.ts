@@ -1,7 +1,8 @@
-import { escapeHTML, t, generateShortUUID } from '@itookit/common';
+import { escapeHTML, t, generateShortUUID, randomUUID } from '@itookit/common';
 import type { MCPDiscovery, MCPServer } from '@itookit/tools/mcp-contracts';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import { Modal, Toast } from '@itookit/ui-common';
+import { renderMCPResourcePreview } from './mcp-resource-preview';
 
 export function renderMCPPrompts(server: MCPServer): string {
     return `<div class="settings-section"><h3 class="settings-section__title">Prompts</h3>${((server.prompts ?? []) as MCPDiscovery['prompts']).map((prompt, index) => `
@@ -21,11 +22,27 @@ export function bindMCPContent(container: HTMLElement, server: MCPServer, servic
             const resource = (server.resources as MCPDiscovery['resources'])?.[index];
             if (!resource) return;
             button.disabled = true;
-            try { showResult(await service.readMCPResource(server.id, resource.uri)); }
-            catch (error) { Toast.error((error as Error).message); }
+            try { await previewResource(server.id, resource, service); }
             finally { button.disabled = false; }
         });
     });
+}
+
+async function previewResource(server: string, resource: MCPDiscovery['resources'][number], service: IAgentManagementService): Promise<void> {
+    const operationId = randomUUID(), started = performance.now();
+    let stage = 'read';
+    try {
+        const result = await service.readMCPResource(server, resource.uri);
+        stage = 'render';
+        new Modal(t('mcp.preview'), renderMCPResourcePreview(result, resource.mimeType, operationId), { width: '800px' }).show();
+        console.info('mcp.resource.preview.completed', { operation: 'mcp.resource.preview', operationId,
+            stage, result: 'success', durationMs: performance.now() - started });
+    } catch (error) {
+        console.error('mcp.resource.preview.failed', { operation: 'mcp.resource.preview', operationId,
+            stage, result: 'failure', code: stage === 'read' ? 'RESOURCE_READ_FAILED' : 'RESOURCE_RENDER_FAILED',
+            durationMs: performance.now() - started });
+        Toast.error((error as Error).message);
+    }
 }
 
 function previewPrompt(server: string, prompt: MCPDiscovery['prompts'][number], service: IAgentManagementService): void {

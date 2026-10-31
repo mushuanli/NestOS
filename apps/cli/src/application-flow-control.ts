@@ -23,7 +23,7 @@ export async function flowControlCommand(client: ApplicationClient, args: string
 type Input = ReturnType<typeof parseControl>;
 function parseControl(args: string[]) {
     const [action, sessionId, taskId, requestId, epoch] = args;
-    const versioned = ['pause', 'resume', 'withdraw-pause'].includes(action);
+    const versioned = ['pause', 'resume', 'withdraw-pause', 'cancel'].includes(action);
     const count = versioned ? 5 : action === 'receipt' ? 4 : 3;
     if (!actions.includes(action) || args.length !== count || args.some(value => !value.trim()))
         throw invalid('flow-run requires an action, session id, root task id, and for controls a request id and observed epoch');
@@ -35,7 +35,8 @@ function parseControl(args: string[]) {
 
 function dispatchControl(bus: ApplicationClient['services']['commandBus'], input: Input) {
     const {action, sessionId, taskId, requestId, expectedEpoch} = input;
-    if (action === 'cancel' || action === 'reattach') return bus.execute(action === 'cancel' ? FlowCommand.RunCancel : FlowCommand.RunResume, {sessionId, taskId});
+    if (action === 'reattach') return bus.execute(FlowCommand.RunResume, {sessionId, taskId});
+    if (action === 'cancel') return bus.execute(FlowCommand.RunCancel, {sessionId, taskId, requestId, expectedEpoch});
     if (action === 'withdraw-pause') return bus.execute(FlowCommand.RunPauseWithdraw, {taskId, requestId, expectedEpoch});
     return bus.execute(FlowCommand.RunGoalUpdate, {taskId, requestId, expectedEpoch, goal: {status: action === 'pause' ? 'paused' : 'active'}});
 }

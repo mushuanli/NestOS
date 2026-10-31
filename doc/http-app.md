@@ -73,7 +73,7 @@ pnpm httpd --root /srv/nestos --users-dir /srv/nestos/home
 
 远程项目挂载和本地会话记录归各用户所有；不同用户可以挂载同一远程目录。共享 `/etc/llm` 中的 MCP 连接使用同一远端凭据，因此在 nestos-node 上代表同一 principal，其远端项目和原生会话按该 principal 授权，不会自动按 NestOS userId 隔离。需要远端身份隔离时必须配置不同凭据；挂载复用优先核对已验证 principal；未验证的 Bearer 连接按凭据引用区分，不能因为用户名都为空而合并。HTTP 宿主租约使用 `httpd` 标识，历史 `cli` 租约仍按原有效期处理。
 
-多用户工具包安装到 `<rootDir>/tools/<包名>/<版本>`，登记文件为 `<rootDir>/etc/tool-packages.json`；所有用户加载同一份工具代码，运行数据仍归各自用户。工具包源沿用 `NESTOS_TOOL_PACKAGE_DIRS` 或启动目录的 `tools/`。`bin/` 可用于命令行入口，不作为工具注册依据。
+多用户工具包安装到 `<rootDir>/tools/<包名>/<版本>`，登记文件为 `<rootDir>/etc/tool-packages.json`；所有用户加载同一份工具代码，运行数据仍归各自用户。工具包源沿用 `NESTOS_TOOL_PACKAGE_DIRS` 或启动目录的 `tools/`。`bin/` 可用于命令行入口，不作为工具注册依据。 可信包 `toolbox.yaml` 的 `preinstall: true` 在启动时预装，默认按用户停用；每用户启用及普通默认参数位于 `.nestos/private/tool-preferences/preferences.json`，认证连接仍单独保存。共享代码、组织空间不共享这些个人设置。
 
 物理布局：
 
@@ -376,6 +376,8 @@ pnpm httpd:activate <版本ID>   # 下次启动使用此版本
 release 保存在 `release/httpd/<版本ID>/`，包括固定的服务端、UI 与运行依赖副本，启动校验服务端/UI 校验和及 Node 主版本。依赖打包在临时源码副本执行，不修改开发工作区的 node_modules；构建中源码发生变化则拒绝激活。保留旧版本可回滚，正在运行的进程继续使用原版本和对应静态资源。第一次从旧 tsx 启动方式迁移时，需要先结束原实例再启动 release；不能让两个宿主同时使用真实数据。后续版本切换在下次启动生效。
 
 release 沿用原 profile 数据；dev 默认使用 `<configDir>/http-dev/data`，忽略原 profile 数据根。两者的 OAuth 凭据分别在 `<configDir>/http-auth/release` 与 `dev`。数据根和凭据目录分别以 SQLite 排他锁防止新宿主重复打开，崩溃后由操作系统释放。
+
+界面“设置 → 系统日志”通过认证应用能力 `ApplicationBackend.diagnostics.query/onChange` 读取当前用户 Runtime 的重要事件。远程项目菜单/项目选择器旁的“项目状态”可在远端离线时打开，工具箱 MCP 详情提供连接事件及各项目入口。每个用户的 `/var/log/application-diagnostics.seq` 按独立 entry 和事务索引保存最多 500 组 / 512 KiB 安全元数据，连续相同事件保留起止时间、累计次数和有界关联样本，查询最多 200 组；它是用户系统文件空间中的有界应用事件记录，不是宿主运行日志或审计文件的任意读取接口。初始化或持久化失败会明确标识仅内存状态，查询失败显示错误与重试入口。客户端刷新可重新读取已保存事件，实时可用性需要重新探测；日志不含消息/文件/参数正文、密钥或请求头。多用户 HTTPS 回归覆盖身份隔离，真实 RPC 回归覆盖订阅与释放。
 
 默认排查 release 日志：运行日志 `/var/log/nestos/httpd.runtime.log`，审计日志 `/var/log/nestos/httpd.audit.jsonl`。dev 使用同目录的 `httpd.debug.runtime.log` 和 `httpd.debug.audit.jsonl`。目录和文件名不包含版本 ID，切换 release 后继续追加；版本 ID 保留在运行日志的启动记录中。每份 10 MiB，保留当前文件及追加 `.1`、`.2`、`.3` 的轮转文件，文件权限 0600。旧版本目录中的日志不自动迁移或删除。
 

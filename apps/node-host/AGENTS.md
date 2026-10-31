@@ -33,3 +33,9 @@ httpd 仅在 http.editorSwap=true 时装配 EditorSwapStore，默认 ~/swap；�
 - runtime/tool-connections 按用户私有 authDir 保存外部工具连接，目录 0700、文件 0600；Tool 工厂接收用户绑定的 register/resolve，RPC 仅提供脱敏列表及保存/删除，禁止通过模型参数或全局环境账号选择用户。组织空间不共享个人凭据。
 
 - 工具包 manifest.flows 是包内相对路径声明，随工具代码计入快照指纹；读取只接受已注册精确版本，不执行工具工厂。工具面板通过通用 installFlows 入口安装和发布资源；业务 Flow 留在外部包。
+
+- 工具包根目录 guide.yaml 是只读使用指南，宿主校验后通过 ToolPackageInfo.guide 投影；catalog 同版本优先、已安装副本兜底。文档不列入运行 files、不改变执行指纹，错误独立为 guideError；禁止执行示例命令或记录 YAML 正文。
+
+- toolbox.yaml 声明预装和可配置普通参数；启动先预装并向已有同版本包分发声明，再为每个用户绑定默认停用的 Tool。用户设置位于私有 authDir/tool-preferences，configure 只接收包身份和普通设置；实际 Schema 校验与原子保存，参数值、YAML 正文不进日志。Flow ensure 不改变用户启用状态。
+
+toolbox.yaml 的普通参数可声明 connectionType；工具包配置投影当前用户同类型连接为可选项，唯一连接提供默认建议，多个连接不猜测账号。UI 保存后才成为用户参数覆盖；参数 Schema 的默认值另行展示，空值继续继承运行时默认。配置字段不投影 Secret。

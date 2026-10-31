@@ -110,7 +110,6 @@ import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
     independentCalls?: IndependentCallService;
-    submitIndependentCall?: import('./contracts/independent-calls').IndependentCallSubmitter;
     independentTaskCallPolicy?(request: import('./contracts/submission').SubmissionRequest): Promise<import('./session/independent-call-preparation').IndependentTaskCallPolicy | undefined>;
     validateCallAssets?: import('./contracts/submission').CallAssetValidator;
     loadArtifact?: import('./contracts/artifacts').ArtifactLoader;
@@ -209,9 +208,9 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
     if (options.independentCalls) {
         system.independentCalls = options.independentCalls;
         system.independentCalls.register(system.commandBus);
-    } else if (options.submitIndependentCall) {
+    } else if (options.independentTaskCallPolicy) {
         system.independentCalls = new IndependentCallService({kernel: options.kernel, repository: options.sessionEngine,
-            transfers, submit: options.submitIndependentCall, prepareTaskCall: (request, invocation) => system.sessionManager.prepareIndependentTaskCall(request, invocation),
+            transfers, prepareTaskCall: (request, invocation) => system.sessionManager.prepareIndependentTaskCall(request, invocation),
             taskCallPolicy: options.independentTaskCallPolicy,
             sessions: options.independentCallSessions,
             resumeExecution: async target => {

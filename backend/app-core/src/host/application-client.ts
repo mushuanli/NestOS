@@ -1,3 +1,4 @@
+import studyPrompts from '../presets/study-prompts.json';
 import {createTextGeneration, listTextModels} from '../configuration/text-generation';
 import {sessionResponse} from '../session/session-response';
 import {reportClientDiagnostic} from './client-diagnostic';
@@ -112,6 +113,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         readUiDocuments: names => readUiDocuments(vfs, names),
         writeUiDocuments: documents => writeUiDocuments(vfs, documents),
         settings: sources => settingsService(services, sources, options, scope),
+        studyPromptPresets: async () => structuredClone(studyPrompts),
         listTextModels: () => listTextModels(agentService),
         generateText: async request => (await textGeneration).generateText(request),
         cancelTextGeneration: async id => (await textGeneration).cancelTextGeneration(id),

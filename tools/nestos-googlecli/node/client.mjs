@@ -1,6 +1,6 @@
 export const connectionType = {
     id: 'google-workspace', name: 'Google：Gmail / Calendar',
-    description: '使用自己的 Google OAuth 连接。邮件需 gmail.readonly，日历需 calendar.events.readonly。凭据仅保存于当前用户的私有目录。',
+    description: '连接自己的 Google 账号，只读采集邮件和日历。授权仅属于当前用户。',
     authorization: {
         kind: 'oauth2', authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth', tokenEndpoint: 'https://oauth2.googleapis.com/token',
         revocationEndpoint: 'https://oauth2.googleapis.com/revoke', clientIdField: 'clientId', clientSecretField: 'clientSecret', refreshTokenField: 'refreshToken',
@@ -13,8 +13,8 @@ export const connectionType = {
         {name: 'calendarDirectory', label: '日历保存目录', description: '留空使用 imports/calendar；目录沿用现有工作区文件授权。'},
         {name: 'clientId', label: 'OAuth Client ID', required: true},
         {name: 'clientSecret', label: 'OAuth Client Secret', secret: true, required: true},
-        {name: 'refreshToken', label: 'Refresh Token（兼容导入，可留空）', secret: true,
-            description: '通过工具包的 authorize.mjs 完成 Google 账号授权后填写；留空保留已保存的凭据。'},
+        {name: 'refreshToken', label: 'Refresh Token', secret: true,
+            description: '导入授权结果后自动填写；已有连接留空保留。'},
     ],
 };
 export const fail = code => Object.assign(new Error(code), {code});
@@ -23,7 +23,8 @@ export const fail = code => Object.assign(new Error(code), {code});
 export async function jsonRequest(fetcher, url, init, stage) {
     let response;
     try {response = await fetcher(url, {...init, redirect: 'error'});}
-    catch (error) {throw fail(error?.name === 'AbortError' || init.signal?.aborted ? 'GOOGLE_CANCELLED' : 'GOOGLE_' + stage + '_NETWORK');}
+    catch (error) {throw Object.assign(fail(error?.name === 'AbortError' || init.signal?.aborted ? 'GOOGLE_CANCELLED' : 'GOOGLE_' + stage + '_NETWORK'),
+        {networkCode: safeNetworkCode(error, init.signal)});}
     if (!response.ok) {
         const detail = await readResponse(response, stage).catch(() => undefined);
         const oauth = {invalid_grant: 'REAUTH_REQUIRED', invalid_client: 'CLIENT_INVALID', unauthorized_client: 'CLIENT_UNAUTHORIZED', access_denied: 'DECLINED'};
@@ -36,6 +37,14 @@ export async function jsonRequest(fetcher, url, init, stage) {
         throw fail('GOOGLE_' + stage + '_' + category);
     }
     return readResponse(response, stage);
+}
+function safeNetworkCode(error, signal) {
+    if (signal?.reason?.name === 'TimeoutError') return 'TIMEOUT';
+    const known = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT',
+        'UND_ERR_HEADERS_TIMEOUT', 'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID']);
+    const errors = [error, error?.cause, ...(Array.isArray(error?.cause?.errors) ? error.cause.errors.slice(0, 8) : [])];
+    return errors.map(item => item?.code).find(code => known.has(code)) ?? 'UNKNOWN';
 }
 async function readResponse(response, stage) {
     const limit = 2 * 1024 * 1024, reader = response.body?.getReader();

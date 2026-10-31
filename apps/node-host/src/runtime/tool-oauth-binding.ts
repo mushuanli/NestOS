@@ -1,9 +1,10 @@
-import type {ToolConnectionInput, ToolConnectionType} from '@itookit/app-contracts/services';
+import type {ToolConnectionInput, ToolConnectionType, ToolConnectionVerification} from '@itookit/app-contracts/services';
 import type {PrivateConnection} from './tool-authorization';
 import type {OAuthApplication} from './tool-oauth-applications';
 import {authFailure} from './tool-oauth-client';
 
-export interface OAuthConnectionRecord extends ToolConnectionInput {revision?: string; authorizedScopes?: string[]; oauthApplicationRevision?: string}
+export interface OAuthConnectionRecord extends ToolConnectionInput {revision?: string; authorizedScopes?: string[]; oauthApplicationRevision?: string;
+    verification?: ToolConnectionVerification & {revision?: string}}
 export function applicationFields(type: ToolConnectionType): string[] {
     const auth = type.authorization; return auth ? [auth.clientIdField, ...(auth.clientSecretField ? [auth.clientSecretField] : [])] : [];
 }

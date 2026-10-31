@@ -153,6 +153,7 @@ export interface ProjectService {
 }
 
 export type ProjectFolder = SessionFolder & {
+    protected?: boolean;
     displayName?: string;
 } & {
     project: NonNullable<SessionFolder['project']>;

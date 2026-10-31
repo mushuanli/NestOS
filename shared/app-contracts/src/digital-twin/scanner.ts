@@ -21,6 +21,7 @@ export interface TwinWorkspaceView {id: string; name: string; kind: 'personal' |
 export interface TwinToolTarget {kind: 'tool'; id: string; version: string; digest: string}
 export type TwinCollectionExecutor = TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>};
 export interface TwinScannerTool {
+    defaults?: Record<string, JsonValue>;
     target: TwinToolTarget; name: string; description: string; source: 'builtin' | 'plugin' | 'mcp';
     parameters: JsonValue;
 }

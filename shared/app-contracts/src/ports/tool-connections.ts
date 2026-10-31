@@ -15,9 +15,13 @@ export interface ToolOAuthDefinition {
 }
 export interface ToolAuthorizationView {operationId: string; connectionId: string; status: 'pending' | 'exchanging' | 'authorized' | 'cancelled' | 'expired' | 'failed'; url?: string; expiresAt: number; code?: string}
 export interface ToolConnectionInput {id: string; type: string; name: string; values: Record<string, string>}
+/** OAuth verification checks token refresh, not every downstream Tool permission or API. */
+export interface ToolConnectionVerification {status: 'verified' | 'failed' | 'unsupported'; checkedAt: number; code?: string}
 export interface ToolConnectionView {id: string; type: string; name: string; values: Record<string, string>; configuredSecrets: string[];
+    verification?: ToolConnectionVerification;
     authorization?: {scopes: string[]; connected: boolean; clientMode?: 'application' | 'personal'; operation?: ToolAuthorizationView}}
 export interface ToolConnections {
+    verify?(id: string): Promise<ToolConnectionVerification>;
     saveApplication?(input: ToolOAuthApplicationInput): Promise<void>;
     removeApplication?(type: string): Promise<void>;
     beginAuthorization?(id: string, permissionGroups: string[], operationId: string): Promise<ToolAuthorizationView>;

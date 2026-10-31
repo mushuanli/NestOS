@@ -25,8 +25,16 @@ NestOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJ
 
 Markdown 文件默认通过 defaultEditorFactory 以 render 模式打开，大文件语法预算不能强制改成 edit；显式 initialMode 仍保留。纯文本继续源码显示，不启用 Markdown 解析。
 
-`src/study.ts` 提供 StudyHost 的 VFS/seqfile 适配和工作区 IEditor 包装；文档来源仅枚举 Markdown/笔记及目录，隐藏目录排除。管理视图与正文共用 `createAdapterStore`，首次评分才写入复习状态。
+`src/study.ts` 提供 StudyHost 的 VFS/seqfile 适配和工作区 IEditor 包装；文档来源只来自 seqfile 中已跟踪的 Markdown/笔记，不遍历未跟踪目录；隐藏目录排除。管理视图与正文共用 `createAdapterStore`，首次评分才写入复习状态。
 
-已跟踪来源与缓存策略见 `src/study-index.ts`：不枚举未跟踪文件；当前可见文件即时更新，其他已跟踪文件五分钟核对版本及复习状态。管理器初次加载仍读取已跟踪正文构建卡片，后续复用正文缓存。评分持久成功后定向刷新内存状态；订阅与计时器随租约释放。
+复习历史是核心卡片 payload 中的 history 字段，适配层按原值存取；评分与历史共用一次 seqfile 写入，不新增宿主数据库协议。目录迁移和文件删除沿用整条记录的生命周期，读取学习曲线不创建记录。
+
+`src/study-index.ts` 在首次 cloze 激活后持久登记文档计数、摘要和更新时间；旧逐卡状态也视为已跟踪。当前可见编辑器按文件增量更新，其他已跟踪文件每五分钟检查版本；正文只在版本变化后读取。管理器初次加载仍读取已跟踪正文以构建卡片，后续复用内存缓存。评分成功后定向刷新内存状态，跨客户端状态五分钟核对一次。所有订阅和计时器随编辑器/管理器租约释放。StudyEditor.activate 调用通用视图 refresh，mdxeditor 不依赖宿主事件类型。
+
+createStudyHost/createStudyEditor 的可选 capabilities.creation 透传宿主新建/生成能力；创建弹窗及草稿交互属于 mdxeditor。适配包不内置 AI 提示或创建文件的业务模板。
+
+提供 creation 时默认注入 src/study-prompt.ts 的 prompts.store（调用者可覆盖），以笔记 nav 的 /.nestos/cloze/prompt.md 保存提示词；缺文件只读返回空，用户显式保存时才创建。此配置不写复习 seqfile，隐藏路径事件不触发学习来源扫描；mdxeditor 只认识 load/save 接口。
+
+命名提示词列表通过 prompts.store.list/saveList 存在 /.nestos/cloze/prompts.yaml；不读取旧 JSON。列表内容校验失败明确报错，禁止静默覆盖损坏配置。预设由 app-core/presets 初始化；显式系统恢复完整覆盖模板 YAML，正常启动保留已有内容。适配层不附带业务模板。
 
 创建能力采用 documents/generation/prompts/recovery 分组；适配层只补齐 documents.directories 与 prompts.store，不解释生成错误码或取消策略。

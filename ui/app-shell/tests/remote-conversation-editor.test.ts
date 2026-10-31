@@ -1107,15 +1107,51 @@ it('deletes a non-current native branch through the host without navigating to i
     expect(navigate).not.toHaveBeenCalled(); await editor.destroy();
 });
 
-it('releases a hidden conversation subscription and reads its latest state when activated again', async () => {
+it('releases a hidden conversation subscription and catches up native events when activated again', async () => {
     const {editor, peer, host} = setup(); let notify!: () => void;
     const release = vi.fn(); peer.subscribe = vi.fn(listener => {notify = listener; return release;});
     await editor.init(host); expect(peer.subscribe).toHaveBeenCalledOnce();
     editor.cancelPendingRender(); notify(); await new Promise(resolve => setTimeout(resolve, 80));
     expect(release).toHaveBeenCalledOnce(); expect(peer.refresh).not.toHaveBeenCalled();
-    vi.mocked(peer.read).mockResolvedValue({...state, messages: [...state.messages, {id: 'latest', role: 'assistant', text: 'Received while hidden'}]});
-    await editor.activate(); expect(peer.read).toHaveBeenCalledTimes(2); expect(peer.subscribe).toHaveBeenCalledTimes(2);
+    vi.mocked(peer.refresh).mockResolvedValue({...state, messages: [...state.messages, {id: 'latest', role: 'assistant', text: 'Received while hidden'}]});
+    await editor.activate(); expect(peer.read).toHaveBeenCalledOnce(); expect(peer.refresh).toHaveBeenCalledOnce(); expect(peer.subscribe).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Received while hidden'); await editor.destroy();
+});
+
+it('continues observing a retained native conversation if activation catch-up fails once', async () => {
+    const {editor, peer, host} = setup(); let current = state;
+    const listeners = new Set<() => void>();
+    peer.snapshot = () => current; peer.subscribe = listener => {listeners.add(listener); return () => {listeners.delete(listener);};};
+    try {
+        await editor.init(host); editor.cancelPendingRender();
+        vi.mocked(peer.refresh).mockRejectedValueOnce(Object.assign(new Error('Catch-up unavailable'), {code: 'ETIMEDOUT'}));
+        await expect(editor.activate()).rejects.toThrow('Catch-up unavailable'); expect(listeners.size).toBe(1);
+        current = {...state, messages: [...state.messages, {id: 'recovered', role: 'assistant', text: 'Live output recovered'}]};
+        listeners.forEach(listener => listener());
+        await vi.waitFor(() => expect(host.textContent).toContain('Live output recovered'));
+        expect(peer.send).not.toHaveBeenCalled(); expect(peer.close).not.toHaveBeenCalled();
+    } finally {await editor.destroy();}
+});
+
+it('restores live output before a pending native send has returned', async () => {
+    const {editor, peer, host} = setup(); let current = state, finish!: (value: ConversationSnapshot) => void;
+    const listeners = new Set<() => void>();
+    peer.snapshot = () => current; peer.subscribe = listener => {listeners.add(listener); return () => {listeners.delete(listener);};};
+    vi.mocked(peer.refresh).mockImplementation(async () => current);
+    vi.mocked(peer.send).mockImplementationOnce(() => new Promise(resolve => {finish = resolve;}));
+    await editor.init(host);
+    const sending = editor.sendText('Start the remote task'); let activation: Promise<void> | undefined;
+    try {
+        await vi.waitFor(() => expect(peer.send).toHaveBeenCalledOnce()); editor.cancelPendingRender();
+        current = {...state, pending: true, messages: [...state.messages, {id: 'live', role: 'assistant', text: 'Output during pending send'}]};
+        activation = editor.activate();
+        await vi.waitFor(() => expect(host.textContent).toContain('Output during pending send'));
+        await activation; expect(listeners.size).toBe(1);
+        current = {...current, messages: [...current.messages, {id: 'next', role: 'assistant', text: 'Streaming after return'}]};
+        listeners.forEach(listener => listener());
+        await vi.waitFor(() => expect(host.textContent).toContain('Streaming after return'));
+        expect(peer.send).toHaveBeenCalledOnce(); expect(peer.close).not.toHaveBeenCalled();
+    } finally {finish?.({...current, pending: false}); await sending; await activation; await editor.destroy();}
 });
 
 it('keeps authored transcript-like code as ordinary code in history and print', async () => {
@@ -1228,6 +1264,7 @@ it('queues native follow-ups while running and edits them through the shared que
         await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledOnce());
         await vi.waitFor(() => expect(input.value).toBe(''));
         expect(peer.send).not.toHaveBeenCalled(); expect(host.textContent).not.toContain(t('chat.submission.unknown'));
+        host.querySelector<HTMLButtonElement>('.llm-instruction-queue [data-action="toggle"]')!.click();
         host.querySelector<HTMLButtonElement>('[data-action="edit"]')!.click();
         const edit = host.querySelector<HTMLTextAreaElement>('.llm-instruction-queue__editor')!;
         edit.value = 'Revised follow-up'; edit.dispatchEvent(new Event('input', {bubbles: true}));

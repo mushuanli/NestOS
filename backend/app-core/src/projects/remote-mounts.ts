@@ -9,6 +9,8 @@ import { observeConversation } from './conversation-view';
 import {prepareRemoteDraft, remoteConversationKey} from './drafts/remote-submission';
 import {readConversationIdentity} from './drafts/remote-identity';
 import { RemoteConversationStore } from './remote-conversation-store';
+import type {RemoteConversationRecoveryTarget} from './remote-conversation-recovery';
+import {RemoteConversationRecoveryLoop} from './remote-conversation-retry';
 import {draftHarness, draftConversation, remoteConversationJournal} from './remote-draft-conversation';
 import { RemoteSessionStatus } from '../session/remote-session-status';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
@@ -67,6 +69,7 @@ export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offlin
 /** Project-owned grants; credentials stay in the injected host provider. */
 export class ProjectRemoteMountService {
     private readonly conversations = new ConversationRegistry();
+    private conversationRecovery?: RemoteConversationRecoveryLoop;
     estimateUsage?: (usage: import('@itookit/nestos-node-driver').HarnessUsage) => import('@itookit/kernel-adapters/contracts').UsageCostEstimate;
     readonly sessionStatus = new RemoteSessionStatus(id => {
         const grants = this.list(id), root = grants.find(m => m.at === '/');
@@ -542,6 +545,26 @@ export class ProjectRemoteMountService {
         const key = JSON.stringify([projectId, profileId, sessionId, readOnly, this.list(projectId)]);
         return this.conversations.acquire(key, () => this.createProjectConversation(projectId, profileId, sessionId, options, readOnly, draftId));
     }
+    async recoverConversations(): Promise<void> {
+        if (this.closed) return;
+        this.conversationRecovery ??= new RemoteConversationRecoveryLoop(this.store, target => this.openRecoveredConversation(target), event => {
+            this.eventLog.record({module: 'nestos-node', operation: 'remote.queue.recover', operationId: event.operationId,
+                stage: event.stage, result: event.result === 'success' ? 'success' : 'failure', level: event.result === 'success' ? 'info' : 'warn',
+                projectId: event.projectId, sessionId: event.sessionId, code: event.code, durationMs: event.durationMs});
+        });
+        await this.conversationRecovery.recover();
+    }
+    private async openRecoveredConversation(target: RemoteConversationRecoveryTarget): Promise<ProjectConversationPort> {
+        const root = this.list(target.projectId).find(mount => mount.at === '/');
+        if (!root || root.connectionId !== target.connectionId || root.serverProjectId !== target.serverProjectId
+            || root.authorization?.principalId !== target.principalId)
+            throw new FSError('ECONFLICT', 'Remote queue authorization binding changed');
+        const identity = await readConversationIdentity(this.store, target.projectId, {connectionId: target.connectionId,
+            serverProjectId: target.serverProjectId, principalId: target.principalId, profileId: target.profileId, nativeSessionId: target.sessionId});
+        if ((identity ?? target.sessionId) !== target.conversationId)
+            throw new FSError('ECONFLICT', 'Remote queue conversation identity changed');
+        return this.projectConversation(target.projectId, target.profileId, target.sessionId, {timeoutMs: 10000});
+    }
     private async createProjectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string): Promise<ProjectConversationPort> {
         if (draftId !== undefined && !/^[a-zA-Z0-9_-]+$/.test(draftId)) throw new FSError('EINVAL', 'Invalid draft identity');
         if (!this.provider.conversation) throw new FSError('ECAPABILITY', 'Conversation adapter unavailable');
@@ -821,6 +844,7 @@ export class ProjectRemoteMountService {
         } catch (error) { await base?.dispose(); throw error; }
     }
     async dispose(): Promise<void> {
+        await this.conversationRecovery?.close();
         await this.conversations.dispose();
         await this.sessionStatus.dispose();
         this.closed = true; await this.tail.catch(() => {});

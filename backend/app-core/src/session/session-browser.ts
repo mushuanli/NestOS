@@ -221,7 +221,7 @@ class BrowserBackend implements IStorageBackend {
         // mount dialog, so the workbench shows why a project is degraded.
         const degraded = !!folder.project && !!remote && remote.degraded(folder.project.id);
         return { ...node, ...(folder.project ? { icon: remoteRoot ? ENTITY_ICONS.remoteProject : ENTITY_ICONS.project } : {}),
-            metadata: { ...node.metadata, renameTitle: folder.name, ...(folder.name === '@sessions' ? { navigationTransparent: true } : {}), ...(folder.project ? { projectId: folder.project.id, directory: folder.project.directory, remoteProject: remoteRoot,
+            metadata: { ...node.metadata, renameTitle: folder.name, ...(folder.name === '@sessions' ? { navigationTransparent: true } : {}), ...(folder.project ? { protectedProject: (folder as {protected?: boolean}).protected === true, projectId: folder.project.id, directory: folder.project.directory, remoteProject: remoteRoot,
                 remoteOffline: offline, _disabled: false, _readOnly: offline,
                 navigationDescription: mounts.length ? t(offline ? 'remote.projectOffline' : degraded ? 'remote.degraded' : 'remote.projectRemote') : '' } : {}) } };
     }
@@ -538,6 +538,7 @@ class BrowserBackend implements IStorageBackend {
             const folderPath = folderPathFromBrowserPath(path);
             if (!folderPath) throw new FSError('EINVAL', 'Cannot delete the Session browser root');
             if (folderPath.endsWith('/@sessions')) throw new FSError('EACCES', 'Cannot delete the Sessions section');
+            await this.deps.repository.assertFolderDeletable?.(folderPath);
             const projects = (await this.deps.projects?.list() ?? []).filter(project => project.path === folderPath || project.path.startsWith(folderPath + '/'));
             // Busy check before the destructive delete: once the Sessions are gone the lease and
             // active-Task guard can no longer see them.

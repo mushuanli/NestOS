@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,8 @@ function fixture(t) {
     const root = mkdtempSync(join(tmpdir(), 'incremental-libraries-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     cpSync(join(repository, 'scripts'), join(root, 'scripts'), { recursive: true });
+    mkdirSync(join(root, 'node_modules'));
+    symlinkSync(join(repository, 'node_modules/yaml'), join(root, 'node_modules/yaml'));
     const catalog = ['core', 'parent', 'leaf', 'other'].map(directory => ({ name: `@itookit/${directory}`, directory, version: '1.0.0' }));
     writeFileSync(join(root, 'scripts/npm-libraries.json'), JSON.stringify(catalog));
     writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'build-fixture', private: true, packageManager: 'pnpm@10.20.0' }));
@@ -47,8 +49,17 @@ test('incremental builds reuse artifacts, rebuild dependents, and freeze unselec
     assert.equal(state.readSelection(root), null, 'building must not activate dependencies');
     result = build(root); assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(preparedSnapshot(root).id, first.id); assert.equal(lines(root).length, 4);
+    const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ ...manifest, scripts: { test: 'unrelated root command' } }));
+    writeFileSync(join(root, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\nimporters:\n  apps/web:\n    dependencies:\n      business:\n        specifier: 1.0.0\n        version: 1.0.0\n');
+    result = build(root); assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(preparedSnapshot(root).id, first.id); assert.equal(lines(root).length, 4);
+    assert.match(result.stdout, /rebuild=0 reuse=4/);
+    assert.doesNotMatch(result.stdout, /stage=install/);
     writeFileSync(join(root, 'libraries/core/src/index.cjs'), 'module.exports={value:2};');
     result = build(root); assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /library=@itookit\/core reasons=source-changed/);
+    assert.match(result.stdout, /library=@itookit\/parent reasons=dependency-rebuilt/);
     const second = preparedSnapshot(root);
     assert.notEqual(second.id, first.id);
     assert.deepEqual(lines(root).slice(4), ['core:2', 'parent:2', 'leaf:2']);
@@ -63,5 +74,10 @@ test('incremental builds reuse artifacts, rebuild dependents, and freeze unselec
     assert.match(result.stderr, /LOCAL_LIBRARIES_UNKNOWN/);
     result = build(root); assert.equal(result.status, 1);
     assert.equal(preparedSnapshot(root).id, third.id, 'failed builds must retain the usable prepared snapshot');
+    writeFileSync(join(root, 'pnpm-lock.yaml'), 'invalid: [secret-lock-content');
+    result = build(root); assert.equal(result.status, 1);
+    assert.match(result.stderr, /stage=plan result=failure .*code=LOCAL_LIBRARIES_YAML_INPUT/);
+    assert.doesNotMatch(result.stdout + result.stderr, /secret-lock-content/);
+    assert.equal(preparedSnapshot(root).id, third.id);
     assert.equal(existsSync(state.activeFile(root)), false);
 });

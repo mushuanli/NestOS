@@ -337,6 +337,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         if (!this.visible) return;
         clearTimeout(this.timer); this.timer = setTimeout(() => { void this.refresh().catch(error => alert(String(error))); }, 100);
     }
+    invalidateFromEvents(): void {this.scheduleRefresh();}
     private refresh(): Promise<void> {
         const work = this.refreshTail.then(async () => {
             if (this.closed) return;

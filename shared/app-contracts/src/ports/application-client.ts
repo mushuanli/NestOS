@@ -47,6 +47,7 @@ export interface ApplicationBackend {
     diagnostics?: import('./diagnostics').ApplicationDiagnostics;
     reportClientDiagnostic?(diagnostic: ClientDiagnostic): Promise<void>;
     sessionResponse(sessionId: string, query?: SessionResponseQuery): Promise<SessionResponse | undefined>;
+    studyPromptPresets(): Promise<Array<{id: string; name: string; content: string}>>;
     listTextModels(): Promise<Array<{id: string; name: string; model?: string; models: Array<{id: string; name: string}>; available: boolean; reason?: string; default: boolean}>>;
     generateText(request: {sessionId: string; modelId?: string; connectionId?: string; operationId: string; prompt: string; source: string; previousDraft: string}): Promise<string>;
     cancelTextGeneration(operationId: string): Promise<void>;

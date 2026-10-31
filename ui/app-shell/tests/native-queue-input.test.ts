@@ -44,6 +44,7 @@ it.each(['success', 'failure'] as const)('uses durable native receipts to releas
         await vi.waitFor(() => expect(input.value).toBe(''));
         type('Second'); expect(send.disabled).toBe(false); submit(); await vi.waitFor(() => expect(enqueue).toHaveBeenCalledTimes(2));
         await vi.waitFor(() => expect(input.value).toBe('')); type('Third draft');
+        host.querySelector<HTMLButtonElement>('.llm-instruction-queue [data-action="toggle"]')!.click();
         host.querySelector<HTMLButtonElement>('.llm-instruction-queue [data-action="edit"]')!.click();
         const queuedText = host.querySelector<HTMLTextAreaElement>('.llm-instruction-queue__editor')!;
         queuedText.value = 'Revised first'; queuedText.dispatchEvent(new Event('input', {bubbles: true}));

@@ -22,6 +22,9 @@ export class SessionRepository implements ISessionRepository {
     private readonly listeners = new Set<(change?: SessionRepositoryChange) => void>();
     private closed = false;
     private readonly sessionInitializations = new Map<string, Promise<string>>();
+    private folderDeletionGuard?: (path: string) => Promise<void>;
+    setFolderDeletionGuard(guard: (path: string) => Promise<void>): void {this.folderDeletionGuard = guard;}
+    async assertFolderDeletable(path: string): Promise<void> {await this.folderDeletionGuard?.(normalizeFolderPath(path) ?? path);}
     private structuralWriteGuard?: (ids: string[]) => Promise<void>;
     async assertStructuralWritable(ids: string[]): Promise<void> { await this.structuralWriteGuard?.(ids); }
     setStructuralWriteGuard(guard: (ids: string[]) => Promise<void>): void { this.structuralWriteGuard = guard; }
@@ -447,6 +450,7 @@ export class SessionRepository implements ISessionRepository {
             || project.source.kind === 'remote' && project.directory !== `project:${project.id}`)) throw new FSError('EINVAL', 'Invalid project source');
     }
     async deleteFolder(path: string, recursive = false): Promise<void> {
+        await this.assertFolderDeletable(path);
         const normalized = normalizeFolderPath(path);
         if (!normalized) throw new FSError('EINVAL', 'Invalid Session folder path');
         const folders = await this.readFolders();

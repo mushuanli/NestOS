@@ -4,6 +4,7 @@ import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import { createNativeChatBinding } from './native';
 import { ChatProjection } from './projection';
 import {NativeComposerCapabilities} from './native-composer';
+import {getLogger} from '@itookit/common';
 
 vi.mock('@itookit/llm-ui', async () => ({ ...(await vi.importActual<typeof import('@itookit/llm-ui')>('@itookit/llm-ui')), createChatView: vi.fn() }));
 it('reconciles query reports through the read-only owner without consulting native mutation receipts', async () => {
@@ -134,13 +135,13 @@ function fixture() {
     let state: ConversationSnapshot = { title: 'Native', messages: [], requests: [], canSend: true,
         canInterrupt: false, canRespond: true, pending: false, disconnected: false, gap: false };
     const listeners = new Set<() => void>();
-    const read = vi.fn(async () => state), earlier = vi.fn(async () => state);
-    const controls = { read, loadEarlier: earlier, snapshot: () => state,
+    const read = vi.fn(async () => state), refresh = vi.fn(async () => state), earlier = vi.fn(async () => state);
+    const controls = { read, refresh, loadEarlier: earlier, snapshot: () => state,
         subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; } } as unknown as ConversationControls;
     const operations: OperationLedger = { getSnapshot: () => [], subscribe: () => () => {},
         register: async () => {}, settle: async () => {} };
     const reconcile = vi.fn(async (operationId: string) => ({ status: 'unknown' as const, operationId, message: 'Pending journal lookup' }));
-    return { read, earlier, controls, listeners, reconcile,
+    return { read, refresh, earlier, controls, listeners, reconcile,
         options: { conversationId: 'native', controls, operations, reconcile },
         state: () => state,
         emit(update: Partial<ConversationSnapshot>) { state = { ...state, ...update }; listeners.forEach(listener => listener()); },
@@ -148,10 +149,25 @@ function fixture() {
 }
 it('discards an older refresh result after a newer native update', async () => {
     const host = fixture(), binding = await createNativeChatBinding(host.options), pending = deferred<ConversationSnapshot>();
-    host.read.mockReturnValueOnce(pending.promise); const refreshing = binding.source.refresh();
+    host.refresh.mockReturnValueOnce(pending.promise); const refreshing = binding.source.refresh();
     host.emit({ messages: [{ id: 'm', role: 'assistant', text: 'new output' }] });
     pending.resolve({ ...host.state(), messages: [{ id: 'm', role: 'assistant', text: 'old output' }] }); await refreshing;
     expect(binding.source.getSnapshot().messages[0].parts[0]).toMatchObject({ text: 'new output' }); binding.dispose();
+});
+
+it('keeps the last projection after catch-up failure and logs only safe observation metadata', async () => {
+    const host = fixture(), binding = await createNativeChatBinding(host.options), previous = binding.source.getSnapshot();
+    host.refresh.mockRejectedValueOnce(Object.assign(new Error('sensitive transport detail'), {code: 'ETIMEDOUT'}));
+    try {
+        await expect(binding.source.refresh()).rejects.toMatchObject({code: 'ETIMEDOUT'});
+        expect(binding.source.getSnapshot()).toBe(previous);
+        const entry = getLogger().query({modules: ['native-observation']}).find(entry => (entry.data as {result?: string})?.result === 'failure');
+        expect(entry).toMatchObject({message: 'chat.native.observe', data: {operationId: expect.any(String),
+            conversationId: 'native', stage: 'events', result: 'failure', code: 'ETIMEDOUT', durationMs: expect.any(Number)}});
+        expect(JSON.stringify(entry)).not.toContain('sensitive transport detail');
+        host.emit({messages: [{id: 'latest', role: 'assistant', text: 'Stream resumed'}]});
+        expect(binding.source.getSnapshot().messages[0].parts[0]).toMatchObject({text: 'Stream resumed'});
+    } finally {binding.dispose();}
 });
 
 it('projects model capabilities and forwards validated selections without using a local connection', async () => {

@@ -57,3 +57,16 @@ it('rolls back a key migration when the destination already has state', async ()
 it('encodes paths containing delimiters without mixing document scopes', () => {
     expect(clozeDocumentPrefix('/dir/a#%.md')).toBe('%2Fdir%2Fa%23%25.md#');
 });
+
+it('preserves embedded review history across a directory move and removes it on deletion', async () => {
+    const {manager, home} = await setup(), stop = trackNotesCloze(home);
+    const payload = JSON.stringify({v:1, reviewCount:1, history:{v:1, events:[{id:'review-1', at:1, grade:3, total:2, before:0, learned:1, signature:'set-1'}]}});
+    try {
+        await home.meta.seq!.setEntry(path, key('/dir/a.md'), payload);
+        await home.driver.rename('/dir', 'renamed');
+        await vi.waitFor(async () => expect(await home.meta.seq!.getEntry(path, key('/renamed/a.md'))).toBe(payload));
+        expect(await home.meta.seq!.getEntry(path, key('/dir/a.md'))).toBeNull();
+        await home.driver.delete(['/renamed'], {recursive:true});
+        await vi.waitFor(async () => expect(await home.meta.seq!.getEntry(path, key('/renamed/a.md'))).toBeNull());
+    } finally {await stop(); await manager.dispose();}
+});

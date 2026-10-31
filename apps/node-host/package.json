@@ -27,10 +27,12 @@
     "@itookit/nestos-node-driver": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/driver-llm": "workspace:*",
-    "@itookit/image-tools": "workspace:*"
+    "@itookit/image-tools": "workspace:*",
+    "js-yaml": "^4.3.2"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "@types/node": "^20.19.25"
+    "@types/node": "^20.19.25",
+    "@types/js-yaml": "^4.0.9"
   }
 }

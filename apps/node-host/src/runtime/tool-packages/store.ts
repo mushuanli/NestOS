@@ -4,7 +4,7 @@ import {randomUUID} from '@itookit/common';
 import {packageError, packageIdentity} from './manifest';
 import type {ExecutableBinding} from './files';
 
-export interface RegisteredToolPackage {id: string; version: string; fingerprint: string; bindings: ExecutableBinding[];}
+export interface RegisteredToolPackage {id: string; version: string; previousVersion?: string; fingerprint: string; bindings: ExecutableBinding[];}
 const updates = new Map<string, Promise<void>>();
 
 /** Serialize in-process hosts sharing one metadata file without dropping sibling records. */
@@ -46,7 +46,7 @@ export async function readToolPackageRegistry(file: string): Promise<RegisteredT
             || item.bindings.some((binding: ExecutableBinding) => !binding || typeof binding.env !== 'string' || typeof binding.path !== 'string'
                 || !path.isAbsolute(binding.path) || !['environment', 'path', 'package'].includes(binding.source)))
             throw packageError('TOOL_PACKAGE_REGISTRY_INVALID', 'Invalid registered tool package metadata');
-        return {id, version, fingerprint: item.fingerprint as string, bindings: item.bindings as ExecutableBinding[]};
+        return {id, version, ...(item.previousVersion === undefined ? {} : {previousVersion: packageIdentity(item.previousVersion, 'previous version')}), fingerprint: item.fingerprint as string, bindings: item.bindings as ExecutableBinding[]};
     });
     if (new Set(records.map(record => record.id)).size !== records.length) throw packageError('TOOL_PACKAGE_REGISTRY_INVALID', 'Duplicate registered tool package');
     return records;

@@ -1,3 +1,6 @@
+import {t, createModuleLogger, randomUUID} from '@itookit/common';
+const log = createModuleLogger('initial-files');
+import {studyFiles, writeMissingStudyFile} from './study-files';
 import type { IFileSystem } from '@itookit/vfs-core';
 import type {FlowInstallations, FlowInstallationReport} from '@itookit/app-contracts/services';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
@@ -9,9 +12,9 @@ import { createNestosFlowLibrary } from './flow-library';
 import { restoreAndPublishFlow } from './restore-flows';
 
 const noteWrites = new WeakMap<IFileSystem, Promise<boolean>>();
-const noteTemplates = [{id: 'note:readme', ...readme}, {id: 'note:demo', ...demo}, {id: 'note:flow-format', ...flowGuide}];
+const noteTemplates = [{id: 'note:readme', ...readme}, {id: 'note:demo', ...demo}, {id: 'note:flow-format', ...flowGuide}, ...studyFiles];
 
-export interface InitialFileEntry { id: string; group: 'notes' | 'flows'; name: string; path: string; exists: boolean; }
+export interface InitialFileEntry { id: string; group: 'notes' | 'flows'; name: string; path: string; exists: boolean; overwrite?: boolean; }
 export interface InitialFileResult { id: string; status: 'restored' | 'preserved' | 'failed'; error?: string; dependencies?: FlowInstallationReport; }
 
 /** Explicit recovery writes through the active workspace and existing Flow commands. */
@@ -20,8 +23,8 @@ export class NestosInitialFiles {
     constructor(private readonly commands: ICommandBus, private readonly notes?: IFileSystem, private readonly installations?: FlowInstallations) {}
     async list(): Promise<InitialFileEntry[]> {
         const entries: InitialFileEntry[] = [];
-        if (this.notes) for (const note of noteTemplates) entries.push({ id: note.id, group: 'notes', name: note.name,
-            path: `/home/admin/notes/${note.name}`, exists: await this.notes.driver.exists('/' + note.name) });
+        if (this.notes) for (const note of noteTemplates) entries.push({ id: note.id, group: 'notes', name: note.id === 'note:study-prompts' ? t('initialFiles.studyPrompts') : note.name,
+            overwrite: note.id === 'note:study-prompts', path: `/home/admin/notes/${note.name}`, exists: await this.notes.driver.exists('/' + note.name) });
         for (const flow of this.flows) entries.push({ id: 'flow:' + flow.id, group: 'flows', name: `${flow.id}.flow`,
             path: `/home/admin/flows/${flow.id}.flow`, exists: Boolean(await this.commands.execute(FlowCommand.DraftLoad, { id: flow.id })) });
         return entries;
@@ -31,13 +34,19 @@ export class NestosInitialFiles {
         if (!Array.isArray(ids) || ids.some(id => !allowed.has(id))) throw new Error('INITIAL_FILE_UNKNOWN');
         const results: InitialFileResult[] = [];
         for (const id of new Set(ids)) {
+            const operationId = randomUUID(), started = Date.now();
             try {
                 const note = noteTemplates.find(note => note.id === id);
                 const restored = note ? await this.restoreNote(note) : Boolean(await restoreAndPublishFlow(
                     this.commands, this.flows.find(flow => 'flow:' + flow.id === id)!, true));
                 const dependencies = id.startsWith('flow:') ? await this.installations?.ensure(id.slice(5)) : undefined;
                 results.push({ id, status: restored ? 'restored' : 'preserved', ...(dependencies ? {dependencies} : {}) });
-            } catch (error) { results.push({ id, status: 'failed', error: error instanceof Error ? error.message : String(error) }); }
+                log.info('initial-files.restore', {operationId, id, stage: 'persist', result: restored ? 'restored' : 'preserved', durationMs: Date.now() - started});
+            } catch (error) {
+                const raw = (error as {code?: string})?.code, code = raw && /^[A-Z_0-9]+$/.test(raw) ? raw : 'INITIAL_FILE_RESTORE_FAILED';
+                log.warn('initial-files.restore', {operationId, id, stage: 'persist', result: 'failure', code, durationMs: Date.now() - started});
+                results.push({ id, status: 'failed', error: error instanceof Error ? error.message : String(error) });
+            }
         }
         return results;
     }
@@ -54,12 +63,12 @@ export class NestosInitialFiles {
         return write.finally(() => { if (noteWrites.get(notes) === write) noteWrites.delete(notes); });
     }
     private async writeMissingNote(note: {name: string; content: string}): Promise<boolean> {
-        const driver = this.notes!.driver;
-        if (await driver.exists('/' + note.name)) return false;
-        try { await driver.createFile({ parentPath: '/', name: note.name, content: note.content }); return true; }
-        catch (error) {
-            if ((error as { code?: string }).code === 'EEXIST' && await driver.exists('/' + note.name)) return false;
-            throw error;
+        if (note.name === '.nestos/cloze/prompts.yaml') {
+            const path = '/' + note.name;
+            if (await this.notes!.driver.exists(path)) await this.notes!.driver.writeContent(path, note.content);
+            else await this.notes!.driver.createFile({parentPath: '/.nestos/cloze', name: 'prompts.yaml', content: note.content, recursive: true});
+            return true;
         }
+        return writeMissingStudyFile(this.notes!, note);
     }
 }

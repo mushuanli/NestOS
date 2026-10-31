@@ -335,6 +335,12 @@ Node 的目录、权限、原子写入和 48 小时清理由可信宿主实现�
 
 数字分身 `collectionTools()` 投影可直接采集的固定版本 Tool 及参数 Schema；`TwinCollectionExecutor` 兼容原发布 Flow 和新 Tool 目标。`mode=collect` 只采集，不要求模型。`triggerScanPlan(planId,eventId)` 是授权事件写入端口，与入队原子保存去重回执，RPC 不自动重放；`event` 触发不参与定时扫描。`authorizeTool` 是宿主注入的通用 Effect 授权门，能力获取前后及恢复时复验，不向 UI 暴露凭据。详见 [扫描器与共享空间](design/digital-twin-scanners.md)。
 
+Anki 创建的生成接口由宿主适配为正式 Session：`StudyGenerationRequest.draftId` 是不透明草稿身份，`onExecution` 仅提供展示文字和链接，不向 mdxeditor 引入 Session 类型；宿主 Workbench 在笔记持久化后通过应用自身的 `documentSaved` 更新会话标题，独立编辑器不感知该后处理。宿主将会话放入保留的个人项目，同一草稿的重新生成使用新的 operationId 追加轮次。`ApplicationBackend.generateText` 显式接收 sessionId、连接和模型，复用 Session Submit、队列及 Kernel，取消只作用于该提交。
+
+StudyCreation.sources 提供跨工作区文本来源查询和读取，mdxeditor 不解析 VFS 根或项目身份。NestOS 宿主按当前工作区/项目能力读取，选择结果仅填入待处理内容。生成请求把提示词与来源一并写入普通 Session 用户消息，确保会话正文和实际模型输入可核对。
+
+来源查询的可选 parent 是宿主分配的不透明目录 ID，目录候选通过 kind=directory 标记。NestOS 根层只返回项目/nav 位置；选定后才读取该文件空间。无关键词只列当前目录，关键词查询最多深入两级、20 个目录并显示 50 项，用户可逐层导航继续查询；Enter 选择首项，方向键可进入候选列表。
+
 ## Session 响应正文读取与后台观察
 
 `ApplicationBackend.sessionResponse(sessionId, query?)` 是只读 query。省略选择器时读取当前分支最近一轮；`branch` 可选择已有分支，`operationId` 或 `roundId` 精确选择一轮，两者不能同时指定。未找到返回 undefined，不能退回其他回复。返回 roundId、operationId、status、text、finishReason；text 只包含 assistant 的文本块，排除思考、工具、附件及用户消息。读取不绑定 Session、不切分支、不启动执行。
@@ -362,6 +368,7 @@ mdxeditor 只暴露可选 `StudyCreation.recovery`、`StudyGeneration.resume` �
 ### 连续创建的保存回执
 
 StudyCreation.documents.save 可返回 {label: string}，由宿主提供包含实际扩展名的保存位置。保存成功后创建窗口保持打开，提示实际保存结果，清空文件名、参考输入、输出与暂存草稿，保留目录、提示词和模型，并为下一份分配新身份；失败保留全部输入与原身份以便重试。按钮为“保存并继续”和“关闭”；状态固定在操作区，下一次编辑会清除上次提示。附加的生成会话改名不阻塞文件保存回执；暂存清理失败与文件保存失败分开提示。
+
 
 ### 学习创建能力边界
 

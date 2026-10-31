@@ -22,6 +22,6 @@ export function createTools({buildTool, z, connections}) {
     return [make('google.collect', z.discriminatedUnion('resource', [z.object({...common, ...mail, resource: z.literal('mail')}),
         z.object({...common, ...calendar, resource: z.literal('calendar')})])),
         // Existing published workflows keep their tool identities and explicit directories.
-        make('google.gmail.collect', z.object({...common, ...mail, directory: z.string().min(1)}), 'gmail'),
-        make('google.calendar.collect', z.object({...common, ...calendar, directory: z.string().min(1)}), 'calendar')];
+        make('google.gmail.collect', z.object({...common, ...mail}), 'gmail'),
+        make('google.calendar.collect', z.object({...common, ...calendar}), 'calendar')];
 }

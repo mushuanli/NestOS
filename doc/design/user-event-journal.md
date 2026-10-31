@@ -13,8 +13,8 @@ HTTP 用户身份来自证书映射；UserApplications 为每个用户建立独�
 ```mermaid
 C4Component
 title 每用户持久事件与多个浏览器
-Container(browserA, "浏览器 A", "app-transport", "独立 View 与 EventFeed 游标")
-Container(browserB, "浏览器 B", "app-transport", "独立 View 与 EventFeed 游标")
+Container(browserA, "浏览器 A", "app-shell + app-transport", "ShellApplicationEvents；独立 View 与游标")
+Container(browserB, "浏览器 B", "app-shell + app-transport", "独立补读；失效刷新保留编辑器")
 Container_Boundary(host, "NestOS 宿主") {
   Component(auth, "身份与用户路由", "node-host", "证书绑定 userId")
   Container_Boundary(user, "每用户独立 ApplicationRuntime") {
@@ -64,7 +64,9 @@ Rel(api, browserB, "独立提示与回放")
 
 游标包含持久 streamId，跨用户、存储更换或保留范围之外的游标返回 ECONFLICT。feed 捕获该读错误，先取新 baseline，再调用 reset 重读快照，随后从 baseline 继续回放；收到 runtime.reset/source.reset 也会调用 reset。调用者负责避免 receive 重复执行 reset。关闭 feed 不影响其他浏览器，也不发送后台任务取消命令。
 
-当前不新增通知中心 UI、设备推送或浏览器游标存储；现有 View/SSE 观察保持原语义。调用者可以注入游标存储，但不能把设备接收游标与用户已读状态混用。多浏览器同文档的并发编辑仍使用文件版本/冲突机制，事件日志不替代编辑冲突处理。
+app-shell 通过 `ShellApplicationEvents` 在工作区加载前捕获 baseline，首屏就绪后开始消费；预加载快照及 baseline 获取失败的恢复路径先使快照失效。事件按工作区归属转成 `invalidateFromEvents`，保留原编辑器、路由与未提交输入；装配期间的事件通过 generation 检查补一次失效标记。在线、焦点、可见性恢复及可见窗口每 15 秒主动补读，补偿丢失的唤醒提示。隐藏工作区只保留 dirty，恢复可见时补读原目录及导航；视图读取失败按 1 至 15 秒退避重试。恢复替换 View 或销毁应用时关闭 feed，不取消后台任务。测试见 [application-events.test.ts](../../ui/app-shell/tests/application-events.test.ts)、[bootstrap-navigation-cleanup.test.ts](../../ui/app-shell/tests/bootstrap-navigation-cleanup.test.ts) 与 [current-resource.test.ts](../../ui/app-shell/tests/current-resource.test.ts)。
+
+当前不新增通知中心 UI、设备推送或浏览器游标存储；现有 View/SSE 观察继续负责流式输出与领域专用状态。调用者可以注入游标存储，但不能把设备接收游标与用户已读状态混用。多浏览器同文档的并发编辑仍使用文件版本/冲突机制，事件日志不替代编辑冲突处理。
 
 ## 验证
 

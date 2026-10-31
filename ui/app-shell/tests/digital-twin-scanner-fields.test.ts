@@ -59,3 +59,12 @@ it('selects a direct Tool without a Flow and keeps collection-only settings sepa
     form.querySelector<HTMLInputElement>('[data-parameter="0"]')!.value = '0';
     expect(() => readCollectionExecutor(form, [], [tool])).toThrow();
 });
+
+it('prefills user defaults for direct Tool collectors and preserves explicit scanner values', async () => {
+    const {toolFields} = await import('../src/digital-twin/collection-fields');
+    const tool = {name: 'Fixture', description: '', source: 'plugin' as const, target: {kind: 'tool' as const, id: 'fixture.collect', version: '1', digest: 'stable'},
+        defaults: {directory: 'personal-imports', count: 2}, parameters: {type: 'object', properties: {directory: {type: 'string'}, count: {type: 'integer'}}}};
+    const form = document.createElement('form'); form.innerHTML = toolFields(tool, {count: 4});
+    expect(form.querySelector<HTMLTextAreaElement>('[data-parameter="0"]')!.value).toBe('personal-imports');
+    expect(form.querySelector<HTMLInputElement>('[data-parameter="1"]')!.value).toBe('4');
+});

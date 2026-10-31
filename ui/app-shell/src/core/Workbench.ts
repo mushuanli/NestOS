@@ -1,5 +1,3 @@
-import {FSError} from '@itookit/vfs-core';
-import type {StudyDraft} from '@itookit/mdxeditor';
 import {backToPreviousPage} from '../navigation/page-history';
 import { createNestOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { connectEditorLifecycle } from '../browser/editor-connector';
@@ -16,9 +14,14 @@ import { lazyMdxEditorFactory as defaultEditorFactory } from '../browser/lazy-md
 import type { WorkbenchConfig } from '../types';
 import { t, ACTION_ICONS, createModuleLogger, randomUUID, NavigationRequest} from '@itookit/common';
 import { EditorOptions, IEditor, EditorHostContext } from '@itookit/ui-common';
+import {FSError} from '@itookit/vfs-core';
+import type {StudyDraft} from '@itookit/mdxeditor';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { showNameDialog } from '../files/project-dialog';
 import { presentationPersistence } from '../persistence/initial-navigation';
+import {ViewRefresh} from '../lifecycle/view-refresh';
+
+const eventLog = createModuleLogger('workbench-events');
 
 export class Workbench {
     private readonly dialogs = new AbortController();
@@ -36,6 +39,14 @@ export class Workbench {
     private loadedRevision = 0;
     private loadedAt = 0;
     private readonly stopChanges: () => void;
+    private eventRefreshStarted = 0;
+    private readonly eventRefresh = new ViewRefresh({visible: () => this.visible,
+        run: async () => {this.eventRefreshStarted = Date.now(); await this.refresh(); await this.lifecycleUnsubscribe.refreshDirectory();},
+        report: error => {
+            const code = (error as {code?: unknown})?.code;
+            eventLog.warn('events.refresh', {operationId: randomUUID(), stage: 'navigation', result: 'failure', durationMs: Date.now() - this.eventRefreshStarted,
+                code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'VIEW_REFRESH_FAILED'});
+        }});
 
     constructor(private config: WorkbenchConfig) {
         this.engine = config.files.fs;
@@ -315,10 +326,11 @@ export class Workbench {
 
     public async setVisible(visible: boolean): Promise<void> {
         if (this.visible === visible) return;
-        if (!visible && this.refreshing) this.dirty = true;
+        if (!visible) {this.eventRefresh.pause(); if (this.refreshing) this.dirty = true;}
         this.visible = visible; this.vfsUI.setVisible(visible && this.navigationVisible);
         await this.lifecycleUnsubscribe.setVisible(visible);
-        if (visible && this.navigationVisible && (this.dirty || this.engine.revision !== this.loadedRevision || performance.now() - this.loadedAt >= 15000)) await this.refresh();
+        if (visible && this.eventRefresh.dirty) await this.eventRefresh.flush();
+        else if (visible && this.navigationVisible && (this.dirty || this.engine.revision !== this.loadedRevision || performance.now() - this.loadedAt >= 15000)) await this.refresh();
     }
 
     public async setNavigationVisible(visible: boolean): Promise<void> {
@@ -340,8 +352,15 @@ export class Workbench {
         finally { --this.refreshing; }
     }
 
+    public invalidateFromEvents(): void {
+        if (this.dialogs.signal.aborted) return;
+        this.dirty = true;
+        this.eventRefresh.mark('events');
+    }
+
     public async destroy(): Promise<void> {
         this.dialogs.abort(); this.stopChanges();
+        await this.eventRefresh.close();
         await this.lifecycleUnsubscribe();
         await this.navigationTask?.catch(() => {});
         this.vfsUI.destroy();

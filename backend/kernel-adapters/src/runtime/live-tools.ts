@@ -16,6 +16,13 @@ export class LiveTools {
         this.tail = work.catch(() => {}); return work;
     }
 
+    unregister(ids: string[]): Promise<void> {
+        const work = this.tail.then(() => {
+            if (this.closed) throw new Error('Tool registration runtime is closed');
+            for (const id of ids) {for (const driver of this.drivers) driver.unregisterTool(id); this.tools.delete(id);}
+        }); this.tail = work.catch(() => {}); return work;
+    }
+
     private async commit(additions: Tool[]): Promise<void> {
         if (this.closed) throw new Error('Tool registration runtime is closed');
         const pending = additions.filter(tool => this.tools.get(tool.name) !== tool);

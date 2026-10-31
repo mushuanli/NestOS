@@ -94,6 +94,8 @@ export interface SessionCreation { agentId?: string; initialContext?: import('..
 
 /** Domain storage. History and attachments belong to the Session identity. */
 export interface ISessionRepository extends SessionDeletionStore {
+    setFolderDeletionGuard?(guard: (path: string) => Promise<void>): void;
+    assertFolderDeletable?(path: string): Promise<void>;
     init(): Promise<void>;
     dispose(): Promise<void>;
     subscribe(listener: (change?: SessionRepositoryChange) => void): () => void;

@@ -10,7 +10,10 @@ import type {IDeviceDriver} from '@itookit/vfs-core';
 import {createKernelAdaptersRuntime} from '@itookit/kernel-adapters';
 import {NodeToolPackages} from '../src/runtime/tool-packages';
 import {loadNodeToolModules, mergeNodePackageTools} from '../src/runtime/tool-modules';
+import {readPackageGuide} from '../src/runtime/tool-packages/guide';
 import {toolPackageDirectories} from '../src/runtime/tool-packages/manifest';
+import {NodeToolConnections} from '../src/runtime/tool-connections';
+import {packageSourceEnvironment} from '../src/runtime/tool-packages/environment';
 
 const cleanups: Array<() => Promise<unknown>> = [];
 const priorExecutable = process.env.NESTOS_FIXTURE_TOOL_BIN;
@@ -188,3 +191,140 @@ function registryWorker(file: string, id: string, delay: number) {
     const locked = new Promise<void>((resolve, reject) => {child.stdout.once('data', () => resolve()); void done.catch(reject);});
     return {locked, done};
 }
+
+const guideYaml = (title = 'Setup') => `version: 1
+connectionTypes: [fixture-account]
+title: ${title}
+steps:
+  - title: Register
+    description: Register even when setup needs review.
+    command: example --value '<input>'
+    links:
+      - label: Documentation
+        url: https://docs.example.com/setup
+`;
+
+it('keeps guides available after registration and updates documentation without changing executable identity', async () => {
+    const f = await fixture(), manager = f.manager(), kernel = await runtime();
+    const guideFile = path.join(f.packageRoot, 'guide.yaml'); await writeFile(guideFile, guideYaml());
+    await manager.initialize(); manager.bind(kernel);
+    expect(await manager.list()).toMatchObject([{status: 'available', guide: {title: 'Setup', connectionTypes: ['fixture-account'], steps: [{title: 'Register'}]}}]);
+    await manager.install({id: 'fixture', version: '0.1.0'});
+    const registry = path.join(f.env.XDG_CONFIG_HOME, 'nestos/tool-packages.json'), before = await readFile(registry, 'utf8');
+    await writeFile(guideFile, guideYaml('Updated setup'));
+    expect(await manager.list()).toMatchObject([{status: 'registered', guide: {title: 'Updated setup'}}]);
+    await manager.install({id: 'fixture', version: '0.1.0'});
+    expect(await readFile(registry, 'utf8')).toBe(before);
+    expect(await (await kernel.sessions.get('guide-run')).toolService.invoke({toolId: f.toolId, args: {value: 'still works'}, resultMode: 'structured'})).toMatchObject({success: true, data: 'still works'});
+    const restored = new NodeToolPackages({env: f.env, directories: []}); cleanups.push(() => restored.close());
+    await restored.initialize(); restored.bind(await runtime(restored.initialTools()));
+    expect(await restored.list()).toMatchObject([{status: 'registered', guide: {title: 'Setup'}}]);
+});
+
+it('adds a guide to packages registered before guides existed without reinstalling executable code', async () => {
+    const f = await fixture(), manager = f.manager(); await manager.initialize(); manager.bind(await runtime());
+    await manager.install({id: 'fixture', version: '0.1.0'});
+    expect((await manager.list())[0].guide).toBeUndefined();
+    await writeFile(path.join(f.packageRoot, 'guide.yaml'), guideYaml());
+    expect(await manager.list()).toMatchObject([{status: 'registered', guide: {title: 'Setup'}}]);
+});
+
+it.each([
+    ['version: [private-guide-marker', 'TOOL_PACKAGE_GUIDE_YAML_INVALID'],
+    [guideYaml().replace('https://docs.example.com/setup', 'javascript:alert(1)'), 'TOOL_PACKAGE_GUIDE_INVALID'],
+    [guideYaml().replace('https://docs.example.com/setup', 'https://user:password@example.com'), 'TOOL_PACKAGE_GUIDE_INVALID'],
+    [guideYaml().replace('[fixture-account]', '[invalid type]'), 'TOOL_PACKAGE_GUIDE_INVALID'],
+    [guideYaml().replace('[fixture-account]', 'fixture-account'), 'TOOL_PACKAGE_GUIDE_INVALID'],
+    [guideYaml().replace('steps:', 'unusedSteps:'), 'TOOL_PACKAGE_GUIDE_INVALID'],
+    ['x'.repeat(65537), 'TOOL_PACKAGE_GUIDE_TOO_LARGE'],
+])('isolates invalid package documentation from executable registration (%#)', async (yaml, code) => {
+    const f = await fixture(), manager = f.manager();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await writeFile(path.join(f.packageRoot, 'guide.yaml'), yaml); await manager.initialize(); manager.bind(await runtime());
+    expect(await manager.list()).toMatchObject([{status: 'available', guideError: code}]);
+    await expect(manager.install({id: 'fixture', version: '0.1.0'})).resolves.toBeUndefined();
+    expect(await manager.list()).toMatchObject([{status: 'registered', guideError: code}]);
+    expect(JSON.stringify(warning.mock.calls)).not.toContain('private-guide-marker');
+});
+
+it('rejects symbolic links for package documentation and validates all bundled package guides', async () => {
+    const f = await fixture(); await writeFile(path.join(f.root, 'external.yaml'), guideYaml());
+    await symlink(path.join(f.root, 'external.yaml'), path.join(f.packageRoot, 'guide.yaml'));
+    await expect(readPackageGuide(f.packageRoot)).rejects.toMatchObject({code: 'TOOL_PACKAGE_GUIDE_PATH_INVALID'});
+    const catalog = fileURLToPath(new URL('../../../tools/', import.meta.url));
+    for (const name of ['nestos-googlecli', 'anki-cli']) {
+        const guide = await readPackageGuide(path.join(catalog, name)); expect(guide?.steps.length).toBeGreaterThan(0);
+    }
+});
+
+it('removes a registered package from existing and future tool scopes while keeping user connections separate', async () => {
+    const f = await fixture(), manager = f.manager(), kernel = await runtime();
+    await manager.initialize(); manager.bind(kernel); await manager.install({id: 'fixture', version: '0.1.0'});
+    expect(await manager.list()).toMatchObject([{status: 'registered', canUninstall: true}]);
+    await manager.uninstall('fixture', '0.1.0');
+    expect(kernel.toolCatalog.getToolMeta(f.toolId)).toBeUndefined();
+    expect(await manager.list()).toMatchObject([{status: 'available', canUninstall: false}]);
+    expect(JSON.parse(await readFile(path.join(f.env.XDG_CONFIG_HOME, 'nestos/tool-packages.json'), 'utf8')).packages).toEqual([]);
+});
+
+it('prepares a new package version, retains live tools and connections, and migrates user settings after restart', async () => {
+    const f = await fixture(), connections = new NodeToolConnections(path.join(f.root, 'private-connections'));
+    cleanups.push(() => connections.close());
+    const module = (await readFile(f.module, 'utf8')).replace('createTools({buildTool,z}) {', `createTools({buildTool,z,connections}) {connections?.register({id:'fixture-account',name:'Account',description:'',fields:[{name:'token',label:'Token',secret:true,required:true}]});`);
+    await writeFile(f.module, module);
+    await writeFile(path.join(f.packageRoot, 'toolbox.yaml'), 'version: 2\nconnections:\n  fixture-account: [browser, import]\ntools:\n  fixture.convert:\n    parameters:\n      - name: value\n');
+    const create = async () => {
+        const manager = new NodeToolPackages({env: f.env, connections}); cleanups.push(() => manager.close());
+        await manager.initialize(); const host = await runtime(manager.initialTools()); manager.bind(host); return {manager, host};
+    };
+    const initial = await create(); await initial.manager.install({id: 'fixture', version: '0.1.0'});
+    await initial.manager.configure('fixture', '0.1.0', {enabled: true, defaults: {'fixture.convert': {value: 'saved-default'}}});
+    await connections.save({id: 'account', type: 'fixture-account', name: 'Private', values: {token: 'PRIVATE_TOKEN'}});
+    expect((await initial.manager.list())[0].connectionTypes).toContain('fixture-account');
+    await writeFile(path.join(f.packageRoot, 'nestos-tool.json'), JSON.stringify({...f.manifest, version: '0.2.0'}));
+    await writeFile(f.module, module.replace("name:'Account'", "name:'Next account'").replace('data:args.value', "data:'next:'+args.value"));
+    const active = await create(), scope = await active.host.sessions.get('active-before-switch');
+    expect(await active.manager.list()).toMatchObject([{version: '0.1.0', status: 'registered', connectionTypes: ['fixture-account']}, {version: '0.2.0', status: 'available', canSwitch: true}]);
+    const activeExecutable = process.env.NESTOS_FIXTURE_TOOL_BIN;
+    expect(packageSourceEnvironment(process.env).NESTOS_FIXTURE_TOOL_BIN).toBe(priorExecutable);
+    await active.manager.switchVersion('fixture', '0.2.0', '0.1.0');
+    expect(process.env.NESTOS_FIXTURE_TOOL_BIN).toBe(activeExecutable);
+    expect(await scope.toolService.invoke({toolId: f.toolId, args: {}, resultMode: 'structured'})).toMatchObject({success: true, data: 'saved-default'});
+    expect(await active.manager.list()).toMatchObject([{version: '0.1.0', status: 'registered', pendingVersion: '0.2.0'}, {version: '0.2.0', canSwitch: false, pendingVersion: '0.2.0'}]);
+    expect((await connections.snapshot()).types[0].name).toBe('Account');
+    expect(await connections.resolve('account', 'fixture-account')).toEqual({token: 'PRIVATE_TOKEN'});
+    await initial.host.dispose(); await active.host.dispose();
+    await initial.manager.close(); await active.manager.close();
+    const restarted = await create();
+    expect((await restarted.manager.list()).find(item => item.version === '0.2.0')).toMatchObject({status: 'registered', configuration: {enabled: true, defaults: {'fixture.convert': {value: 'saved-default'}}}});
+    expect(await (await restarted.host.sessions.get('after-restart')).toolService.invoke({toolId: f.toolId, args: {}, resultMode: 'structured'})).toMatchObject({success: true, data: 'next:saved-default'});
+    expect((await connections.snapshot()).types[0].name).toBe('Next account');
+    expect(await connections.resolve('account', 'fixture-account')).toEqual({token: 'PRIVATE_TOKEN'});
+});
+
+it('rejects incompatible or unauthorized version switches and retains the registered package', async () => {
+    const f = await fixture(), manager = f.manager(); await manager.initialize(); manager.bind(await runtime());
+    await manager.install({id: 'fixture', version: '0.1.0'});
+    await writeFile(path.join(f.packageRoot, 'nestos-tool.json'), JSON.stringify({...f.manifest, version: '0.2.0', tools: [{id: f.toolId, version: '2'}]}));
+    await writeFile(f.module, (await readFile(f.module, 'utf8')).replace("version:'1'", "version:'2'"));
+    const candidate = f.manager(); await candidate.initialize(); candidate.bind(await runtime(candidate.initialTools()));
+    await expect(candidate.switchVersion('fixture', '0.2.0', '0.1.0')).rejects.toMatchObject({code: 'TOOL_PACKAGE_SWITCH_INCOMPATIBLE'});
+    const registry = JSON.parse(await readFile(path.join(f.env.XDG_CONFIG_HOME, 'nestos/tool-packages.json'), 'utf8'));
+    expect(registry.packages[0].version).toBe('0.1.0');
+    const readonly = new NodeToolPackages({env: f.env, canManage: false}); cleanups.push(() => readonly.close());
+    await readonly.initialize(); readonly.bind(await runtime(readonly.initialTools()));
+    expect((await readonly.list()).find(item => item.version === '0.2.0')?.canSwitch).toBe(false);
+    await expect(readonly.switchVersion('fixture', '0.2.0', '0.1.0')).rejects.toMatchObject({code: 'TOOL_PACKAGE_SWITCH_DENIED'});
+});
+
+it('validates inactive connection declarations without changing the running registration', async () => {
+    const f = await fixture(), manager = f.manager(); await manager.initialize(); const host = await runtime(); manager.bind(host);
+    await manager.install({id: 'fixture', version: '0.1.0'});
+    await writeFile(path.join(f.packageRoot, 'nestos-tool.json'), JSON.stringify({...f.manifest, version: '0.2.0'}));
+    await writeFile(f.module, (await readFile(f.module, 'utf8')).replace('createTools({buildTool,z}) {', `createTools({buildTool,z,connections}) {connections?.register({id:'invalid type',name:'Invalid',description:'',fields:[{name:'key',label:'Key'}]});`));
+    const candidate = f.manager(); await candidate.initialize(); const running = await runtime(candidate.initialTools()); candidate.bind(running);
+    await expect(candidate.switchVersion('fixture', '0.2.0', '0.1.0')).rejects.toMatchObject({code: 'TOOL_PACKAGE_CONNECTION_INVALID'});
+    expect(await (await running.sessions.get('unchanged')).toolService.invoke({toolId: f.toolId, args: {value: 'original'}, resultMode: 'structured'})).toMatchObject({success: true, data: 'original'});
+    const registry = JSON.parse(await readFile(path.join(f.env.XDG_CONFIG_HOME, 'nestos/tool-packages.json'), 'utf8'));
+    expect(registry.packages[0].version).toBe('0.1.0');
+});

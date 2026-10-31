@@ -64,7 +64,7 @@ export class ChatDraftStore {
     preferences(draft: ComposerDraft = this.draft): IChatInputConfig {
         return {...this.config, text: draft.text, draftToken: draft.scopeId, target: draft.target as IChatInputConfig['target'], input: readInputDraft(draft.input),
             agentId: draft.target?.kind === 'agent' ? draft.target.id : draft.selection?.executorId ?? this.config.agentId,
-            settings: {...this.config.settings, ...chatSettings(draft.selection), ...(draft.selection?.modelId ? {nativeModelSelection: {executorId: draft.selection.executorId ?? this.config.agentId, modelId: draft.selection.modelId,
+            settings: {...this.config.settings, ...chatSettings(draft.selection), ...(this.controls.executorScope === 'remote' ? {nativeModelSelection: undefined} : {}), ...(draft.selection?.modelId ? {nativeModelSelection: {executorId: draft.selection.executorId ?? this.config.agentId, modelId: draft.selection.modelId,
                 ...(draft.selection.reasoningEffort ? {reasoningEffort: draft.selection.reasoningEffort} : {})}} : {})},
             context: draft.context?.value == null ? undefined : draft.context.value as unknown as IChatInputConfig['context']};
     }

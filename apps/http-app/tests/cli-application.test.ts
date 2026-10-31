@@ -5,6 +5,7 @@ import path from 'node:path';
 import { startHost, createCertificates, loadCertificates } from '@itookit/node-host/http';
 import { ProjectRemoteMountService } from '@itookit/app-core';
 import { openCliApplication } from '../../cli/src/application-host';
+import {FlowLibraryCommand} from '@itookit/app-contracts';
 import { executeApplicationCommand } from '../../cli/src/application-command';
 
 const cleanup: Array<() => Promise<unknown>> = [];
@@ -83,3 +84,21 @@ it.each(['not-committed', 'unknown'] as const)('diagnoses a native send %s throu
     expect(conversation).toHaveBeenCalledOnce(); expect(controls.read).toHaveBeenCalledOnce();
     expect(controls.send).toHaveBeenCalledExactlyOnceWith('fixture prompt'); expect(controls.close).toHaveBeenCalledOnce();
 });
+
+it.each([false, true])('observes independent CLI calls through the authenticated host projection (input=%s)', async interact => {
+    const {local, start} = await setup(), direct = await openCliApplication(local);
+    const project = await executeApplicationCommand(direct.client, 'project', ['create', 'Independent calls'], local) as {project: {id: string}};
+    const id = await executeApplicationCommand(direct.client, 'session', ['create', project.project.id, 'Caller'], local) as string;
+    await direct.close();
+    const options = await start(), remote = await openCliApplication(options); cleanup.push(() => remote.close());
+    await remote.client.services.commandBus.execute(FlowLibraryCommand.Restore, {templates: [{id: 'http-worker', name: 'HTTP worker', exposure: 'global',
+        draftVersion: 1, updatedAt: 0, layout: {}, parameters: [], edges: [], nodes: [{id: 'work', name: 'Work',
+            plugin: interact ? 'builtin.human' : 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
+            config: interact ? {requestId: 'answer', prompt: 'Fixture input'} : {value: 'done'}}]}]});
+    const file = path.join(local.profile, 'independent-call.json');
+    await executeApplicationCommand(remote.client, 'session', ['call-prepare', id],
+        {...options, flow: 'http-worker', callTitle: 'HTTP call', submissionFile: file});
+    const result = await executeApplicationCommand(remote.client, 'session', ['call-submit', id, file], {...options, follow: true});
+    expect(result).toMatchObject({status: 'accepted', waitingForInput: interact,
+        execution: {status: interact ? 'waiting' : 'completed', waitingForInput: interact}});
+}, 15000);

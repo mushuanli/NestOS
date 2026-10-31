@@ -12,6 +12,39 @@ import {observeNavigationVisibility} from '../src/navigation/navigation-visibili
 const releases: Array<() => void | Promise<void>> = [];
 afterEach(async () => {for (const release of releases.splice(0).reverse()) await release(); document.body.replaceChildren(); vi.unstubAllGlobals(); vi.restoreAllMocks();});
 
+it('reconciles event invalidations without replacing an open editor or its unsaved input', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); releases.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/'); await fs.driver.createFile({name: 'note.txt', parentPath: '/', content: 'Saved'});
+    const sidebar = document.createElement('aside'), main = document.createElement('main'); document.body.append(sidebar, main);
+    const field = document.createElement('textarea'); field.value = 'Unsaved input';
+    const destroyed = vi.fn(), factory = vi.fn(async (mount: HTMLElement) => {mount.append(field); return {destroy: destroyed};});
+    const workbench = new Workbench({files: {fs, cwd: '/'}, sidebarContainer: sidebar, editorContainer: main,
+        editorFactory: factory as never, deferNavigation: true}); releases.push(() => workbench.destroy());
+    await workbench.start(); await workbench.openFile('/note.txt');
+    const reads = vi.spyOn(fs.driver, 'readContent');
+    workbench.invalidateFromEvents(); workbench.invalidateFromEvents();
+    await new Promise(resolve => setTimeout(resolve, 200));
+    expect(main.contains(field)).toBe(true); expect(field.value).toBe('Unsaved input');
+    expect(factory).toHaveBeenCalledOnce(); expect(destroyed).not.toHaveBeenCalled(); expect(reads).not.toHaveBeenCalled();
+});
+
+it('keeps hidden directory invalidations pending and updates the same directory panel on return', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); releases.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/');
+    const sidebar = document.createElement('aside'), main = document.createElement('main'); document.body.append(sidebar, main);
+    const workbench = new Workbench({files: {fs, cwd: '/'}, sidebarContainer: sidebar, editorContainer: main,
+        editorFactory: vi.fn() as never, deferNavigation: true}); releases.push(() => workbench.destroy());
+    await workbench.start(); await workbench.openFile('/');
+    const panel = main.querySelector('.workbench-tabs__panel:not([hidden])');
+    await workbench.setVisible(false);
+    await fs.driver.createFile({name: 'from-another-browser.txt', parentPath: '/', content: 'Saved'});
+    const listing = vi.spyOn(fs.driver, 'getChildren'); workbench.invalidateFromEvents();
+    await new Promise(resolve => setTimeout(resolve, 200)); expect(listing).not.toHaveBeenCalled();
+    await workbench.setVisible(true);
+    expect(main.querySelector('.workbench-tabs__panel:not([hidden])')).toBe(panel);
+    expect(panel?.textContent).toContain('from-another-browser');
+});
+
 it('opens a file without listing its directory and retains its editor when navigation is loaded later', async () => {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); releases.push(() => manager.dispose());
     const fs = await manager.openFileSystem('/'); await fs.driver.createFile({name: 'note.txt', parentPath: '/', content: 'Saved'});

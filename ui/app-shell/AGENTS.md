@@ -1,5 +1,7 @@
 # @itookit/app-shell
 
+用户事件由 lifecycle/application-events 装配每浏览器独立游标；baseline 在工作区快照加载前获取，首屏后补读。事件仅使对应工作区快照失效，不重放命令、不标记通知已读；隐藏视图记 dirty，重新显示时刷新原目录/导航并保留编辑器草稿。焦点、在线、可见性恢复及可见窗口低频核对补偿漏提示，恢复替换 View 和销毁必须关闭 feed。新工作区装配期间的事件用 generation 补一次失效标记。
+
 工作台侧栏通过「项目／智能体」文字页签切换，各自列表独占可用高度，保留 DOM、搜索、滚动与项目上下文；切换不导航正文。智能体列表复用 vfs-ui Drawer，搜索只过滤自己的列表。智能体首次选中才加载现有配置服务，隐藏后只记录变化；支持名称/说明/来源过滤、创建、配置和本地智能体快捷新会话，远程项打开原有详情与项目入口。快捷启动保留项目已有草稿和附件，只显式切换智能体，不提前转正或发送。工具箱在存在工作台时隐藏智能体常驻分类和全部列表中的智能体分组，保留配置编辑及旧链接。
 
 工作台、工具箱及文件工作区通过应用作用域 WorkbenchWindows 汇总窗口元数据、搜索、固定和批量关闭；跨区域切换沿用原路由与编辑器，标签 ID 仍由各工作区持有。当前工作区的窗口列表使用一个 Drawer，由侧栏标题和编辑器标题中的窗口按钮打开弹层；平时放在隐藏宿主内，不常驻占据侧栏高度，关闭后归还原宿主、保留查询并恢复发起按钮焦点；搜索不改变标签身份或编辑器生命周期。WorkbenchSidebar 通过 sidebarView 保存当前页签，兼容旧版上下分区状态但不再恢复折叠或分区高度；项目视图隐藏时暂停导航读取与观察，重新显示再同步变化。布局不读取 vfs-ui 内部 DOM，搜索和动作实现不进入通用布局。
@@ -202,12 +204,21 @@ LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原�
 
 工具包面板通过通用 installFlows 安装扩展携带的流程，configuration/tool-connections 渲染外部 Schema 声明的用户连接字段。该表单不包含厂商分支，秘密只提交不回填；授权文件只在本地读取。数字分身仅保留同一表单的快捷入口。
 
-笔记侧栏更多菜单通过通用 toolbar extraItems 打开 `@study` 学习页。Workbench 根据 cloze 工作区配置注入通用 virtualViews，编辑器连接器为虚拟页复用标签与生命周期；虚拟身份不传给 VFS 文件读取。StudyView 及队列位于 mdxeditor，NestOS 只装配文档/存储端口。
+- ToolPackagesDialog 通过通用 ToolPackageInfo.guide 展示包自带的 YAML 指南，注册前后均保留入口；文本/命令转义且不执行，链接仅使用宿主已校验的 HTTPS 地址，刷新保留展开状态。工具详情在父挂载高度内独立滚动，长参数和长指南不得撑出手机视口。
+
+笔记侧栏刷新后的纯图标通过通用 toolbar extraItems 打开 `@study` 学习页。Workbench 根据 cloze 工作区配置注入通用 virtualViews，编辑器连接器为虚拟页复用标签与生命周期；虚拟身份不传给 VFS 文件读取；学习页通过通用 virtualViews.preview:false 打开为保留标签，打开原文不会替换学习页，用户仍可主动关闭。StudyView 及队列位于 mdxeditor，NestOS 只装配文档/存储端口。
 
 文件工作台消费 VFS 已提交的移动与重命名事件，按目录前缀同步已打开及待恢复标签的身份、位置、编辑器保存目标和当前路由。目录页原地更新面包屑、条目与刷新目标，保留筛选和滚动；跨移动返回的旧刷新结果或 ENOENT 必须丢弃并读取新路径。当前资源迁移使用 replace 更新历史，不新增导航步骤。
 
 助手入口通过 AssistantMenu 统一顶部品牌和手机底部导航，前三项事件来自只读 assistantOverview；等待处理不能被已读代替。快捷项和已读版本保存到用户 UI 文档，沿用项目、草稿、会话和扫描器路由，不在菜单内执行任务。数字分身 workspace 深链保留空间身份并定位规则或运行卡片；详情见 doc/design/assistant-menu.md。
 
 快捷访问与新增表单的项目、项目内会话、扫描器统一使用多词 AND 筛选；关键词是可选的个人快捷项字段，搜索本身不持久化。导航菜单经 assistant-actions 交给助手编辑所选目标，不能误用当前页面；保持原菜单动作并兼容只读目标，重复目标编辑已有快捷项。
+
+学习页新增入口由 StudyHost.creation 注入，创建普通笔记，保存成功保留创建界面并清空已保存内容，保留学习页且不自动打开笔记。顶层默认笔记根，目录行传入授权目录；空白或无 cloze 文件不进入学习清单。AppOptions/WorkbenchConfig.studyGeneration 可注入 prompts/generation 等能力组，宿主负责 AI 执行。生成参考文件只读，保存创建新文件，同名文件不覆盖；同一次提交保留稳定 operationId，清空并新建时才分配新身份。
+
+学习草稿生成默认通过 browser/study-generation 接 ApplicationBackend.generateText；取消显式调用 cancelTextGeneration，不跨 RPC 传 AbortSignal。连接和模型通过 listTextModels 读取，在创建界面显式选择，生成时后端重新校验；配置新窗口完成后可刷新连接；宿主仍可覆盖 studyGeneration。
+
+browser/study-sources 将可引用工作区和项目文件视图适配为独立编辑器的通用来源能力：空范围只投影项目/nav 位置，不打开文件空间；选定来源后才列目录，无关键词仅当前层，有关键词最多两级子目录、20 个目录、50 个结果。多关键词在空间名和路径共同匹配；读取时重验来源、文件类型、隐藏路径和 8 MiB 限制，项目视图用后释放。配置、权限与正文不进入日志。
+
 
 学习生成的 NestOS 错误码只在 study-generation 适配边界映射为 recovery:pending；核心重试通过 generation.resume 观察原操作。AbortSignal 停止观察，generation.cancel 显式取消对应提交；不再传递 STUDY_DRAFT_SUSPENDED 字符串协议。保存后的 Session 标题更新属于宿主 documentSaved，不进入 StudyCreation 契约，失败不改变文件保存结果。笔记工具栏通过 compactLayout:inline、primaryAction:refresh 显式设置布局和主操作，extraItems.after 只表达顺序。

@@ -54,7 +54,10 @@ class AssistantMenu {
     private mountLaunchers(): void {
         const brand = document.querySelector<HTMLElement>('.app-sidebar__brand');
         if (brand) {
-            const previous = [...brand.childNodes]; brand.replaceChildren(this.launcher(false));
+            const previous = [...brand.childNodes], button = this.launcher(false);
+            button.dataset.brandLabel = brand.getAttribute('aria-label') || brand.textContent?.trim() || 'NestOS';
+            const count = button.querySelector<HTMLElement>('[data-assistant-count]')!; count.hidden = true;
+            button.replaceChildren(...previous, count); brand.replaceChildren(button);
             this.releases.push(() => brand.replaceChildren(...previous));
         }
         const list = document.querySelector('.app-sidebar .main-nav-list');
@@ -99,7 +102,7 @@ class AssistantMenu {
         for (const button of this.buttons) {
             button.querySelector('[data-assistant-count]')!.textContent = !this.hasOverview && !this.stale ? '…' : this.stale ? count ? `${Math.min(count, 99)}+` : '?' : count > 99 ? '99+' : String(count);
             button.classList.toggle('assistant-launcher--attention', count > 0);
-            button.title = label(this.stale ? 'eventsStale' : this.hasOverview ? 'eventCount' : 'loading', {count}); button.setAttribute('aria-label', button.title);
+            button.title = (button.dataset.brandLabel ? button.dataset.brandLabel + ' · ' : '') + label(this.stale ? 'eventsStale' : this.hasOverview ? 'eventCount' : 'loading', {count}); button.setAttribute('aria-label', button.title);
         }
     }
     private render(): void {

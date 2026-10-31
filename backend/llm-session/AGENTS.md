@@ -121,3 +121,7 @@ ConversationUIState.operationRecords 仅保存宿主 UI 的不透明操作台账
 
 
 ContentTransferService.createChild 在入口冻结请求，以原 content.child 记录核对并发或丢回执，不能仅凭写入异常新建身份。请求字段顺序不影响身份，不同标题/材料来源明确冲突。SessionRepository 在同一实例内按 Session ID 串行初始化文件和元数据，避免两个独立调用同时 ensure 相同子会话时的文件竞态；持久 CAS 和宿主 lease 仍是跨实例权威。该机制不自动提供 Agent/Task 调用路由或父子控制所有权。
+
+独立调用只提交持久冻结的 Kernel Task 计划；缺少策略或准备事实明确拒绝。已移除普通队列提交降级及无生产调用方的 guard 接点；宿主不再注入子 Session 队列提交回调。
+
+历史队列独立调用继续按原路由只读核对接纳与历史，不能因缺少 Kernel 准备字段阻断整个调用列表；查询不重新提交，也不迁移历史执行身份。

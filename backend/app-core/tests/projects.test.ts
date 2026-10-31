@@ -261,22 +261,22 @@ it('restores the default project after reopening persistent storage', async () =
     expect(await readSession(second, id, 'remember.md')).toBe('persisted');
 });
 
-it('switches to the next local project when the default is deleted through the browser', async () => {
-    const r = await setup(), original = (await r.projects.getDefaultProject())!;
-    const next = await r.projects.create('Next default');
+it('falls back to the reserved Personal project when a normal default is deleted', async () => {
+    const r = await setup(), personal = await r.projects.personal(), original = await r.projects.create('Normal');
+    await r.projects.setDefaultProject(original.project.id);
     await r.browser.fs.driver.delete([folderBrowserPath(original.path)], {recursive: true});
-    expect((await r.projects.getDefaultProject())?.project.id).toBe(next.project.id);
-    expect((await r.projects.current())?.project.id).toBe(next.project.id);
-    expect((await r.projects.navigation({path: '/'})).projects[0].project.id).toBe(next.project.id);
+    expect((await r.projects.getDefaultProject())?.project.id).toBe(personal.project.id);
+    expect((await r.projects.current())?.project.id).toBe(personal.project.id);
 });
-it('creates a Personal replacement when the last local default is deleted', async () => {
-    const r = await setup(), original = (await r.projects.getDefaultProject())!;
-    await r.browser.fs.driver.delete([folderBrowserPath(original.path)], {recursive: true});
-    const replacement = (await r.projects.getDefaultProject())!;
-    expect(replacement.project.id).not.toBe(original.project.id);
-    expect(replacement.name).toBe('个人'); expect(await r.projects.list()).toHaveLength(1);
-    const root = await r.vfs.openFileSystem('/');
-    expect(await root.driver.exists(original.project.directory)).toBe(false);
+it('protects Personal and its sessions through browser, repository and source removal', async () => {
+    const r = await setup(), personal = await r.projects.personal();
+    const id = await r.sessionRepository.createSession('Keep', await r.projects.sessionFolder(personal));
+    await expect(r.browser.fs.driver.delete([folderBrowserPath(personal.path)], {recursive: true})).rejects.toMatchObject({code:'EACCES'});
+    await expect(r.sessionRepository.deleteFolder(personal.path, true)).rejects.toMatchObject({code:'EACCES'});
+    await expect(r.projects.removeProjectSource(personal)).rejects.toMatchObject({code:'EACCES'});
+    expect((await r.sessionRepository.getManifest(id)).title).toBe('Keep');
+    expect((await r.projects.personal()).project.id).toBe(personal.project.id);
+    expect((await r.projects.navigation({path:'/'})).projects.find(project=>project.project.id===personal.project.id)?.protected).toBe(true);
 });
 
 it('uses the explicitly selected local default and retains its identity after a rename', async () => {
@@ -285,9 +285,9 @@ it('uses the explicitly selected local default and retains its identity after a 
     const root = await r.vfs.openFileSystem('/');
     await r.projects.setDefaultProject(personal.project.id);
     await r.projects.create('AAA unrelated');
-    expect((await r.projects.personal()).project.id).toBe(personal.project.id);
+    expect((await r.projects.personal()).project.id).not.toBe(personal.project.id);
     await r.projects.renameProject(personal.path, '/Renamed');
-    expect((await r.projects.personal()).path).toBe('/Renamed');
+    expect((await r.projects.getDefaultProject())?.path).toBe('/Renamed');
     expect(JSON.parse(await root.driver.readContent('/etc/personal-project.json', { encoding: 'utf-8' })).id)
         .toBe(personal.project.id);
 });

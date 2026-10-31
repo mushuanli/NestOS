@@ -86,9 +86,11 @@ it('installs extension-owned workflow resources through the generic package port
         nodes: [{id: 'result' as never, name: 'Result', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: 'external'}}]};
     const read = vi.fn(async (_id: string, _version: string) => [definition]);
     const runtime = await createApplicationRuntime({backend: new MemoryBackend(), digitalTwinAutoStart: false,
-        toolDependencies: {ensure: async () => ({tools: []}), flowTemplates: read}});
+        toolDependencies: {ensure: async () => ({tools: []}), flowTemplates: read, list: async () => [{id: 'external-package', version: '1.0.0', status: 'registered', flowCount: 1, tools: []}]}});
     cleanup.push(() => runtime.dispose());
+    expect(await runtime.toolPackages.list()).toMatchObject([{flowResources: [{id: definition.id, installed: false}]}]);
     expect(await runtime.toolPackages.installFlows!('external-package', '1.0.0')).toBe(1);
+    expect(await runtime.toolPackages.list()).toMatchObject([{flowResources: [{id: definition.id, installed: true}]}]);
     expect(read).toHaveBeenCalledWith('external-package', '1.0.0');
     const draft = await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: definition.id});
     const revision = await runtime.commandBus.execute<FlowRevision>(FlowCommand.RevisionGet, {id: definition.id});
@@ -96,4 +98,18 @@ it('installs extension-owned workflow resources through the generic package port
     await runtime.commandBus.execute(FlowCommand.DraftSave, {draft: {...draft, name: 'User edit'}, expectedDraftVersion: draft.draftVersion});
     expect(await runtime.toolPackages.installFlows!('external-package', '1.0.0')).toBe(0);
     expect((await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: definition.id})).name).toBe('User edit');
+    const client = createApplicationClient(bindLocalApplicationServices(runtime)); cleanup.push(() => client.close());
+    const view = await client.backend.toolboxView(); cleanup.push(() => view.dispose());
+    expect(await view.resources.toolPackages!.list()).toMatchObject([{flowResources: [{id: definition.id, installed: true}]}]);
+});
+
+it('isolates unavailable template status and reports a package-specific error without changing registration', async () => {
+    const failure = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const packages = new FlowToolPackages({getToolMeta: () => undefined}, {
+        ensure: async () => ({tools: []}), list: async () => [{id: 'unavailable-package', version: '1', status: 'registered', flowCount: 1, tools: []}],
+        flowTemplates: async () => {throw Object.assign(new Error('PRIVATE_DEFINITION'), {code: 'TOOL_PACKAGE_FILES_MISSING'});},
+    });
+    packages.existingFlowIds = async () => new Set();
+    expect(await packages.list()).toMatchObject([{status: 'registered', flowResourceError: 'TOOL_PACKAGE_FILES_MISSING'}]);
+    expect(JSON.stringify(failure.mock.calls)).not.toContain('PRIVATE_DEFINITION');
 });

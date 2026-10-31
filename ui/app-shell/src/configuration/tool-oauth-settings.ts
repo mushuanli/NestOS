@@ -7,7 +7,7 @@ export function applicationSettings(type: ToolConnectionType, redirect?: string)
     if (!type.authorization || !application) return '';
     const status = `<p role="status">${label(application.configured ? 'applicationReady' : 'applicationMissing')}</p>`;
     if (!application.canManage) return status;
-    return `${status}<details data-connection-details="application:${escapeAttr(type.id)}"${application.configured ? '' : ' open'}><summary>${label('applicationSetup')}</summary>
+    return `${status}<details data-connection-details="application:${escapeAttr(type.id)}"><summary>${label('applicationSetup')}</summary>
         <form data-form="oauthApplication" data-type="${escapeAttr(type.id)}"><p>${label('applicationHelp')}</p>
         <label>${label('applicationClientId')}<input name="clientId" required maxlength="16384" value="${escapeAttr(application.clientId ?? '')}"></label>
         ${type.authorization.clientSecretField ? `<label>${label('applicationClientSecret')}<input name="clientSecret" type="password" autocomplete="off" maxlength="16384"${application.hasSecret ? ` placeholder="${label('secretConfigured')}"` : ' required'}></label>` : ''}
@@ -24,7 +24,7 @@ export function authorizationFields(type: ToolConnectionType, connection?: ToolC
         ${callback ? '' : `<p>${label(managed || type.application ? 'applicationMissing' : 'callbackUnconfigured')}</p>`}
         ${auth.permissionGroups.map(group => `<label><input type="checkbox" data-auth-group value="${escapeAttr(group.id)}" checked>${escapeHTML(group.label)}</label>`).join('')}
         <button type="button" data-auth-begin="${escapeAttr(connection?.id ?? 'new:' + type.id)}"${callback ? '' : ' disabled'}>${label(connection ? 'authorize' : 'connectAccount')}</button>
-        ${connection?.authorization?.connected ? `<p role="status">${label('accountConnected')}</p><button type="button" data-auth-revoke="${escapeAttr(connection.id)}">${label('revoke')}</button>` : ''}
+        ${connection?.authorization?.connected ? `<button type="button" data-auth-revoke="${escapeAttr(connection.id)}">${label('revoke')}</button>` : ''}
         <p data-authorization-status="${escapeAttr(connection?.id ?? '')}" role="status">${stale ? label('reauthorize') : operation ? label('authState.' + operation.status) : ''}${operation?.code ? ' · ' + escapeHTML(operation.code) : ''}</p>
         ${operation?.status === 'pending' && operation.url ? `<a href="${escapeAttr(operation.url)}" target="_blank" rel="noopener noreferrer">${label('openAuthorization')}</a>` : ''}
         ${operation && ['pending', 'exchanging'].includes(operation.status) ? `<button type="button" data-auth-cancel="${escapeAttr(operation.operationId)}">${label('cancelAuthorization')}</button>` : ''}</fieldset>`;

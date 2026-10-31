@@ -3,7 +3,7 @@ import {MemoryBackend} from '@itookit/vfs-core';
 import {createApplicationRuntime} from '@itookit/app-core';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {RpcPeer} from '@itookit/app-transport/application';
-import {IndependentCallCommand, SessionCommand, type IndependentCallReceipt, type ICommandBus, type RootTargetCatalog} from '@itookit/llm-session/contracts';
+import {IndependentCallCommand, SessionCommand, type IndependentCallReceipt, type IndependentCallView, type ICommandBus, type RootTargetCatalog} from '@itookit/llm-session/contracts';
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close();});
 async function fixture() {
@@ -41,7 +41,8 @@ it('queries durable child acceptance over RPC while the original submit response
         expect(receipt.status).toBe('accepted'); expect(receipt.executionSessionId).toBeTruthy();
         expect(observed).toContainEqual({name: IndependentCallCommand.Inspect, query: true});
         let execution = receipt.execution;
-        await vi.waitFor(async () => {execution = (await bus.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, input)).execution; expect(execution).toBeTruthy();});
+        await vi.waitFor(async () => {execution = (await bus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: input.request.expectedSessionId, branchId: 'main'})).find(call => call.receipt.operationId === receipt.operationId)?.receipt.execution; expect(execution).toBeTruthy();});
+        expect(observed).toContainEqual({name: IndependentCallCommand.List, query: true});
         const page = await bus.execute<{asOfSequence: number}>(IndependentCallCommand.Descendants, {sessionId: receipt.callerSessionId,
             branchId: 'main', callId: receipt.operationId, executionSessionId: receipt.executionSessionId, taskId: execution!.taskId});
         expect(page.asOfSequence).toBeGreaterThan(0); expect(observed).toContainEqual({name: IndependentCallCommand.Descendants, query: true});

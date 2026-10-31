@@ -34,7 +34,7 @@ interface RegisteredTool {
 // ── Meta/Definition builders ──
 
 function toolMetaFromTool(tool: Tool): ToolMeta {
-  return {
+  return liveToolMeta({
     id: tool.name,
     version: tool.version ?? '1',
     name: tool.userFacingName(undefined),
@@ -44,7 +44,15 @@ function toolMetaFromTool(tool: Tool): ToolMeta {
     type: 'builtin',
     enabled: tool.isEnabled(),
     tags: tool.searchHint ? [tool.searchHint] : [],
-  };
+  }, tool);
+}
+
+/** Preserve explicit catalog disables while observing the host gate on every read. */
+function liveToolMeta(meta: ToolMeta, tool: Tool): ToolMeta {
+  let allowed = true;
+  Object.defineProperty(meta, 'enabled', {enumerable: true, configurable: true,
+    get: () => allowed && tool.isEnabled(), set: (value: boolean) => {allowed = value;}});
+  return meta;
 }
 
 function toolDefinitionFromTool(tool: Tool): ToolDefinition {
@@ -131,7 +139,7 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
 
   /** Register an additional tool at runtime (e.g. from Skill loading). */
   registerToolInstance(tool: Tool, prepared?: {meta: ToolMeta; definition: ToolDefinition}): void {
-    const meta = prepared?.meta ?? toolMetaFromTool(tool);
+    const meta = prepared ? liveToolMeta(prepared.meta, tool) : toolMetaFromTool(tool);
     const definition = prepared?.definition ?? toolDefinitionFromTool(tool);
     this.registry.set(meta.id, { meta, definition, tool });
   }
@@ -173,13 +181,15 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
     return this.registry.get(id)?.meta;
   }
 
+  getToolDefaults(id: string): Record<string, unknown> {return structuredClone(this.registry.get(id)?.tool.inputDefaults?.() ?? {});}
+
   getToolDefinition(id: string): ToolDefinition | undefined {
     return this.registry.get(id)?.definition;
   }
 
   getToolDefinitions(): ToolDefinition[] {
     return [...this.registry.values()]
-      .filter((e) => e.meta.enabled)
+      .filter((e) => e.meta.enabled && e.tool.isEnabled())
       .map((e) => e.definition);
   }
 

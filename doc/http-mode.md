@@ -125,7 +125,7 @@ pnpm cli flow-run pause <session-id> <root-task-id> <request-id> <observed-epoch
 pnpm cli flow-run resume <session-id> <root-task-id> <request-id> <observed-epoch>
 pnpm cli flow-run withdraw-pause <session-id> <root-task-id> <request-id> <observed-epoch>
 pnpm cli flow-run receipt <session-id> <root-task-id> <request-id>
-pnpm cli flow-run cancel <session-id> <root-task-id>
+pnpm cli flow-run cancel <session-id> <root-task-id> <request-id> <observed-epoch>
 pnpm cli flow-run reattach <session-id> <root-task-id>
 ```
 
@@ -165,3 +165,5 @@ call-prepare 不执行调用，call.json 保存完整 IndependentCallInput（req
 call-submit 明确提交原文件身份，由宿主创建独立子 Session。调用方会话不重复入队、不自动继承其历史。丢回复后用 call-receipt 查询；unknown 不代表没有发送，accepted 只代表持久接纳。submit/receipt 不接受重新指定标题、材料、目标或分支。
 
 本地提交默认等待该子调用完成或进入人工交互/待派发/待核对状态；失败/取消沿用 CLI 退出码 2，等待输入为 3。远程 --connect 默认返回接纳及 executionSessionId；添加 --follow 在 CLI 自身观察作用域打开该子 Session，等待其真实执行，不以父级状态判断。回执查询不打开视图，--follow 仅适用于 call-submit。CLI 本地进程退出不承诺继续后台调度，需要后台执行时使用持续运行的远程宿主。
+
+独立调用的执行观察与 Web 调用卡片共用 `session.calls.list`：接纳回执、目标 Task、交互、子树清理、调用方结算和历史提交分别核对。`session.call.inspect` 只核对原始接纳，不等待目标派发；不能通过普通指令队列中没有记录推断独立执行未知或完成。本地 CLI 与 `--connect --follow` 使用同一投影，只有传输与宿主生命周期不同。

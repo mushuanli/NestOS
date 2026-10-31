@@ -347,28 +347,21 @@ it('rejects a resumed checkpoint that would downgrade its frozen control tree', 
     expect((await session.listTasks()).filter(task => task.parentTaskId === run.root.id)).toHaveLength(1);
 });
 
-it('cancels the root and authoritative members without targeting a replaced historical attempt', async () => {
+it('cancels authoritative descendants through the scoped root without cached handle fan-out', async () => {
     const run = await start(), old = run.nodes.get('gate')!;
     const replacement = await session.submit({program: {kind: 'flow.human', version: '1'},
         input: (await old.status()).task.input, parent: run.root.id});
     await session.setShared(`flow.run.${run.root.id}.members`, [{taskId: replacement.id, nodeId: 'gate', iteration: 1, detached: false}]);
-    const attached: string[] = [], originalOpen = kernel.openSession.bind(kernel);
-    vi.spyOn(kernel, 'openSession').mockImplementation(async (...args) => {
-        const opened = await originalOpen(...args);
-        return Object.assign(Object.create(opened), {attachTask: async (id: string) => {
-            const task = await opened.attachTask(id);
-            return Object.assign(Object.create(task), {cancel: async (...values: Parameters<TaskHandle['cancel']>) => {
-                attached.push(id); return task.cancel(...values);
-            }});
-        }});
-    });
-    await handlers.get(FlowCommand.RunCancel)!({taskId: run.root.id});
-    expect(attached).toContain(run.root.id);
-    expect(attached).toContain(replacement.id);
-    expect(attached).not.toContain(old.id);
+    const input = {sessionId: session.id, taskId: run.root.id, requestId: 'cancel-replaced', expectedEpoch: 0};
+    await handlers.get(FlowCommand.RunCancel)!(input);
     expect((await old.wait({timeoutMs: 2000})).status).toBe('cancelled');
+    expect((await replacement.wait({timeoutMs: 2000})).status).toBe('cancelled');
+    expect(await kernel.readTaskCancellationReceipt(session.id, run.root.id, input.requestId)).toMatchObject({status: 'cancelled'});
 });
 
+it.each([{taskId: 'root'}, {taskId: 'root', sessionId: 's'}])('rejects incomplete cancellation without a legacy fallback: %j', async input => {
+    await expect(handlers.get(FlowCommand.RunCancel)!(input)).rejects.toMatchObject({code: 'FLOW_CONTROL_REQUEST_INVALID'});
+});
 
 it('admits cancellation with explicit scope without requiring a cached Run handle', async () => {
     const run = await start(), fresh = new Map<string, (args: any) => Promise<any>>();

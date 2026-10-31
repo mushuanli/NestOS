@@ -247,6 +247,7 @@ export interface InitialFileResult {
 }
 
 export interface InitialFileEntry {
+    overwrite?: boolean;
     id: string;
     group: 'notes' | 'flows';
     name: string;

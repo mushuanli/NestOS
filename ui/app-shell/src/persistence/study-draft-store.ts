@@ -2,7 +2,7 @@ import type {StudyCreation, StudyCreationState} from '@itookit/mdxeditor';
 import {FileRecoveryStore} from './file-recovery-store';
 
 /** Reuse authenticated per-user, per-tab recovery storage; no shared browser draft key. */
-export function studyDraftStore(scope: string): NonNullable<StudyCreation['draftStore']> {
+export function studyDraftStore(scope: string): NonNullable<StudyCreation['recovery']> {
     const store = new FileRecoveryStore(scope, '@study/creation');
     return {load: async signal => {
         signal.throwIfAborted(); const value = await store.read().catch(storageFailure); signal.throwIfAborted(); if (!value) return undefined;

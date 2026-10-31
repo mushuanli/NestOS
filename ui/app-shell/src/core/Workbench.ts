@@ -67,8 +67,10 @@ export class Workbench {
                     showTitle: config.uiOptions?.appearance?.showTitle ?? (!!config.uiOptions?.titleHeader || config.uiOptions?.toolbar === 'compact') },
                 activateDirectories: true, autoSelectFirst: false,
                 toolbarOptions: { ...config.uiOptions?.toolbarOptions,
-                    extraItems: [...(config.uiOptions?.toolbarOptions?.extraItems ?? []), ...(study ? [{ id: 'study', label: t('editor.study'), iconHTML: ACTION_ICONS.anki, placement: 'overflow' as const }] : [])],
-                    iconOnlyActions: [...(config.uiOptions?.toolbarOptions?.iconOnlyActions ?? []), ...(study ? ['study'] : [])],
+                    ...(study ? {compactLayout: 'inline' as const, primaryAction: 'refresh'} : {}),
+                    overflowActions: [...(config.uiOptions?.toolbarOptions?.overflowActions ?? []), 'import', 'export'],
+                    extraItems: [...(config.uiOptions?.toolbarOptions?.extraItems ?? []), ...(study ? [{ id: 'study', label: t('editor.study'), iconHTML: ACTION_ICONS.anki, placement: 'toolbar' as const, after: 'refresh' }] : [])],
+                    iconOnlyActions: [...(config.uiOptions?.toolbarOptions?.iconOnlyActions ?? []), 'create-file', 'create-directory', ...(study ? ['study'] : [])],
                     actions: { ...config.uiOptions?.toolbarOptions?.actions, ...(study ? { study: async () => this.openStudy() } : {}) },
                     root: { label: '/', title: `${t('workbench.directoryPath')}: /`, run: () => this.openDirectory('/') } },
                 deferExpansion: config.uiOptions?.deferExpansion ?? true,
@@ -107,7 +109,8 @@ export class Workbench {
                 virtualViews: study ? [{ id: '@study', title: t('editor.study'), icon: ACTION_ICONS.anki, preview: false,
                     create: async container => (await import('@itookit/mdx-adapter')).createStudyEditor(container, this.engine,
                         path => this.openFileInternal(path), config.uiOptions?.readOnly || config.editorConfig?.readOnly || config.editorConfig?.canCreateEntries === false ? {} : {
-                            creation: {...config.studyGeneration, label: t('editor.studyCreate'), save: draft => this.createStudyFile(draft)},
+                            creation: {generation: config.studyGeneration?.generation, prompts: config.studyGeneration?.prompts, sources: config.studyGeneration?.sources, recovery: config.studyGeneration?.recovery,
+                                label: t('editor.studyCreate'), documents: {save: draft => this.createStudyFile(draft)}},
                         }) }] : [],
                 windows: config.windows,
                 navigationLabel: config.uiOptions?.title ?? t('project.files'),
@@ -259,6 +262,11 @@ export class Workbench {
                 const node = await this.vfsUI.sessionService.createFile({title: draft.title, parentPath, content: draft.content});
                 receipt = {path: node.path, signature}; this.createdStudyDrafts.set(operationId, receipt);
             }
+            void Promise.resolve().then(() => this.config.studyGeneration?.documentSaved?.(draft)).catch(error => {
+                const raw = (error as {code?: unknown})?.code;
+                const code = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'STUDY_SAVE_NOTIFICATION_FAILED';
+                log.warn('study.create', {operationId, stage: 'notify-saved', result: 'failure', code, durationMs: Date.now() - started});
+            });
             this.createdStudyDrafts.delete(operationId);
             log.info('study.create', {operationId, stage: 'complete', result: 'success', durationMs: Date.now() - started});
             return {label: receipt.path};
@@ -288,9 +296,9 @@ export class Workbench {
         }
     }
 
-    private async openFileInternal(nodeId: string): Promise<void> {
+    private async openFileInternal(nodeId: string, mode?: 'edit' | 'render'): Promise<void> {
         if (nodeId === '/') { await this.openDirectory(nodeId); return; }
-        await this.lifecycleUnsubscribe.openResource(nodeId);
+        await this.lifecycleUnsubscribe.openResource(nodeId, mode);
         this.config.onSessionChange?.(nodeId);
         if (this.navigationVisible) this.vfsUI.setSelection([nodeId]);
     }

@@ -209,3 +209,5 @@ LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原�
 助手入口通过 AssistantMenu 统一顶部品牌和手机底部导航，前三项事件来自只读 assistantOverview；等待处理不能被已读代替。快捷项和已读版本保存到用户 UI 文档，沿用项目、草稿、会话和扫描器路由，不在菜单内执行任务。数字分身 workspace 深链保留空间身份并定位规则或运行卡片；详情见 doc/design/assistant-menu.md。
 
 快捷访问与新增表单的项目、项目内会话、扫描器统一使用多词 AND 筛选；关键词是可选的个人快捷项字段，搜索本身不持久化。导航菜单经 assistant-actions 交给助手编辑所选目标，不能误用当前页面；保持原菜单动作并兼容只读目标，重复目标编辑已有快捷项。
+
+学习生成的 NestOS 错误码只在 study-generation 适配边界映射为 recovery:pending；核心重试通过 generation.resume 观察原操作。AbortSignal 停止观察，generation.cancel 显式取消对应提交；不再传递 STUDY_DRAFT_SUSPENDED 字符串协议。保存后的 Session 标题更新属于宿主 documentSaved，不进入 StudyCreation 契约，失败不改变文件保存结果。笔记工具栏通过 compactLayout:inline、primaryAction:refresh 显式设置布局和主操作，extraItems.after 只表达顺序。

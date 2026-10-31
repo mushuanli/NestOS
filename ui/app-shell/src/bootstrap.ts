@@ -424,7 +424,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             editorContainer: editorEl,
             files,
             editorFactory: factory,
-            studyGeneration: {draftStore: studyDraftStore(elementId), ...studyGeneration(backend, services.sessionRepository), ...options.studyGeneration},
+            studyGeneration: {recovery: studyDraftStore(elementId), ...studyGeneration(backend, services.sessionRepository), ...options.studyGeneration},
             scopeId:       elementId, deferNavigation: !!initialResource,
             uiPersistence, workbenchState, windows: windowBinding,
             fileTypes,

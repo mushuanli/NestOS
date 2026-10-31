@@ -46,7 +46,8 @@
     "@itookit/app-contracts": "workspace:*",
     "@itookit/common": "workspace:*",
     "@itookit/ui-common": "workspace:*",
-    "@itookit/vfs-core": "workspace:*"
+    "@itookit/vfs-core": "workspace:*",
+    "js-yaml": "^4.1.1"
   },
   "peerDependencies": {
     "@itookit/mdxeditor": "workspace:*"
@@ -59,7 +60,8 @@
     "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "@codemirror/language": "^6.12.4",
-    "@codemirror/view": "^6.43.5"
+    "@codemirror/view": "^6.43.5",
+    "@types/js-yaml": "^4.0.9"
   },
   "author": "lizlok@gmail.com",
   "license": "MIT",

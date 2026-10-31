@@ -28,3 +28,5 @@ Markdown 文件默认通过 defaultEditorFactory 以 render 模式打开，大�
 `src/study.ts` 提供 StudyHost 的 VFS/seqfile 适配和工作区 IEditor 包装；文档来源仅枚举 Markdown/笔记及目录，隐藏目录排除。管理视图与正文共用 `createAdapterStore`，首次评分才写入复习状态。
 
 已跟踪来源与缓存策略见 `src/study-index.ts`：不枚举未跟踪文件；当前可见文件即时更新，其他已跟踪文件五分钟核对版本及复习状态。管理器初次加载仍读取已跟踪正文构建卡片，后续复用正文缓存。评分持久成功后定向刷新内存状态；订阅与计时器随租约释放。
+
+创建能力采用 documents/generation/prompts/recovery 分组；适配层只补齐 documents.directories 与 prompts.store，不解释生成错误码或取消策略。

@@ -347,7 +347,7 @@ Anki 创建通过该通用正文 API 按本次 operationId 读取 main 分支结
 
 Anki 创建在提交后独立查询同一 operationId 的 Session 终态，以一秒间隔兜底；原生成 RPC 迟到、丢失或可选结束原因查询悬挂，不阻塞已有正文回填。读取有十秒等待边界，取消会释放观察计时器，不重发生成。Markdown 预览渲染与生成忙碌状态分离。
 
-mdxeditor 只暴露可选 `StudyCreation.draftStore`、`resumeGeneration` 和 `StudyCreationState`；宿主用已有 FileRecoveryStore 按认证用户、标签页、工作区隔离暂存输入。小草稿同步写入 sessionStorage，大草稿使用现有 IndexedDB 回退。原标签页刷新或异常中断后可恢复最近成功写入的草稿；取消/关闭、保存和清空新建会丢弃恢复记录。恢复进行中的生成只观察原操作，不重新调用模型。库中不依赖 NestOS、VFS、Session 或浏览器持久化实现。
+mdxeditor 只暴露可选 `StudyCreation.recovery`、`StudyGeneration.resume` 和 `StudyCreationState`；宿主用已有 FileRecoveryStore 按认证用户、标签页、工作区隔离暂存输入。小草稿同步写入 sessionStorage，大草稿使用现有 IndexedDB 回退。原标签页刷新或异常中断后可恢复最近成功写入的草稿；取消/关闭、保存和清空新建会丢弃恢复记录。恢复进行中的生成只观察原操作，不重新调用模型。库中不依赖 NestOS、VFS、Session 或浏览器持久化实现。
 
 ### 正文观察故障与客户端诊断
 
@@ -357,8 +357,16 @@ mdxeditor 只暴露可选 `StudyCreation.draftStore`、`resumeGeneration` 和 `S
 
 ### 保存目录与学习来源分离
 
-`StudyCreation.directories.list(parent?, signal?)` 提供独立的保存目录枚举，不透明目录 ID 原样交回宿主。NestOS 的 mdx-adapter 从当前笔记文件空间按需读取目录元数据，包含空目录及尚未跟踪 cloze 的目录，隐藏目录排除；不读取或解析 Markdown 正文，也不改变学习索引的来源范围。选择器先显示顶层目录，再完成子目录提示；未提供该能力的独立宿主仍回退 StudyHost.list。文件名扩展名沿用宿主 VFSService 规则：无扩展名补当前空间默认扩展名，已有 .md/.mind 保留；笔记空间默认 .mind。
+`StudyCreation.documents.directories.list(parent?, signal?)` 提供独立的保存目录枚举，不透明目录 ID 原样交回宿主。NestOS 的 mdx-adapter 从当前笔记文件空间按需读取目录元数据，包含空目录及尚未跟踪 cloze 的目录，隐藏目录排除；不读取或解析 Markdown 正文，也不改变学习索引的来源范围。选择器先显示顶层目录，再完成子目录提示；未提供该能力的独立宿主仍回退 StudyHost.list。文件名扩展名沿用宿主 VFSService 规则：无扩展名补当前空间默认扩展名，已有 .md/.mind 保留；笔记空间默认 .mind。
 
 ### 连续创建的保存回执
 
-StudyCreation.save 可返回 {label: string}，由宿主提供包含实际扩展名的保存位置。保存成功后创建窗口保持打开，提示实际保存结果，清空文件名、参考输入、输出与暂存草稿，保留目录、提示词和模型，并为下一份分配新身份；失败保留全部输入与原身份以便重试。按钮为“保存并继续”和“关闭”；状态固定在操作区，下一次编辑会清除上次提示。附加的生成会话改名不阻塞文件保存回执；暂存清理失败与文件保存失败分开提示。
+StudyCreation.documents.save 可返回 {label: string}，由宿主提供包含实际扩展名的保存位置。保存成功后创建窗口保持打开，提示实际保存结果，清空文件名、参考输入、输出与暂存草稿，保留目录、提示词和模型，并为下一份分配新身份；失败保留全部输入与原身份以便重试。按钮为“保存并继续”和“关闭”；状态固定在操作区，下一次编辑会清除上次提示。附加的生成会话改名不阻塞文件保存回执；暂存清理失败与文件保存失败分开提示。
+
+### 学习创建能力边界
+
+`StudyCreation` 按 `documents`（保存/目录）、`generation`（生成/恢复/取消/目标列表）、`prompts`（预设/默认提示/存储）和 `recovery`（草稿检查点）组合；跨空间来源查询单独使用只读 `sources`。`generation` 存在时必须提供 generate，resume/cancel 是可选扩展，不再支持顶层 generate/save/promptStore 等旧字段；当前 NestOS 宿主与适配层同步迁移。
+
+生成宿主通过 `StudyGenerationFailure.recovery = 'pending'` 明确标记结果待确认，独立编辑器不按错误码前缀判断可恢复性。重试优先 resume 原 operationId，避免重新提交。AbortSignal 只停止当前观察；显式关闭通过 generation.cancel 请求取消执行，页面中断保留检查点且不取消。NestOS 的 TEXT_RESULT 错误分类仅在 app-shell 适配边界解释。身份和生成状态转换由无 DOM 的 CreationState 管理，DOM 负责收集输入和展示结果。
+
+来源文件元数据采用浅合并 patch：省略字段保持原值，嵌套值整体替换，null 是显式值；该端口不支持字段删除或修订条件更新。`FSCapabilities.metadata` 表示元数据写入能力，旧驱动省略时为未知；file-only 来源从 updateMetadata 能力派生，支持时允许携带元数据创建，在线传输在目标明确不支持时于发布前拒绝。来源身份只在同一来源命名空间内比较：重命名保留，复制与删除重建分配新身份，视图投影不改写。

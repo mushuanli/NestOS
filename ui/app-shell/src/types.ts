@@ -4,6 +4,7 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { FileCreationConfig, EditorFactory, EditorOptions, ContextMenuConfig } from '@itookit/ui-common';
 import type { IFileSystem } from '@itookit/vfs-core';
+import type {StudyCreation, StudyDraft} from '@itookit/mdxeditor';
 import type { ThemeMode } from './ThemeService';
 import type { VFSUIOptions } from '@itookit/vfs-ui';
 import type {
@@ -13,6 +14,11 @@ import type {
     IPrivilegedCommandService,
 } from '@itookit/llm-session/contracts';
 import type { LLMUIEditors } from '@itookit/app-settings';
+
+export interface StudyCreationOptions extends Pick<StudyCreation, 'generation' | 'prompts' | 'sources' | 'recovery'> {
+    /** Host post-save policy, outside the independent editor contract. */
+    documentSaved?(draft: StudyDraft): Promise<void>;
+}
 
 export type WorkspaceType = 'standard' | 'settings' | 'agent' | 'chat' | 'skills' | 'flows' | 'toolbox' | 'twin';
 
@@ -122,7 +128,7 @@ export interface BootWorkspaceParts {
 }
 
 export interface AppOptions {
-    studyGeneration?: Pick<import('@itookit/mdxeditor').StudyCreation, 'generate' | 'defaultPrompt' | 'configurationUrl' | 'generationTargets' | 'prompts' | 'generationSaved' | 'sources' | 'draftStore' | 'resumeGeneration'>;
+    studyGeneration?: StudyCreationOptions;
     recovery?: import('./workbench/recovery').AppRecoveryState;
     initialView?: import('@itookit/app-contracts/services').OpenedApplicationView;
     fileTypes?: import('./config/file-registry').AppFileTypeConfig[];
@@ -179,7 +185,7 @@ export interface AppHandle {
 // ── Workbench config ────────────────────────────────────────────────────
 
 export interface WorkbenchConfig {
-    studyGeneration?: Pick<import('@itookit/mdxeditor').StudyCreation, 'generate' | 'defaultPrompt' | 'configurationUrl' | 'generationTargets' | 'prompts' | 'generationSaved' | 'sources' | 'draftStore' | 'resumeGeneration'>;
+    studyGeneration?: StudyCreationOptions;
     deferNavigation?: boolean;
     chatFromFile?: import('@itookit/ui-common').EditorHostContext['chatFromFile'];
     /** Preferred input: an already authorized file context. The host owns its lifetime. */

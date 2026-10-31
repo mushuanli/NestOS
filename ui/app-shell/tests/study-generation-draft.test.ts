@@ -13,7 +13,7 @@ it.each(['lost','delayed'] as const)('fills the Anki draft from the completed Se
  const backend={createSessionDraft:async()=> 'draft',generateText,cancelTextGeneration:async()=>{},sessionResponse,
   listTextModels:async()=>[{id:'connection',name:'Connection',model:'model',models:[{id:'model',name:'Model'}],available:true,default:true}]} as unknown as ApplicationBackend;
  const view=new StudyView(document.body,{list:async()=>[],read:async()=>({content:'',revision:'1'}),store:()=>({get:async()=>undefined,set:async()=>{},remove:async()=>{}}),open:async()=>{},
-  creation:{...studyGeneration(backend,{updateManifest:async()=>{}}),defaultPrompt:'Create cloze',save}});
+  creation:{...studyGeneration(backend,{updateManifest:async()=>{}}),prompts:{defaultPrompt:'Create cloze'},documents:{save}}});
  try{
   await view.flush();[...document.querySelectorAll('button')].find(button=>button.textContent==='新增笔记')!.click();
   const source=document.querySelector<HTMLTextAreaElement>('.mdx-study-create__source textarea')!;source.value='Source';source.dispatchEvent(new Event('input',{bubbles:true}));

@@ -1,9 +1,9 @@
 import type {IFileSystem} from '@itookit/vfs-core';
-import type {StudyCreation} from '@itookit/mdxeditor';
+import type {StudyDocuments} from '@itookit/mdxeditor';
 import {createModuleLogger, randomUUID} from '@itookit/common';
 
 /** Enumerate visible directory metadata only when the destination picker asks for it. */
-export function createStudyDirectories(fs: IFileSystem): NonNullable<StudyCreation['directories']> {
+export function createStudyDirectories(fs: IFileSystem): NonNullable<StudyDocuments['directories']> {
     return {list: async (parent = '/', signal) => {
         signal?.throwIfAborted(); const operationId = randomUUID(), started = Date.now(), log = createModuleLogger('study-directories');
         try {

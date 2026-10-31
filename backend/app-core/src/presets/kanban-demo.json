@@ -1,0 +1,339 @@
+{
+  "id": "nestos-demo-v1",
+  "title": "NestOS 示例看板 · 从这里开始",
+  "responsibility": "整理示例、体验认领与交付，按需创建自己的正式看板",
+  "items": [
+    {
+      "id": "demo-guide",
+      "title": "使用指南：先体验，再建立自己的规划",
+      "responsibility": "这是教学看板，卡片不代表 NestOS 的真实开发进度，也不会自动执行任务或扫描会话。先打开「第一步」体验认领与交付，再查看规划池、关联会话、已完成和归档示例。示例不会产生超时通知。正式工作请新建自己的看板。设置 → 系统恢复 → 看板中可补回缺失示例，已有修改和归档会保留。 上方的工作日志和决策记录与卡片共享上下文，具体操作见第四步和第五步；较长内容请使用列内滚动与右侧详情。",
+      "acceptance": "知道如何查看卡片、区分规划与执行，并能建立自己的看板。",
+      "planning": {
+        "kind": "feature",
+        "priority": 0,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-first-card",
+      "title": "第一步：认领并完成这张卡片",
+      "stage": "open",
+      "responsibility": "点击「由我认领」，完成后在结果引用中填写一句学习记录或自己的笔记引用，点击「提交结果」。这个示例允许本人完成，无需配置模型。每人同时最多负责一项，完成后再认领下一项；进行中可续租，暂时不做可填写原因后释放责任。",
+      "acceptance": "亲自完成一次认领与提交，卡片进入「已完成」。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 0,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-planning",
+      "title": "第二步：把长期想法准备为可执行事项",
+      "responsibility": "规划池用于记录未来想做的事，不会因尚未认领而告警。打开「修改规划」体验优先级、领域和里程碑。完成第一步后，点击「准备就绪」再认领本项；未完成的依赖会阻止进入可领取队列。目标和工作组用于拆解，不直接认领。",
+      "acceptance": "理解规划池与可领取队列的区别，并完成一项带依赖的工作。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 1,
+        "area": "使用指南",
+        "milestone": "入门体验",
+        "dependencies": [
+          "demo-first-card"
+        ],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-session",
+      "title": "第三步：关联一段真实的工作会话",
+      "responsibility": "打开自己的一段 NestOS 会话，复制其会话 ID，在本卡片的「关联会话」中登记。关联后可从卡片跳回原会话，不会复制聊天历史或自动发送消息。不要填写这里虚构的示例 ID。当前界面不自动扫描会话或派工给 Agent。",
+      "acceptance": "关联一段自己可访问的真实会话，并成功跳转回该会话。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 2,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-completed",
+      "title": "示例：一张已完成的卡片",
+      "example": "completed",
+      "responsibility": "这张教学卡片预置为已完成，并不表示真实功能已经交付。已完成事项保留验收条件与历史。点击「归档事项」可将其移出工作集，再切换到「归档」视图查看。恢复显示不会重新执行任务。",
+      "acceptance": "理解完成、归档和恢复显示的区别。",
+      "planning": {
+        "kind": "feature",
+        "priority": 3,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-archived",
+      "title": "示例：归档中也能保留工作历史",
+      "example": "archived",
+      "responsibility": "这是预置的归档示例。完成的历史可以留在这里，避免占满工作看板。点击「恢复显示」可重新查看这张已完成卡片；新需求应建立后续事项，不把旧完成记录改为新任务。",
+      "acceptance": "能在归档视图找到此项，并理解恢复显示不会重启执行。",
+      "planning": {
+        "kind": "feature",
+        "priority": 4,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-nestos-goal",
+      "title": "规划示例：让 NestOS 的日常工作更连贯",
+      "responsibility": "以下是展示规划方法的候选方向，不是实际版本承诺或当前缺陷清单。先定义目标，再按领域拆成工作组；只在准备开发时拆出少量可验收行动。真实立项前，请重新核对当前实现、需求和设计文档。",
+      "acceptance": "选定实际需要改进的场景，并建立独立的真实工作看板。",
+      "planning": {
+        "kind": "initiative",
+        "priority": 2,
+        "area": "NestOS 规划示例",
+        "milestone": "候选方向",
+        "dependencies": [],
+        "references": [
+          "doc/todo.md",
+          "doc/architecture.md"
+        ]
+      }
+    },
+    {
+      "id": "demo-remote-feature",
+      "title": "功能示例：核对远程项目的使用体验",
+      "responsibility": "工作组示例：把远程连接、文件访问、会话和恢复体验放在同一个验收范围内。它本身不直接认领，具体操作交给子行动。请先阅读当前实现与文档，再决定是否需要真正开发。",
+      "acceptance": "明确一个具体的远程使用场景及其验收边界。",
+      "planning": {
+        "kind": "feature",
+        "parentId": "demo-nestos-goal",
+        "priority": 2,
+        "area": "远程项目",
+        "milestone": "候选方向",
+        "dependencies": [],
+        "references": [
+          "doc/design/nestos-node-project-model.md"
+        ]
+      }
+    },
+    {
+      "id": "demo-remote-check",
+      "title": "行动示例：用一个授权项目验证连接与恢复",
+      "responsibility": "准备执行时，先确认自己有权限的测试项目，再记录连接、浏览文件、打开会话及断线恢复的预期结果。把真实测试记录或会话关联到卡片；不要把凭据或用户正文放进通知。此卡仅作拆解示例，不会自动连接远端。",
+      "acceptance": "记录可复核的步骤和结果，区分已通过项与需要后续开发的问题。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-remote-feature",
+        "priority": 2,
+        "area": "远程项目",
+        "milestone": "候选方向",
+        "dependencies": [],
+        "references": [
+          "doc/http-mode.md"
+        ]
+      }
+    },
+    {
+      "id": "demo-knowledge-feature",
+      "title": "功能示例：把笔记与工作会话串起来",
+      "responsibility": "规划一个自己的知识整理场景，例如把会话结论整理成笔记，再关联到工作事项。先记录真实需求，避免为尚未确认的功能提前创建大量零碎任务。",
+      "acceptance": "能描述目标用户、输入来源和可验收的产出。",
+      "planning": {
+        "kind": "feature",
+        "parentId": "demo-nestos-goal",
+        "priority": 3,
+        "area": "知识整理",
+        "milestone": "以后再做",
+        "dependencies": [],
+        "references": [
+          "doc/design/kanban-coordination.md"
+        ]
+      }
+    },
+    {
+      "id": "demo-blocked",
+      "title": "阻塞示例：先澄清需求，再安排开发",
+      "blocked": "示例：尚未确定用户场景与验收条件",
+      "responsibility": "阻塞项仍保留原来的规划阶段。需求明确后填写自己的计划，再点击「解除阻塞」，准备就绪后才认领。标记阻塞不等于暂停底层执行，已经运行的任务仍需按原控制入口处理。",
+      "acceptance": "明确需求和验收条件后，能解除阻塞并安排下一步。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-knowledge-feature",
+        "priority": 3,
+        "area": "知识整理",
+        "milestone": "以后再做",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-context",
+      "introduced": 2,
+      "title": "第四步：把工作日志、决策和卡片关联起来",
+      "responsibility": "点击卡片中的「记录工作日志」，写下本次练习发生了什么；关联事项 ID 会自动带入。再点击「提出决策」，分别填写结论和原因，保存后检查草稿并「确认记录」。也可以从上方「工作日志」「决策记录」浏览，点击关联事项返回卡片。只有已确认的记录会进入 Flow 上下文；未确认草稿不会替你改变任务状态。",
+      "acceptance": "创建一条关联本卡片的日志和一条决策，确认决策后能从卡片查看，并从决策跳回卡片。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 1,
+        "area": "使用指南",
+        "milestone": "上下文练习",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-review-change",
+      "introduced": 2,
+      "title": "第五步：审核 Flow 建议，保留人工意图",
+      "responsibility": "打开「第四步」卡片，查看教学修改建议中的当前内容、建议内容和来源。可接受修改，也可选择拒绝并填写原因。接受只更新允许修改的正文；正在执行或已关闭的事项不能直接合并，可领取事项会退回规划池重新准备。教学建议不来自真实模型或真实会话，不代表系统已经扫描你的 Session。",
+      "acceptance": "亲自处理一次修改建议，理解 Flow 不能静默覆盖已接受的计划。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 2,
+        "area": "使用指南",
+        "milestone": "上下文练习",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-scroll",
+      "introduced": 2,
+      "title": "界面指南：横向看阶段，纵向看卡片，右侧看详情",
+      "responsibility": "阶段较多时可横向滚动看板，每一列可独立向下滚动。点击卡片会在右侧打开可滚动详情，不会把下方卡片推远。详情顶部的关闭按钮保持可见；关闭后返回原卡片和滚动位置。手机上详情占满工作区；有未保存表单时先保存，或明确点击关闭放弃。",
+      "acceptance": "能查看较低位置的卡片、打开长详情、滚动到末尾并关闭返回。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 2,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-search-links",
+      "introduced": 3,
+      "title": "关联更方便：按标题搜索，不必手填 ID",
+      "responsibility": "新建事项或展开「修改规划」，在父事项、依赖中输入关键词，从候选列表选择；方向键移动，Enter 确认，已选依赖可点击移除。领域与里程碑可以选择已有名称，也可输入新名称。日志、决策中的关联事项和替代决策同样支持搜索。关联会话会查询当前用户已登记会话；未列出的会话可明确按 ID 关联。消息级来源仍需真实消息 ID 和修订，不会自动猜测。",
+      "acceptance": "按标题选中一个父项、一个依赖和一个关联事项，能够区分同名条目；保存后关联关系保持正确。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 2,
+        "area": "使用指南",
+        "milestone": "上下文练习",
+        "dependencies": [],
+        "references": []
+      }
+    },
+    {
+      "id": "demo-reference-numbers",
+      "introduced": 4,
+      "title": "第七步：用编号引用工作和决策",
+      "responsibility": "查看看板标题旁的 KB 编号、卡片上的事项编号，以及日志和决策编号。打开详情，使用「复制编号」或「复制链接」分享。在左侧「按编号打开」输入当前看板中真实存在的编号，直接定位工作、日志或决策；在搜索或自动补全中也可输入编号。编号在所属存储空间内唯一，分享给其他项目时请使用包含内部 ID 的链接并说明项目。归档和恢复保持编号，删除后的编号不会复用；重试创建不会重复编号。",
+      "acceptance": "能复制一个真实编号并在左侧定位它，能区分事项、日志和决策引用，并知道内部 ID 保持不变。",
+      "planning": {
+        "kind": "task",
+        "priority": 2,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
+    }
+  ],
+  "workTypes": [
+    {
+      "id": "initiative",
+      "label": "目标",
+      "rank": 0,
+      "executable": false
+    },
+    {
+      "id": "feature",
+      "label": "工作组",
+      "rank": 1,
+      "executable": false
+    },
+    {
+      "id": "task",
+      "label": "行动",
+      "rank": 2,
+      "executable": true
+    }
+  ],
+  "resultRef": "demo://教学示例，不代表真实交付",
+  "archiveReason": "示例：已结束的教学记录",
+  "version": 4,
+  "records": [
+    {
+      "id": "demo-log-context",
+      "kind": "log",
+      "title": "教学日志：一次练习可以关联多个事项",
+      "content": "这是一条预置教学记录，不是对用户操作的真实审计。工作日志适合记下过程、验证结果或尚未解决的问题；可同时关联多个工作项，原始聊天仍在 Session 中。",
+      "itemIds": [
+        "demo-first-card",
+        "demo-context"
+      ],
+      "sources": [],
+      "introduced": 2
+    },
+    {
+      "id": "demo-decision-context",
+      "kind": "decision",
+      "title": "教学决策：保留原始会话，用关联记录补足上下文",
+      "content": "原始讨论保留在 Session；明确的后续行动进入看板；过程和已确认的结论通过日志、决策与事项互相链接。",
+      "rationale": "卡片需要简洁可执行，同时必须能追溯为什么这样安排。分开记录职责、在同一个界面联读，可以减少重复正文与相互覆盖。此项是教学示例，不是用户已经确认的真实项目决策。",
+      "itemIds": [
+        "demo-context"
+      ],
+      "sources": [],
+      "confirmExample": true,
+      "introduced": 2
+    },
+    {
+      "id": "demo-decision-draft",
+      "kind": "decision",
+      "title": "待确认练习：先完成入门，再进行上下文练习",
+      "content": "建议先完成一次认领交付，再记录日志、确认决策，最后尝试审核修改建议。你可以确认或拒绝这条草稿。",
+      "rationale": "先体验任务状态，再体验上下文和审核，有助于理解两种记录的区别。此项仅是教学草稿。",
+      "itemIds": [
+        "demo-context",
+        "demo-review-change"
+      ],
+      "sources": [],
+      "introduced": 2
+    }
+  ],
+  "amendments": [
+    {
+      "itemId": "demo-context",
+      "runId": "demo-amendment-v2",
+      "proposedBy": {
+        "kind": "service",
+        "id": "demo-teaching-service"
+      },
+      "title": "第四步：记录一次练习过程，并说明自己的选择",
+      "responsibility": "教学修改建议：完成卡片关联的工作日志与决策练习后，再写一句自己的使用体会。此建议没有真实会话来源，可接受或拒绝，不会自动执行。",
+      "acceptance": "一条日志、一条已确认决策，以及一句自己的使用体会；三者都能从本卡片追溯。",
+      "introduced": 2
+    }
+  ],
+  "notifications": {
+    "rules": {
+      "escalated": "none",
+      "append-record": "none",
+      "apply-discovery": "none"
+    }
+  }
+}

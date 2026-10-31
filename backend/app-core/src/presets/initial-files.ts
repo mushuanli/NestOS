@@ -14,31 +14,37 @@ import { restoreAndPublishFlow } from './restore-flows';
 const noteWrites = new WeakMap<IFileSystem, Promise<boolean>>();
 const noteTemplates = [{id: 'note:readme', ...readme}, {id: 'note:demo', ...demo}, {id: 'note:flow-format', ...flowGuide}, ...studyFiles];
 
-export interface InitialFileEntry { id: string; group: 'notes' | 'flows'; name: string; path: string; exists: boolean; overwrite?: boolean; }
+export interface InitialFileEntry { id: string; group: 'notes' | 'flows' | 'kanban'; name: string; path: string; exists: boolean; overwrite?: boolean; }
 export interface InitialFileResult { id: string; status: 'restored' | 'preserved' | 'failed'; error?: string; dependencies?: FlowInstallationReport; }
+
+export interface InitialResourceProvider {
+    list(): Promise<InitialFileEntry[]>;
+    restore(id: string): Promise<boolean>;
+}
 
 /** Explicit recovery writes through the active workspace and existing Flow commands. */
 export class NestosInitialFiles {
     private readonly flows = createNestosFlowLibrary();
-    constructor(private readonly commands: ICommandBus, private readonly notes?: IFileSystem, private readonly installations?: FlowInstallations) {}
+    constructor(private readonly commands: ICommandBus, private readonly notes?: IFileSystem, private readonly installations?: FlowInstallations, private readonly resources?: InitialResourceProvider) {}
     async list(): Promise<InitialFileEntry[]> {
         const entries: InitialFileEntry[] = [];
         if (this.notes) for (const note of noteTemplates) entries.push({ id: note.id, group: 'notes', name: note.id === 'note:study-prompts' ? t('initialFiles.studyPrompts') : note.name,
             overwrite: note.id === 'note:study-prompts', path: `/home/admin/notes/${note.name}`, exists: await this.notes.driver.exists('/' + note.name) });
         for (const flow of this.flows) entries.push({ id: 'flow:' + flow.id, group: 'flows', name: `${flow.id}.flow`,
             path: `/home/admin/flows/${flow.id}.flow`, exists: Boolean(await this.commands.execute(FlowCommand.DraftLoad, { id: flow.id })) });
+        if (this.resources) entries.push(...await this.resources.list());
         return entries;
     }
     async restore(ids: string[]): Promise<InitialFileResult[]> {
-        const allowed = new Set([...(this.notes ? noteTemplates.map(note => note.id) : []), ...this.flows.map(flow => 'flow:' + flow.id)]);
+        const allowed = new Set([...(this.notes ? noteTemplates.map(note => note.id) : []), ...this.flows.map(flow => 'flow:' + flow.id), ...((await this.resources?.list()) ?? []).map(entry => entry.id)]);
         if (!Array.isArray(ids) || ids.some(id => !allowed.has(id))) throw new Error('INITIAL_FILE_UNKNOWN');
         const results: InitialFileResult[] = [];
         for (const id of new Set(ids)) {
             const operationId = randomUUID(), started = Date.now();
             try {
                 const note = noteTemplates.find(note => note.id === id);
-                const restored = note ? await this.restoreNote(note) : Boolean(await restoreAndPublishFlow(
-                    this.commands, this.flows.find(flow => 'flow:' + flow.id === id)!, true));
+                const flow = this.flows.find(flow => 'flow:' + flow.id === id);
+                const restored = note ? await this.restoreNote(note) : flow ? Boolean(await restoreAndPublishFlow(this.commands, flow, true)) : await this.resources!.restore(id);
                 const dependencies = id.startsWith('flow:') ? await this.installations?.ensure(id.slice(5)) : undefined;
                 results.push({ id, status: restored ? 'restored' : 'preserved', ...(dependencies ? {dependencies} : {}) });
                 log.info('initial-files.restore', {operationId, id, stage: 'persist', result: restored ? 'restored' : 'preserved', durationMs: Date.now() - started});

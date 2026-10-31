@@ -23,3 +23,20 @@ it('persists bounded private metadata, running state and sanitized failures acro
         expect(history.list('another@1')).toEqual([]);
     } finally {await rm(root, {recursive: true, force: true});}
 });
+
+it('persists only validated collection counts, including zero, without retaining result bodies', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'tool-history-count-')), file = path.join(root, 'history.json');
+    try {
+        const history = new ToolHistory(file); await history.initialize();
+        const collection = {version: 1, complete: false, processed: 12, batchCount: 0};
+        const tool = {name: 'fixture', call: async () => ({data: {collection: {...collection, secret: 'PRIVATE_RESULT'}, body: 'PRIVATE_BODY'}})} as unknown as Tool;
+        await history.call(tool, 'package@1', {}, {} as never);
+        const recovered = new ToolHistory(file); await recovered.initialize();
+        expect(recovered.list('package@1')[0].collection).toEqual(collection);
+        expect(await readFile(file, 'utf8')).not.toContain('PRIVATE_');
+        tool.call = async () => ({data: {collection: {...collection, batchCount: -1}}}) as never;
+        await history.call(tool, 'package@1', {}, {} as never);
+        expect(history.list('package@1')[0].collection).toBeUndefined();
+        expect(history.list('package@1')[0].status).toBe('succeeded');
+    } finally {await rm(root, {recursive: true, force: true});}
+});

@@ -30,7 +30,7 @@ it('restores the single self-contained Anki Flow from System Recovery and replac
     cleanup.push(() => editor.destroy()); await editor.render();
     expect([...container.querySelectorAll<HTMLElement>('[data-initial-id]')].map(input => input.dataset.initialId)).toEqual([
         'note:readme', 'note:demo', 'note:flow-format', 'note:study-vocabulary', 'note:study-concepts',
-        'note:study-classical-chinese', 'note:study-prompts', 'flow:essay-review', 'flow:anki-generate',
+        'note:study-classical-chinese', 'note:study-prompts', 'flow:essay-review', 'flow:anki-generate', 'kanban:nestos-demo',
     ]);
     expect(container.textContent).toContain('/home/admin/flows/anki-generate.flow');
     expect(container.querySelector<HTMLElement>('[data-initial-id="flow:anki-generate"]')!.parentElement!.textContent).toContain(t('initialFiles.missing'));

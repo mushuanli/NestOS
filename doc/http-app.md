@@ -375,7 +375,7 @@ pnpm httpd:activate <版本ID>   # 下次启动使用此版本
 
 `httpd:build` 自动先执行增量 `lib:build`，只重建变化的库及受影响依赖方，无变化时复用快照；库构建失败不会继续 HTTP release 构建或激活。无需再手动串联两条命令。
 
-隔离环境安装依赖及 deploy 均优先复用本地 pnpm 缓存，缺失的安装包或 registry 元数据允许联网补齐，不要求开发环境事先缓存全部依赖。
+隔离环境安装依赖及 deploy 均优先复用本地 pnpm 缓存，缺失的安装包或 registry 元数据允许联网补齐，不要求开发环境事先缓存全部依赖。安装先以 `--offline` 复用 store，store 缺少包或 registry 元数据时自动以 `--prefer-offline` 重试，并记录 `stage=install result=store-miss packages=<缺失包>` 与 `result=store-warmed`；锁文件不一致、registry 拒绝等其他安装错误按 `HTTP_BUILD_INSTALL_FAILED` 直接失败，不触发联网重试。完全离线且 store 缺包时错误信息保留 pnpm 给出的缺失包，可在仓库根执行 `pnpm install --prefer-offline --frozen-lockfile` 预热 store 后重试。
 
 构建缓存位于忽略目录 `release/httpd/.build-cache/`。源码、库快照、运行时及构建环境均未变化时，校验并复用完整 release；源码有变化时复用依赖安装环境，按 Vite/tsup 实际输入分别判断是否重新编译 UI 和服务端。新增文件、配置、锁文件、库快照、Node/ABI、pnpm 或原生模块变化会使对应缓存失效。输出损坏会重新编译，构建锁防止并发改写隔离环境；每步日志包含 operationId、缓存命中原因及耗时。变更构建仍重新 deploy 生产依赖，发布副本与缓存互相独立。清除 `.build-cache/` 后下次重建即可，不影响已有 release；清理时应确保没有构建进程。
 

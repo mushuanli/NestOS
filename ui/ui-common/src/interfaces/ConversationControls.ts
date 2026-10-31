@@ -30,12 +30,22 @@ export interface ConversationInstructionQueue {
     recovery?: {id: string};
     reason?: string;
     revision: number; paused: boolean; acceptedIds: string[];
-    submissions?: Array<{id: string; turnId?: string; commandId?: string; createdAt?: number; dispatchedAt?: number; acceptedAt?: number}>;
+    submissions?: Array<{id: string; turnId?: string; commandId?: string; kind?: 'steer'; createdAt?: number; dispatchedAt?: number; acceptedAt?: number}>;
     items: Array<{id: string; text: string; files: Array<{name: string}>; createdAt: number; dispatchedAt?: number; acceptedAt?: number; state: 'pending' | 'dispatching' | 'failed' | 'uncertain'; error?: string}>;
 }
 export type ConversationQueueEdit = {expectedRevision: number} & (
     {action: 'pause' | 'resume'} | {action: 'remove' | 'retry' | 'recover'; id: string} | {action: 'update'; id: string; text: string} | {action: 'reorder' | 'merge'; ids: string[]});
+export interface ConversationMetrics {
+    observedAt: number;
+    contextWindow?: {limitTokens: number; usedTokens?: number | null; observedAt?: number};
+    cost?: {amountUsd: number; kind: 'native-estimate'};
+    quota?: {windows: Array<{id: string; usedPercent?: number | null; status?: 'allowed' | 'allowed_warning' | 'rejected'; windowMinutes?: number | null; resetsAt?: number | null}>; creditBalance?: string | null; unlimited?: boolean | null};
+    errors?: {context?: string; quota?: string};
+}
 export interface ConversationSnapshot {
+    metrics?: ConversationMetrics;
+    supportsMetrics?: boolean;
+    metricsError?: {code: string};
     writerLock?: {status: 'held' | 'not-held' | 'unknown'; checkedAt: number; acquiredAt?: number | null;
         lockFileModifiedAt?: number | null; code?: string; owner?: {pid: number; uid?: number | null; processStartedAt?: number | null}};
     /** Submission is durable, but its native execution identity or terminal envelope is invalid. */
@@ -45,6 +55,8 @@ export interface ConversationSnapshot {
     pendingQueryReports?: string[];
     controls?: Array<{operationId: string; sessionId: string; turnId: string; receipt: 'unknown' | 'accepted' | 'rejected'; code?: string; effect: 'unconfirmed' | 'completed' | 'failed' | 'cancelled'}>;
     canCommand?: boolean;
+    supportsSteer?: boolean;
+    canSteer?: boolean;
     canQueue?: boolean;
     instructionQueue?: ConversationInstructionQueue;
     supportsModels?: boolean;
@@ -57,7 +69,7 @@ export interface ConversationSnapshot {
     usageEstimate?: {currency: 'USD'; estimatedCostUsd: number | null; complete: boolean};
     /** Native turn identity acknowledged for the most recent send on this view. */
     submittedTurnId?: string;
-    submission?: {id: string; status: 'pending' | 'accepted' | 'rejected'; turnId?: string; code?: string};
+    submission?: {id: string; kind?: 'steer'; status: 'pending' | 'accepted' | 'rejected'; turnId?: string; code?: string};
     draftAttachments?: ConversationAttachment[];
     attachments?: Array<'text' | 'image'>;
     archived?: boolean; canRename?: boolean; canArchive?: boolean; canUnarchive?: boolean;
@@ -84,11 +96,13 @@ export interface ConversationSnapshot {
 }
 export interface ConversationComposerDraft {revision: string; data: string; acceptedOperationIds: readonly string[]}
 export interface ConversationControls {
+    refreshMetrics?(): Promise<ConversationSnapshot>;
     readCommandOutput?(commandId: string, options?: {offset?: number; limit?: number}): Promise<ConversationCommandOutputPage>;
     loadCommandOutput?(commandId: string, options?: {maxBytes?: number}): Promise<ArrayBuffer>;
     reconcileQuery?(operationId: string): Promise<ConversationSnapshot>;
     queryCommand?(name: string, args?: string, operationId?: string, expected?: Pick<ConversationSlashCommand, 'id' | 'revision' | 'kind' | 'execution'>): Promise<ConversationSnapshot>;
-    enqueue?(text: string, attachments?: ConversationAttachment[], selection?: ConversationModelSelection, submissionId?: string): Promise<ConversationSnapshot>;
+    steer?(text: string, turnId: string, attachments?: ConversationAttachment[], submissionId?: string): Promise<ConversationSnapshot>;
+    enqueue?(text: string, attachments?: ConversationAttachment[], selection?: ConversationModelSelection, submissionId?: string, delivery?: 'auto' | 'next-turn'): Promise<ConversationSnapshot>;
     editInstructionQueue?(edit: ConversationQueueEdit): Promise<ConversationSnapshot>;
     readComposerDraft?(): Promise<ConversationComposerDraft>;
     saveComposerDraft?(data: string, expectedRevision: string, operationId: string): Promise<ConversationComposerDraft>;

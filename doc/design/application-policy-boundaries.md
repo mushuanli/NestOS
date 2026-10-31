@@ -141,3 +141,7 @@ app-settings 仍属于应用功能包；apps/demo 是使用部分历史 API 的 
 远程原生历史估算与本地已入账调用是不同来源：展示携带 transcript 范围和估算标识，不把含继承历史的分支估算累计进费用账本。前端不选择价格、不猜模型归属，也不依赖原生协议或日志文件。
 
 Flow 库恢复时是否发布修订属于应用策略，由 app-core/presets/restore-flows.ts 显式协调；核心 DraftRestore 保持只恢复草稿。图片上传限制由字段声明，Agent 使用标准多模态消息内容契约，声明模板与历史快照分开处理。
+
+## 可插拔协作看板
+
+`@itookit/app-core/kanban` 是显式装配的可选应用服务；纯契约由 app-contracts 拥有，用户 VFS 的事务存储由宿主注入。项目与系统看板维护唯一工作项，全局视图只聚合；相关 Session、职责、估算、转交和超时升级均不进入 durable-kernel。模型唤醒、工具入口和持久邮箱桥由宿主或外部适配负责，当前不自动启用 Agent 执行。默认应用宿主仅装配个人看板、共享 UI 和系统通知健康检查，项目存储与扫描仍显式绑定。详见 [Kanban 协调模块](kanban-coordination.md)。

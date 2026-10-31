@@ -1,3 +1,5 @@
+import {createPersonalKanban} from '../kanban/personal';
+import {startKanbanMonitor} from '../kanban/monitor';
 import {UserEventService} from '../events/service';
 import {attachRuntimeEvents} from '../events/runtime-events';
 import {DiagnosticJournal} from '../diagnostics/journal';
@@ -107,6 +109,7 @@ export interface ApplicationRuntime {
     flowInstallations: import('@itookit/app-contracts/services').FlowInstallations;
     toolPackages: import('@itookit/app-contracts/services').ToolPackages;
     digitalTwin?: DigitalTwinService;
+    kanban?: import('@itookit/app-contracts').KanbanService;
     vfs: import('@itookit/vfs-core').IVFSManager;
     llmDriver: LLMDeviceDriver;
     agentService: VFSAgentService;
@@ -539,8 +542,11 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         }
 
         const events = await UserEventService.open(systemFS);
+        const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository);
+        let kanbanMonitor: ReturnType<typeof startKanbanMonitor> | undefined;
         const eventSources = await attachRuntimeEvents(events, {kernel, sessionRepository, digitalTwin}, notesFiles);
         cleanupFns.push(() => eventSources.dispose());
+        cleanupFns.push(async () => {await kanbanMonitor?.dispose();});
         let disposed = false;
         const dispose = async () => {
             if (disposed) return;
@@ -556,6 +562,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         await startup.schedule(policy.workers, 'runtime.workers', async () => {
             await initializeProjects();
             if (!startup.active) return;
+            kanbanMonitor = startKanbanMonitor({service: kanban, initialScan: false, subscribeTick: tick => {
+                const timer = setInterval(tick, 60_000); return () => clearInterval(timer);
+            }, onError: () => {diagnostics.record({module: 'application', operation: 'kanban.monitor', stage: 'scan', result: 'failure', level: 'warn', code: 'KANBAN_SCAN_FAILED'});}});
             recovery.startBackground();
             if (options.digitalTwinAutoStart !== false) for (const twin of twinServices) {
                 const view = await twin.workspaceView().catch(() => null); if (view && !view.readOnly) twin.start();
@@ -566,7 +575,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         diagnostics.record({module: 'application', operation: 'application.runtime', stage: 'ready', result: 'success', level: 'info'});
         return { events, diagnostics, vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections, toolConnections: options.toolConnections,
             flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, independentCalls, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
-            projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id), conversationObservation: conversationContexts };
+            projectSync, digitalTwin, kanban, createView: createConversationView, openConversation: id => conversationContexts.open(id), conversationObservation: conversationContexts };
     } catch (error) {
         await startup.close();
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {

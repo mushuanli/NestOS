@@ -2,13 +2,14 @@ import {uniqueScanSources} from './scan-plan-sources';
 import { migrateMailDefault } from './default-rules';
 import type { TwinSourceIndex } from './source-index';
 import {sha256HexSync} from '@itookit/llm-context';
-import { randomUUID } from '@itookit/common';
+import { randomUUID, createModuleLogger } from '@itookit/common';
 import { selectedRules } from './selection';
 import { TWIN_KINDS, type TwinSourceData, type TwinSettings } from './domain';
 import { scanInput, type TwinScanPlan, type TwinScanPlanInput, type TwinScanRun } from './scan-domain';
 import { TwinScanStore, retry, type ScanSchedule } from './scan-store';
 import { write, type TwinDataRecord } from './records';
 import { TwinSources } from './sources';
+const log = createModuleLogger('twin-scanner');
 
 export class TwinScanPlans {
     constructor(readonly store: TwinScanStore, private readonly sources: TwinSources, private readonly index?: TwinSourceIndex) {}
@@ -86,10 +87,10 @@ export class TwinScanPlans {
     async enqueue(planId: string, trigger: TwinScanRun['trigger'] = 'manual', signature = '', refresh = true, eventId?: string): Promise<string> {
         if (eventId !== undefined && (typeof eventId !== 'string' || !eventId.trim() || eventId.length > 256)) throw new Error('TWIN_EVENT_INVALID');
         const eventKey = eventId === undefined ? undefined : 'scan-event:' + sha256HexSync(JSON.stringify([planId, eventId]));
-        if (refresh) await this.index?.sync();
         return retry(async () => {
             const plan = await this.store.records.get<TwinScanPlan>('scan-plan', planId);
             if (!plan?.data.enabled) throw new Error('TWIN_SCAN_PLAN_DISABLED');
+            await this.refreshForEnqueue(planId, plan.data.mode, refresh);
             if (eventKey) {
                 if (plan.data.trigger !== 'event') throw new Error('TWIN_EVENT_TRIGGER_REQUIRED');
                 const receipt = await this.store.records.get<{runId: string}>('checkpoint', eventKey);
@@ -100,6 +101,20 @@ export class TwinScanPlans {
             const settings = (await this.store.records.get<TwinSettings>('settings', 'pot'))!.data;
             return this.insert(planId, plan.revision, { ...plan.data, tokenLimit: plan.data.rules ? settings.tokenLimit : plan.data.tokenLimit, sourceIds: sources.map(source => source.id) }, trigger, false, signature, Boolean(plan.data.rules && settings.budgetUnlimited), eventKey);
         });
+    }
+    private async refreshForEnqueue(planId: string, mode: TwinScanPlan['mode'], refresh: boolean): Promise<void> {
+        if (!refresh) return;
+        const started = Date.now(), operationId = randomUUID();
+        const stage = 'source-index.sync';
+        try {
+            const skipped = mode === 'collect';
+            if (!skipped) await this.index?.sync();
+            log.info('twin.scan.enqueue', {operationId, planId, stage, result: 'success', skipped, durationMs: Date.now() - started});
+        } catch (error) {
+            const code = error instanceof Error && /^TWIN_[A-Z_]+$/.test(error.message) ? error.message : 'TWIN_SCAN_PREPARE_FAILED';
+            log.warn('twin.scan.enqueue', {operationId, planId, stage, result: 'failure', code, durationMs: Date.now() - started});
+            throw error;
+        }
     }
     async enqueueSource(id: string): Promise<string> {
         const source = await this.store.records.get<TwinSourceData>('source', id);

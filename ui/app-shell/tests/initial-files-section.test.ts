@@ -83,3 +83,21 @@ it('keeps required configuration and retry failures actionable without reporting
         expect(container.querySelector<HTMLButtonElement>('[data-initial-dependencies]')!.disabled).toBe(false);
     } finally {section.destroy(); container.remove();}
 });
+it('offers Kanban examples as a separate recovery group and restores only that selection', async () => {
+    const port: InitialFilesPort = {
+        list: async () => [{id: 'kanban:nestos-demo', group: 'kanban', name: 'NestOS demo', path: '#/kanban', exists: false},
+            {id: 'note:guide', group: 'notes', name: 'Guide', path: '/guide.md', exists: true}],
+        restore: vi.fn(async ids => ids.map(id => ({id, status: 'restored' as const}))),
+    };
+    const section = new InitialFilesSection(port), container = document.createElement('div'); document.body.append(container);
+    try {
+        await section.mount(container);
+        expect(container.querySelector('[data-group=kanban]')!.textContent).toContain(t('initialFiles.kanban'));
+        expect(container.textContent).toContain(t('initialFiles.kanbanHelp'));
+        container.querySelector<HTMLInputElement>('[data-initial-group=kanban]')!.click();
+        expect(container.querySelector<HTMLInputElement>('[data-initial-id="note:guide"]')!.checked).toBe(false);
+        container.querySelector<HTMLButtonElement>('[data-initial-restore]')!.click();
+        await vi.waitFor(() => expect(port.restore).toHaveBeenCalledWith(['kanban:nestos-demo']));
+        await vi.waitFor(() => expect(container.querySelector('[role=status]')!.textContent).toContain(t('initialFiles.restored')));
+    } finally {section.destroy(); container.remove();}
+});

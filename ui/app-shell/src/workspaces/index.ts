@@ -192,3 +192,9 @@ export const WS_TWIN: WorkspaceConfig = {
     elementId: 'twin-workspace', workspaceName: 'digital-twin', slug: 'twin', type: 'twin',
     title: 'Digital twin', supportedFileTypes: [], syncEnabled: false, readOnly: false, mentionAble: false, aiEnabled: false,
 };
+
+/** User-owned planning and execution coordination. */
+export const WS_KANBAN: WorkspaceConfig = {
+    elementId: 'kanban-workspace', workspaceName: 'kanban', slug: 'kanban', type: 'kanban',
+    title: 'Kanban', supportedFileTypes: [], syncEnabled: false, readOnly: false, mentionAble: false, aiEnabled: false,
+};

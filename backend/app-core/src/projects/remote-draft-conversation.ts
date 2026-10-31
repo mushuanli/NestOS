@@ -42,6 +42,7 @@ export function draftHarness(client: HarnessClient, recovery: RemoteConversation
 
 /** Hide provisional identities from navigation without changing native ownership. */
 export function draftConversation(source: HarnessConversationPort, recovery: RemoteConversationStore): HarnessConversationPort {
+    let initialTitle: string | undefined;
     const snapshot = (): HarnessConversationSnapshot => {
         const state = source.snapshot(), submittedTurnId = state.submittedTurnId ?? recovery.submittedTurnId;
         return {...state, submittedTurnId, sessionId: submittedTurnId ? state.sessionId : undefined,
@@ -54,8 +55,11 @@ export function draftConversation(source: HarnessConversationPort, recovery: Rem
         return typeof value === 'function' ? async (...args: unknown[]) => {
             const submitted = !!recovery.submittedTurnId;
             const result = await Reflect.apply(value, target, args);
-            if (!submitted && (key === 'send' || key === 'command' || key === 'reconcile') && snapshot().submittedTurnId && source.snapshot().canRename && source.rename) {
-                try { await source.rename(formatDefaultFileTitle()); }
+            if (key === 'rename') initialTitle = undefined;
+            if (!submitted && snapshot().submittedTurnId) initialTitle ??= formatDefaultFileTitle();
+            if (initialTitle && source.snapshot().title === initialTitle) initialTitle = undefined;
+            if (initialTitle && ['send', 'command', 'reconcile', 'refresh'].includes(String(key)) && source.snapshot().canRename && source.rename) {
+                try { await source.rename(initialTitle); initialTitle = undefined; }
                 catch (error) { reportRemoteFailure(error, {stage: 'draft.rename', sessionId: source.snapshot().sessionId}); }
             }
             return result && typeof result === 'object' && 'messages' in result ? snapshot() : result;

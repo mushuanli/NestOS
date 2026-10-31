@@ -20,7 +20,7 @@ export interface StudyCreationOptions extends Pick<StudyCreation, 'generation' |
     documentSaved?(draft: StudyDraft): Promise<void>;
 }
 
-export type WorkspaceType = 'standard' | 'settings' | 'agent' | 'chat' | 'skills' | 'flows' | 'toolbox' | 'twin';
+export type WorkspaceType = 'standard' | 'settings' | 'agent' | 'chat' | 'skills' | 'flows' | 'toolbox' | 'twin' | 'kanban';
 
 export interface WorkspaceConfig {
     /** Explicit application file context. workspaceName selects the default user directory. */

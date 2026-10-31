@@ -5,7 +5,8 @@ import {randomUUID, createModuleLogger} from '@itookit/common';
 import type {ToolRunRecord} from '@itookit/app-contracts/services';
 import type {Tool} from '@itookit/tools';
 const text = z.string().max(200);
-const record = z.object({id: text, packageKey: text, toolId: text, version: text, startedAt: z.number().nonnegative(), finishedAt: z.number().nonnegative().optional(), durationMs: z.number().nonnegative().optional(), status: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'unknown']), code: text.optional(), sessionId: text.optional(), taskId: text.optional(), operationId: text.optional()});
+const collection = z.object({version: z.literal(1), complete: z.boolean(), processed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), batchCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional()});
+const record = z.object({id: text, packageKey: text, toolId: text, version: text, startedAt: z.number().nonnegative(), finishedAt: z.number().nonnegative().optional(), durationMs: z.number().nonnegative().optional(), status: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'unknown']), code: text.optional(), sessionId: text.optional(), taskId: text.optional(), operationId: text.optional(), collection: collection.optional()});
 const log = createModuleLogger('tool-history');
 
 /** Bounded user-private execution metadata, never arguments, result bodies or exception text. */
@@ -31,10 +32,14 @@ export class ToolHistory {
     async call(tool: Tool, packageKey: string, args: Parameters<Tool['call']>[0], context: Parameters<Tool['call']>[1]) {
         const identity = context.executionIdentity;
         const row = {id: randomUUID(), packageKey, toolId: tool.name, version: tool.version ?? '1', startedAt: Date.now(), status: 'running' as ToolRunRecord['status'],
+            collection: undefined as ToolRunRecord['collection'],
             ...(identity ? {operationId: identity.operationId, sessionId: identity.sessionId, taskId: identity.taskId} : {})};
         this.rows.push(row);
         try {await this.persist();} catch {row.status = 'unknown'; log.warn('tool.history.persist', {operationId: row.id, stage: 'start', result: 'failure', code: 'TOOL_HISTORY_WRITE_FAILED'}); throw new Error('TOOL_HISTORY_WRITE_FAILED');}
-        try {const result = await tool.call(args, context); row.status = 'succeeded'; return result;}
+        try {const result = await tool.call(args, context); row.status = 'succeeded';
+            const summary = collection.safeParse((result.data as {collection?: unknown} | null)?.collection);
+            if (summary.success) row.collection = summary.data;
+            return result;}
         catch (error) {
             row.status = context.signal?.aborted ? 'cancelled' : 'failed';
             const code = (error as {code?: string})?.code;

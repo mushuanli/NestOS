@@ -12,7 +12,7 @@ interface InitialDependencyReport {
 }
 
 export interface InitialFilesPort {
-    list(): Promise<Array<{ id: string; group: 'notes' | 'flows'; name: string; path: string; exists: boolean; overwrite?: boolean }>>;
+    list(): Promise<Array<{ id: string; group: 'notes' | 'flows' | 'kanban'; name: string; path: string; exists: boolean; overwrite?: boolean }>>;
     restore(ids: string[]): Promise<Array<{id: string; status: 'restored' | 'preserved' | 'failed'; error?: string; dependencies?: InitialDependencyReport}>>;
     prepareDependencies?(ids: string[]): Promise<InitialDependencyReport[]>;
 }
@@ -57,7 +57,8 @@ export class InitialFilesSection {
         const count = this.selectedCount, disabled = this.busy || this.disabled;
         this.container.innerHTML = `<section class="settings-section initial-files"><h3>${escapeHTML(label('title'))}</h3>
             <p>${escapeHTML(label('help'))}</p><p>${escapeHTML(label('demoHelp'))}</p>
-            ${['notes', 'flows'].map(group => this.group(group)).join('')}
+            ${this.entries.some(entry => entry.group === 'kanban') ? `<p>${escapeHTML(label('kanbanHelp'))}</p>` : ''}
+            ${['notes', 'flows', 'kanban'].map(group => this.group(group)).join('')}
             ${this.controls.externalActions ? '' : `<button type="button" class="settings-btn settings-btn--primary" data-initial-restore ${disabled || !count ? 'disabled' : ''}>${escapeHTML(label(this.busy ? 'restoring' : 'restore'))} (${count})</button>
             <button type="button" class="settings-btn settings-btn--secondary" data-initial-refresh ${disabled ? 'disabled' : ''}>${escapeHTML(label('refresh'))}</button>`}
             <p role="alert">${escapeHTML(this.error)}</p><ul class="initial-files__results" role="status">${this.results.map(result => this.resultRow(result, disabled)).join('')}</ul></section>`;

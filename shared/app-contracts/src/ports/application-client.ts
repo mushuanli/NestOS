@@ -31,6 +31,7 @@ export interface ApplicationServices {
     commandBus: ICommandBus;
     projectSync?: ProjectSyncService;
     digitalTwin?: DigitalTwinService;
+    kanban?: import('../kanban/contracts').KanbanService;
     startBackground?(): void;
     prepareSession?(sessionId: string): Promise<boolean>;
 }

@@ -471,3 +471,112 @@ it('uses direct native admission for the first turn until queuing is explicitly 
         expect(host.controls.send).toHaveBeenCalledOnce();
     } finally {binding.dispose();}
 });
+
+it('routes active native input to steering with an exact turn and keeps the original user message separate', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    host.emit({canQueue: true, canSteer: true, canSend: false, active: true,
+        observation: {execution: 'running', activeTurnId: 'active', observedAt: Date.now(), source: 'history', connection: 'online', stale: false, receiptUnknown: false},
+        messages: [{id: 'original', role: 'user', text: 'Original request', turnId: 'active'}]});
+    host.controls.enqueue = vi.fn();
+    host.controls.steer = vi.fn(async (_text, turnId, _files, id) => {
+        host.emit({submission: {id: id!, kind: 'steer', status: 'accepted', turnId}}); return host.state();
+    });
+    const binding = await createNativeChatBinding({...host.options, operations});
+    expect(binding.source.getSnapshot().submissionMode).toBe('steer');
+    const context = {operationId: 'context', viewId: binding.source.getSnapshot().viewId};
+    await operations.register({context, conversationId: 'native', kind: 'send', input: {text: 'More context', attachments: []}, status: 'submitting'});
+    const receipt = await binding.actions.send!({text: 'More context', attachments: []}, context);
+    expect(receipt).toMatchObject({status: 'accepted', submissionRef: 'steered:context'});
+    await operations.settle(receipt);
+    expect(host.controls.steer).toHaveBeenCalledWith('More context', 'active', [], 'context');
+    expect(host.controls.enqueue).not.toHaveBeenCalled();
+    expect(binding.source.getSnapshot().operationReceipts).not.toContainEqual(expect.objectContaining({observedUserMessageId: 'original'}));
+    expect(binding.source.getSnapshot().messages[0].submissionId).toBeUndefined(); binding.dispose();
+});
+
+it('preserves steering identity when reconciling an unknown native response', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    await operations.register({context: {operationId: 'context', viewId: 'before-reconnect'}, conversationId: 'native', kind: 'send', input: {text: 'Supplement', attachments: []}, status: 'unknown'});
+    const reconcile = async () => {
+        host.emit({submission: {id: 'context', kind: 'steer', status: 'accepted', turnId: 'active'}});
+        return {status: 'accepted' as const, operationId: 'context', submissionRef: 'active'};
+    };
+    const binding = await createNativeChatBinding({...host.options, operations, reconcile});
+    expect(await binding.actions.reconcile!('context')).toMatchObject({status: 'accepted', submissionRef: 'steered:context'});
+    binding.dispose();
+});
+
+it('fills composer observations on native lifecycle changes without querying on deltas or changing submission availability', async () => {
+    const host = fixture(); host.emit({sessionId: 's', supportsMetrics: true});
+    host.controls.refreshMetrics = vi.fn(async () => {
+        host.emit({metrics: {observedAt: 1, contextWindow: {usedTokens: 10000, limitTokens: 200000}, quota: {windows: [{id: 'primary', usedPercent: 25}]}}});
+        return host.state();
+    });
+    const binding = await createNativeChatBinding(host.options);
+    await vi.waitFor(() => expect(binding.source.getSnapshot().composerIndicators?.[1].value).toBe('75%'));
+    expect(host.controls.refreshMetrics).toHaveBeenCalledOnce();
+    expect(binding.source.getSnapshot().allowed).toContain('send');
+    host.emit({messages: [{id: 'a', role: 'assistant', text: 'delta'}]}); expect(host.controls.refreshMetrics).toHaveBeenCalledOnce();
+    host.emit({observation: {execution: 'running', activeTurnId: 'turn', observedAt: 1, source: 'events', connection: 'online', stale: false, receiptUnknown: false}});
+    await vi.waitFor(() => expect(host.controls.refreshMetrics).toHaveBeenCalledTimes(2));
+    binding.setActive(false);
+    host.emit({observation: {...host.state().observation!, activeTurnId: undefined, execution: 'idle', lastResult: 'completed'}});
+    expect(host.controls.refreshMetrics).toHaveBeenCalledTimes(2);
+    binding.setActive(true); await vi.waitFor(() => expect(host.controls.refreshMetrics).toHaveBeenCalledTimes(3)); binding.dispose();
+});
+
+it('queues an explicit model change for the next turn rather than silently dropping it during steering', async () => {
+    const host = fixture(); host.emit({supportsModels: true, canQueue: true, canSend: false, canSteer: true, active: true,
+        observation: {execution: 'running', activeTurnId: 'active', observedAt: 1, source: 'events', connection: 'online', stale: false, receiptUnknown: false}});
+    host.controls.models = vi.fn(async () => ({models: ['current', 'next'].map(id => ({id, label: id, reasoningEfforts: []})), current: {modelId: 'current'}}));
+    host.controls.steer = vi.fn();
+    host.controls.enqueue = vi.fn(async (_text, _files, _model, id) => ({...host.state(), submission: {id: id!, status: 'accepted' as const}}));
+    const binding = await createNativeChatBinding(host.options);
+    expect(binding.resolveSubmissionMode({modelId: 'next'})).toBe('queue');
+    expect(binding.resolveSubmissionMode({modelId: 'current'})).toBe('steer');
+    const result = await binding.actions.send!({text: 'Use the new model', attachments: [], selection: {modelId: 'next'}},
+        {operationId: 'model-change', viewId: binding.source.getSnapshot().viewId});
+    expect(result.status).toBe('accepted'); expect(host.controls.steer).not.toHaveBeenCalled();
+    expect(host.controls.enqueue).toHaveBeenCalledWith('Use the new model', [], {modelId: 'next'}, 'model-change'); binding.dispose();
+});
+
+it('retains model choices during native ownership refreshes and coalesces duplicate discovery requests', async () => {
+    const host = fixture(); const state = {...host.state(), supportsModels: true};
+    const models = [{id: 'a', label: 'A', reasoningEfforts: []}, {id: 'b', label: 'B', reasoningEfforts: []}];
+    host.controls.models = vi.fn(async () => ({models, current: {modelId: 'a'}}));
+    const caps = new NativeComposerCapabilities(host.controls); await caps.load(state);
+    let finish!: (value: {models: typeof models; current: {modelId: string}}) => void;
+    vi.mocked(host.controls.models).mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    const next = {...state, observation: {execution: 'running' as const, scope: 'controlled' as const, observedAt: 1, source: 'events' as const, connection: 'online' as const, stale: false, receiptUnknown: false}};
+    const loading = caps.load(next, true); expect(caps.load(next, true)).toBe(loading);
+    expect(caps.selectors()![0].choices).toContainEqual({id: 'b', label: 'B'});
+    expect(caps.canSteerSelection({modelId: 'a'})).toBe(false);
+    finish({models, current: {modelId: 'b'}}); await loading;
+    expect(caps.canSteerSelection({modelId: 'b'})).toBe(true); expect(host.controls.models).toHaveBeenCalledTimes(2);
+});
+
+it('retires accepted steering previews without merging identical native user messages or confirming the original input', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    await operations.register({context: {operationId: 'context', viewId: 'old'}, conversationId: 'native', kind: 'send',
+        input: {text: 'Same input', attachments: []}, status: 'unknown'});
+    host.emit({submission: {id: 'context', kind: 'steer', status: 'accepted', turnId: 'active'}, messages: [
+        {id: 'original', role: 'user', text: 'Same input', turnId: 'active'},
+        {id: 'steered:context', role: 'user', text: 'Same input', turnId: 'active'},
+        {id: 'native-supplement', role: 'user', text: 'Same input', turnId: 'active'},
+    ]});
+    const binding = await createNativeChatBinding({...host.options, operations});
+    expect(binding.source.getSnapshot().messages.map(row => row.id)).toEqual(['original', 'native-supplement']);
+    expect(binding.source.getSnapshot().operationMessages).toContainEqual({operationId: 'context', message: null});
+    expect(binding.source.getSnapshot().operationReceipts).not.toContainEqual(expect.objectContaining({observedUserMessageId: 'original'}));
+    await operations.settle({status: 'accepted', operationId: 'context', submissionRef: 'steered:context'});
+    host.emit({submission: undefined});
+    expect(binding.source.getSnapshot().operationMessages).toContainEqual({operationId: 'context', message: null}); binding.dispose();
+});
+it('retires automatic queued steering previews from their durable queue receipts', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    await operations.register({context: {operationId: 'queued-context', viewId: 'old'}, conversationId: 'native', kind: 'send', input: {}, status: 'accepted'});
+    host.emit({instructionQueue: {revision: 3, paused: false, acceptedIds: ['queued-context'], items: [],
+        submissions: [{id: 'queued-context', kind: 'steer', turnId: 'active'}]}});
+    const binding = await createNativeChatBinding({...host.options, operations});
+    expect(binding.source.getSnapshot().operationMessages).toContainEqual({operationId: 'queued-context', message: null}); binding.dispose();
+});

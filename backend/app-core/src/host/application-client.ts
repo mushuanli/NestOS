@@ -1,3 +1,5 @@
+import {KanbanExamples} from '../presets/kanban-examples';
+import {SeqKanbanStore} from '../kanban/store';
 import studyPrompts from '../presets/study-prompts.json';
 import {createTextGeneration, listTextModels} from '../configuration/text-generation';
 import {sessionResponse} from '../session/session-response';
@@ -119,7 +121,8 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         generateText: async request => (await textGeneration).generateText(request),
         cancelTextGeneration: async id => (await textGeneration).cancelTextGeneration(id),
         ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService, options.configurationReadonly),
-        initialFiles: async () => new NestosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/notes'), services.flowInstallations),
+        initialFiles: async () => new NestosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/notes'), services.flowInstallations,
+            services.kanban ? new KanbanExamples(await SeqKanbanStore.open(await vfs.openFileSystem('/')), services.kanban) : undefined),
         projectSessions: async () => projects?.sessions ?? new ProjectSessions(repository),
         skillsFiles: () => scope.own(new SkillsEngine(agentService)),
         toolboxView: () => toolboxView(services, scope),

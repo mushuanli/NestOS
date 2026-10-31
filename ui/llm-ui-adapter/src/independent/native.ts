@@ -1,5 +1,6 @@
+import {NativeMetricsObserver} from './native-metrics-observer';
 import {nativeObservationDiagnostics} from './native-observation-diagnostics';
-import {NativeExecutionNotice} from '../components/NativeExecutionNotice';
+import {nativeComposerIndicators} from './native-composer-indicators';
 import {messageState, toolState} from './message-state';
 import {prepareImageChatOptions, type ImageChatOptions} from './image-chat-view';
 import {createChatView, type ChatOptions, type ChatView} from '@itookit/llm-ui';
@@ -19,6 +20,7 @@ import {nativeInteraction, nativeResponse} from '../native-interactions';
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import {t} from '@itookit/common';
 import {NativeCommandOutput} from '../components/history/NativeCommandOutput';
+import {NativeExecutionNotice} from '../components/NativeExecutionNotice';
 import {NativeResultRepair} from '../components/history/NativeResultRepair';
 import type {ConversationCommandOutput} from '@itookit/ui-common';
 import type {ExtensionRenderer, JsonValue} from '@itookit/llm-ui';
@@ -58,21 +60,25 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         if (closed) return;
         native = state;
         const catalog = commands(state);
-        source.publish({ title: state.title, selectors: capabilities.selectors(), error: nativeResultNotice(state) ?? nativeCatalogNotice(state),
+        source.publish({ composerIndicators: nativeComposerIndicators(state), title: state.title, selectors: capabilities.selectors(), error: nativeResultNotice(state) ?? nativeCatalogNotice(state),
             commands: state.supportsSlashCommands || options.commandProviders?.length ? catalog : undefined,
             operationReceipts: nativeReceipts(state, options.operations, options.conversationId),
-            operationMessages: nativeQueueMessages(state, options.operations, options.conversationId),
-            submissionMode: state.canQueue && options.controls.enqueue && (!state.canSend || state.active) ? 'queue' : 'send',
-            messages: state.messages.map(message => nativeMessage(message, options.operations, state, options.conversationId)),
+            operationMessages: [...(nativeQueueMessages(state, options.operations, options.conversationId) ?? []), ...nativeSteeringPreviews(state, options.operations, options.conversationId)],
+            submissionMode: capabilities.submissionMode(state),
+            messages: state.messages.filter(message => !message.id.startsWith('steered:')).map(message => nativeMessage(message, options.operations, state, options.conversationId)),
             interactions: state.requests.map(request => interaction(request, requests)),
-            executionActivity: state.observation?.activity ? {label: t(`harness.activity.${state.observation.activity.phase}`), updatedAt: state.observation.activity.updatedAt} : undefined,
             loading: false, executionRef: state.observation?.activeTurnId ?? undefined, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
+            executionActivity: state.observation?.activity ? {label: t(`harness.activity.${state.observation.activity.phase}`), updatedAt: state.observation.activity.updatedAt} : undefined,
             connection: state.disconnected ? 'offline' : 'online', hasEarlier: state.hasEarlier ?? false,
             allowed: options.readOnly ? [] : [...(nativeCanSubmit(state, options.controls) && !options.operations.getSnapshot().some(record => record.conversationId === options.conversationId
                     && ['unknown', 'submitting'].includes(record.status) && (record.input as {protocol?: string} | null)?.protocol === 'legacy-composer-v1') ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
                 ...(state.canInterrupt && state.sessionId && state.observation?.activeTurnId && options.controls.reconcileControl ? ['cancel' as const] : []),
                 ...(catalog.some(command => !command.disabled) ? ['command' as const] : [])] });
+        metrics.observe(state);
     };
+    const metrics = new NativeMetricsObserver(options.controls, state => {
+        if (!closed && native && native.sessionId === state.sessionId) publish({...native, metrics: state.metrics, metricsError: state.metricsError});
+    });
     const loadCapabilities = async (state: NativeSnapshot, force = false) => {
         if (await capabilities.load(state, force) && !closed && native) publish(options.controls.snapshot?.() ?? native);
     };
@@ -101,7 +107,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
     });
     const providerStops = options.commandProviders?.flatMap(provider => provider.subscribe ? [provider.subscribe(() => {if (native) publish(native);})] : []) ?? [];
     const offLedger = options.operations.subscribe(() => { if (native) publish(native); });
-    try { await refresh(true); } catch (error) { closed = true; capabilities.dispose();
+    try { await refresh(true); } catch (error) { closed = true; metrics.dispose(); capabilities.dispose();
         try {releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]);}
         catch (cleanup) {throw new AggregateError([error, cleanup], 'Native binding initialization failed');}
         throw error; }
@@ -135,6 +141,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         async send(input, context) {
             if (!valid(context.viewId)) return { status: 'rejected', operationId: context.operationId, code: 'STALE_VIEW', message: 'Observation binding expired' };
             if (input.input) return reject(context, 'UNSUPPORTED_INPUT', 'Native message input has no declared structured argument binding');
+            const steeringTurn = native?.canSteer && options.controls.steer && capabilities.canSteerSelection(input.selection) ? native.observation?.activeTurnId : undefined;
             let attachments: NonNullable<Parameters<ConversationControls['send']>[1]> = [];
             if (input.attachments.length) {
                 if (!options.images && !options.readAttachment) return reject(context, 'ATTACHMENT_MAPPING_REQUIRED', 'Native attachments require host conversion');
@@ -150,8 +157,10 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             catch (error) {return {status: 'rejected', operationId: context.operationId, code: 'INVALID_SELECTION', message: String(error)};}
             const captured = generation;
             return submitNativeOperation(context, async () => {
-                const state = native?.canQueue && options.controls.enqueue
-                    ? await options.controls.enqueue(input.text, attachments, selection, context.operationId)
+                const state = steeringTurn
+                    ? await options.controls.steer!(input.text, steeringTurn, attachments, context.operationId)
+                    : native?.canQueue && options.controls.enqueue
+                    ? await options.controls.enqueue(input.text, attachments, selection, context.operationId, ...(native.supportsSteer && !selection ? ['auto' as const] : []))
                     : await options.controls.send(input.text, attachments, selection, context.operationId);
                 publishResponse(state, captured); return state;
             }, true);
@@ -221,7 +230,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
                 return nativeControlReceipt(state, operationId, typeof record?.input === 'string' ? record.input : undefined);
             }
             const receipt = await options.reconcile(operationId);
-            await refresh(); return receipt;
+            await refresh(); return native && nativeAdmissionReceipt(native, {operationId, viewId: source.getSnapshot().viewId}) || receipt;
         },
         loadEarlier: options.controls.loadEarlier ? async ({ signal }) => {
             const state = await options.controls.loadEarlier!();
@@ -240,6 +249,8 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             if (closed) throw Object.assign(new Error('Native queue binding closed'), {code: 'QUEUE_VIEW_CLOSED'});
             publishResponse(state, captured); return state;
         }),
+        resolveSubmissionMode: (values?: Readonly<Record<string, string>>) => native ? capabilities.submissionMode(native, values) : 'send' as const,
+        setActive: (value: boolean) => metrics.setActive(value),
         resultError: () => native?.resultError,
         observationSnapshot: () => native,
         commandOutputs: {readCommandOutput: options.controls.readCommandOutput ? async (id: string, readOptions?: {offset?: number; limit?: number}) => {
@@ -253,7 +264,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             if (closed) throw Object.assign(new Error(), {code: 'COMMAND_OUTPUT_VIEW_CLOSED'});
             return content;
         } : undefined},
-        dispose() { if (closed) return; closed = true; lifetime.abort(); ++generation; capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
+        dispose() { if (closed) return; closed = true; lifetime.abort(); ++generation; metrics.dispose(); capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
 }
 type NativeBinding = Awaited<ReturnType<typeof createNativeChatBinding>>;
 export type NativeChatView = ChatView;
@@ -268,12 +279,12 @@ function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): C
         output.update(part.data as unknown as ConversationCommandOutput);
         return {update: part => output.update(part.data as unknown as ConversationCommandOutput), destroy: () => {outputs.delete(output); output.destroy();}};
     };
-    const images = prepareImageChatOptions({...options, source: binding.source, actions: binding.actions, operations: binding.operations,
+    const images = prepareImageChatOptions({...options, resolveSubmissionMode: draft => binding.resolveSubmissionMode(draft.selection), source: binding.source, actions: binding.actions, operations: binding.operations,
         messageActions: queue.messageActions,
         renderers: {...options.renderers, 'native-command-output': renderer},
         mountToolbar: nativeToolbar(binding, {...options, mountToolbar: queue.mount}, repairs, notices)}, options.images ?? binding.images);
     return {...images, setActive: value => {
-        queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value); for (const notice of notices) notice.setActive(value); options.setActive?.(value);
+        binding.setActive(value); queue.setActive(value); for (const output of outputs) output.setActive(value); for (const repair of repairs) repair.setActive(value); for (const notice of notices) notice.setActive(value); options.setActive?.(value);
     }};
 }
 export async function adoptNativeChatView(view: ChatView, binding: NativeBinding, options: ImageChatOptions = {}): Promise<ChatView> {
@@ -284,10 +295,12 @@ export async function createNativeChatView(container: HTMLElement, binding: Nati
 }
 
 function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger, state: NativeSnapshot, conversationId: string): ChatMessage {
-    const submission = state.instructionQueue?.submissions?.find(item => item.turnId && item.turnId === message.turnId);
+    const firstUser = state.messages.find(item => item.role === 'user' && item.turnId === message.turnId);
+    const submission = firstUser?.id === message.id ? state.instructionQueue?.submissions?.find(item => item.kind !== 'steer' && item.turnId && item.turnId === message.turnId) : undefined;
     const record = operations.getSnapshot().find(item => {
         if (item.conversationId !== conversationId || !nativeUserOperation(item)) return false;
-        return item.context.operationId === submission?.id || !!item.submissionRef && item.submissionRef === message.turnId
+        return item.context.operationId === submission?.id || item.submissionRef === message.id
+            || firstUser?.id === message.id && !!item.submissionRef && item.submissionRef === message.turnId
             || item.observedUserMessageId === message.id;
     });
     const parts: ChatMessage['parts'][number][] = message.role === 'tool' ? [{ id: message.id, kind: 'tool', name: message.name ?? '',
@@ -297,7 +310,7 @@ function nativeMessage(message: NativeSnapshot['messages'][number], operations: 
     if (message.commandOutput) parts.push({id: `${message.id}-output`, kind: 'extension', type: 'native-command-output',
         data: JSON.parse(JSON.stringify(message.commandOutput)) as JsonValue});
     return { id: message.id, revision: 0, role: message.role, state: messageState(message.status),
-        submissionId: record?.context.operationId, acceptance: message.id.startsWith('submitted:') ? 'optimistic' : 'confirmed',
+        submissionId: record?.context.operationId, acceptance: /^(submitted|steered):/.test(message.id) ? 'optimistic' : 'confirmed',
         parts };
 }
 
@@ -346,7 +359,7 @@ function nativeAdmissionReceipt(state: NativeSnapshot, context: OperationContext
     if (state.queryReceipts?.some(row => row.id === context.operationId)) return {status: 'accepted', operationId: context.operationId, submissionRef: context.operationId};
     const receipt = state.submission;
     if (receipt?.id === context.operationId) {
-        if (receipt.status === 'accepted') return {status: 'accepted', operationId: context.operationId, submissionRef: receipt.turnId ?? receipt.id};
+        if (receipt.status === 'accepted') return {status: 'accepted', operationId: context.operationId, submissionRef: receipt.kind === 'steer' ? `steered:${receipt.id}` : receipt.turnId ?? receipt.id};
         if (receipt.status === 'rejected') return reject(context, receipt.code ?? 'NATIVE_REJECTED',
             receipt.code === 'HARNESS_SESSION_BUSY' ? t('chat.submission.occupied') : 'Native submission rejected');
     }
@@ -354,7 +367,7 @@ function nativeAdmissionReceipt(state: NativeSnapshot, context: OperationContext
 }
 
 function nativeCanSubmit(state: NativeSnapshot, controls: ConversationControls): boolean {
-    return !!(state.canQueue && controls.enqueue || state.canSend && !state.pending);
+    return !!(state.canSteer && controls.steer || state.canQueue && controls.enqueue || state.canSend && !state.pending);
 }
 
 function nativeUserOperation(record: OperationRecord): boolean {
@@ -372,11 +385,20 @@ function nativeSubmissionFailure(context: OperationContext, error: unknown, star
     return reject(context, safeCode, safeCode === 'HARNESS_SESSION_BUSY' ? t('chat.submission.occupied') : String(error));
 }
 
+/** Admission retires steering placeholders; only native items contribute historical user messages. */
+function nativeSteeringPreviews(state: NativeSnapshot, operations: OperationLedger, conversationId: string) {
+    const admitted = new Set(state.instructionQueue?.submissions?.filter(row => row.kind === 'steer' && row.turnId).map(row => row.id));
+    if (state.submission?.kind === 'steer' && state.submission.status === 'accepted') admitted.add(state.submission.id);
+    return operations.getSnapshot().filter(record => record.conversationId === conversationId
+        && (admitted.has(record.context.operationId) || record.status === 'accepted' && record.submissionRef?.startsWith('steered:')))
+        .map(record => ({operationId: record.context.operationId, message: null}));
+}
+
 function nativeReceipts(state: NativeSnapshot, operations: OperationLedger, conversationId: string): OperationReceipt[] {
-    const admitted = new Map<string, {id: string; turnId?: string; commandId?: string}>(
+    const admitted = new Map<string, {id: string; turnId?: string; commandId?: string; kind?: 'steer'}>(
         (state.instructionQueue?.submissions ?? state.instructionQueue?.acceptedIds.map(id => ({id})) ?? []).map(row => [row.id, row]));
     for (const query of state.queryReceipts ?? []) admitted.set(query.id, {id: query.id});
-    if (state.submission?.status === 'accepted') admitted.set(state.submission.id, {id: state.submission.id, turnId: state.submission.turnId});
+    if (state.submission?.status === 'accepted') admitted.set(state.submission.id, {id: state.submission.id, ...(state.submission.kind === 'steer' ? {} : {turnId: state.submission.turnId})});
     return operations.getSnapshot().filter(record => record.conversationId === conversationId).flatMap(record => {
         if (record.kind === 'cancel') {
             const receipt = nativeControlReceipt(state, record.context.operationId, typeof record.input === 'string' ? record.input : undefined);
@@ -384,8 +406,8 @@ function nativeReceipts(state: NativeSnapshot, operations: OperationLedger, conv
         }
         if (!['send', 'command'].includes(record.kind) || !admitted.has(record.context.operationId)) return [];
         const submission = admitted.get(record.context.operationId)!;
-        const user = submission.turnId && state.messages.find(message => message.role === 'user' && message.turnId === submission.turnId);
-        return [{status: 'accepted' as const, operationId: record.context.operationId, submissionRef: submission.id,
+        const user = submission.kind !== 'steer' && !record.submissionRef?.startsWith('steered:') && submission.turnId && state.messages.find(message => message.role === 'user' && message.turnId === submission.turnId);
+        return [{status: 'accepted' as const, operationId: record.context.operationId, submissionRef: (submission.kind === 'steer' || state.submission?.id === submission.id && state.submission.kind === 'steer') ? `steered:${submission.id}` : record.submissionRef ?? submission.id,
             ...(user ? {observedUserMessageId: user.id} : {})}];
     });
 }

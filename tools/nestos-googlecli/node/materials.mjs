@@ -7,9 +7,22 @@ export function mailMaterial(message) {
     const headers = message.payload.headers ?? [];
     const header = name => text(headers.find(entry => entry.name?.toLowerCase() === name)?.value).replace(/[\r\n]+/g, ' ');
     const body = mailBody(message.payload);
-    if (!body.trim()) throw fail('GOOGLE_MAIL_BODY_UNAVAILABLE');
+    const bodyStatus = body.trim() ? 'available' : emptyBodyStatus(message.payload);
     return {id: String(message.id), content: ['Source: Gmail', 'Message-ID: ' + message.id,
-        ...['from', 'to', 'cc', 'date', 'subject'].map(name => name + ': ' + header(name)), '', body].join('\n')};
+        ...['from', 'to', 'cc', 'date', 'subject'].map(name => name + ': ' + header(name)),
+        ...(bodyStatus === 'available' ? [] : ['Body-Status: ' + bodyStatus]), '', body || '[No text body; file attachments are not collected.]'].join('\n')};
+}
+function emptyBodyStatus(part, depth = 0) {
+    if (depth > 20) throw fail('GOOGLE_MAIL_MIME_LIMIT');
+    if (part.filename) return 'attachments-only';
+    if (part.mimeType?.startsWith('multipart/')) {
+        const statuses = (part.parts ?? []).map(child => emptyBodyStatus(child, depth + 1));
+        return statuses.includes('attachments-only') ? 'attachments-only' : 'empty';
+    }
+    if (!['text/plain', 'text/html'].includes(part.mimeType)) throw fail('GOOGLE_MAIL_BODY_UNSUPPORTED');
+    if (part.body?.attachmentId && !part.body.data) throw fail('GOOGLE_MAIL_BODY_UNAVAILABLE');
+    if (!part.body || !('data' in part.body) && part.body.size !== 0) throw fail('GOOGLE_MAIL_BODY_UNAVAILABLE');
+    return 'empty';
 }
 function mailBody(part, depth = 0) {
     if (depth > 20) throw fail('GOOGLE_MAIL_MIME_LIMIT');

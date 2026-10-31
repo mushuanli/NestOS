@@ -48,15 +48,16 @@ export class RemoteSessionProjection {
         let filterProfile: string | undefined;
         if (agentId) {
             let target: unknown;
-            try {target = agentId.startsWith('remote:') ? JSON.parse(agentId.slice(7)) : null;} catch {target = null;}
-            if (!Array.isArray(target) || target.length !== 2 || target[0] !== root.connectionId || typeof target[1] !== 'string')
+            try {target = agentId.startsWith('remote:') ? JSON.parse(decodeURIComponent(agentId.slice(7))) : null;} catch {target = null;}
+            if (!Array.isArray(target) || ![2, 3].includes(target.length) || target[0] !== root.connectionId
+                || target.some(id => typeof id !== 'string' || !id) || target.length === 3 && target[1] !== root.serverProjectId)
                 return {sources: [], actions: [], async close() {}};
-            filterProfile = target[1];
+            filterProfile = target[target.length - 1] as string;
         }
         let client: import('@itookit/nestos-node-driver').HarnessClient | undefined;
         try {
             client = await remote.projectHarness(project.project.id, {timeoutMs: 3000});
-            const profiles = (await client.profiles({timeoutMs: 3000})).profiles.filter(profile => profile.projectRuntime && (!filterProfile || profile.id === filterProfile));
+            const profiles = (await client.profiles({timeoutMs: 3000})).profiles.filter(profile => profile.projectRuntime && (!filterProfile || profile.id === filterProfile || profile.aliases?.includes(filterProfile)));
             if (root.serverId) await this.projects!.favorites.list(project.project.id);
             const active = client;
             return {sources: profiles.filter(profile => profile.capabilities.history).map(profile => ({id: 'remote:' + profile.id,

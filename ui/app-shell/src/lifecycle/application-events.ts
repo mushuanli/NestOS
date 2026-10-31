@@ -76,6 +76,7 @@ export class ShellApplicationEvents {
 export function workspaceConsumesEvent(kind: string | undefined, event: ApplicationEventFact): boolean {
     if (event.type === 'runtime.reset' || event.type === 'source.reset') return true;
     if (kind === 'chat') return /^(?:session\.|task\.|repository\.|node:)/.test(event.type);
+    if (kind === 'kanban') return event.type.startsWith('kanban.');
     if (kind === 'twin') return event.type === 'scanner.changed';
     return kind !== 'toolbox' && event.type.startsWith('node:');
 }

@@ -474,3 +474,32 @@ it('uses a display-only path in compact directory navigation and restores docume
         f.tabs.activate(dir.id); expect(label().textContent).toBe('所有项目 / 个人 / 文件');
     } finally { await f.tabs.destroy(); }
 });
+
+it('reveals activated tabs horizontally, preserves manual browsing on metadata updates and cancels retired work', async () => {
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {frames.set(++frameId, callback); return frameId;});
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(id => {frames.delete(id);});
+    const flush = () => {for (const [id, callback] of [...frames]) {frames.delete(id); callback(0);}};
+    const f = tabsFixture(), bar = f.container.querySelector<HTMLElement>('.workbench-tabs__bar')!;
+    Object.defineProperty(bar, 'clientWidth', {value: 100});
+    const scroll = vi.fn((options: ScrollToOptions) => {bar.scrollLeft += options.left ?? 0;});
+    bar.scrollBy = scroll;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+        const index = ['a', 'b', 'c'].indexOf(this.dataset.tabId ?? '');
+        return new DOMRect(index < 0 ? 0 : index * 70 - bar.scrollLeft, 0, index < 0 ? 100 : 70, 40);
+    });
+    try {
+        await f.tabs.open('a', 'First', false); await f.tabs.open('b', 'Second', false);
+        const last = await f.tabs.open('c', 'Last', false);
+        f.container.scrollTop = 25; last.panel.scrollTop = 50; flush();
+        expect(scroll).toHaveBeenLastCalledWith({left: 110, behavior: 'smooth'});
+        expect(f.container.scrollTop).toBe(25); expect(last.panel.scrollTop).toBe(50);
+        scroll.mockClear(); bar.scrollLeft = 0;
+        f.tabs.title('b', 'Background title'); flush(); expect(scroll).not.toHaveBeenCalled();
+        f.tabs.activate('c'); flush(); expect(bar.scrollLeft).toBe(110);
+        f.tabs.activate('a'); flush(); expect(bar.scrollLeft).toBe(0);
+        scroll.mockClear(); f.tabs.activate('c'); await f.tabs.destroy(); flush();
+        expect(scroll).not.toHaveBeenCalled(); expect(frames.size).toBe(0);
+    } finally {await f.tabs.destroy();}
+});

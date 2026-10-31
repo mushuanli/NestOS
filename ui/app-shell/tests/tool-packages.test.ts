@@ -163,7 +163,7 @@ it('lets a user save enablement and ordinary defaults while keeping the guide vi
 it('merges package versions, reads run history and toggles only user settings', async () => {
     let enabled = false;
     const configure = vi.fn(async (_id, _version, input) => {enabled = input.enabled;});
-    const history = vi.fn(async () => [{id: 'run', toolId: 'document.inspect', version: '2', startedAt: 1000, durationMs: 120, status: 'succeeded' as const}]);
+    const history = vi.fn(async () => [{id: 'run', toolId: 'document.inspect', version: '2', startedAt: 1000, durationMs: 120, status: 'succeeded' as const, collection: {version: 1 as const, complete: false, processed: 12, batchCount: 0}}]);
     const f = setup({toolPackages: {list: async () => [{...available, version: '0.1.0', status: 'available'},
         {...available, status: 'registered', configuration: {enabled, defaults: {}, tools: []}}, {...available, version: '2.0.0', status: 'available'}], ensure: vi.fn(), configure, history}});
     await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-toggle]')).not.toBeNull());
@@ -174,6 +174,9 @@ it('merges package versions, reads run history and toggles only user settings', 
     f.dialog.querySelector<HTMLButtonElement>('[data-package-history]')!.click();
     await vi.waitFor(() => expect(history).toHaveBeenCalledWith(available.id, available.version));
     await vi.waitFor(() => expect(f.dialog.textContent).toContain('120 ms'));
+    expect(f.dialog.textContent).toContain('本批归档 0 项');
+    expect(f.dialog.textContent).toContain('本轮累计处理 12 项');
+    expect(f.dialog.textContent).toContain('待继续同步');
     expect(f.dialog.textContent).toContain('0.1.0'); expect(f.dialog.textContent).toContain('2.0.0');
 });
 it('keeps personal package enablement independent of workflow dependency checks', async () => {

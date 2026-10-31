@@ -11,6 +11,7 @@ export interface ToolRunRecord {
     id: string; toolId: string; version: string; startedAt: number; finishedAt?: number; durationMs?: number;
     status: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'unknown'; code?: string;
     sessionId?: string; taskId?: string; operationId?: string;
+    collection?: import('../digital-twin/scanner').TwinCollectionProgress;
 }
 export interface ToolPackageInfo {
     canUninstall?: boolean;

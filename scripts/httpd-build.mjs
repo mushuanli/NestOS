@@ -1,6 +1,6 @@
 import {isHttpBuildSource} from './build-source-policy.mjs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { copyLibrarySnapshot, copyNativeRuntimes, copySource, freezeWorkspaceDependencies, sourceFiles, sourceFingerprint, verifyRelease } from './httpd-runtime.mjs';
@@ -9,6 +9,32 @@ import state from './local-library-state.mjs';
 import { preparedSnapshot } from './local-library-plan.mjs';
 
 const run = (command, args, cwd, env = process.env) => execFileSync(command, args, {cwd, env, stdio: 'inherit'});
+/** Run a command while keeping its output readable for failure classification. */
+const runCaptured = (command, args, cwd, env) => {
+    const result = spawnSync(command, args, {cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    if (result.error) throw result.error;
+    return {status: result.status, output: `${result.stdout ?? ''}${result.stderr ?? ''}`};
+};
+export const isOfflineStoreMiss = output => /ERR_PNPM_NO_OFFLINE_(?:META|TARBALL)|is missing from the store but cannot download it in offline mode|Failed to resolve .+ in package mirror/.test(output);
+/** Package specs named by pnpm when the offline store cannot resolve them. */
+export const missingOfflinePackages = output => [...new Set([
+    ...[...output.matchAll(/registry\.npmjs\.org\/((?:@[^/\s]+\/)?[^/\s:]+)\/-\//g)].map(match => match[1]),
+    ...[...output.matchAll(/Failed to resolve (\S+) in package mirror/g)].map(match => match[1])
+])];
+const installFailure = status => Object.assign(new Error(`Dependency install failed: pnpm exited with code ${status}.`), {code: 'HTTP_BUILD_INSTALL_FAILED'});
+/** Reuse the local pnpm store first; fetch only the packages it cannot resolve. */
+export function installDependencies(source, env, {operationId = 'unknown', log = console.log, runCommand = runCaptured} = {}) {
+    const offline = runCommand('pnpm', ['install', '--offline', '--ignore-scripts', '--no-frozen-lockfile'], source, env);
+    if (offline.status === 0) return;
+    if (!isOfflineStoreMiss(offline.output)) throw installFailure(offline.status);
+    const packages = missingOfflinePackages(offline.output).join(',') || 'unknown';
+    log(`[HTTPBuild] operationId=${operationId} stage=install result=store-miss packages=${packages} retry=prefer-offline`);
+    const retried = runCommand('pnpm', ['install', '--prefer-offline', '--ignore-scripts', '--no-frozen-lockfile'], source, env);
+    if (retried.status !== 0) throw installFailure(retried.status);
+    log(`[HTTPBuild] operationId=${operationId} stage=install result=store-warmed packages=${packages}`);
+}
 const inputsAt = root => {
     const files = sourceFiles(root);
     const toolPackages = new Set(files.filter(file => /^tools\/[^/]+\/package\.json$/.test(file)).map(file => file.slice(0, -'/package.json'.length)));
@@ -86,7 +112,7 @@ function workspace(context) {
     stage('install', () => {
         if (hit) writeFileSync(path.join(source, 'pnpm-lock.yaml'), readFileSync(path.join(directory, 'installed-lock.yaml')));
         else {
-            run('pnpm', ['install', '--offline', '--ignore-scripts', '--no-frozen-lockfile'], source, env);
+            installDependencies(source, env, {operationId: context.operationId});
             writeFileSync(path.join(directory, 'installed-lock.yaml'), readFileSync(path.join(source, 'pnpm-lock.yaml')));
             writeFileSync(path.join(directory, 'installed.json'), JSON.stringify({key: dependencyKey,
                 lock: fileHash(path.join(directory, 'installed-lock.yaml')), modules: fileHash(path.join(source, 'node_modules/.modules.yaml'))}));
@@ -105,7 +131,7 @@ function assertDependencies(directory, snapshot, visited = new Set()) {
 }
 function deployment(context, source, staging) {
     context.stage('deploy', () => {
-        run('pnpm', ['--config.package-import-method=copy', '--config.offline=true', '--ignore-scripts', '--filter', '@itookit/http-app', 'deploy', '--prod', '--legacy', staging], source, context.env);
+        run('pnpm', ['--config.package-import-method=copy', '--config.prefer-offline=true', '--ignore-scripts', '--filter', '@itookit/http-app', 'deploy', '--prod', '--legacy', staging], source, context.env);
         freezeWorkspaceDependencies(staging); copyNativeRuntimes(path.join(context.root, 'apps/http-app'), staging);
         run(process.execPath, [path.join(context.root, 'scripts/check-node-native-runtime.mjs'), staging], staging);
         for (const entry of readdirSync(staging)) if (!['package.json', 'node_modules'].includes(entry)) rmSync(path.join(staging, entry), {recursive: true, force: true});

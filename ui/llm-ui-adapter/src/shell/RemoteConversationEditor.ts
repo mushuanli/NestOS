@@ -1,4 +1,3 @@
-import {NativeExecutionNotice} from '../components/NativeExecutionNotice';
 import {nativeCatalogNotice} from '../independent/native-catalog';
 import {awaitNativeAdmission} from '../independent/native-admission';
 import {NativeInstructionQueuePanel} from '../components/NativeInstructionQueuePanel';
@@ -18,6 +17,7 @@ import type { WorkspaceHandoff } from './drafts/workspace-handoff';
 import {isCommandInput} from '@itookit/llm-ui';
 import {resolveNativeCommand, submitNativeCommand} from '../independent/native-command';
 import {nativeBranchCommand, withNativeBranchCommands} from '../commands/native-branch-command';
+import {NativeExecutionNotice} from '../components/NativeExecutionNotice';
 
 const observationLog = createModuleLogger('native-observation');
 
@@ -82,6 +82,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
             } : undefined}, {
             commandOutputs: {readCommandOutput: this.service.readCommandOutput?.bind(this.service), loadCommandOutput: this.service.loadCommandOutput?.bind(this.service)},
+            refreshMetrics: this.service.refreshMetrics?.bind(this.service),
             instructionQueue: !!this.service.enqueue,
             send: (text, files) => this.sendText(text, files),
             flushDraft: () => this.flushPendingSave(),
@@ -536,7 +537,15 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         const message = error instanceof Error ? error.message : t('harness.failed');
         this.view.setStatus(t('harness.updateFailed', {message}));
     }
-    async destroy(preserveInput = false) { if (this.closed) return; this.executionNotice?.destroy(); this.cancelPendingRender(); await this.flushPendingSave(); this.closed = true; this.admissions.abort(); this.instructionQueuePanel?.destroy(); this.historyBranches?.destroy(); this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions); await this.service.close().catch(error => {if (!this.recoveringView) throw error;}); await this.tail.catch(() => {}); await this.renderTail.catch(() => {}); this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
+    async destroy(preserveInput = false) {
+        if (this.closed) return;
+        this.executionNotice?.destroy(); this.cancelPendingRender(); await this.flushPendingSave();
+        this.closed = true; this.admissions.abort(); this.instructionQueuePanel?.destroy(); this.historyBranches?.destroy();
+        this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions);
+        await this.service.close().catch(error => {if (!this.recoveringView) throw error;});
+        await this.tail.catch(() => {}); await this.renderTail.catch(() => {}); this.branches?.destroy();
+        await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren();
+    }
     cancelPendingRender(): void {
         this.executionNotice?.setActive(false);
         ++this.branchRevision;

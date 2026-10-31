@@ -33,7 +33,8 @@ test('reports the target-relative directory and cwd without logging query, messa
     const result = await collectGoogle('gmail', {...args, resource: 'mail'}, {...f.context, cwd: '/workspace'}, f.connections, f.fetcher);
     const event = JSON.parse(f.logs.at(-1));
     assert.equal(event.directory, result.directory); assert.equal(event.cwd, '/workspace');
-    assert.equal(event.count, 1); assert.equal(event.stage, 'checkpoint-commit'); assert.equal(event.result, 'success');
+    assert.equal(event.count, 1); assert.equal(event.complete, true); assert.equal(event.processed, 1);
+    assert.equal(result.collection.batchCount, 1); assert.equal(event.stage, 'checkpoint-commit'); assert.equal(event.result, 'success');
     assert.doesNotMatch(f.logs.join(''), /newer_than|TypeScript|Private subject|private-/);
 });
 test('paginates Gmail, stores stable evidence, retains archived messages and keeps diagnostics private', async () => {
@@ -131,4 +132,52 @@ test('uses the connection mail directory when a Gmail tool omits directory and r
     const {directory, ...input} = args;
     const result = await collectGoogle('gmail', input, f.context, f.connections, f.fetcher);
     assert.match(result.directory, /^mail-inbox\/gmail-[a-f0-9]{24}$/);
+});
+
+test('fetches detached text bodies without downloading named attachments', async () => {
+    const f = fixture(url => {
+        if (url.pathname.endsWith('/messages')) return Response.json({messages: [{id: 'a'}]});
+        if (url.pathname.endsWith('/attachments/text-body')) return Response.json({data: Buffer.from('Detached text body').toString('base64url'), size: 18});
+        return Response.json({id: 'a', payload: {mimeType: 'multipart/mixed', parts: [
+            {mimeType: 'text/plain', body: {attachmentId: 'text-body', size: 18}},
+            {mimeType: 'text/plain', filename: 'private.txt', body: {attachmentId: 'never-download', size: 10}},
+        ]}});
+    });
+    const result = await collectGoogle('gmail', {...args, resource: 'mail'}, f.context, f.connections, f.fetcher);
+    assert.equal(result.count, 1); assert.equal(result.complete, true);
+    assert.match([...f.files.values()].find(value => value.includes('Source: Gmail')), /Detached text body/);
+    assert.ok(f.calls.some(url => url.includes('/attachments/text-body')));
+    assert.ok(!f.calls.some(url => url.includes('never-download')));
+});
+test('archives empty and attachment-only messages explicitly, while rejecting missing or unsupported bodies', () => {
+    for (const body of [{data: '', size: 0}, {size: 0}]) {
+        assert.match(mailMaterial({id: 'empty', payload: {mimeType: 'text/plain', body}}).content, /Body-Status: empty/);
+    }
+    assert.match(mailMaterial({id: 'files', payload: {mimeType: 'multipart/mixed', parts: [
+        {mimeType: 'application/pdf', filename: 'private.pdf', body: {attachmentId: 'file'}}]}}).content, /Body-Status: attachments-only/);
+    assert.throws(() => mailMaterial({id: 'missing', payload: {mimeType: 'text/plain', body: {size: 42}}}), /GOOGLE_MAIL_BODY_UNAVAILABLE/);
+    assert.throws(() => mailMaterial({id: 'encrypted', payload: {mimeType: 'application/pkcs7-mime'}}), /GOOGLE_MAIL_BODY_UNSUPPORTED/);
+});
+test('keeps the checkpoint unchanged when detached text cannot be read', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]})
+        : url.pathname.includes('/attachments/') ? Response.json({error: {message: 'PRIVATE_ERROR'}}, {status: 403})
+        : Response.json({id: 'a', payload: {mimeType: 'text/plain', body: {attachmentId: 'body', size: 10}}}));
+    await assert.rejects(collectGoogle('gmail', args, f.context, f.connections, f.fetcher), /GOOGLE_MAIL_BODY_READ_PERMISSION_DENIED/);
+    assert.ok(![...f.files.keys()].some(key => key.endsWith('.sync.json')));
+    assert.doesNotMatch(f.logs.join(''), /PRIVATE_ERROR|private-/);
+    assert.ok(f.logs.some(line => JSON.parse(line).mimeType === 'text/plain'));
+});
+test('does not let an empty message block other messages in the batch', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'empty'}, {id: 'full'}]})
+        : Response.json(url.pathname.endsWith('/empty') ? {id: 'empty', payload: {mimeType: 'text/plain', body: {size: 0}}} : message('full')));
+    const result = await collectGoogle('gmail', {...args, resource: 'mail'}, f.context, f.connections, f.fetcher);
+    assert.equal(result.count, 2); assert.equal(result.complete, true);
+    assert.ok([...f.files.values()].some(value => value.includes('Body-Status: empty')));
+});
+test('refuses oversized detached text before fetching and does not advance the checkpoint', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]})
+        : Response.json({id: 'a', payload: {mimeType: 'text/plain', body: {attachmentId: 'oversized', size: 128 * 1024 + 1}}}));
+    await assert.rejects(collectGoogle('gmail', args, f.context, f.connections, f.fetcher), /GOOGLE_MATERIAL_LIMIT/);
+    assert.ok(!f.calls.some(url => url.includes('/attachments/')));
+    assert.ok(![...f.files.keys()].some(key => key.endsWith('.sync.json')));
 });

@@ -49,3 +49,24 @@ export {TWIN_COLLECTION_WORKSPACES} from './digital-twin/scanner';
 export type {TwinCollectionExecutor, TwinCollectionWorkspace, TwinCollectionProgress, TwinScannerTool, TwinScannerExecutor, TwinScannerInput, TwinWorkspaceView} from './digital-twin/scanner';
 export { CLOZE_SRS_PATH, CLOZE_DOCUMENT_KEY, clozeDocumentPrefix, parseClozeStorageKey } from './presets/cloze-storage';
 export type {ClozeDocumentRecord} from './presets/cloze-storage';
+
+export type { KanbanActor, KanbanEstimate, KanbanPolicy, KanbanParticipant, KanbanAssignment, KanbanItem, KanbanBoard, KanbanBoardSummary, KanbanEvent, KanbanCommand, KanbanRequest, KanbanService } from './kanban/contracts';
+
+export {DEFAULT_KANBAN_SCAN_POLICY} from './kanban/discovery';
+export type {KanbanSourceRef, KanbanScanSession, KanbanScanText, KanbanDiscoveryChange, KanbanDiscoveryBatch, KanbanScanConnection, KanbanScanPolicy, KanbanScanInput} from './kanban/discovery';
+
+export type {KanbanPlanning, KanbanItemSummary, KanbanArchivedItem, KanbanItemQuery, KanbanItemPage, KanbanOverview} from './kanban/planning';
+
+export {DEFAULT_KANBAN_WORK_TYPES} from './kanban/configuration';
+export type {KanbanPrincipal, KanbanMember, KanbanWorkType, KanbanColumn, KanbanNotificationPolicy} from './kanban/configuration';
+export type {KanbanBoardInput} from './kanban/contracts';
+export type {KanbanExternalReference} from './kanban/configuration';
+
+export type {KanbanAmendment, KanbanText, KanbanProjectRecord, KanbanRecordInput, KanbanRecordSummary, KanbanRecordQuery, KanbanRecordPage} from './kanban/context';
+
+export type {KanbanDiscoveryResult} from './kanban/discovery';
+
+export type {KanbanSuggestionKind, KanbanSuggestionQuery, KanbanSuggestion, KanbanSuggestionPage} from './kanban/suggestions';
+
+export {kanbanReference} from './kanban/references';
+export type {KanbanReferenceTarget} from './kanban/references';

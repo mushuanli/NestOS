@@ -2,6 +2,7 @@ import {fail} from './client.mjs';
 import {mailMaterial, archived} from './materials.mjs';
 import {pageState, nextPage} from './sync-batch.mjs';
 import {digest} from './sync-store.mjs';
+import {resolveMailBody} from './mail-body.mjs';
 const base = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
 export async function mailSync(client, args, context, directory, saved) {
@@ -38,7 +39,11 @@ async function mailEntry(client, args, context, directory, entry, state) {
     try {message = await client(base + '/messages/' + encodeURIComponent(entry.id) + '?format=full', 'MAIL_READ');}
     catch (error) {if (error.code === 'GOOGLE_MAIL_READ_NOT_FOUND') return null; throw error;}
     if (state.mode === 'history' && !await archived(context.vfs, directory, entry.id) && !await matches(client, args.query, message)) return null;
-    return mailMaterial(message);
+    try {return mailMaterial(await resolveMailBody(client, message));}
+    catch (error) {
+        await context.report?.('failure', /^(GOOGLE_)[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'GOOGLE_MAIL_BODY_FAILED', undefined, {mimeType: /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(message.payload?.mimeType ?? '') ? message.payload.mimeType : 'unknown'});
+        throw error;
+    }
 }
 function messageIds(result) {
     if (result.messages !== undefined && !Array.isArray(result.messages)) throw fail('GOOGLE_MAIL_INVALID_RESPONSE');

@@ -618,7 +618,7 @@ export class ProjectRemoteMountService {
             const result = await run(); this.clearIssue(projectId, `harness.${method}`, profileId); return result;
         } catch (error) {
             const failure = this.recordFailure(error, {stage: `harness.${method}`, projectId, connectionId, profileId, operationId, durationMs: Date.now() - started,
-                ...(['resume', 'turn', 'read', 'inspect'].includes(method) && typeof args[1] === 'string' ? {sessionId: args[1]} : {})});
+                ...(['resume', 'turn', 'steer', 'rename', 'read', 'inspect'].includes(method) && typeof args[1] === 'string' ? {sessionId: args[1]} : {})});
             if (['profiles', 'list', 'sessions'].includes(method)) {
                 if (this.setIssue(projectId, failure)) for (const listener of this.listeners) listener();
             }

@@ -23,7 +23,7 @@ export const TWIN_COLLECTION_WORKSPACES = ['emails', 'notes', 'home'] as const;
 export type TwinCollectionWorkspace = typeof TWIN_COLLECTION_WORKSPACES[number];
 export type TwinCollectionExecutor = (TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>}) & {destination?: TwinCollectionWorkspace};
 /** Tool-owned cursors stay private; the platform only observes batch completion and work counts. */
-export interface TwinCollectionProgress {version: 1; complete: boolean; processed: number}
+export interface TwinCollectionProgress {version: 1; complete: boolean; processed: number; batchCount?: number}
 export interface TwinScannerTool {
     hidden?: boolean;
     presentation?: Pick<import('../ports/flow-installation').ToolPackageConfiguration['tools'][number], 'parameters' | 'advanced' | 'optionLabels'>;

@@ -165,3 +165,72 @@ it('continues native queue editing and exact cancellation through RPC while the 
         expect(saved?.controls?.[0]).toMatchObject({requestId: 'stop-rpc', receipt: 'accepted'}); expect(paid).toBe(1);
     } finally {finish?.({turnId: 'actual-turn'}); off?.(); await notifications; await controls.close(); await client.close(); await server.close();}
 });
+
+it('carries active-turn steering and its exact receipt through the application RPC capability table', async () => {
+    let server!: RpcPeer, saved: HarnessRecovery | undefined;
+    const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
+    const session = {id: 's', title: 'Native', cwd: null, status: 'active', activeTurnId: 'active', updatedAt: 1, resumable: true, owned: true};
+    const profile: HarnessProfile = {id: 'native', kind: 'fixture', workspaces: [{id: 'p'}], capabilities: {
+        history: true, create: true, resume: true, interrupt: true, interactions: true, steer: true,
+    }};
+    const harness = {read: vi.fn(async () => ({session, turns: []})), eventSnapshot: vi.fn(async () => ({epoch: 'events', cursor: 0, gap: false, events: [], requests: []})),
+        steer: vi.fn(async () => ({turnId: 'active'})), subscribe: () => () => {}, close: vi.fn(async () => {})};
+    const source = new HarnessConversation(harness as unknown as HarnessClient, profile, 'p', 's', true, {
+        epoch: 'e', load: async () => saved, save: async value => {saved = structuredClone(value);},
+    });
+    const controls = observeConversation(source);
+    try {
+        await controls.read(); const peer = client.decode(await server.expose(controls)) as typeof controls;
+        expect(await peer.steer!('Additional context', 'active', [], 'context')).toMatchObject({active: true, submission: {id: 'context', kind: 'steer', status: 'accepted', turnId: 'active'}});
+        expect(harness.steer).toHaveBeenCalledWith('native', 's', 'active', 'Additional context', expect.objectContaining({epoch: 'e', requestId: 'context'}));
+        await expect(peer.steer!('Wrong target', 'old', [], 'stale')).rejects.toMatchObject({code: 'ECONFLICT', outcome: 'not-committed'});
+        expect(harness.steer).toHaveBeenCalledOnce();
+    } finally {await controls.close(); await client.close(); await server.close();}
+});
+
+it('reads native metrics through RPC while a turn submission is suspended without consuming its draft', async () => {
+    let server!: RpcPeer, finish!: (value: {turnId: string}) => void;
+    const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
+    const session = {id: 's', title: 'Native', cwd: null, status: 'idle', updatedAt: 1, resumable: true, owned: true};
+    const profile: HarnessProfile = {id: 'native', kind: 'fixture', workspaces: [{id: 'p'}], capabilities: {
+        history: true, create: true, resume: true, interrupt: true, interactions: true, metrics: true,
+    }};
+    const metrics = {observedAt: 1793440000000, contextWindow: {usedTokens: 1000, limitTokens: 200000}};
+    const harness = {read: vi.fn(async () => ({session, turns: []})), eventSnapshot: vi.fn(async () => ({epoch: 'events', cursor: 0, gap: false, events: [], requests: []})),
+        metrics: vi.fn(async () => metrics), turn: vi.fn(() => new Promise<{turnId: string}>(resolve => {finish = resolve;})), subscribe: () => () => {}, close: vi.fn(async () => {})};
+    const source = new HarnessConversation(harness as unknown as HarnessClient, profile, 'p', 's', true, {epoch: 'e', load: async () => undefined, save: async () => {}});
+    const controls = observeConversation(source);
+    try {
+        await controls.read(); const peer = client.decode(await server.expose(controls)) as typeof controls;
+        const sending = peer.send('Original input', [], undefined, 'send');
+        await vi.waitFor(() => expect(harness.turn).toHaveBeenCalledOnce());
+        await peer.saveDraft('Newer draft');
+        expect(await peer.refreshMetrics!()).toMatchObject({metrics, draft: 'Newer draft', pending: true});
+        expect(harness.metrics).toHaveBeenCalledWith('native', 's', expect.objectContaining({requestId: expect.any(String)}));
+        finish({turnId: 'turn'}); await sending;
+        expect(peer.snapshot().draft).toBe('Newer draft');
+    } finally {await controls.close(); await client.close(); await server.close();}
+});
+
+it('delivers an automatic queued supplement through RPC while preserving the active turn and composer draft', async () => {
+    let server!: RpcPeer, saved: HarnessRecovery = {sessionId: 's'};
+    const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
+    const session = {id: 's', title: 'Native', cwd: null, status: 'active', activeTurnId: 'active', updatedAt: 1, resumable: true, owned: true};
+    const profile: HarnessProfile = {id: 'native', kind: 'fixture', workspaces: [{id: 'p'}], capabilities: {
+        history: true, create: true, resume: true, interrupt: true, interactions: true, steer: true,
+    }};
+    const harness = {read: vi.fn(async () => ({session, turns: []})), eventSnapshot: vi.fn(async () => ({epoch: 'events', cursor: 0, gap: false, events: [], requests: []})),
+        steer: vi.fn(async () => ({turnId: 'native-next', targetTurnId: 'active'})), turn: vi.fn(), subscribe: () => () => {}, close: vi.fn(async () => {})};
+    const source = new HarnessConversation(harness as unknown as HarnessClient, profile, 'p', 's', true, {
+        epoch: 'e', load: async () => saved, save: async value => {saved = structuredClone(value);},
+    });
+    const controls = observeConversation(source);
+    try {
+        await controls.read(); const peer = client.decode(await server.expose(controls)) as typeof controls;
+        await peer.enqueue!('Queued supplement', [], undefined, 'supplement', 'auto'); await peer.saveDraft('Keep this newer input');
+        const result = await peer.refresh();
+        expect(result).toMatchObject({draft: 'Keep this newer input', instructionQueue: {items: [], submissions: [{id: 'supplement', kind: 'steer', turnId: 'native-next'}]}});
+        expect(harness.steer).toHaveBeenCalledWith('native', 's', 'active', 'Queued supplement', expect.objectContaining({requestId: 'supplement'}));
+        expect(harness.turn).not.toHaveBeenCalled();
+    } finally {await controls.close(); await client.close(); await server.close();}
+});

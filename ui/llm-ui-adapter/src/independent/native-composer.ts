@@ -20,18 +20,20 @@ export class NativeComposerCapabilities {
     private commandRevision = 0;
     private retryAt = 0;
     private failures = 0;
+    private modelScope?: string;
     private models: ConversationModelCatalog = {models: []};
     private commands: ConversationSlashCommand[] = [];
     constructor(private readonly controls: ConversationControls, private readonly report?: (error: unknown) => void) {}
     load(state: ConversationSnapshot, force = false): Promise<boolean> {
         const scope = JSON.stringify([state.sessionId, state.supportsModels, state.supportsSlashCommands, state.observation?.scope]);
         const key = JSON.stringify([scope, state.slashCommands, state.commandCatalogObservation]);
+        if (key === this.key && this.pending) return this.pending;
         if (!force && key === this.key && (this.pending || Date.now() < this.retryAt || !this.failures)) return this.pending ?? Promise.resolve(false);
-        if (scope !== this.scope) {this.models = {models: []}; this.commands = []; this.failures = 0; this.retryAt = 0; ++this.commandRevision;}
+        if (scope !== this.scope) {if (!state.supportsModels) {this.models = {models: []}; this.modelScope = undefined;} this.commands = []; this.failures = 0; this.retryAt = 0; ++this.commandRevision;}
         this.scope = scope; this.key = key; const generation = ++this.generation;
         const work = this.read(state).then(([models, commands]) => {
             if (generation !== this.generation) return false;
-            if (models.status === 'fulfilled') this.models = models.value;
+            if (models.status === 'fulfilled') {this.models = models.value; this.modelScope = scope;}
             else this.report?.(models.reason);
             if (commands.status === 'fulfilled') this.setCommands(commands.value);
             else this.report?.(commands.reason);
@@ -59,11 +61,26 @@ export class NativeComposerCapabilities {
     selectors(): readonly SelectorView[] | undefined {
         if (!this.models.models.length) return;
         const auto = {id: '', label: t('chatSettings.followDefault')};
+        const current = this.models.models.find(model => model.id === this.models.current?.modelId);
+        const follow = [t('harness.followNativeSettings'), current?.label].filter(Boolean).join(' · ');
         return [{id: 'modelId', placement: 'end', label: t('chatInput.model'), value: '', choices: [
-            {id: '', label: t('harness.followNativeSettings')}, ...this.models.models.map(model => ({id: model.id, label: model.label}))]},
+            {id: '', label: follow}, ...this.models.models.map(model => ({id: model.id, label: model.label}))]},
         {id: 'reasoningEffort', placement: 'more', label: t('harness.reasoning'), value: '', choices: [auto],
             variants: {selectorId: 'modelId', values: Object.fromEntries(this.models.models.map(model => [model.id,
                 {value: '', choices: [auto, ...model.reasoningEfforts.map(effort => ({id: effort.id, label: effort.label}))]}]))}}];
+    }
+    canSteerSelection(values?: Readonly<Record<string, string>>): boolean {
+        if (!values?.modelId && !values?.reasoningEffort) return true;
+        if (this.pending || this.modelScope !== this.scope) return false;
+        try {
+            const selected = this.selection(values), current = this.models.current;
+            return !!selected && !!current && selected.modelId === current.modelId
+                && (selected.reasoningEffort === undefined || selected.reasoningEffort === current.reasoningEffort);
+        } catch {return false;}
+    }
+    submissionMode(state: ConversationSnapshot, values?: Readonly<Record<string, string>>): 'steer' | 'queue' | 'send' {
+        if (state.canSteer && this.controls.steer && this.canSteerSelection(values)) return 'steer';
+        return state.canQueue && this.controls.enqueue && (!state.canSend || state.active) ? 'queue' : 'send';
     }
     catalog(state: ConversationSnapshot): CommandCatalog {
         return {source: {id: 'harness', label: t('harness.remoteAgents')}, commands: this.commands.map(command => ({

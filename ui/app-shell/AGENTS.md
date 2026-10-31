@@ -1,5 +1,7 @@
 # @itookit/app-shell
 
+桌面文件标签的当前项使用顶部 3px 强调色指示条、主题适配的强调色背景和加粗标题；悬停不覆盖当前项标识。键盘焦点保持独立轮廓，Windows forced-colors 模式使用系统色边框和轮廓辨识当前项，不依赖背景色。未保存状态继续使用独立圆点。
+
 用户事件由 lifecycle/application-events 装配每浏览器独立游标；baseline 在工作区快照加载前获取，首屏后补读。事件仅使对应工作区快照失效，不重放命令、不标记通知已读；隐藏视图记 dirty，重新显示时刷新原目录/导航并保留编辑器草稿。焦点、在线、可见性恢复及可见窗口低频核对补偿漏提示，恢复替换 View 和销毁必须关闭 feed。新工作区装配期间的事件用 generation 补一次失效标记。
 
 工作台侧栏通过「项目／智能体」文字页签切换，各自列表独占可用高度，保留 DOM、搜索、滚动与项目上下文；切换不导航正文。智能体列表复用 vfs-ui Drawer，搜索只过滤自己的列表。智能体首次选中才加载现有配置服务，隐藏后只记录变化；支持名称/说明/来源过滤、创建、配置和本地智能体快捷新会话，远程项打开原有详情与项目入口。快捷启动保留项目已有草稿和附件，只显式切换智能体，不提前转正或发送。工具箱在存在工作台时隐藏智能体常驻分类和全部列表中的智能体分组，保留配置编辑及旧链接。
@@ -222,3 +224,5 @@ browser/study-sources 将可引用工作区和项目文件视图适配为独立�
 
 
 学习生成的 NestOS 错误码只在 study-generation 适配边界映射为 recovery:pending；核心重试通过 generation.resume 观察原操作。AbortSignal 停止观察，generation.cancel 显式取消对应提交；不再传递 STUDY_DRAFT_SUSPENDED 字符串协议。保存后的 Session 标题更新属于宿主 documentSaved，不进入 StudyCreation 契约，失败不改变文件保存结果。笔记工具栏通过 compactLayout:inline、primaryAction:refresh 显式设置布局和主操作，extraItems.after 只表达顺序。
+
+桌面 WorkbenchTabs 激活/重新选择文件及 tab 栏尺寸变化时，由 TabBarViewport 在布局后仅横向滚动标签栏，使当前标签进入可见范围；不得用 scrollIntoView 带动正文或祖先滚动。标题/保存状态等后台刷新不强制拉回用户手动浏览的位置；销毁取消动画帧和尺寸观察。手机保留原窗口图标切换及隐藏 tab 栏规则。

@@ -28,7 +28,7 @@ export function createSettingsAccess(backend: ApplicationBackend, workspaces: ()
         close: async () => { await Promise.all([service.close(), initial.close()]); } };
 }
 function settingsSources(workspaces: readonly WorkspaceConfig[]): SettingsWorkspaceSource[] {
-    return workspaces.filter(workspace => !['settings', 'skills', 'toolbox', 'twin'].includes(workspace.type ?? ''))
+    return workspaces.filter(workspace => !['settings', 'skills', 'toolbox', 'twin', 'kanban'].includes(workspace.type ?? ''))
         .map(workspace => ({ name: workspace.workspaceName, description: workspace.title,
             ...(workspace.files ? { fs: workspace.files.fs } : { workspace: workspace.workspaceName }) }));
 }

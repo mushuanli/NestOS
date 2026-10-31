@@ -8,14 +8,12 @@ it('hides unsupported metering and distinguishes an unavailable price from an ex
     const unknown = conversationUsage({...base, usage});
     expect(unknown).toContain('180'); expect(unknown).not.toContain('185'); expect(unknown).not.toContain('$0');
     const priced = conversationUsage({...base, usage, usageEstimate: {currency: 'USD', estimatedCostUsd: 0, complete: true}});
-    expect(priced).toContain('≈'); expect(priced).toContain('0.00');
+    expect(priced).not.toContain('≈'); expect(priced).toContain('180');
 });
 
-it('rounds ordinary cost estimates while preserving nonzero sub-cent estimates', () => {
-    const usage = {scope: 'transcript' as const, complete: true, observedAt: Date.now(),
+it('keeps cumulative metering independent of the exclusive quota or cost display', () => {
+    const usage = {scope: 'transcript' as const, complete: false, observedAt: Date.now(),
         totals: {inputTokens: 100, outputTokens: 20, cacheWriteTokens: 10, cacheReadTokens: 50, reasoningTokens: 5}};
-    const estimate = (amount: number) => conversationUsage({...base, usage,
-        usageEstimate: {currency: 'USD', estimatedCostUsd: amount, complete: true}});
-    expect(estimate(15.833715)).toContain('15.83'); expect(estimate(15.833715)).not.toContain('833715');
-    expect(estimate(0.000001)).toContain('0.000001');
+    const text = conversationUsage({...base, usage, usageEstimate: {currency: 'USD', estimatedCostUsd: 15, complete: true}});
+    expect(text).toContain('180'); expect(text).toContain('部分'); expect(text).not.toContain('15');
 });

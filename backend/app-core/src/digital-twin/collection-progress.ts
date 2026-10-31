@@ -9,5 +9,8 @@ export function collectionProgress(output: unknown): TwinCollectionProgress | un
     if (!progress || progress.version === undefined) return;
     if (progress?.version !== 1 || typeof progress.complete !== 'boolean' || !Number.isSafeInteger(progress.processed) || progress.processed < 0)
         throw new Error('TWIN_COLLECTION_RESULT_INVALID');
-    return {version: 1, complete: progress.complete, processed: progress.processed};
+    if (progress.batchCount !== undefined && (!Number.isSafeInteger(progress.batchCount) || progress.batchCount < 0))
+        throw new Error('TWIN_COLLECTION_RESULT_INVALID');
+    return {version: 1, complete: progress.complete, processed: progress.processed,
+        ...(progress.batchCount !== undefined ? {batchCount: progress.batchCount} : {})};
 }

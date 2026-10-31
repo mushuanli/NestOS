@@ -359,5 +359,13 @@ function packageConnections(item: ToolPackageInfo, snapshot: SourceConnections):
 }
 function historyView(rows?: ToolRunRecord[]): string {
     if (!rows?.length) return `<p>${escapeHTML(t('toolbox.packages.noHistory'))}</p>`;
-    return `<ul>${rows.map(row => `<li>${escapeHTML(new Date(row.startedAt).toLocaleString())} · ${escapeHTML(row.toolId)} · ${escapeHTML(t(('toolbox.packages.run.' + row.status) as LocaleKey))} · ${row.durationMs ?? '—'} ms${row.code ? ' · ' + escapeHTML(row.code) : ''}</li>`).join('')}</ul>`;
+    return `<ul>${rows.map(row => `<li>${escapeHTML(new Date(row.startedAt).toLocaleString())} · ${escapeHTML(row.toolId)} · ${escapeHTML(t(('toolbox.packages.run.' + row.status) as LocaleKey))} · ${row.durationMs ?? '—'} ms${collectionHistorySummary(row)}${row.code ? ' · ' + escapeHTML(row.code) : ''}</li>`).join('')}</ul>`;
+}
+
+function collectionHistorySummary(row: ToolRunRecord): string {
+    if (row.status !== 'succeeded' || !row.collection) return '';
+    const summary = row.collection;
+    const count = summary.batchCount === undefined ? '' : ' · ' + t('toolbox.packages.run.batchCount', {count: summary.batchCount});
+    return escapeHTML(count + ' · ' + t('toolbox.packages.run.processed', {count: summary.processed})
+        + (summary.complete ? '' : ' · ' + t('toolbox.packages.run.pending')));
 }

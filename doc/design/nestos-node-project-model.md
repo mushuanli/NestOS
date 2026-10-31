@@ -207,6 +207,9 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 打开原生会话与创建、切换原生分支均保留项目选择器的当前范围；只有显式选择项目才切换侧栏范围。宿主通过 `hostContext.toggleSidebar` 注入侧栏控制，远程编辑器不把侧栏按钮视为 harness 执行能力。标题栏事件、响应式更多菜单由共享 `EventBinder` 管理；上一条/下一条展开消息、消息导航和打印复用 HistoryView、FloatingNavPanel、MDxRenderer 与 LLMPrintService。原生导航只提供浏览、复制与折叠，不提供本地上下文修改或历史删除。分支按钮和下拉列表使用共同的 BranchIndicatorTemplates，原生 ID 用于切换，分支名称仅用于显示；创建入口收进下拉菜单，未支持的分支删除不显示。状态点经 StatusIndicatorView 显示就绪、运行、待核对和异常。原生 HTML 在屏幕与打印中均按字面呈现。
 
+原生会话输入区通过独立 llm-ui 的通用 composerIndicators 投影与附件加号同一行的上下文分段占用条与预算文字，未知占用以虚线区分；手机点击向上展开明细，不依赖悬停、不挤占发送控件。预算按正向数据互斥选择：有效额度优先，否则显示原生估算或宿主费用估算，仅选一种；都不可得时为未知，不按模型名推断订阅。多窗口摘要取最紧张的剩余额度，明细保留各窗口与重置时间。原生会话信息面板共用同一预算投影，累计 token 独立显示，避免同时列出额度与费用。`capabilities.metrics` 正向协商只读 `harness_session_metrics`，`refreshMetrics` 在独立通道读取，不等待发送 tail，不占提交槽、不消费草稿、不更改观察失败状态。原生绑定就绪及 turn 开始/完成边界读取，信息面板也支持显式刷新；不按文本 delta 查询，不新增轮询、不 resume、不发送 turn，隐藏视图暂停自动读取。Codex 上下文取最近 `thread/tokenUsage/updated.last` 与 `modelContextWindow`，无事件时读取 token_count 历史的 last_token_usage 与 model_context_window；累计 total 不能冒充当前占用。额度取 account/rateLimits/read 的窗口、重置时间及原生额度余额，过滤账号身份与凭据。Claude 用 get_context_usage 查询受控会话的上下文，rate_limit_event 投影额度；result.total_cost_usd 保留最新原生估算，不把多次累计结果相加，也不称为账单。未提供的数据保留未知；部分失败只在指标面板显示安全分类，保留读取时间与上次值，远端不支持时不发送新协议请求。
+
+
 绑定打开时按其 MCP ID 恢复连接投影；如保存的能力扩展缺失，仅重新验证该配置，验证成功后修复缓存及扩展。不会按显示名称猜测绑定，也不会探测全部 MCP。刷新带版本围栏，较旧异步结果不能覆盖更新后的目录。
 
 工具箱 Agent 将各个已验证的 nestos-node MCP 配置所声明的项目 harness 投影为只读条目，显示服务器、kind 和 profile。条目不保存为本地 AgentDefinition；详情只能选择同一服务器上已绑定的项目浏览会话或创建会话。当前服务端实际实现包括 Codex 与 Claude Code，DeepSeek 等不会凭名称生成虚假的可执行条目；增加驱动后由服务端能力声明决定显示。
@@ -481,12 +484,30 @@ vfs-core 提供文件、SeqFile、Record transaction、通用文件提交事件�
 
 `RemoteConversationRecoveryLoop` 对暂时性网络/存储错误和尚未加载的连接目录按 15、30、60 秒有界退避，仅重试失败目标；每次重新扫描原 journal 并复验授权，记录已清空时不再打开。授权错误、身份冲突和坏记录不自动重试。重试集合是进程内调度缓存，原 journal 是跨重启恢复索引，因此不另建恢复任务存储；每次启动重新扫描。关闭服务先停止重试并等待本轮回收，再销毁会话 Registry，避免后台打开资源泄漏。重试只重建观察，不直接发送指令。
 
+### 执行基准与显式放弃等待
+
+nestos-node 的原生历史、执行器状态与实际写锁是执行基准；httpd journal 是提交身份、排队及人工恢复决策的基准。两者不同步时保留 unknown，超时不能替代终态。
+
+节点正向协商 executionRecovery，并在原生历史/inspect 返回带 runtimeId、PID、启动时间的恢复证据。Codex 仅在 notLoaded、未受控、无 activeTurnId 且写锁明确释放时报告 detached。driver 对已接纳但等待超过60秒的普通队首投影恢复入口；二次确认后重新读取节点，不用缓存的 active 阻止核查。若原生已有精确终态则正常结算，否则只允许 detached 执行结束等待，按原队列 revision 保存 outcome=unknown、turn/attempt及节点证据到 instructionQueue.recoveries，同时暂停后续队列。保存失败、运行或锁仍占用、证据未知、身份变化均不放行。
+
+恢复记录复用每用户 SeqFile journal，不新增并行的会话状态存储；httpd 重启后保留决策及原接纳身份。恢复不自动重发、不生成原生 cancelled/completed；用户检查已有修改后发送新指令，沿原 Session 的 inspect/resume 继续。单会话正常中断已按 sessionId/turnId 隔离；当前共享 Codex app-server 的进程强杀不能承诺单会话隔离，需独立的每会话进程生命周期才能提供。
+
 ### 阻塞分类与剩余限制
 
 队列投影的 `reason` 区分 `paused`、`rejected`、`recovery`、`active-turn`、`awaiting-interaction`、`remote-offline`、`admission-unconfirmed` 与 `terminal-unconfirmed`。原因可在相同队列 revision 下随观察更新；展示更新不能提升编辑 CAS 的旧 revision。
 
 对“原生已空闲，但队首一直 dispatching”的路径，driver 先使用同一 turn 的 inspect 终态；如果 inspect 没有给出精确终态，再有界读取原生历史。只有匹配 turnId 的终态才解除队首屏障，空闲本身不是完成证据。已观察到的精确终态存到原队列项，避免仅内存 turnResults 在 httpd 重启后丢失。
 
-需区分 httpd 重启与远端 nestos-node 重启：前者可从用户 journal 重建观察；后者可能产生新 epoch，使旧操作回执不可查询。旧提交没有可靠原生身份或历史证据时仍保持 unknown，不能仅凭本地落盘或新增 events.seq 自动重发。运行中即时追加输入（steer）也尚未接入，普通输入仍按轮次排队。
+需区分 httpd 重启与远端 nestos-node 重启：前者可从用户 journal 重建观察；后者可能产生新 epoch，使旧操作回执不可查询。旧提交没有可靠原生身份或历史证据时仍保持 unknown，不能仅凭本地落盘或新增 events.seq 自动重发。运行中追加输入由 `capabilities.steer` 正向协商：Codex 通过 `harness_steer` 调用 `turn/steer`，冻结当前 session/turn 与稳定 requestId，沿原 journal/receipt 核对接纳，未知结果不重放、不回退为新 turn。界面在可用时显示“补充到当前执行”，未声明能力、外部未接管会话或暂不可用时继续排队。追加输入不清空既有队列，不用同 turn 的原始用户消息确认补充消息。原生标题修改不要求指令队列为空，仍检查授权、能力、观察新鲜度及未决修改；失败保留具体原因。
 
 验证覆盖：driver 的 terminal-observation、instruction-queue、history-completion；app-core 的 remote-conversation-recovery、conversation-registry、remote-conversation-store；HTTP 的 multi-user、remote-queue-restart、user-events 与 user-events-restart。物理存储测试分别关闭再打开两个用户的 home 数据包，确认相同项目/会话 key 不串户且终态仍在；真实 mTLS 宿主重启测试确认旧事件游标仍可补读，通知已读状态跨 SQLite 关闭重开保留。线上指定会话仍需认证快照与版本核对后才能宣布解除阻塞。
+
+远程侧栏筛选兼容包含 connectionId/serverProjectId/profileId 的编码身份与旧 connectionId/profileId 身份，始终核对连接及可用的项目身份；未命名原生会话仍可见。草稿首次通过队列接纳后也尝试设置固定默认标题，明确拒绝可在后续刷新重试；未知回执先核对，不重发首条消息。
+
+运行中的 Codex/Claude 支持在原生安全时机补充；普通输入可显式 auto 入队并在当前轮接纳，暂停、前置 next-turn、命令和不同模型选择保留下一轮屏障。Claude 使用 streaming priority=next；若原轮先结束，以原生回显的实际轮次持久关联补充，保留请求目标，不伪造同轮执行。模型/推理强度的改变随下一条正常 turn 生效，当前轮配置不被界面覆盖。
+
+补充接纳后不生成 steered: 本地历史消息，宿主撤下对应的台账正文占位并过滤旧合成消息，正文由真实原生事件/历史呈现。没有真实 item 身份时不能以同 turn 第一条用户消息或文本相同确认补充；用户确实重复提交的原生消息不折叠，未知操作继续只读核对，不为消除重复展示重发输入。
+
+上下文读取边界之外，客户端直接消费既有 thread/tokenUsage/updated：按 thread 身份更新最近 last 占用及容量，不因累计 total、缺失字段或低百分比舍入显示为零。指标 RPC 在途遇到新事件时保留新上下文，额度/费用独立合并，不增加轮询。Codex 额度读取兼容 rateLimits 单桶及 rateLimitsByLimitId 中明确的当前 limitId/codex 桶；单桶仅有余额、映射中有窗口百分比时优先窗口，不猜测无关桶的模型归属。有效额度包含剩余 0%，额度缺失才回退价格估算。
+
+上下文详情明确显示“已用”比例和“容量来源：当前会话的原生上报值”，输入占用条与会话信息面板共用同一投影。容量仍使用 limitTokens 原值；未上报时显示未知，不以固定 1M、模型宣传上限或目录默认值替代当前会话容量。

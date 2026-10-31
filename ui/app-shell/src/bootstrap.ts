@@ -1,3 +1,4 @@
+import {ENTITY_ICONS} from '@itookit/common';
 import {studyDraftStore} from './persistence/study-draft-store';
 import {showFlowDependencies} from './configuration/flow-dependencies-dialog';
 import {ShellApplicationEvents, workspaceConsumesEvent} from './lifecycle/application-events';
@@ -28,6 +29,7 @@ import { createFileChatHandler } from './projects/file-chat';
 import { createOcrControls } from './configuration/ocr-controls';
 import { ConfigurationDeletionDialog } from './configuration/delete-dialog';
 import { createTwinModule } from './digital-twin';
+import {createKanbanWorkspace} from './kanban';
 import { createToolboxModule } from './toolbox';
 import { TOOLBOX_SCOPE } from './toolbox/ToolboxWorkbench';
 import { TOOLBOX_KINDS, legacyToolboxRoute, toolboxSettingsRoute } from './toolbox/routes';
@@ -99,6 +101,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     if (workbench) {routeMap.chat ??= workbench.elementId; routeMap.workbench ??= workbench.elementId;}
     for (const workspace of workspaces) {const root = document.getElementById(workspace.elementId); if (root) root.inert = false;}
     if (options.startPage) { routeMap[START_PAGE_SLUG] = START_PAGE_ID; reverseRouteMap[START_PAGE_ID] = START_PAGE_SLUG; }
+    document.querySelectorAll<HTMLElement>('[data-kanban-icon]').forEach(icon => {icon.textContent = ENTITY_ICONS.project;});
     const toolboxId = workspaces.find(ws => ws.type === 'toolbox')?.elementId;
     if (toolboxId) for (const slug of TOOLBOX_KINDS) routeMap[slug] = toolboxId;
 
@@ -214,7 +217,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const fs = workspace.files?.fs ?? (workspace.type === 'settings' ? settings.files()
             : workspace.type === 'skills' ? await skillsFiles.get()
             : workspace.type === 'flows' ? flowEngine.engine
-            : workspace.type === 'twin' ? await vfs.openFileSystem('/home/admin')
+            : ['twin', 'kanban'].includes(workspace.type ?? '') ? await vfs.openFileSystem('/home/admin')
             : workspace.type === 'toolbox' ? await vfs.openFileSystem(workspaceRoot('agents'))
             : await vfs.openFileSystem(workspaceRoot(workspace.workspaceName)));
         const files = workspace.files ?? { fs, cwd: '/' };
@@ -318,6 +321,16 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         const strategyType = wsConfig.type ?? 'standard';
         const factory = factories[strategyType] ?? defaultEditorFactory;
+
+        if (strategyType === 'kanban') {
+            const module = createKanbanWorkspace({service: services.kanban, sidebar: sidebarEl, editor: editorEl,
+                selected: path => selectionHistory(elementId, path, 'replace'),
+                openSession: id => handleNavigationRequest({target: 'chat', resourceId: id})});
+            own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
+            if (visibleWorkspaceId !== elementId || document.hidden) await module.workbench.setVisible?.(false);
+            else options.onWorkspaceReady?.({editor: editorEl});
+            return module.workbench;
+        }
 
         if (strategyType === 'twin') {
             if (!services.digitalTwin) throw new Error('Digital twin is unavailable in this services');

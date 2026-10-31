@@ -1,0 +1,43 @@
+import {expect, it, vi} from 'vitest';
+import {createApplicationRuntime} from '@itookit/app-core';
+import {openApplicationView} from '@itookit/app-core/host';
+import {MemoryBackend} from '@itookit/vfs-core';
+import {RpcPeer, installViewProjections} from '@itookit/app-transport/application';
+
+it('exposes user-bound Kanban commands, queries and system notifications through real RPC', async () => {
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'web', startupMode: 'interactive', digitalTwinAutoStart: false});
+    const view = await openApplicationView(runtime), report = vi.fn();
+    let server!: RpcPeer;
+    const client = new RpcPeer('client', call => server.handle(call), report, installViewProjections);
+    server = new RpcPeer('server', async call => {client.applyUpdates(await server.refresh()); return client.handle(call);}, report);
+    try {
+        const boot = await server.bootstrap({services: view.services, backend: view.backend}); client.applyUpdates(boot.updates);
+        const remote = client.decode(boot.value!), kanban = remote.services.kanban;
+        const initial = await remote.backend.initialFiles();
+        expect((await initial.list()).find((entry: {id: string}) => entry.id === 'kanban:nestos-demo')).toMatchObject({group: 'kanban', exists: true});
+        expect(await initial.restore(['kanban:nestos-demo'])).toEqual([{id: 'kanban:nestos-demo', status: 'preserved'}]);
+        const actor = await kanban.currentPrincipal(); expect(actor).toEqual({kind: 'human', id: 'admin'});
+        const board = await kanban.create({id: 'board', title: 'Work', scope: {kind: 'system'}, members: [{...actor, responsibility: 'Work', roles: ['worker']}], policy: {requireEstimate: false, review: 'assignee'}, notifications: {rules: {'create-item': 'info'}}});
+        await kanban.execute(board.id, {operationId: 'create-card', expectedRevision: board.revision, command: {type: 'create-item', item: {id: 'card', title: 'PRIVATE_CARD_TITLE', responsibility: 'PRIVATE_BODY', acceptance: 'Verified'}}});
+        const directory = await kanban.catalog();
+        expect(directory.find((entry: {id: string}) => entry.id === board.id).items).toEqual([{id:'card',title:'PRIVATE_CARD_TITLE',number:1}]);
+        expect(JSON.stringify(directory)).not.toContain('PRIVATE_BODY');
+        const page = await kanban.query(board.id, {view: 'backlog'}); expect(page.items).toHaveLength(1);
+        const candidates = await kanban.suggest(board.id, {kind: 'item', search: 'PRIVATE_CARD_TITLE'});
+        expect(candidates.items[0]).toMatchObject({id: 'card', label: 'PRIVATE_CARD_TITLE'}); expect(JSON.stringify(candidates)).not.toContain('PRIVATE_BODY');
+        expect(await kanban.resolve(`KB-${board.number}#1`)).toMatchObject({boardId:board.id,itemId:'card'});
+        const read = await kanban.item(board.id, 'card'); expect(read.item.status).toBe('backlog');
+        const notifications = await remote.backend.events.listNotifications(); expect(notifications.items).toHaveLength(1);
+        expect(notifications.items[0].event.value.type).toBe('kanban.create-item'); expect(JSON.stringify(notifications)).not.toContain('PRIVATE_');
+        const sessionId = await runtime.sessionRepository.createSession('Autocomplete planning session');
+        const sessions = await kanban.suggest(board.id, {kind: 'session', search: 'Autocomplete planning'});
+        expect(sessions.items[0]).toMatchObject({id: sessionId, label: 'Autocomplete planning session'});
+        const current = await kanban.read(board.id);
+        await kanban.execute(board.id, {operationId: 'record-log', expectedRevision: current.revision, command: {type: 'append-record', record: {id: 'log', kind: 'log', title: 'Work evidence', content: 'PRIVATE_LOG_BODY', itemIds: ['card'], sources: []}}});
+        expect((await kanban.records(board.id, {itemId: 'card'})).items).toHaveLength(1);
+        expect((await kanban.record(board.id, 'log')).content).toBe('PRIVATE_LOG_BODY');
+        expect(JSON.stringify(await remote.backend.events.listNotifications())).not.toContain('PRIVATE_LOG_BODY');
+        await expect(kanban.create({id: 'wrong-store', title: 'Project', scope: {kind: 'project', projectId: 'other'}, members: [{...actor, responsibility: 'Work'}]})).rejects.toMatchObject({code: 'PROJECT_STORE_REQUIRED'});
+        expect(report).not.toHaveBeenCalled();
+    } finally {await client.close(); await server.close(); await view.close(); await runtime.dispose();}
+}, 15000);

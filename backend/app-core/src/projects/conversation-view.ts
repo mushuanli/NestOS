@@ -115,7 +115,7 @@ class ConversationView {
             }
             return result && typeof result === 'object' && 'messages' in result ? this.current : result;
         };
-        if (['readCommandOutput', 'loadCommandOutput', 'reconcileQuery', 'queryCommand', 'commands', 'models', 'respond', 'interrupt', 'reconcileControl', 'enqueue', 'editInstructionQueue', 'saveDraft', 'read'].includes(key)) return execute();
+        if (['refreshMetrics', 'readCommandOutput', 'loadCommandOutput', 'reconcileQuery', 'queryCommand', 'commands', 'models', 'respond', 'steer', 'interrupt', 'reconcileControl', 'enqueue', 'editInstructionQueue', 'saveDraft', 'read'].includes(key)) return execute();
         if (key === 'observe-dispatch' || key === 'refresh' && this.starting) {
             const work = this.polling.then(execute); this.polling = work.catch(() => {}); return work;
         }

@@ -74,6 +74,8 @@ VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依�
 
 VFS `IPlugin` 可以提供变更提示，但不能替代跨窗口扫描、恢复日志与条件提交。core 不内置同步业务。
 
+可选协作看板由 `@itookit/app-core/kanban` 显式装配；纯契约在 app-contracts，事务存储、监控调度与身份授权由宿主注入。项目/系统看板及相关 Session 登记独立于聊天 Session 生命周期，运行时装配用户个人看板，Web/桌面通过共享看板工作区和 RPC 访问，不自动启动 Agent。见[Kanban 协调模块](design/kanban-coordination.md)。
+
 数字分身的领域服务与 SeqFile 布局归 app-core 的 `digital-twin/`，五页工作台归 app-shell 的 `digital-twin/`。kernel-adapters 仅注入通用发送前钩子，vfsdrivers 的 IndexedDB/SQLite schema 不加入分身表或业务字段；固定槽分页与版本链由 SeqTwinStore 管理。见[数字分身实施边界](design/digital-twin.md#实现与边界)。
 
 `tools/image-tools` 是参与 pnpm 工作区的通用外部 Tool 包；核心工厂与 Node 引擎位于该包，Canvas 装配在 Web 宿主，Tauri 复用公开宿主入口。Rust `tools/anki-cli` 仍独立管理，未加入 pnpm 包工作区。

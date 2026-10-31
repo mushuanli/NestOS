@@ -1,3 +1,4 @@
+import {TabBarViewport} from './tab-bar-viewport';
 import { FILE_ICONS, FILE_BROWSER_ICONS, fileTypeIcon, t } from '@itookit/common';
 import { decorateButton, decorateResourceButton } from './controls';
 import type { IEditor } from '@itookit/ui-common';
@@ -41,6 +42,7 @@ export class WorkbenchTabs<T> {
     private readonly openedDrawer = new Drawer({title: t('workbench.opened'), showHeader: false, collapsible: false,
         search: {label: t('workbench.findOpened'), onChange: query => {if (this.windows) this.windows.registry.setQuery(query); else {this.openedQuery = query; this.render();}}}});
     private readonly bar = document.createElement('div');
+    private readonly tabViewport = new TabBarViewport(this.bar);
     private readonly body = document.createElement('div');
     private readonly navigation = document.createElement('div');
     private readonly standalone: ReturnType<typeof compactNavigation>;
@@ -159,7 +161,7 @@ export class WorkbenchTabs<T> {
         this.container.dataset.workbenchActivation = String(++this.activation);
         this.currentId = id; this.emptyPanel.hidden = true;
         for (const tab of this.values()) tab.panel.hidden = tab.id !== id;
-        this.render();
+        this.render(); this.tabViewport.reveal();
     }
     keep(id: string): void { const tab = this.get(id); if (tab) { tab.preview = false; this.render(); } }
     pin(id: string): void { const tab = this.get(id); if (tab) { tab.pinned = !tab.pinned; if (tab.pinned) this.selected.delete(id); tab.preview = false; this.render(); } }
@@ -289,7 +291,7 @@ export class WorkbenchTabs<T> {
             this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen())));
         menu.append(popup); menu.ontoggle = () => { popup.style.top = `${summary.getBoundingClientRect().bottom + 6}px`; };
         popup.onclick = () => { menu.open = false; };
-        this.bar.append(menu);
+        this.bar.append(menu); this.tabViewport.update();
     }
     private windowCount(): number { return this.windows?.registry.items().length ?? this.entries.size; }
     private isCurrent(id: string): boolean { return id === this.currentId && (!this.windows || this.windows.isActive()); }
@@ -433,7 +435,7 @@ export class WorkbenchTabs<T> {
     async destroy(): Promise<void> {
         this.openedDialog?.close();
         this.unregisterWindows?.(); this.unregisterWindows = undefined;
-        this.disposing = true;
+        this.disposing = true; this.tabViewport.destroy();
         for (const tab of this.values()) await this.close(tab.id, false);
         for (const view of this.windowButtons) view.button.remove(); this.windowButtons.clear();
         this.abort.abort(); this.openedDrawer.destroy(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');

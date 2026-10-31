@@ -139,7 +139,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
     }
     private mountMenu(root: HTMLElement, cleanups: (() => void)[], menuHost?: HTMLElement): ConversationInformation {
         const menu = menuHost?.parentElement as HTMLDetailsElement ?? document.createElement('details'), body = menuHost ?? document.createElement('div');
-        const information = new ConversationInformation(body); cleanups.push(() => information?.destroy());
+        const information = new ConversationInformation(body, this.service.refreshMetrics?.bind(this.service)); cleanups.push(() => information?.destroy());
         if (!menuHost) {const summary = document.createElement('summary'); menu.className = CHAT_SLOT_CLASSES.menu;
             presentHostControl(summary, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(summary, body); root.append(menu);}
         cleanups.push(mountExecutionDraftAction(body, this.options, () => this.view, draft => Promise.all(draft.attachments.map(async item => {
@@ -156,7 +156,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId);
         if (record?.status === 'accepted') return {status: 'accepted', operationId, submissionRef: record.submissionRef};
         if (state.submission?.id === operationId) {
-            if (state.submission.status === 'accepted') return {status: 'accepted', operationId, submissionRef: state.submission.turnId};
+            if (state.submission.status === 'accepted') return {status: 'accepted', operationId, submissionRef: state.submission.kind === 'steer' ? `steered:${operationId}` : state.submission.turnId};
             if (state.submission.status === 'rejected') return {status: 'rejected', operationId, code: state.submission.code ?? 'NATIVE_REJECTED', message: t('chat.submission.unconfirmed')};
         }
         if (state.instructionQueue?.acceptedIds.includes(operationId)) return {status: 'accepted', operationId};

@@ -16,6 +16,7 @@ import { mountConversationSource } from './conversation-source';
 import {bindWorkspaceInput, type WorkspaceHandoff} from './drafts/workspace-handoff';
 
 interface Actions {
+    refreshMetrics?(): Promise<ConversationSnapshot>;
     commandOutputs?: Pick<import('@itookit/ui-common').ConversationControls, 'readCommandOutput' | 'loadCommandOutput'>;
     instructionQueue?: boolean;
     flushDraft?(): Promise<void>;
@@ -57,7 +58,7 @@ export class ConversationWorkspaceView {
         this.indicator = new StatusIndicatorView(new DOMCache(container), () => false, () => {});
         this.configureTitle(options); this.events = this.configureToolbar(options, actions);
         const toolbar = container.querySelector<HTMLElement>('.llm-workspace-titlebar__menu-actions')!;
-        this.information = new ConversationInformation(toolbar);
+        this.information = new ConversationInformation(toolbar, actions.refreshMetrics);
         this.renameButton = this.button(t('project.renameSession'), () => this.rename(actions), toolbar); this.renameButton.hidden = true;
         this.progress.className = 'remote-conversation__history-progress'; this.progress.hidden = true;
         this.progress.append(this.progressText);

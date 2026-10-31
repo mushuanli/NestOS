@@ -4,7 +4,7 @@
 
 本地与原生队列默认收成图标、数量和状态的一行入口，点击展开现有管理列表。收起不暂停、不删除指令或丢弃编辑草稿；后台通知不自动展开。失败与待核对状态在紧凑入口保持可见，只读视图仍可展开查看。
 
-原生队列气泡通过 operationMessages 反映当前编辑、合并和删除结果，保留原 OperationLedger 输入和接纳回执；真实原生用户消息继续按提交身份替换，不能为消除气泡伪造历史证据。运行中发送明确标为队列；createdAt/dispatchedAt/acceptedAt 分别展示加入、开始提交、执行器接纳时间，不宣称为当前 turn 的即时补充。
+原生队列气泡通过 operationMessages 反映当前编辑、合并和删除结果，保留原 OperationLedger 输入和接纳回执；真实原生用户消息继续按提交身份替换，不能为消除气泡伪造历史证据。未协商或暂不可用的 steer 仍明确标为队列；canSteer 与端口均可用时显示补充到当前执行，冻结当前 turnId 后通过原生 steer 提交，不因轮次变化回退发送；同 turn 的原始用户消息不能确认补充消息。createdAt/dispatchedAt/acceptedAt 分别展示加入、开始提交、执行器接纳时间，不宣称为当前 turn 的即时补充。
 
 NativeCommandOutput 在原命令消息锚点展示截断预览和按需完整读取；默认工作台与独立 extension 共用该组件。优先逐页 readCommandOutput，每页至多64KiB，页前后检查本视图的取消信号；不把 AbortSignal 序列化过应用 RPC。复用 Artifact 的有界拼接与 SHA/字节核验，完整验证后只挂载当前64Ki字符文本页，UTF-8及surrogate边界不得漏字或替换；销毁/隐藏取消后续页和迟到DOM并回收URL。读失败只在该结果卡片提供重试，不写全局refreshError、不消费输入、不改变执行终态。resultError 使用原 operationId 查询，不能以重新发送或合成成功恢复。
 
@@ -239,3 +239,15 @@ Flow 参数 presentation.group 与连接 presentation.group 按声明合并显�
 Flow InvocationPanel 的取消与暂停共用持久 ControlOperations；取消携带实际执行 Session、requestId 与 expectedEpoch，核对使用原 RunCancellationReceipt，不能先恢复执行再取消。FlowCallDocument 终态结果读取失败保留失败状态，仅显式重试，不随父卡片轮询重复读取。DraftFilesCodec 对跨执行环境的 ArrayBuffer 使用内部品牌校验，仍校验资源摘要、大小及稳定附件身份。
 
 DAG 运行页取消与调用卡片共用 FlowRunControl/ControlOperations，传入原 Session、稳定 requestId 和观察到的 control epoch。操作台账读取失败时禁用取消，不降级发送缺少身份的命令；失败通过现有 Toast 显示具体原因。
+
+原生绑定就绪、turn 身份/终态变化及 ConversationInformation 打开/显式刷新时通过 refreshMetrics 读取指标；不因 token delta 查询，不新增轮询，隐藏视图暂停自动读取，关闭绑定丢弃迟到响应。上下文使用最近原生占用/容量，不能用累计 token 或模型名猜测；额度窗口与重置时间来自远端账号观测，费用区分宿主当前价格估算与原生估算，均不称为账单。缺失显示未知，失败保留具体安全错误码和读取时间，关闭弹窗后丢弃迟到响应，不重建输入和历史 DOM。
+
+远程预算展示由 conversationBudget 统一互斥选择有效额度、原生费用估算、宿主费用估算或未知；不能同时显示额度和费用，也不从模型名称推断订阅。输入区通过 llm-ui.composerIndicators 显示上下文和预算两项，展开明细保留各窗口/重置/来源/读取时间/安全错误码；上下文以分段占用条呈现，与额度/费用及附件加号位于同一行，手机触控展开明细并有界滚动，不依赖 hover。
+
+原生运行中发送普通补充时优先 steer；暂不可补充但支持 steer 时以 delivery=auto 入队。显式不同模型/推理强度保留 selection 并排到下一轮，不能静默忽略选项后 steer。模型目录跨 ownership scope 刷新保留已显示选项，同一在途查询复用；刷新期间显式选择保守排队。resolveSubmissionMode 随草稿选择更新按钮，实际发送仍复核能力与目录。
+
+steer 接纳不生成 steered: 本地历史消息。适配层在接纳后撤下台账正文占位，正文由真实原生 item 呈现；过滤旧版本遗留的 steered: 合成消息。不能用同轮第一条用户消息或相同文本推导补充身份，真实重复输入保持独立，unknown 保留核对与占位。
+
+上下文极小非零百分比使用有效数字，不能四舍五入为零；缺失信息不显示零。预算优先订阅窗口剩余百分比（0% 也有效），仅无可用额度时回退费用，均无数据时未知；原生额度余额无百分比时保留余额含义，不把裸数字冒充上下文或百分比。
+
+原生队列的核查恢复入口沿共享 InstructionQueueView 二次确认并委托 editInstructionQueue(recover)，展示结果未知与后续暂停；不在 UI 伪造终态、kill 或重新发送。单会话正常 interrupt 与共享执行器强杀范围须区分。

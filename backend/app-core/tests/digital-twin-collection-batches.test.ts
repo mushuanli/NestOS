@@ -11,13 +11,13 @@ it.each(['manual', 'interval'] as const)('persists a successful batch and contin
     const extractor = {run: vi.fn(), cancel: vi.fn(), cleanup: vi.fn()};
     const twin = new DigitalTwinService({fs: await manager.openFileSystem('/'), scanHost: {kind: 'test', now: () => now},
         reader: {read: vi.fn(), sessions: async () => []}, extractor, deleteSession: async () => {}}); cleanup.push(() => twin.dispose());
-    const collect = vi.fn(async () => ({version: 1 as const, complete: ++batch === 2, processed: batch * 2}));
+    const collect = vi.fn(async () => ({version: 1 as const, complete: ++batch === 2, processed: batch * 2, batchCount: 0}));
     twin.setCollector({collect, validate: () => {}, cancelCollection: async () => {}});
     const plan = await twin.saveScanRule(null, null, {name: 'Batch collector', mode: 'collect', trigger, intervalMinutes: 30, enabled: true,
         include: [], exclude: [], collection: {target: {kind: 'tool', id: 'fixture.collect', version: '1', digest: 'fixed'}}});
     const first = await twin.runScanPlan(plan); await twin.waitScanRun(first);
     const snapshot = await twin.snapshot(), record = snapshot.scans.runs.find(item => item.id === first)!;
-    expect(record.data).toMatchObject({state: 'succeeded', collectionProgress: {complete: false, processed: 2}, spentTokens: 0});
+    expect(record.data).toMatchObject({state: 'succeeded', collectionProgress: {complete: false, processed: 2, batchCount: 0}, spentTokens: 0});
     const schedule = snapshot.scans.schedules.find(item => item.planId === plan)!;
     expect(schedule.nextAt).toBe(now + (trigger === 'interval' ? 15000 : 1800000));
     await twin.scanOnce(); expect(collect).toHaveBeenCalledTimes(1);
@@ -31,5 +31,7 @@ it('reads the versioned progress receipt from direct and Flow outputs without ex
     expect(collectionProgress({outputs: {result: {content: {collection: progress}}}})).toEqual({version: 1, complete: false, processed: 5});
     expect(collectionProgress({nodes: {__flow_return: {outputs: {result: {content: {result: {collection: progress}}}}}}})?.complete).toBe(false);
     expect(collectionProgress({collection: {name: 'Business field'}})).toBeUndefined();
+    expect(collectionProgress({collection: {...progress, batchCount: 0}})).toEqual({version: 1, complete: false, processed: 5, batchCount: 0});
+    expect(() => collectionProgress({collection: {...progress, batchCount: -1}})).toThrow('TWIN_COLLECTION_RESULT_INVALID');
     expect(() => collectionProgress({collection: {...progress, processed: -1}})).toThrow('TWIN_COLLECTION_RESULT_INVALID');
 });

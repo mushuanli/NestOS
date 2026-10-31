@@ -138,6 +138,7 @@ export class TwinWorkbench {
     }
     private render(): void {
         if (this.abort.signal.aborted) return;
+        const expandedHistory = new Set([...this.options.editor.querySelectorAll<HTMLDetailsElement>('[data-scanner-history][open]')].map(item => item.dataset.scannerHistory));
         const previousSettings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         const snapshot = this.snapshot;
         const body = !snapshot ? '' : this.page === 'overview' ? overview(snapshot)
@@ -149,6 +150,7 @@ export class TwinWorkbench {
         const settings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         if (settings && previousSettings && previousSettings.dataset.configured === settings.dataset.configured) settings.open = previousSettings.open;
         this.options.editor.querySelectorAll<HTMLFormElement>('[data-form=scanPlan]').forEach(form => {updateInputMode(form); updateExecutorMode(form);});
+        this.options.editor.querySelectorAll<HTMLDetailsElement>('[data-scanner-history]').forEach(item => {item.open = expandedHistory.has(item.dataset.scannerHistory);});
         this.scanLists.restore(this.options.editor);
         if (this.focusPlanId && this.scanLists.reveal(this.options.editor, this.focusPlanId)) this.focusPlanId = undefined;
         if (this.focusRunId) {
@@ -167,7 +169,7 @@ export class TwinWorkbench {
         if (!this.snapshot?.workspace?.readOnly) return;
         this.options.editor.querySelectorAll<HTMLInputElement>('form input, form textarea, form select, form button')
             .forEach(control => {control.disabled = true;});
-        const readActions = new Set(['addShortcut', 'refresh', 'scanTab', 'openEntity', 'openMemories', 'openProfile', 'openUpdates', 'openScanResults']);
+        const readActions = new Set(['addShortcut', 'refresh', 'scanTab', 'openEntity', 'openMemories', 'openProfile', 'openUpdates', 'openScanResults', 'openScanRun']);
         this.options.editor.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach(button => {
             if (!readActions.has(button.dataset.action!)) button.disabled = true;
         });
@@ -237,6 +239,7 @@ export class TwinWorkbench {
         if (!this.snapshot) return;
         if (action === 'openEntity') { event.preventDefault(); return this.openResource('/profile/' + id); }
         if (action === 'openMemories') return this.openResource('/memories/' + id);
+        if (action === 'openScanRun') return this.openResource('/runs/' + encodeURIComponent(id));
         if (action === 'openScanResults') return this.openResource('/memories/' + encodeURIComponent('scan:' + id));
         if (action === 'openUpdates') return this.openResource('/sources');
         if (action === 'openProfile') return this.openResource('/profile');

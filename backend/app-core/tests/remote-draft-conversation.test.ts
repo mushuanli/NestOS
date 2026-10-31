@@ -128,3 +128,28 @@ it.each([false, true])('promotes the first prompt command through the same durab
         expect(f.client.turn).not.toHaveBeenCalled(); expect(f.client.rename).toHaveBeenCalledOnce();
     } finally {await view.close(); await f.manager.dispose();}
 });
+
+it('assigns the default native title after the initial queued turn is admitted without waiting for completion', async () => {
+    const f = await fixture(), view = f.open();
+    try {
+        await f.recovery.save({sessionId: 'native'});
+        await view.read(); await view.enqueue!('First queued input', [], undefined, 'first');
+        await view.refresh();
+        expect(f.client.turn).toHaveBeenCalledOnce();
+        expect(f.client.rename).toHaveBeenCalledWith('p', 'native', expect.stringMatching(/^\d{4}/), expect.anything());
+        expect(view.snapshot().sessionId).toBe('native');
+        await view.refresh(); expect(f.client.rename).toHaveBeenCalledOnce();
+    } finally {await view.close(); await f.manager.dispose();}
+});
+
+it('retries a rejected initial title on a later refresh using the same default name without resending the turn', async () => {
+    const f = await fixture(), view = f.open();
+    try {
+        vi.mocked(f.client.rename!).mockRejectedValueOnce({outcome: 'not-committed', code: 'EBUSY'});
+        await view.read(); await view.send('First input');
+        expect(f.client.rename).toHaveBeenCalledOnce();
+        const title = vi.mocked(f.client.rename!).mock.calls[0][2];
+        await view.refresh(); expect(f.client.rename).toHaveBeenCalledTimes(2);
+        expect(vi.mocked(f.client.rename!).mock.calls[1][2]).toBe(title); expect(f.client.turn).toHaveBeenCalledOnce();
+    } finally {await view.close(); await f.manager.dispose();}
+});

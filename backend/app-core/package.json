@@ -26,6 +26,11 @@
       "types": "./src/contracts/backend.ts",
       "import": "./src/contracts/backend.ts",
       "default": "./src/contracts/backend.ts"
+    },
+    "./kanban": {
+      "types": "./src/kanban/index.ts",
+      "import": "./src/kanban/index.ts",
+      "default": "./src/kanban/index.ts"
     }
   },
   "scripts": {

@@ -93,3 +93,9 @@ it('routes execution and scanner facts to their owning workspaces and resets eve
     expect(workspaceConsumesEvent('toolbox', {type: 'scanner.changed'})).toBe(false);
     for (const kind of ['chat', 'standard', 'toolbox', 'twin']) expect(workspaceConsumesEvent(kind, {type: 'runtime.reset'})).toBe(true);
 });
+
+it('routes kanban facts to kanban views without treating notifications as execution commands', () => {
+    expect(workspaceConsumesEvent('kanban', {type: 'kanban.escalated.unclaimed', notification: 'error'})).toBe(true);
+    expect(workspaceConsumesEvent('kanban', {type: 'task.failed'})).toBe(false);
+    expect(workspaceConsumesEvent('chat', {type: 'kanban.claim'})).toBe(false);
+});

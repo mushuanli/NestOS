@@ -9,10 +9,5 @@ export function conversationUsage(snapshot: ConversationSnapshot): string {
     const tokens = usage.totals;
     const total = tokens.inputTokens + tokens.cacheReadTokens + tokens.cacheWriteTokens + tokens.outputTokens;
     const count = new Intl.NumberFormat(getLocale()).format(total);
-    const estimate = snapshot.usageEstimate;
-    const amount = estimate?.estimatedCostUsd;
-    const cost = typeof amount === 'number'
-        ? `${t('harness.estimatedCost')} ≈ ${new Intl.NumberFormat(getLocale(), {style: 'currency', currency: estimate!.currency, maximumFractionDigits: amount > 0 && amount < 0.01 ? 6 : 2}).format(amount)}`
-        : t('harness.usageUnknown');
-    return [`${t('harness.usage')} ${count}`, cost, !usage.complete || estimate && !estimate.complete ? t('harness.usagePartial') : ''].filter(Boolean).join(' · ');
+    return [`${t('harness.usage')} ${count}`, !usage.complete ? t('harness.usagePartial') : ''].filter(Boolean).join(' · ');
 }

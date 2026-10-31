@@ -5,7 +5,7 @@ const scope: InteractionDraftScope = {sessionId: 'parent', branchId: 'main', cal
 const content = (text: string) => ({format: 'text' as const, values: {}, editor: {fields: {answer: {value: text}}}});
 function fixture() {
     let record: InteractionDraftRecord | undefined;
-    const storage: InteractionDraftStorage = {read: vi.fn(async () => structuredClone(record)), write: vi.fn(async change => {
+    const storage: InteractionDraftStorage = {read: vi.fn(async () => structuredClone(record)), write: vi.fn<InteractionDraftStorage['write']>(async change => {
         if (record?.editId === change.editId) return structuredClone(record);
         if ((record?.revision ?? null) !== change.expectedRevision) throw new Error('CONFLICT');
         record = {revision: (change.expectedRevision ?? 0) + 1, editId: change.editId, content: structuredClone(change.content)};

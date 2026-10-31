@@ -10,6 +10,7 @@ import {NativeComposerCapabilities, type NativeCommandProvider} from './native-c
 import {submitNativeCommand} from './native-command';
 import {nativeControlReceipt} from './native-control';
 import {createNativeQueuePort, nativeQueueToolbar} from './native-queue';
+import {nativeQueueMessages} from './native-queue-messages';
 import {nativeCatalogNotice} from './native-catalog';
 import { ChatProjection } from './projection';
 import {nativeInteraction, nativeResponse} from '../native-interactions';
@@ -52,6 +53,8 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         source.publish({ title: state.title, selectors: capabilities.selectors(), error: nativeResultNotice(state) ?? nativeCatalogNotice(state),
             commands: state.supportsSlashCommands || options.commandProviders?.length ? catalog : undefined,
             operationReceipts: nativeReceipts(state, options.operations, options.conversationId),
+            operationMessages: nativeQueueMessages(state, options.operations, options.conversationId),
+            submissionMode: state.canQueue && options.controls.enqueue && (!state.canSend || state.active) ? 'queue' : 'send',
             messages: state.messages.map(message => nativeMessage(message, options.operations, state, options.conversationId)),
             interactions: state.requests.map(request => interaction(request, requests)),
             loading: false, executionRef: state.observation?.activeTurnId ?? undefined, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
@@ -246,6 +249,7 @@ function prepareNativeView(binding: NativeBinding, options: ImageChatOptions): C
         return {update: part => output.update(part.data as unknown as ConversationCommandOutput), destroy: () => {outputs.delete(output); output.destroy();}};
     };
     const images = prepareImageChatOptions({...options, source: binding.source, actions: binding.actions, operations: binding.operations,
+        messageActions: queue.messageActions,
         renderers: {...options.renderers, 'native-command-output': renderer},
         mountToolbar: nativeToolbar(binding, {...options, mountToolbar: queue.mount}, repairs)}, options.images ?? binding.images);
     return {...images, setActive: value => {
@@ -316,7 +320,8 @@ function nativeAdmissionReceipt(state: NativeSnapshot, context: OperationContext
     const receipt = state.submission;
     if (receipt?.id === context.operationId) {
         if (receipt.status === 'accepted') return {status: 'accepted', operationId: context.operationId, submissionRef: receipt.turnId ?? receipt.id};
-        if (receipt.status === 'rejected') return reject(context, receipt.code ?? 'NATIVE_REJECTED', 'Native submission rejected');
+        if (receipt.status === 'rejected') return reject(context, receipt.code ?? 'NATIVE_REJECTED',
+            receipt.code === 'HARNESS_SESSION_BUSY' ? t('chat.submission.occupied') : 'Native submission rejected');
     }
     if (state.instructionQueue?.acceptedIds.includes(context.operationId)) return {status: 'accepted', operationId: context.operationId, submissionRef: context.operationId};
 }
@@ -337,7 +342,7 @@ function nativeSubmissionFailure(context: OperationContext, error: unknown, star
         code: safeCode, outcome: failure?.outcome === 'not-committed' ? 'not-committed' : 'unknown', durationMs: Date.now() - started});}
     catch { /* Preserve the native receipt classification when diagnostics fail. */ }
     if (failure?.outcome !== 'not-committed') throw error;
-    return reject(context, safeCode, String(error));
+    return reject(context, safeCode, safeCode === 'HARNESS_SESSION_BUSY' ? t('chat.submission.occupied') : String(error));
 }
 
 function nativeReceipts(state: NativeSnapshot, operations: OperationLedger, conversationId: string): OperationReceipt[] {

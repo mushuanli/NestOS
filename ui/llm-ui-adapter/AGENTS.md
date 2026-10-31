@@ -2,6 +2,10 @@
 
 本地和远程 Session 指令队列通过 InstructionQueuePanel 绑定独立 llm-ui 的 InstructionQueueView，支持正文编辑；发送与自动续发归宿主后端。忙时保留发送与停止按钮，确认持久接纳后清除本次输入；排序、合并、删除携带已展示 revision，冲突时刷新，不自动重试写命令。
 
+本地与原生队列默认收成图标、数量和状态的一行入口，点击展开现有管理列表。收起不暂停、不删除指令或丢弃编辑草稿；后台通知不自动展开。失败与待核对状态在紧凑入口保持可见，只读视图仍可展开查看。
+
+原生队列气泡通过 operationMessages 反映当前编辑、合并和删除结果，保留原 OperationLedger 输入和接纳回执；真实原生用户消息继续按提交身份替换，不能为消除气泡伪造历史证据。运行中发送明确标为队列；createdAt/dispatchedAt/acceptedAt 分别展示加入、开始提交、执行器接纳时间，不宣称为当前 turn 的即时补充。
+
 NativeCommandOutput 在原命令消息锚点展示截断预览和按需完整读取；默认工作台与独立 extension 共用该组件。优先逐页 readCommandOutput，每页至多64KiB，页前后检查本视图的取消信号；不把 AbortSignal 序列化过应用 RPC。复用 Artifact 的有界拼接与 SHA/字节核验，完整验证后只挂载当前64Ki字符文本页，UTF-8及surrogate边界不得漏字或替换；销毁/隐藏取消后续页和迟到DOM并回收URL。读失败只在该结果卡片提供重试，不写全局refreshError、不消费输入、不改变执行终态。resultError 使用原 operationId 查询，不能以重新发送或合成成功恢复。
 
 正式 Session 与本地项目首次草稿通过 session.targets.list 读取公开 Agent/Flow 目录，TargetRef 与旧 agentId 偏好分开，按分支保存 inputTarget；Flow 不伪装为 Agent，首次提交复用草稿 UUID 及输入 DOM。参数表单确认后走 session.submit，arguments 是执行输入，presentation 只用于历史。WorkspaceArgumentDraft 的 JSON、修订、签名和目标随分支 inputArguments 保存；composerText 仅为预填依据，重开保留用户实际确认的参数。OperationLedger 经既有 Session UI 的 operationRecords 持久保存，登记完成后才派发；队列通知触发完整摘要核对，同一台账的接纳可以释放仍悬挂的发送 RPC。独立核对条经 session.submission.receipt 查询原冻结请求，不重填表、不重发；session.submission.committed 仍只证明真实历史提交。原回执不消费新文字、新参数或其他分支草稿；已提交附件草稿经 token、文件身份和摘要核对后恢复消费；同分支多视图草稿并发写入与独立视图替换仍在迁移；UI 不导入 Session 运行时或读取 Round 协议。

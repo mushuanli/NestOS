@@ -1,4 +1,4 @@
-import {CHAT_ICONS, t} from '@itookit/common';
+import {CHAT_ICONS, getLocale, t} from '@itookit/common';
 import {InstructionQueueView, type InstructionQueueEdit, type InstructionQueueSnapshot} from '@itookit/llm-ui';
 import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
 import {instructionQueueLabels} from './instruction-queue-labels';
@@ -16,7 +16,8 @@ export class NativeInstructionQueuePanel {
             return queue;
         };
         this.view = new InstructionQueueView(element, {
-            ownerId: 'native', removeIcon: CHAT_ICONS.delete, labels: instructionQueueLabels(),
+            ownerId: 'native', locale: getLocale(), initiallyCollapsed: true, toggleIcon: CHAT_ICONS.enqueue,
+            removeIcon: CHAT_ICONS.delete, labels: instructionQueueLabels(),
             read: async () => apply(await controls.read()),
             edit: async (edit: InstructionQueueEdit) => {
                 if (this.readOnly || edit.action === 'update-input') throw new Error(t('session.instructions.editFailed'));
@@ -26,7 +27,11 @@ export class NativeInstructionQueuePanel {
     }
     update(snapshot: ConversationSnapshot): void {this.view.update(this.project(snapshot));}
     private project(snapshot: ConversationSnapshot): InstructionQueueSnapshot | undefined {
-        return snapshot.instructionQueue ? {ownerId: 'native', ...snapshot.instructionQueue} : undefined;
+        const queue = snapshot.instructionQueue;
+        if (!queue) return;
+        const reason = queue.reason ?? (queue.paused && queue.items.some(item => item.state === 'failed') ? 'rejected'
+            : queue.paused && queue.items.some(item => item.state === 'uncertain') ? 'recovery' : undefined);
+        return {ownerId: 'native', ...queue, reason};
     }
     setReadOnly(value: boolean): void {this.readOnly = value; this.view.setReadOnly(value);}
     destroy(): void {this.view.destroy();}

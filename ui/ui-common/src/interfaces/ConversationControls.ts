@@ -26,13 +26,16 @@ export interface ConversationModelCatalog {
     current?: ConversationModelSelection; default?: ConversationModelSelection;
 }
 export interface ConversationInstructionQueue {
+    reason?: string;
     revision: number; paused: boolean; acceptedIds: string[];
-    submissions?: Array<{id: string; turnId?: string; commandId?: string}>;
-    items: Array<{id: string; text: string; files: Array<{name: string}>; createdAt: number; state: 'pending' | 'dispatching' | 'failed' | 'uncertain'; error?: string}>;
+    submissions?: Array<{id: string; turnId?: string; commandId?: string; createdAt?: number; dispatchedAt?: number; acceptedAt?: number}>;
+    items: Array<{id: string; text: string; files: Array<{name: string}>; createdAt: number; dispatchedAt?: number; acceptedAt?: number; state: 'pending' | 'dispatching' | 'failed' | 'uncertain'; error?: string}>;
 }
 export type ConversationQueueEdit = {expectedRevision: number} & (
     {action: 'pause' | 'resume'} | {action: 'remove' | 'retry'; id: string} | {action: 'update'; id: string; text: string} | {action: 'reorder' | 'merge'; ids: string[]});
 export interface ConversationSnapshot {
+    writerLock?: {status: 'held' | 'not-held' | 'unknown'; checkedAt: number; acquiredAt?: number | null;
+        lockFileModifiedAt?: number | null; code?: string; owner?: {pid: number; uid?: number | null; processStartedAt?: number | null}};
     /** Submission is durable, but its native execution identity or terminal envelope is invalid. */
     resultError?: {operationId: string; code: string};
     canQueryCommand?: boolean;

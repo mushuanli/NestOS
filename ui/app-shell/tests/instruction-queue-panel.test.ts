@@ -14,6 +14,8 @@ function setup() {
     const execute = vi.fn(async () => ({ ...queue, revision: 8 }));
     const panel = new InstructionQueuePanel(element, { execute } as never, 's');
     panels.push(panel); panel.update(queue);
+    expect(element.querySelector<HTMLElement>('.llm-instruction-queue__body')!.hidden).toBe(true);
+    element.querySelector<HTMLButtonElement>('[data-action="toggle"]')!.click();
     const click = (selector: string) => element.querySelector<HTMLButtonElement>(selector)!.click();
     return { element, panel, queue, execute, click };
 }

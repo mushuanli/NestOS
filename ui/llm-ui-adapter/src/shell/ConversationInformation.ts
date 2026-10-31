@@ -2,6 +2,7 @@ import {ACTION_ICONS, escapeHTML, t} from '@itookit/common';
 import type {ConversationSnapshot} from '@itookit/ui-common';
 import {setTimePresentation} from '@itookit/ui-common';
 import {conversationUsage} from './conversation-usage';
+import {nativeWriterLockText} from './native-writer-lock';
 
 /** Secondary diagnostics stay behind More; updates never replace input or history DOM. */
 export class ConversationInformation {
@@ -29,7 +30,8 @@ export class ConversationInformation {
             <dt>${escapeHTML(t('project.lastActivity'))}</dt><dd><time data-session-time="updatedAt"></time></dd></dl>
             <p class="remote-conversation-info__help">${escapeHTML(t('harness.activityHint'))}</p>
             <section><h3>${escapeHTML(t('harness.runtimeStatus'))}</h3>
-            <p data-session-info-status></p><p class="remote-conversation-info__help" data-session-info-observation></p></section>
+            <p data-session-info-status></p><p class="remote-conversation-info__help" data-session-info-observation></p>
+            <p class="remote-conversation-info__help" data-native-writer-lock></p></section>
             <section data-session-info-meter><h3>${escapeHTML(t('harness.usageTitle'))}</h3><p data-session-info-usage></p>
             <p class="remote-conversation-info__help">${escapeHTML(t('harness.usageHelp'))}</p></section></div>`;
         dialog.querySelector('button')!.onclick = () => dialog.close();
@@ -47,6 +49,7 @@ export class ConversationInformation {
             setTimePresentation(element, this.snapshot?.[field], t('project.timeUnknown'));
         }
         dialog.querySelector('[data-session-info-status]')!.textContent = this.status;
+        dialog.querySelector('[data-native-writer-lock]')!.textContent = nativeWriterLockText(this.snapshot?.writerLock);
         dialog.querySelector('[data-session-info-observation]')!.textContent = [
             this.snapshot?.observation?.scope ? t(`harness.scope.${this.snapshot.observation.scope}`) : '',
             this.snapshot?.observation?.rawStatus === 'notLoaded' ? t('harness.unloadedHelp') : '', this.tooltip,

@@ -8,7 +8,7 @@ export function presentChatButton(node: HTMLButtonElement, action: string): void
         collapse: LayoutTemplates.collapseIcon(), collapseMessage: LayoutTemplates.collapseIcon(), refresh: ACTION_ICONS.refreshView, prompts: ACTION_ICONS.promptList,
         close: ACTION_ICONS.close, preview: ACTION_ICONS.wordWrap,
         more: CHAT_ICONS.more, search: CHAT_ICONS.search, copy: CHAT_ICONS.copy, edit: CHAT_ICONS.edit,
-        retry: ACTION_ICONS.rerun, 'rerun-arguments': ACTION_ICONS.rerun, branch: ACTION_ICONS.branch, delete: ACTION_ICONS.delete, send: ChatInputTemplates.sendIcon(),
+        retry: ACTION_ICONS.rerun, 'resubmit-send': ACTION_ICONS.rerun, 'rerun-arguments': ACTION_ICONS.rerun, branch: ACTION_ICONS.branch, delete: ACTION_ICONS.delete, send: ChatInputTemplates.sendIcon(),
         queue: CHAT_ICONS.enqueue, attach: ChatInputTemplates.addIcon(), cancel: ChatInputTemplates.stopIcon(),
         print: '<i class="fas fa-print" aria-hidden="true"></i>',
     };

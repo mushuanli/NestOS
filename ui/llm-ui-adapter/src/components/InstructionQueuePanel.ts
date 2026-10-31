@@ -1,5 +1,5 @@
 import {instructionQueueLabels} from './instruction-queue-labels';
-import {createModuleLogger, CHAT_ICONS, t} from '@itookit/common';
+import {createModuleLogger, CHAT_ICONS, getLocale, t} from '@itookit/common';
 import {InstructionQueueView, type InstructionQueueSnapshot, type InstructionQueueEdit as ViewEdit} from '@itookit/llm-ui';
 import {SessionCommand, type ICommandBus, type SessionInstructionQueue} from '@itookit/llm-session/contracts';
 
@@ -15,7 +15,7 @@ export class InstructionQueuePanel {
         private readonly isCurrent: () => boolean = () => true) {
         const project = (queue: Projection): InstructionQueueSnapshot => this.project(queue);
         this.view = new InstructionQueueView(element, {
-            ownerId: sessionId, removeIcon: CHAT_ICONS.delete,
+            ownerId: sessionId, locale: getLocale(), initiallyCollapsed: true, toggleIcon: CHAT_ICONS.enqueue, removeIcon: CHAT_ICONS.delete,
             edit: edit => this.execute('edit', () => commands.execute<Projection>(SessionCommand.EditInstructionQueue, this.edit(edit)), project),
             read: () => this.execute('read', () => commands.execute<Projection>(SessionCommand.GetInstructionQueue), project),
             labels: instructionQueueLabels(),
@@ -43,7 +43,7 @@ export class InstructionQueuePanel {
     private project(queue: Projection): InstructionQueueSnapshot {
         if (queue.sessionId === this.sessionId && (!this.queue || queue.revision >= this.queue.revision)) this.queue = queue;
         return {ownerId: queue.sessionId, revision: queue.revision, paused: queue.paused, reason: queue.reason,
-            items: queue.items.map(item => ({id: item.id, text: item.text, state: item.state, agentId: item.agentId,
+            items: queue.items.map(item => ({id: item.id, text: item.text, state: item.state, agentId: item.agentId, createdAt: item.createdAt,
             error: item.error, files: item.files.map(file => ({name: file.name})),
             ...(item.target ? {targetLabel: `${item.target.kind === 'flow' ? 'Flow' : 'Agent'} · ${item.flowBinding?.agent?.name ?? item.flowBinding?.definition.name ?? item.target.id}`} : {}),
             ...(item.source && item.flowBinding ? {input: item.source.kind === 'arguments' ? item.source.value : item.source.values,

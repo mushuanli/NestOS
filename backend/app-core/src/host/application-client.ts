@@ -64,6 +64,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     const backend: ApplicationBackend = {
         events: services.events,
         diagnostics: services.diagnostics,
+        flowInstallations: services.flowInstallations,
         assistantOverview: () => assistantOverview(services),
         sessionResponse: (id, query) => sessionResponse(repository, id, query),
         reportClientDiagnostic: async diagnostic => {

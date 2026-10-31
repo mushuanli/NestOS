@@ -13,7 +13,7 @@ import { openRunPicker } from './dag/RunPicker';
 import type { FlowDraft, FlowNodeId, FlowRevision, FlowEdgeDefinition, DagPluginManifest, DagPluginPresentation, FlowNodeDefinition, JsonValue } from '@itookit/llm-flow/contracts';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { DurableFlowSnapshot } from '@itookit/llm-flow/contracts';
-import { FlowCommand } from '@itookit/llm-flow/contracts';
+import { FlowCommand, isRootCallable } from '@itookit/llm-flow/contracts';
 import type { TaskSnapshot, TaskStatus } from '@itookit/durable-kernel/contracts';
 import {ACTION_ICONS, escapeHTML, randomUUID, t} from '@itookit/common';
 import { showConfirmDialog, Toast } from '@itookit/ui-common';
@@ -28,6 +28,7 @@ import type { FlowRunInput } from '../flows/run-flow';
 import {promptToolCall} from '../flows/tool-call-form';
 
 export interface DagWorkbenchOptions {
+    inspectDependencies?(flowId: string, signal: AbortSignal): Promise<void>;
     hideBackButton?: boolean;
     readOnly?: boolean;
     operations?: (sessionId: string) => Promise<OperationLedger>;
@@ -197,6 +198,7 @@ export class DagWorkbench {
             <button data-action="zoom-in" title="${escapeHTML(t('flow.toolbar.zoomIn'))}" aria-label="${escapeHTML(t('flow.toolbar.zoomIn'))}" ${draft ? '' : 'disabled'}>＋</button>
             <button data-action="fit" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.fit'))}</button>
             <button data-action="settings" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.settings'))}</button>
+            ${draft?.id && isRootCallable(draft) && this.options.inspectDependencies ? `<button data-action="dependencies">${escapeHTML(t('flow.dependencies.check'))}</button>` : ''}
             <button data-action="save" ${draft ? '' : 'disabled'}>${escapeHTML(t('action.save'))}</button>
             <button data-action="publish" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.publish'))}</button>
         </header>`;
@@ -423,12 +425,22 @@ export class DagWorkbench {
             'zoom-in': () => this.zoom(0.1),
             fit: () => this.fitCanvas(),
             settings: () => void this.openFlowSettings(),
+            dependencies: () => void this.inspectDependencies(),
             save: () => void this.save(),
             publish: () => void this.publish(),
         };
         for (const [action, callback] of Object.entries(actions)) {
             this.root.querySelector(`[data-action="${action}"]`)?.addEventListener('click', callback);
         }
+    }
+
+    private async inspectDependencies(): Promise<void> {
+        const draft = this.controller?.value;
+        if (!draft?.id || !isRootCallable(draft) || !this.options.inspectDependencies || this.toolDialog) return;
+        const dialog = this.toolDialog = new AbortController();
+        try {await this.options.inspectDependencies(draft.id, dialog.signal);}
+        catch (error) {if (!dialog.signal.aborted) Toast.error(error instanceof Error ? error.message : t('flow.dependencies.failed'));}
+        finally {if (this.toolDialog === dialog) this.toolDialog = undefined;}
     }
 
     private async addToolSource(): Promise<void> {

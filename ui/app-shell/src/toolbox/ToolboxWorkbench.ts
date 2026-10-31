@@ -25,6 +25,7 @@ import type { WorkspaceController } from '@itookit/app-contracts';
 import { showToolboxCreationDialog } from './create-resource-dialog';
 import { configureCreatedModel } from './creation-model-setup';
 import {showToolPackages} from './ToolPackagesDialog';
+import {showFlowDependencies} from '../configuration/flow-dependencies-dialog';
 import { chooseArchive, downloadArchive } from '../files/archive-transfer';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import { TOOLBOX_KINDS, TOOLBOX_FILTERS, toolboxFilter, toolboxKind, toolboxSourcePath, type ToolboxKind, type ToolboxFilter } from './routes';
@@ -193,7 +194,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     }
     private updateToolbar(): void {
         this.ui?.setToolbar({ fileLabel: t('toolbox.new'), fileTitle: t('toolbox.create'), iconOnlyActions: ['create-file'],
-            secondary: this.prefs.filter === 'tools' && (this.options.resources.toolPackages || this.options.resources.flowInstallations)
+            secondary: this.prefs.filter === 'tools' && this.options.resources.toolPackages
                 ? {label: t('toolbox.packages.title'), run: () => {void showToolPackages(this.options.resources, this.abort.signal, () => this.refresh());}}
                 : this.prefs.filter === 'models' ? { label: t('modelDefaults.button'), run: () => { void this.options.navigate({ target: 'settings', resourceId: 'model-defaults' }); } } : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();
                 const kind = group?.kind ?? (drawerKind(this.prefs.filter as ToolboxKind) ? this.prefs.filter as import('@itookit/app-contracts').DrawerKind : 'flows');
@@ -421,8 +422,9 @@ export class ToolboxWorkbench implements WorkspaceController {
             ? await this.options.resources.importWithReport(content) : {paths: await this.options.resources.import(content), installations: []};
         const {paths, installations} = imported;
         await this.refresh(); if (!this.closed && paths[0]) await this.openResource(paths[0]);
-        if (!this.closed && installations.some(report => report.status !== 'ready'))
-            await showToolPackages(this.options.resources, this.abort.signal, () => this.refresh());
+        const pending = installations.find(report => report.status !== 'ready');
+        if (!this.closed && pending && this.options.resources.flowInstallations)
+            await showFlowDependencies(this.options.resources.flowInstallations, pending.flowId, this.abort.signal, () => this.openResource('/tools'));
     }
     getActiveResourceId(): string | null { return this.ui?.getActiveSession()?.id ?? null; }
     async destroy(): Promise<void> {

@@ -16,6 +16,7 @@ import { DagWorkbench } from './DagWorkbench';
 import { FlowLauncher, flowIdFromNodeId, type FlowRunInput } from '../flows/run-flow';
 
 export interface FlowsEditorDeps {
+    inspectDependencies?(flowId: string, signal: AbortSignal): Promise<void>;
     sessionRepository?: Pick<ISessionRepository, 'getManifest' | 'compareAndSetUIState'>;
     commands: ICommandBus;
     /** Optional override for the run action (defaults to create-session + navigate). */
@@ -50,6 +51,7 @@ export class FlowsEditor extends IEditor {
         container.innerHTML = '';
         this.workbench = new DagWorkbench(container, {
             commands: this.deps.commands,
+            inspectDependencies: this.deps.inspectDependencies,
             operations: this.deps.sessionRepository ? async sessionId => {
                 const repository = this.deps.sessionRepository!;
                 const initial = await persistOperations(repository, sessionId, []);

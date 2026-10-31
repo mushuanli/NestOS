@@ -1,5 +1,5 @@
 import {createModuleLogger, randomUUID, t} from '@itookit/common';
-import {FlowCommand, collectFlowToolDependencies, flowParameterValues, type FlowDraft, type FlowRevision, type FlowToolDependency} from '@itookit/llm-flow/contracts';
+import {FlowCommand, collectFlowToolDependencies, flowParameterValues, isRootCallable, type FlowDraft, type FlowRevision, type FlowToolDependency} from '@itookit/llm-flow/contracts';
 import {checkFlowSource, externalFlowReferences, validateFlowParameters} from '@itookit/llm-flow';
 import {SessionCommand, type ICommandBus} from '@itookit/llm-session/contracts';
 import type {FlowConfigurationIssue, FlowInstallationReport, FlowInstallations} from '@itookit/app-contracts/services';
@@ -16,14 +16,15 @@ export class FlowInstallationService implements FlowInstallations {
     constructor(private readonly commands: ICommandBus, readonly toolPackages: FlowToolPackages) {
         toolPackages.existingFlowIds = async () => new Set((await commands.execute<FlowDraft[]>(FlowCommand.DraftList, {})).map(flow => String(flow.id)));
         toolPackages.assertRemovable = async tools => {
-            const reports = await this.list();
+            const drafts = await commands.execute<FlowDraft[]>(FlowCommand.DraftList, {});
+            const reports = await Promise.all(drafts.map(flow => this.check(flow.id)));
             if (reports.some(report => report.tools.some(tool => tools.includes(tool.id))))
                 throw Object.assign(new Error(t('toolbox.packages.inUse')), {code: 'TOOL_PACKAGE_IN_USE'});
         };
     }
     async list(): Promise<FlowInstallationReport[]> {
         const drafts = await this.commands.execute<FlowDraft[]>(FlowCommand.DraftList, {});
-        return Promise.all(drafts.map(flow => this.check(flow.id)));
+        return Promise.all(drafts.filter(isRootCallable).map(flow => this.check(flow.id)));
     }
     async close(): Promise<void> {await Promise.allSettled([...this.pending.values()]);}
     check(flowId: string): Promise<FlowInstallationReport> {return this.prepare(flowId, false);}

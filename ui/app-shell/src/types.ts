@@ -72,6 +72,7 @@ export interface ChatEditorDeps {
 }
 
 export interface FlowEditorDeps {
+    inspectDependencies?(flowId: string, signal: AbortSignal): Promise<void>;
     sessionRepository?: Pick<ISessionRepository, 'getManifest' | 'compareAndSetUIState'>;
     commands: ICommandBus;
     /** Optional override for the run action (defaults to create-session + navigate). */

@@ -1,4 +1,5 @@
 import {studyDraftStore} from './persistence/study-draft-store';
+import {showFlowDependencies} from './configuration/flow-dependencies-dialog';
 import {ShellApplicationEvents, workspaceConsumesEvent} from './lifecycle/application-events';
 import {studySources} from './browser/study-sources';
 import {studyGeneration} from './browser/study-generation';
@@ -179,6 +180,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     // Workflows workspace: standalone design surface over the flows VFS module.
     const flowsFactory = options.ui.createFlowEditor({
+        inspectDependencies: backend.flowInstallations ? (id, signal) => showFlowDependencies(backend.flowInstallations!, id, signal,
+            () => handleNavigationRequest({target: 'toolbox', resourceId: '/tools'})) : undefined,
         sessionRepository,
         commands: commandBus,
         listConnections: async () => {

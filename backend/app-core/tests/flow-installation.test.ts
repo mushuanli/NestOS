@@ -39,6 +39,20 @@ it('automatically ensures declared tools and reports parameter configuration wit
     expect(await f.runtime.commandBus.execute(FlowCommand.DraftLoad, {id: flow.id})).toEqual(before);
 });
 
+it('lists root-callable workflows while retaining removal protection for tools referenced by local definitions', async () => {
+    const f = await setup(), local = {...template('private-child'), toolDependencies: [{id: 'fixture.private'}]};
+    await f.runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [template('public-parent'), local]});
+    const draft = await f.runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: local.id});
+    await f.runtime.commandBus.execute(FlowCommand.DraftSave, {draft: {...draft, exposure: 'local'}, expectedDraftVersion: draft.draftVersion});
+    const check = vi.spyOn(f.installations, 'check');
+    const reports = await f.installations.list();
+    expect(reports.some(report => report.flowId === 'public-parent')).toBe(true);
+    expect(reports.some(report => report.flowId === local.id)).toBe(false);
+    expect(check.mock.calls.some(([id]) => id === local.id)).toBe(false);
+    await expect(f.installations.toolPackages.assertRemovable!(['fixture.private'])).rejects.toMatchObject({code: 'TOOL_PACKAGE_IN_USE'});
+    expect((await f.runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: local.id})).exposure).toBe('local');
+});
+
 it('checks the preserved user declaration instead of reinstalling a new product template', async () => {
     const f = await setup(), flow = template(); await f.runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
     const draft = await f.runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: flow.id});

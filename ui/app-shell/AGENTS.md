@@ -10,7 +10,7 @@ SessionWorkbench 统一项目草稿、智能体快捷入口和原生新会话入
 
 应用启动引导 + UI 路由 + UI 装配。`initApp()` 是唯一顶层初始化函数。
 
-工具箱「工具」分类与工具详情通过 ToolPackagesDialog 展示宿主可信工具包和已安装 Flow 的依赖状态。检查只调用 list/check，注册只把 catalog 声明的工具身份交给 toolPackages.ensure，不接受路径、命令或任意安装来源；缺包显示待宿主安装。Flow 依赖分别展示 missingTools、needsConfiguration、failed 与 ready，保留后端提供的字段级原因；弹层关闭后忽略迟到响应。
+工具箱「工具」分类与工具详情通过 ToolPackagesDialog 仅展示宿主可信工具包、个人配置、账号和包自带的配套流程资源，不枚举或检查全部工作流。注册只把 catalog 声明的工具身份交给 toolPackages.ensure，不接受路径、命令或任意安装来源；缺包显示待宿主安装。单个可独立调用的工作流详情通过 inspectDependencies 打开依赖弹窗，调用 ApplicationBackend.flowInstallations.check/ensure，只检查该工作流已保存定义；分别展示 missingTools、needsConfiguration、failed 与 ready，准备依赖不执行工作流，关闭后忽略迟到响应。内部定义不提供独立依赖入口，后台列表按 exposure 筛选，但工具卸载引用保护仍覆盖全部定义。
 
 本地会话通过 `EditorOptions.mountMoreMenu` 将会话信息与归属动作挂入聊天标题栏共用的更多菜单；不再增加正文上方的会话工具栏。关联会话不继承聊天历史，创建动作只在菜单中显示。项目侧栏直接合并各来源最近 15 条会话及父关系，超过后由“更多会话”打开右侧每页 50 条的列表；不在侧栏展开更多，不保留 harness 分组层级。后端负责有界合并、分页及能力声明，UI 使用来源图标、标题栏来源标识和规范资源跳转；容器行别名不得改变 Session/native 会话身份。
 

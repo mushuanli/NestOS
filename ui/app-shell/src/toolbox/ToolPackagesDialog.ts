@@ -1,6 +1,6 @@
 import {packageConfiguration, readPackageSettings} from './package-configuration';
 import {createModuleLogger, escapeHTML, randomUUID, t, type LocaleKey} from '@itookit/common';
-import type {FlowInstallationReport, FlowInstallations, ToolPackageInfo, ToolPackages, ToolRunRecord} from '@itookit/app-contracts/services';
+import type {ToolPackageInfo, ToolPackages, ToolRunRecord} from '@itookit/app-contracts/services';
 import {packageGuide} from './package-guide';
 import {packageFlows, packageFlowKey} from './package-flows';
 import {versionAction, packageVersions} from './package-versions';
@@ -8,7 +8,7 @@ import {connectionFeedback, revealConnection, type ConnectionNotice} from './con
 import {verificationMessage} from '../configuration/connection-verification';
 import {sourceConnectionSettings, importConnection, connectionInput, validateConnectionForm, type SourceConnections} from '../configuration/tool-connections';
 
-interface PackageControls {toolPackages?: ToolPackages; flowInstallations?: FlowInstallations}
+interface PackageControls {toolPackages?: ToolPackages}
 const log = createModuleLogger('tool-package-ui');
 const label = (key: string) => t(`toolbox.packages.${key}` as LocaleKey);
 
@@ -24,7 +24,6 @@ class ToolPackagesDialog {
     private readonly histories = new Map<string, ToolRunRecord[]>();
     private readonly addedFlows = new Map<string, number>();
     private installingFlows?: string;
-    private flows: FlowInstallationReport[] = [];
     private connectionState: SourceConnections = {types: [], connections: []};
     private busy = false;
     private disposed = false;
@@ -90,19 +89,11 @@ class ToolPackagesDialog {
             if (active && selected) void this.switchPackageVersion(active, selected);
             return;
         }
-        if (target.dataset.enableDependency) {
-            const id = target.dataset.enableDependency, item = primaryPackages(this.packages).find(item => item.configuration && item.tools.some(tool => tool.id === id));
-            if (item?.configuration) {const config = item.configuration, parent = config.tools.find(tool => tool.id === id)?.enableWith;
-                void this.run('tool.dependency.enable', async () => {await this.controls.toolPackages?.configure?.(item.id, item.version, {enabled: true, defaults: config.defaults, disabledTools: config.disabledTools?.filter(tool => tool !== id && tool !== parent) ?? []}); await this.readState(); if (!this.disposed) await this.changed();});}
-            return;
-        }
         if (target.dataset.packageToggle) {const item = primaryPackages(this.packages).find(item => item.id === target.dataset.packageToggle && item.configuration); if (item?.configuration) void this.run('tool.package.toggle', async () => {await this.controls.toolPackages?.configure?.(item.id, item.version, {enabled: !item.configuration!.enabled, defaults: item.configuration!.defaults, ...(item.configuration!.disabledTools ? {disabledTools: item.configuration!.disabledTools} : {})}); await this.readState(); if (!this.disposed) await this.changed();}); return;}
         if (target.dataset.packageHistory) {const item = primaryPackages(this.packages).find(item => item.id === target.dataset.packageHistory); if (item) void this.run('tool.history.read', async () => {this.histories.set(item.id, await this.controls.toolPackages?.history?.(item.id, item.version) ?? []);}); return;}
         if (target.dataset.packageUninstall) {const item = primaryPackages(this.packages).find(item => item.id === target.dataset.packageUninstall && item.version === target.dataset.packageVersion); if (item) void this.run('tool.package.uninstall', async () => {await this.controls.toolPackages?.uninstall?.(item.id, item.version); await this.readState(); if (!this.disposed) await this.changed();}); return;}
         const packageId = target.dataset.packageEnsure;
         if (packageId) {const item = primaryPackages(this.packages).find(item => item.id === packageId); if (item) void this.register(item);}
-        if (target.dataset.flowCheck) void this.flowAction(target.dataset.flowCheck, false);
-        if (target.dataset.flowEnsure) void this.flowAction(target.dataset.flowEnsure, true);
         if (target.dataset.packageFlows) {
             const item = primaryPackages(this.packages).find(item => item.id === target.dataset.packageFlows && item.version === target.dataset.packageVersion);
             if (item) void this.installPackageFlows(item);
@@ -141,12 +132,11 @@ class ToolPackagesDialog {
     }
 
     private async readState(): Promise<void> {
-        const results = await Promise.allSettled([this.controls.toolPackages?.list() ?? [], this.controls.flowInstallations?.list() ?? [],
+        const results = await Promise.allSettled([this.controls.toolPackages?.list() ?? [],
             this.controls.toolPackages?.connections?.snapshot() ?? {types: [], connections: []}]);
         if (this.disposed) return;
-        const [packages, flows, connections] = results;
+        const [packages, connections] = results;
         if (packages.status === 'fulfilled') this.packages = packages.value;
-        if (flows.status === 'fulfilled') this.flows = flows.value;
         if (connections.status === 'fulfilled') this.connectionState = connections.value;
         this.error = [this.error, ...results.flatMap(result => result.status === 'rejected' ? [reason(result.reason)] : [])].filter(Boolean).join('；');
     }
@@ -271,16 +261,6 @@ class ToolPackagesDialog {
         });
     }
 
-    private async flowAction(id: string, prepare: boolean): Promise<void> {
-        await this.run(prepare ? 'flow.dependencies.prepare' : 'flow.dependencies.check', async () => {
-            const report = await this.controls.flowInstallations![prepare ? 'ensure' : 'check'](id);
-            if (this.disposed) return;
-            this.outcome = report.status;
-            this.flows = this.flows.map(item => item.flowId === report.flowId ? report : item);
-            await this.readState(); if (!this.disposed) await this.changed();
-        });
-    }
-
     private async run(operation: string, execute: (operationId: string) => Promise<void>): Promise<void> {
         if (this.busy || this.disposed) return;
         if (!['tool.connection.save', 'tool.connection.verify'].includes(operation)) this.connectionNotices.clear();
@@ -306,8 +286,7 @@ class ToolPackagesDialog {
             <span role="status">${this.busy ? escapeHTML(label('loading')) : ''}</span></div>
             <p class="tool-packages-dialog__error" role="alert">${escapeHTML(this.error)}</p>
             <section class="tool-packages-dialog__section">${this.packages.length ? primaryPackages(this.packages).map(item => packageRow(item, this.busy, this.connectionState, this.histories.get(item.id), this.packages.filter(version => version.id === item.id), packageFlows(item, this.busy, this.installingFlows === packageFlowKey(item), this.addedFlows.get(packageFlowKey(item))))).join('') : `<p>${escapeHTML(label('empty'))}</p>`}</section>
-            ${this.controls.toolPackages?.connections && this.connectionState.types.some(type => !this.packages.some(item => packageConnectionTypes(item).includes(type.id))) ? sourceConnectionSettings({...this.connectionState, types: this.connectionState.types.filter(type => !this.packages.some(item => packageConnectionTypes(item).includes(type.id)))}, true) : ''}
-            ${this.controls.flowInstallations ? `<details class="tool-packages-dialog__section"><summary>${escapeHTML(label('flows'))}</summary>${this.flows.map(item => flowRow(item, this.busy)).join('')}</details>` : ''}`;
+            ${this.controls.toolPackages?.connections && this.connectionState.types.some(type => !this.packages.some(item => packageConnectionTypes(item).includes(type.id))) ? sourceConnectionSettings({...this.connectionState, types: this.connectionState.types.filter(type => !this.packages.some(item => packageConnectionTypes(item).includes(type.id)))}, true) : ''}`;
         for (const node of this.body.querySelectorAll<HTMLDetailsElement>('[data-package-guide], [data-package-preferences]')) node.open = expanded.has(node.hasAttribute('data-package-guide') ? 'guide:' + node.dataset.packageGuide : 'preferences:' + node.dataset.packagePreferences);
         for (const node of this.body.querySelectorAll<HTMLDetailsElement>('[data-connection-details]')) if (connectionDetails.has(node.dataset.connectionDetails)) node.open = connectionDetails.get(node.dataset.connectionDetails)!;
         for (const [type, id] of this.connectionDrafts) {
@@ -340,17 +319,6 @@ function packageRow(item: ToolPackageInfo, busy: boolean, snapshot: SourceConnec
         <button type="button" data-package-history="${escapeHTML(item.id)}">${escapeHTML(t('action.refresh'))}</button>${historyView(history)}</details>
         <details><summary>${escapeHTML(t('toolbox.packages.information'))}</summary><p><code>${escapeHTML(item.tools.map(tool => tool.id).join(', '))}</code></p>${packageGuide(item)}${packageVersions(item, versions, busy)}
         ${item.canUninstall ? `<button type="button" data-package-uninstall="${escapeHTML(item.id)}" data-package-version="${escapeHTML(item.version)}">${escapeHTML(t('toolbox.packages.uninstall'))}</button>` : ''}</details></article>`;
-}
-
-function flowRow(report: FlowInstallationReport, busy: boolean): string {
-    const disabled = report.tools.find(tool => ['TOOL_DISABLED', 'TOOL_PACKAGE_TOOL_DISABLED'].includes(tool.code ?? ''));
-    const tools = report.tools.filter(tool => tool.status !== 'ready').map(tool => `${tool.id}${tool.version ? '@' + tool.version : ''}: ${(['TOOL_DISABLED', 'TOOL_PACKAGE_TOOL_DISABLED'].includes(tool.code ?? '') ? t('toolbox.packages.toolDisabled') : tool.reason || t('flow.dependencies.missingTools'))}`);
-    const issues = [...tools, ...report.parameters, ...report.connections, ...report.errors].map(issue => typeof issue === 'string' ? issue : `${issue.field ? issue.field + ': ' : ''}${issue.message}`);
-    return `<article class="tool-packages-dialog__item" data-flow-id="${escapeHTML(report.flowId)}"><div class="tool-packages-dialog__item-header">
-        <strong>${escapeHTML(report.name || report.flowId)}</strong><span>${escapeHTML(t(`flow.dependencies.${report.status}` as LocaleKey))}</span></div>
-        ${issues.length ? `<ul>${issues.map(issue => `<li>${escapeHTML(issue)}</li>`).join('')}</ul>` : ''}
-        <div class="tool-packages-dialog__actions"><button type="button" data-flow-check="${escapeHTML(report.flowId)}" ${busy ? 'disabled' : ''}>${escapeHTML(label('check'))}</button>
-        ${disabled ? `<button type="button" data-enable-dependency="${escapeHTML(disabled.id)}"${busy ? ' disabled' : ''}>${escapeHTML(label('enable'))}</button>` : report.status !== 'ready' ? `<button type="button" data-flow-ensure="${escapeHTML(report.flowId)}" ${busy ? 'disabled' : ''}>${escapeHTML(label('prepare'))}</button>` : ''}</div></article>`;
 }
 
 function reason(error: unknown): string {

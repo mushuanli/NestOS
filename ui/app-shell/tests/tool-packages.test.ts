@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
-import type {FlowInstallationReport, FlowInstallations, ToolPackageInfo, ToolPackages, ToolConnectionType, ToolAuthorizationView} from '@itookit/app-contracts/services';
+import type {FlowInstallations, ToolPackageInfo, ToolPackages, ToolConnectionType, ToolAuthorizationView} from '@itookit/app-contracts/services';
 import {showToolPackages} from '../src/toolbox/ToolPackagesDialog';
 
 const opened: Promise<void>[] = [];
@@ -81,20 +81,12 @@ it('shows a missing package reason without advertising an arbitrary installation
     await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2)); expect(ensure).not.toHaveBeenCalled();
 });
 
-it('keeps missing tools and configuration requirements distinct while retrying Flow dependencies', async () => {
-    const report: FlowInstallationReport = {flowId: 'external-flow', name: 'Document workflow', status: 'missingTools', tools: [{id: 'document.inspect', status: 'missing'}], parameters: [], connections: [], errors: []};
-    const configured: FlowInstallationReport = {...report, status: 'needsConfiguration', tools: [{id: 'document.inspect', status: 'ready'}], connections: [{code: 'MISSING_CONNECTION', field: 'vision', message: 'Choose an image-capable connection'}]};
-    let current = report;
-    const ensure = vi.fn(async () => {current = configured; return current;}), check = vi.fn(async () => current);
-    const f = setup({flowInstallations: {list: async () => [current], ensure, check}});
-    await vi.waitFor(() => expect(f.dialog.querySelector('[data-flow-check]')).not.toBeNull());
-    f.dialog.querySelector<HTMLButtonElement>('[data-flow-check]')!.click();
-    await vi.waitFor(() => expect(check).toHaveBeenCalledWith('external-flow')); expect(ensure).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(f.dialog.querySelector<HTMLButtonElement>('[data-flow-ensure]')!.disabled).toBe(false));
-    f.dialog.querySelector<HTMLButtonElement>('[data-flow-ensure]')!.click();
-    await vi.waitFor(() => expect(f.dialog.textContent).toContain('Choose an image-capable connection'));
-    expect(f.dialog.textContent).toContain('需要配置'); expect(f.dialog.textContent).not.toContain('依赖已就绪');
-    expect(ensure).toHaveBeenCalledWith('external-flow');
+it('does not enumerate or prepare workflows inside the tool package dialog', async () => {
+    const list = vi.fn(async () => []), check = vi.fn(), ensure = vi.fn();
+    const f = setup({toolPackages: {list: async () => [available], ensure: vi.fn()}, flowInstallations: {list, check, ensure}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-ensure]')).not.toBeNull());
+    expect(f.dialog.querySelector('[data-flow-id], [data-flow-check], [data-flow-ensure]')).toBeNull();
+    expect(list).not.toHaveBeenCalled(); expect(check).not.toHaveBeenCalled(); expect(ensure).not.toHaveBeenCalled();
 });
 
 it('does not resurrect a closed package dialog after a late registration response', async () => {
@@ -108,22 +100,16 @@ it('does not resurrect a closed package dialog after a late registration respons
     expect(document.querySelector('.tool-packages-dialog')).toBeNull(); expect(f.changed).not.toHaveBeenCalled();
 });
 
-it.each(['package', 'flow'])('refreshes both package and Flow states after preparing the %s', async target => {
+it('refreshes package registration without querying unrelated workflow readiness', async () => {
     let registered = false;
-    const report = (): FlowInstallationReport => ({flowId: 'external-flow', name: 'Document workflow', status: registered ? 'ready' : 'missingTools',
-        tools: [{id: 'document.inspect', status: registered ? 'ready' : 'missing'}], parameters: [], connections: [], errors: []});
     const listPackages = vi.fn(async () => [{...available, status: registered ? 'registered' as const : 'available' as const}]);
-    const listFlows = vi.fn(async () => [report()]);
-    const f = setup({toolPackages: {list: listPackages, ensure: async () => {registered = true; return {tools: report().tools};}},
-        flowInstallations: {list: listFlows, check: async () => report(), ensure: async () => {registered = true; return report();}}});
-    await vi.waitFor(() => expect(f.dialog.querySelector('[data-flow-ensure]')).not.toBeNull());
-    f.dialog.querySelector<HTMLButtonElement>(target === 'package' ? '[data-package-ensure]' : '[data-flow-ensure]')!.click();
-    await vi.waitFor(() => {
-        expect(f.dialog.querySelector('[data-package-status]')!.textContent).toBe('已注册');
-        expect(f.dialog.querySelector('[data-flow-id]')!.textContent).toContain('依赖已就绪');
-    });
-    expect(listPackages).toHaveBeenCalledTimes(2); expect(listFlows).toHaveBeenCalledTimes(2);
-    expect(f.dialog.querySelector('[data-package-ensure]')).toBeNull(); expect(f.dialog.querySelector('[data-flow-ensure]')).toBeNull();
+    const listFlows = vi.fn();
+    const f = setup({toolPackages: {list: listPackages, ensure: async () => {registered = true; return {tools: [{id: 'document.inspect', status: 'ready'}]};}},
+        flowInstallations: {list: listFlows, check: vi.fn(), ensure: vi.fn()}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-ensure]')).not.toBeNull());
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-ensure]')!.click();
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-status]')!.textContent).toBe('已注册'));
+    expect(listPackages).toHaveBeenCalledTimes(2); expect(listFlows).not.toHaveBeenCalled();
 });
 
 const guide: NonNullable<ToolPackageInfo['guide']> = {version: 1, title: '<img src=x>', description: 'Setup remains available after registration', steps: [
@@ -190,14 +176,13 @@ it('merges package versions, reads run history and toggles only user settings', 
     await vi.waitFor(() => expect(f.dialog.textContent).toContain('120 ms'));
     expect(f.dialog.textContent).toContain('0.1.0'); expect(f.dialog.textContent).toContain('2.0.0');
 });
-it('offers enablement for disabled dependencies while retaining other disabled tools', async () => {
+it('keeps personal package enablement independent of workflow dependency checks', async () => {
     const configure = vi.fn(async () => {});
-    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', configuration: {enabled: false, defaults: {}, disabledTools: ['document.inspect', 'other'], tools: [{id: 'document.inspect', parameters: []}]}}], ensure: vi.fn(), configure},
-        flowInstallations: {list: async () => [{flowId: 'flow', status: 'needsConfiguration', tools: [{id: 'document.inspect', status: 'failed', code: 'TOOL_DISABLED'}], parameters: [], connections: [], errors: []}], check: vi.fn(), ensure: vi.fn()}});
-    await vi.waitFor(() => expect(f.dialog.querySelector('[data-enable-dependency]')).not.toBeNull());
-    expect(f.dialog.querySelector('[data-flow-ensure]')).toBeNull();
-    f.dialog.querySelector<HTMLButtonElement>('[data-enable-dependency]')!.click();
-    await vi.waitFor(() => expect(configure).toHaveBeenCalledWith(available.id, available.version, {enabled: true, defaults: {}, disabledTools: ['other']}));
+    const f = setup({toolPackages: {list: async () => [{...available, status: 'registered', configuration: {enabled: false, defaults: {}, disabledTools: ['document.inspect', 'other'], tools: [{id: 'document.inspect', parameters: []}]}}], ensure: vi.fn(), configure}});
+    await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-toggle]')).not.toBeNull());
+    expect(f.dialog.querySelector('[data-enable-dependency], [data-flow-ensure]')).toBeNull();
+    f.dialog.querySelector<HTMLButtonElement>('[data-package-toggle]')!.click();
+    await vi.waitFor(() => expect(configure).toHaveBeenCalledWith(available.id, available.version, {enabled: true, defaults: {}, disabledTools: ['document.inspect', 'other']}));
 });
 
 it('shows progress, completion and installed state after reopening for bundled workflows', async () => {

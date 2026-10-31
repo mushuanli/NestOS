@@ -22,6 +22,7 @@ it('carries package management, installation reports, import results and recover
         await toolbox.resources.toolPackages.configure('external', '1', settings);
         expect(configure).toHaveBeenCalledWith('external', '1', settings);
         const report = await toolbox.resources.flowInstallations.check('anki-generate');
+        expect(await root.backend.flowInstallations.check('anki-generate')).toEqual(report);
         expect(report.status).toBe('missingTools'); expect(report.tools.some((tool: {id: string}) => tool.id === 'anki.package')).toBe(true);
         const initial = await root.backend.initialFiles(), [result] = await initial.restore(['flow:anki-generate']);
         expect(result.status).toBe('restored');

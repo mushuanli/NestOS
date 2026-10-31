@@ -17,7 +17,7 @@ export class ToolDetailsEditor extends BaseSettingsEditor<ToolboxInventory> {
         const status = document.createElement('p'); status.textContent = t(item?.enabled ? 'toolbox.available' : 'toolbox.unavailable');
         const hint = document.createElement('p'); hint.textContent = t('toolbox.toolsHint');
         panel.append(title, source, status, description, hint);
-        if (this.resources?.toolPackages || this.resources?.flowInstallations) {
+        if (this.resources?.toolPackages) {
             const packages = document.createElement('button'); packages.type = 'button'; packages.textContent = t('toolbox.packages.title');
             packages.onclick = () => {void showToolPackages(this.resources!, this.options.signal);}; panel.append(packages);
         }

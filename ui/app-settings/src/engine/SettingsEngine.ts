@@ -25,7 +25,7 @@ import type {
     ITagOperations,
 } from '@itookit/vfs-core';
 import { FSCapabilityError } from '@itookit/vfs-core';
-import { ENTITY_ICONS, t } from '@itookit/common';
+import { ENTITY_ICONS, TOOLBOX_ICONS, t } from '@itookit/common';
 
 // UI 定义：ID -> 元数据
 export const SETTINGS_PAGES: Record<string, { name: string, icon: string }> = {
@@ -43,6 +43,7 @@ export const SETTINGS_PAGES: Record<string, { name: string, icon: string }> = {
     'log':         { name: '系统日志',      icon: '📋' },
     'about':       { name: 'About',         icon: 'ℹ️' },
     'fs-explorer': { name: 'FS Explorer',   icon: '🗂️' },
+    'terminal': { get name() { return t('terminal.title'); }, icon: TOOLBOX_ICONS.terminal },
 };
 
 function toFSNode(id: string, config: (typeof SETTINGS_PAGES)[string]): FSFileNode {

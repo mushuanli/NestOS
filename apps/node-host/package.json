@@ -28,7 +28,8 @@
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/driver-llm": "workspace:*",
     "@itookit/image-tools": "workspace:*",
-    "js-yaml": "^4.3.2"
+    "js-yaml": "^4.3.2",
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

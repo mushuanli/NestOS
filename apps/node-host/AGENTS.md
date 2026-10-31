@@ -39,3 +39,5 @@ httpd 仅在 http.editorSwap=true 时装配 EditorSwapStore，默认 ~/swap；�
 - toolbox.yaml 声明预装和可配置普通参数；启动先预装并向已有同版本包分发声明，再为每个用户绑定默认停用的 Tool。用户设置位于私有 authDir/tool-preferences，configure 只接收包身份和普通设置；实际 Schema 校验与原子保存，参数值、YAML 正文不进日志。Flow ensure 不改变用户启用状态。
 
 toolbox.yaml 的普通参数可声明 connectionType；工具包配置投影当前用户同类型连接为可选项，唯一连接提供默认建议，多个连接不猜测账号。UI 保存后才成为用户参数覆盖；参数 Schema 的默认值另行展示，空值继续继承运行时默认。配置字段不投影 Secret。
+
+- terminal/ 只为 HTTP 管理员认证视图提供服务器 Bash PTY，经 ServerTerminals/ServerTerminal 契约开放。每视图最多两个进程，输出有界；视图与编辑器销毁释放 PTY，输入从不自动重放。普通用户不获得此能力；日志不包含命令、输出或环境值。定向回归为 http-app 的 server-terminal 与 view-api 终端场景。

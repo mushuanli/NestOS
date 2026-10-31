@@ -1,0 +1,5 @@
+.settings-terminal { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 360px; box-sizing: border-box; }
+.settings-terminal__toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-terminal__status { min-height: 1.5em; overflow-wrap: anywhere; }
+.settings-terminal__screen { flex: 1; min-height: 240px; min-width: 0; padding: 8px; background: #000; overflow: hidden; }
+.settings-terminal__screen .xterm { height: 100%; }

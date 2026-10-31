@@ -56,6 +56,8 @@
     "@itookit/kernel-adapters": "workspace:*"
   },
   "dependencies": {
-    "@itookit/app-contracts": "workspace:*"
+    "@itookit/app-contracts": "workspace:*",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0"
   }
 }

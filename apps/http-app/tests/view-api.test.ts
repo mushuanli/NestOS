@@ -533,3 +533,20 @@ it('atomically rejects an old Session UI revision across authenticated views wit
     await expect(b.services.sessionRepository.compareAndSetUIState!(id, -1, {})).rejects.toMatchObject({code: 'SESSION_UI_STATE_VERSION_INVALID'});
     expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_UI_RECORD');
 });
+
+it('runs server Bash through authenticated terminal capabilities without auditing commands or output', async () => {
+    const root = await client('server-terminal');
+    expect(root.backend.serverTerminals).toBeDefined();
+    const terminal = await root.backend.serverTerminals!.openTerminal();
+    try {
+        await terminal.sendInput("printf '\\nPRIVATE_SERVER_TERMINAL_OUTPUT\\n'\r");
+        let cursor = 0, output = '';
+        await vi.waitFor(async () => {
+            const page = await terminal.readOutput(cursor); cursor = page.cursor; output += page.output;
+            expect(output).toMatch(/\r?\nPRIVATE_SERVER_TERMINAL_OUTPUT\r?\n/);
+        }, {timeout: 5000, interval: 50});
+        await terminal.resizeTerminal(100, 30);
+        await expect(terminal.resizeTerminal(1, 30)).rejects.toMatchObject({code: 'EINVAL'});
+        expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_SERVER_TERMINAL_OUTPUT');
+    } finally {await terminal.dispose();}
+});

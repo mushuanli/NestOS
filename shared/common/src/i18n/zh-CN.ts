@@ -5,6 +5,21 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'terminal.title': "Terminal",
+    'terminal.description': "在 NestOS 服务器上运行 Bash，使用服务进程的系统账号与权限。关闭此页会结束终端；支持 cd、Ctrl+C 和交互命令。",
+    'terminal.open': "新建终端",
+    'terminal.close': "关闭终端",
+    'terminal.interrupt': "中断 Ctrl+C",
+    'terminal.clear': "清屏",
+    'terminal.unavailable': "服务器终端仅在 HTTP 服务中向管理员开放。",
+    'terminal.connecting': "正在启动服务器 Bash…",
+    'terminal.connected': "已连接服务器 Bash",
+    'terminal.closed': "终端已关闭",
+    'terminal.exited': "Bash 已退出，退出码",
+    'terminal.failed': "终端操作失败",
+    'terminal.inputLimit': "输入过长，请分段粘贴。",
+    'terminal.truncated': "输出过多，已丢弃较早的未读取内容。",
+
     'toolbox.packages.inUse': '工具仍被工作流引用，请先移除相关工作流依赖。',
     "toolbox.connections.savingConnection": "正在保存连接…",
     "toolbox.connections.verifyingConnection": "正在验证授权…",

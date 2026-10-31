@@ -4,6 +4,21 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'terminal.title': "Terminal",
+    'terminal.description': "Run Bash on the NestOS server as the service account. Closing this page ends the terminal. Supports cd, Ctrl+C and interactive commands.",
+    'terminal.open': "New terminal",
+    'terminal.close': "Close terminal",
+    'terminal.interrupt': "Interrupt Ctrl+C",
+    'terminal.clear': "Clear",
+    'terminal.unavailable': "Server terminals are available to administrators through the HTTP service.",
+    'terminal.connecting': "Starting server Bash…",
+    'terminal.connected': "Connected to server Bash",
+    'terminal.closed': "Terminal closed",
+    'terminal.exited': "Bash exited with code",
+    'terminal.failed': "Terminal operation failed",
+    'terminal.inputLimit': "Input is too large. Paste smaller sections.",
+    'terminal.truncated': "Output overflow: older unread output was discarded.",
+
     'toolbox.packages.inUse': 'Workflows still reference these tools. Remove the related workflow dependencies first.',
     "toolbox.connections.savingConnection": "Saving connection…",
     "toolbox.connections.verifyingConnection": "Verifying authorization…",

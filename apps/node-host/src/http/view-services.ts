@@ -1,3 +1,4 @@
+import {NodeServerTerminals} from '../terminal/server-terminals';
 import { createNestosFlowLibrary, type ApplicationRuntime } from '@itookit/app-core';
 import { openApplicationView, restrictApplicationFiles } from '@itookit/app-core/host';
 import { APPLICATION_WORKSPACES } from '@itookit/app-contracts';
@@ -13,12 +14,13 @@ const ROOTS = ['/etc', '/home/admin', ...APPLICATION_WORKSPACES.map(name => `/ho
 export async function createHostedView(runtime: ApplicationRuntime, configurationReadonly = false): Promise<HostedView> {
     const view = await openApplicationView(runtime, { preload: true, configurationReadonly });
     const client = restrictApplicationFiles(view, ROOTS, configurationReadonly);
+    const terminals = configurationReadonly ? undefined : new NodeServerTerminals();
     try {
-        const root: HostedApplicationClient = { ...client, services: { ...client.services, startBackground: undefined },
+        const root: HostedApplicationClient = { ...client, backend: {...client.backend, serverTerminals: terminals}, services: { ...client.services, startBackground: undefined },
             flowLibrary: createNestosFlowLibrary(), fileTemplates: { agent: JSON.stringify(createNestosLlmPresets().agents, null, 2) } };
         return { root, prepare: (peer, domains) => prepareSnapshots(peer, root.services, domains, runtime.projects.remoteMounts?.mountedProjectIds() ?? []),
-            close: () => view.close() };
-    } catch (error) { await view.close(); throw error; }
+            close: async () => { try { await terminals?.dispose(); } finally { await view.close(); } } };
+    } catch (error) { await terminals?.dispose(); await view.close(); throw error; }
 }
 async function prepareSnapshots(peer: RpcPeer, services: ApplicationServices, domains?: ReadonlySet<ViewDomain>, projectIds: readonly string[] = []): Promise<void> {
     for (const id of services.vfs.devices.list()) peer.remember(services.vfs.devices, 'get', [id]);

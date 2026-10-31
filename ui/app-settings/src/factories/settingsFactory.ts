@@ -1,3 +1,4 @@
+import { TerminalSettingsEditor } from '../editors/TerminalSettingsEditor';
 import type { InitialFilesPort } from '../editors/initial-files';
 import type { MCPServer, MCPDiscovery } from '@itookit/tools/mcp-contracts';
 import type { ConfigurationFormControls } from '@itookit/ui-common';
@@ -44,6 +45,7 @@ function resolveSettingsSlug(nodeId: string): string {
 }
 
 export interface SettingsFactoryOptions {
+    serverTerminals?: import('@itookit/app-contracts/services').ServerTerminals;
     diagnostics?: import('@itookit/app-contracts/services').ApplicationDiagnostics;
     mediaProbeExamples?: MediaProbeExamples;
     ocr?: import('@itookit/ui-common').OcrControls;
@@ -57,7 +59,7 @@ export interface SettingsFactoryOptions {
     requestDelete?: import('@itookit/ui-common').EditorHostContext['requestDelete'];
 }
 export const createSettingsFactory = ({ settingsService, agentService, connectionService, llmUiEditors,
-    connectBrowser, restoreFlows, initialFiles, requestDelete, ocr, mediaProbeExamples, diagnostics }: SettingsFactoryOptions): EditorFactory => {
+    connectBrowser, restoreFlows, initialFiles, requestDelete, ocr, mediaProbeExamples, diagnostics, serverTerminals }: SettingsFactoryOptions): EditorFactory => {
     return async (container: HTMLElement, options: EditorOptions) => {
         if (requestDelete) options = { ...options, hostContext: { toggleSidebar: () => {}, navigate: async () => {}, ...options.hostContext, requestDelete } };
         const nodeId = resolveSettingsSlug(editorResourceId(options) || '');
@@ -65,6 +67,7 @@ export const createSettingsFactory = ({ settingsService, agentService, connectio
         let editor: IEditor | null = null;
 
         switch (nodeId) {
+            case 'terminal': editor = new TerminalSettingsEditor(container, serverTerminals, options); break;
             case 'model-defaults': editor = new llmUiEditors.ModelDefaultsEditor(container, connectionService, options, ocr); break;
             case 'storage':     editor = new StorageSettingsEditor(container, settingsService, options); break;
             case 'tags':        editor = new TagSettingsEditor(container, settingsService, options); break;

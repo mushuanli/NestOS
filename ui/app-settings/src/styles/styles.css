@@ -26,3 +26,5 @@
 @import '_system-fs.css';
 @import '_cost.css';
 @import '_appearance.css';
+@import '@xterm/xterm/css/xterm.css';
+@import './_terminal.css';

@@ -43,6 +43,7 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    serverTerminals?: import('./server-terminal').ServerTerminals;
     events?: import('./events').ApplicationEvents;
     diagnostics?: import('./diagnostics').ApplicationDiagnostics;
     flowInstallations?: import('./flow-installation').FlowInstallations;

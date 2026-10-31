@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
+import {t} from '@itookit/common';
 import {createOperationLedger} from '@itookit/llm-ui';
 import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
 import {createNativeChatBinding, createNativeChatView} from '../../llm-ui-adapter/src/independent/native';
@@ -70,7 +71,7 @@ it('adds retry to the unchanged user bubble only after definite queue failure an
         expect(f.retry()).toBeNull(); f.fail();
         await vi.waitFor(() => expect(f.retry()).not.toBeNull());
         expect(f.host.querySelector('[data-message-id="operation:instruction"]')).toBe(bubble);
-        expect(f.host.textContent).toContain('Codex 后台进程');
+        expect(f.host.textContent).toContain(t('chat.submission.occupied'));
         f.retry()!.click();
         await vi.waitFor(() => expect(f.controls.editInstructionQueue).toHaveBeenCalledWith({action: 'retry', id: 'instruction', expectedRevision: 2}));
         await vi.waitFor(() => expect(f.retry()).toBeNull());

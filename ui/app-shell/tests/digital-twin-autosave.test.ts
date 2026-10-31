@@ -104,7 +104,7 @@ it('uses the shared VFS list for navigation, deep links and mobile activation', 
     const rows = () => [...host.sidebar.querySelectorAll<HTMLElement>('[data-item-type="file"]')];
     expect(rows().map(row => row.dataset.itemId)).toEqual(['/overview', '/profile', '/memories', '/goals', '/sources', '/runs']);
     expect(host.sidebar.querySelector('[data-page]')).toBeNull();
-    expect(host.sidebar.querySelector('[data-action="item-menu"]')).toBeNull();
+    expect(host.sidebar.querySelector('[data-action="item-menu"]')).not.toBeNull();
     expect(rows().every(row => !row.draggable)).toBe(true);
     await host.workbench.openResource('/sources/runs');
     expect(host.sidebar.querySelector('[data-item-id="/sources"] .is-active')).not.toBeNull();

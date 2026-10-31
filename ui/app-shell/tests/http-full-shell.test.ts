@@ -84,8 +84,10 @@ it.each(['start', 'chat', 'notes', 'session'])('mounts the complete common shell
     const startup = { calls: metrics.calls - before.calls, requests: metrics.requests - before.requests, callbacks: metrics.callbacks - before.callbacks,
         responseBytes: metrics.bytes - before.bytes, inProcessMs: Math.round(performance.now() - started) };
     console.log('[HTTP startup metrics]', startup);
-    // Published target metadata and independent-call receipts each require one additional bounded read.
-    expect(startup.requests).toBeLessThanOrEqual(slug === 'session' ? 7 : slug === 'chat' ? 9 : 13); expect(startup.responseBytes).toBeLessThan(slug === 'session' ? 350000 : 64000);
+    expect(calls.eventBaseline).toBe(1); expect(calls.readEvents).toBe(1);
+    expect(calls.onChange ?? 0).toBeLessThanOrEqual(2);
+    // Account for the browser event baseline, subscription and initial replay alongside feature reads.
+    expect(startup.requests).toBeLessThanOrEqual(slug === 'session' ? 12 : slug === 'chat' ? 14 : 18); expect(startup.responseBytes).toBeLessThan(slug === 'session' ? 350000 : 64000);
     console.log('[HTTP startup methods]', calls);
     if (slug === 'session') {
         expect(loaded).toHaveLength(1);
@@ -104,13 +106,13 @@ it.each(['start', 'chat', 'notes', 'session'])('mounts the complete common shell
         expect(calls.listSessionPendingInteractionTasks).toBeUndefined();
         for (const method of ['taskAttachment', 'onGlobalEvent', 'onEvent', 'subscribe', 'onChanged', 'onPromoted', 'list', 'execute:session.flow.invocations'])
             expect(calls[method]).toBeUndefined();
-        expect(calls.onChange ?? 0).toBeLessThanOrEqual(1); // The assistant observes Twin changes once.
+        expect(calls.onChange ?? 0).toBeLessThanOrEqual(2); // One Twin observer and one browser event observer.
         console.log('[HTTP Session recovery metrics]', {...metrics, methods: calls, requestGroups});
         return;
     }
     for (const method of ['settings', 'ocr', 'readSettings', 'prepareConfiguration', 'initialFiles']) expect(calls[method]).toBeUndefined();
     if (slug === 'start') {
-        expect(startup.calls).toBe(1); expect(startup.requests).toBe(1);
+        expect(startup.calls).toBe(7); expect(startup.requests).toBe(5);
         for (const method of ['workbenchView', 'openSessionView', 'openFileSystem']) expect(calls[method]).toBeUndefined();
         expect(document.querySelector('.app-start.active')).not.toBeNull();
         expect(document.querySelector('.app-start__choice')).not.toBeNull();

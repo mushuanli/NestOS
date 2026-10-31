@@ -70,7 +70,7 @@ describe('Session workbench lifecycle', () => {
         const f = setup(); await f.workbench.start();
         await f.workbench.openResource('old');
         const options = (createVFSUI as any).mock.calls.at(-1)[0];
-        const menu = options.contextMenu.items({ id: '/target' }, []);
+        const menu = options.contextMenu.items({ id: '/target', metadata: {title: '', custom: {}} }, []);
         const action = menu.find((item: any) => item.id === 'rerun-session');
         expect(action.label).toBe(t('session.rerun.title'));
         action.onClick();
@@ -128,10 +128,12 @@ it('offers reset only on tasks and cancels through Kernel without deleting histo
     const f = setup(); await f.workbench.start();
     const options = vi.mocked(createVFSUI).mock.calls.at(-1)![0];
     const defaults = [{ id: 'export', label: 'export' }];
-    expect(options.contextMenu!.items!({ id: '/s/files/note.md' } as any, defaults)).toMatchObject(defaults);
-    const menu = options.contextMenu!.items!({ id: '/s/tasks/t' } as any, defaults);
-    expect(menu).toHaveLength(1);
-    const reset = menu[0] as { onClick: (item: any) => void };
+    const fileMenu = options.contextMenu!.items!({ id: '/s/files/note.md', metadata: {title: '', custom: {}} } as any, defaults);
+    expect(fileMenu).toEqual(expect.arrayContaining([expect.objectContaining(defaults[0])]));
+    expect(fileMenu.some(item => (item as {id?: string}).id === 'reset-task')).toBe(false);
+    const menu = options.contextMenu!.items!({ id: '/s/tasks/t', metadata: {title: '', custom: {}} } as any, defaults);
+    expect(menu.map(item => (item as {id?: string}).id)).toContain('assistant-add-shortcut');
+    const reset = menu.find(item => (item as {id?: string}).id === 'reset-task') as { onClick: (item: any) => void };
     reset.onClick({}); reset.onClick({});
     await vi.waitFor(() => expect(f.kernel.task).toHaveBeenCalledWith('s', 't'));
     expect(f.kernel.cancel).toHaveBeenCalledTimes(1);
@@ -144,7 +146,7 @@ it('offers closing a Session while keeping its records', async () => {
     const f = setup(); await f.workbench.start();
     const options = vi.mocked(createVFSUI).mock.calls.at(-1)![0];
     const defaults = [{ id: 'delete', label: '删除' }];
-    const items = options.contextMenu!.items!({ id: '/s' } as any, defaults);
+    const items = options.contextMenu!.items!({ id: '/s', metadata: {title: '', custom: {}} } as any, defaults);
     // The destructive defaults stay; closing is additive.
     expect(items.slice(0, defaults.length)).toMatchObject(defaults);
     expect(defaults).toEqual([{id: 'delete', label: '删除'}]);

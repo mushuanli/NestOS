@@ -13,7 +13,6 @@ import {prepareAgentFlow, prepareCallTarget} from '../../flows/agent-flow';
 import {SessionCommand} from '@itookit/llm-session/contracts';
 import type { SendMessageParams } from '../../commands/SendMessageCommand';
 import {SubmissionFeedback} from '../../components/history/SubmissionFeedback';
-import { mountDraftProjectScope } from './draft-project-scope';
 import type {WorkspaceHandoff} from './workspace-handoff';
 import type {ChatInputOptions} from '../../components/input/ChatInputView';
 import {EventBus} from '@itookit/vfs-core';
@@ -54,7 +53,6 @@ export class SessionDraftEditor extends IEditor {
     private editRevision = 0;
     private refreshing?: Promise<void>;
     private events?: EventBinder;
-    private projectScope?: ReturnType<typeof mountDraftProjectScope>;
     private readonly beforeUnload = (event: BeforeUnloadEvent) => {
         if (this.confirmed || !this.saves.dirty) return;
         event.preventDefault(); event.returnValue = '';
@@ -81,11 +79,6 @@ export class SessionDraftEditor extends IEditor {
             this.input.setAvailability({canSend: false, canInterrupt: false});
             this.status!.hidden = false; this.status!.textContent = t('agentWorkspace.noRemoteExecutor');
         }
-        if (this.options.sessionDraft?.scope) this.projectScope = mountDraftProjectScope(input, this.options.sessionDraft.scope,
-            () => this.saves.flush(), () => {
-                const config = this.input?.getConfig();
-                return config ? {agentId: config.agentId, settings: {...config.settings}} : undefined;
-            });
         this.unsubscribeConnections?.();
         this.bindConfiguration();
         if (saved.config) this.input.restoreDraft(saved.config.text, saved.files, saved.config.agentId, saved.config.draftToken);
@@ -127,7 +120,6 @@ export class SessionDraftEditor extends IEditor {
         });
     }
     private initLayout(): void {
-        this.projectScope?.destroy(); this.projectScope = undefined;
         this.events?.cleanup();
         this.container.classList.add('llm-ui-workspace');
         this.container.innerHTML = LayoutTemplates.renderWorkspace(t('project.createSession'));
@@ -198,7 +190,7 @@ export class SessionDraftEditor extends IEditor {
         }
         const config = this.input?.getConfig();
         if (config) this.persist({...config, text: message.text, agentId: message.agentId ?? 'default', target: message.target}, message.files);
-        this.sending = true; this.input!.setLoading(true); this.projectScope?.setDisabled(true);
+        this.sending = true; this.input!.setLoading(true);
         const feedback = {id: randomUUID(), text: message.text || t(message.target?.kind === 'flow' ? 'callable.target.flow' : 'harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting' as const};
         this.container.querySelector('.llm-ui-welcome')?.remove(); this.submission?.show(feedback);
         try {
@@ -244,7 +236,7 @@ export class SessionDraftEditor extends IEditor {
             Toast.error(error instanceof Error ? error.message : String(error));
             if (message.agentId?.startsWith('remote:')) throw error;
             return false;
-        } finally { this.sending = false; if (!this.closed) { if (!this.delegate) this.input?.setLoading(false); this.projectScope?.setDisabled(false); } }
+        } finally { this.sending = false; if (!this.closed) { if (!this.delegate) this.input?.setLoading(false); } }
     }
     private bindConversation(agentId?: string): NonNullable<SessionDraftEditor['binding']> {
         return this.binding ??= (async () => {
@@ -302,7 +294,7 @@ export class SessionDraftEditor extends IEditor {
     }
     private confirmDraft(): void {
         if (this.closed || this.confirmed) return;
-        this.confirmed = true; this.projectScope?.destroy(); this.projectScope = undefined;
+        this.confirmed = true;
         window.removeEventListener('beforeunload', this.beforeUnload);
     }
     private async discard(): Promise<void> {
@@ -432,13 +424,12 @@ export class SessionDraftEditor extends IEditor {
     cancelPendingRender(): void {this.input?.cancelPendingSend(); this.input?.hideNativeModelPicker?.(); this.active = false; this.delegate?.cancelPendingRender?.();}
     async activate(): Promise<void> {
         this.active = true; await this.delegate?.activate?.(); await this.refreshDraft();
-        await Promise.all([this.projectScope?.refresh(), this.refreshInputConfiguration()]);
+        await this.refreshInputConfiguration();
     }
     destroy(): Promise<void> {
         this.closed = true;
         return this.destroying ??= disposeEditorResources([
             async () => {if (!this.confirmed) await this.saves.flush();},
-            () => {this.projectScope?.destroy(); this.projectScope = undefined;},
             () => this.submission?.destroy(), () => this.unsubscribeConnections?.(),
             () => window.removeEventListener('beforeunload', this.beforeUnload), () => this.events?.cleanup(),
             () => this.delegate ? this.delegate.destroy() : this.input?.destroy(),

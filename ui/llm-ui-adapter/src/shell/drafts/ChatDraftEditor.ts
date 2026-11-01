@@ -18,7 +18,6 @@ import {chatSelectors, mountChatSettings} from '../chat-settings';
 import {inheritDraftPreferences} from './draft-preferences';
 import {ChatDraftStore} from './ChatDraftStore';
 import type {RetainedWorkspaceHandoff} from './workspace-handoff';
-import {mountDraftProjectScope} from './draft-project-scope';
 import {buildConnectionOptions, buildExecutorOptions} from '../AgentProvider';
 import {disposeEditorResources} from '../editor-disposal';
 import type {SendMessageParams} from '../../commands/SendMessageCommand';
@@ -50,7 +49,6 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         if (this.transferred || !this.isDirty()) return;
         event.preventDefault(); event.returnValue = '';
     };
-    private scope?: ReturnType<typeof mountDraftProjectScope>;
     private offConfiguration?: () => void;
     private configurationGeneration = 0;
     private readonly stops: (() => void)[] = [];
@@ -107,10 +105,6 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
                     available: () => !this.closed && this.active && !this.transferred && !this.config.readOnly,
                     hasFiles: !!this.controls.commands, report: error => this.report(error)});
                 return {update: () => menu.update?.(context), destroy: () => {release(); actions.destroy(); menu.destroy();}};
-            }, mountComposerStart: root => {
-                const scope = this.config.sessionDraft?.scope ? mountDraftProjectScope(root, this.config.sessionDraft.scope,
-                    () => this.flushPendingSave(), () => {const config = this.store.preferences(this.view?.getDraft() ?? this.store.draft); return {agentId: config.agentId, settings: config.settings};}) : undefined;
-                this.scope = scope; return {destroy: () => scope?.destroy()};
             },
             mountHeader: root => this.toolbar(root), onError: error => this.report(error),
             onDiagnostic: event => log.info('chat.draft.operation', event)}, this.imageHost);
@@ -232,7 +226,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         if (this.closed) {await target.editor.destroy(); throw new Error('Project draft closed during materialization');}
         this.delegate = target.editor; this.transferred = true;
         target.editor.commands.takeViewOwnership?.(); this.owned = false;
-        this.offConfiguration?.(); this.offConfiguration = undefined; this.targets?.dispose(); this.scope?.destroy();
+        this.offConfiguration?.(); this.offConfiguration = undefined; this.targets?.dispose();
         for (const event of ['interactiveChange', 'saved', 'saveError', 'change', 'ready', 'error', 'blocksCollapsed', 'blocksExpanded'] as const)
             this.stops.push(target.editor.on(event, payload => this.emit(event, payload)));
         if (!this.active) target.editor.cancelPendingRender?.();
@@ -312,14 +306,14 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     isDirty(): boolean {return this.delegate?.isDirty() ?? (!!this.view && this.store.dirty(this.view.getDraft()));}
     async flushPendingSave(): Promise<void> {if (this.delegate) await this.delegate.flushPendingSave?.(); else await this.view?.flushDraft();}
     cancelPendingRender(): void {this.active = false; this.view?.setActive(false); this.delegate?.cancelPendingRender?.();}
-    async activate(): Promise<void> {this.check(); this.active = true; if (this.delegate) await this.delegate.activate?.(); else {await this.refreshDraft(); await this.refreshConfiguration(); await this.scope?.refresh(); this.publish(); this.view?.setActive(true);}}
+    async activate(): Promise<void> {this.check(); this.active = true; if (this.delegate) await this.delegate.activate?.(); else {await this.refreshDraft(); await this.refreshConfiguration(); this.publish(); this.view?.setActive(true);}}
     captureRecovery(): unknown {this.ocr?.assertRecoverable(); return this.delegate?.captureRecovery?.() ?? this.view?.captureRecovery();}
     restoreRecovery(value: unknown): void {if (this.delegate) this.delegate.restoreRecovery?.(value); else this.view?.restoreRecovery(value as ReturnType<ChatView['captureRecovery']>);}
     suspendForRecovery(): void {if (this.delegate) this.delegate.suspendForRecovery?.(); this.rebuilding = true; this.cancelPendingRender();}
     destroy(): Promise<void> {return this.closing ??= disposeEditorResources([() => this.flushPendingSave(), () => {this.closed = true;},
         () => this.delegate?.destroy(), () => this.owned ? this.view?.destroy() : undefined,
         () => window.removeEventListener('beforeunload', this.beforeUnload),
-        () => {this.offConfiguration?.(); this.targets?.dispose(); this.scope?.destroy(); this.stops.forEach(stop => stop()); this.events.clear();}]);}
+        () => {this.offConfiguration?.(); this.targets?.dispose(); this.stops.forEach(stop => stop()); this.events.clear();}]);}
     get commands() {return {...this.delegate?.commands,
         getInputConfig: () => this.delegate?.commands.getInputConfig?.() ?? this.store.preferences(this.view.getDraft()),
         configureInput: async (config: Partial<import('../../domain/ports/IChatInputPresenter').IChatInputConfig>) => {

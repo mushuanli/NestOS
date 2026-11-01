@@ -23,7 +23,7 @@ it('selects the launch agent in an existing draft without replacing text, attach
     } finally {await editor.destroy(); document.body.replaceChildren(); vi.unstubAllGlobals();}
 });
 
-it('places project selection before the mode picker and restricts remote drafts to remote harnesses', async () => {
+it('omits project selection in project drafts and restricts remote drafts to remote harnesses', async () => {
     vi.stubGlobal('matchMedia', () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
     const host = document.createElement('div'); document.body.append(host);
     const service = {listAgents: () => [{id: 'writer', name: 'Writer', config: {}}], onChange: () => () => {},
@@ -34,7 +34,7 @@ it('places project selection before the mode picker and restricts remote drafts 
     try {
         await editor.init(host);
         const mode = host.querySelector<HTMLElement>('.llm-input__execution-picker')!;
-        expect(mode.previousElementSibling?.className).toBe('llm-draft-scope'); expect(mode.hidden).toBe(true);
+        expect(host.querySelector('.llm-draft-scope')).toBeNull(); expect(mode.hidden).toBe(true);
         expect(host.querySelector('.llm-input__agent-trigger')?.textContent).toContain('Codex');
         await expect(editor.commands.selectDraftAgent('writer')).rejects.toThrow();
         await editor.commands.selectDraftAgent('remote:codex');

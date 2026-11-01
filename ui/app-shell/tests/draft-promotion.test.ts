@@ -144,7 +144,7 @@ it('rolls back a failed controller initialization without replacing the composer
     expect(await wrapper.commands.sendMessage({text: textarea.value, files: [], agentId: 'default'})).toBe(false);
     expect(shell.editor).toBe(wrapper); expect(mount.querySelector('.llm-chat__input')).toBe(textarea);
     expect(textarea.value).toBe('Retain after initialization failure'); expect(tab.conversationId).toBe(uuid);
-    expect(mount.querySelector('.llm-draft-scope')).not.toBeNull();
+    expect(mount.querySelector('.llm-draft-scope')).toBeNull();
     acceptSubmission(f);
     await wrapper.commands.sendMessage({text: textarea.value, files: [], agentId: 'default'});
     await vi.waitFor(() => expect(f.workbench.getActiveResourceId()).toContain(uuid));
@@ -285,7 +285,7 @@ it('shows the first user bubble and later assistant events in the attached histo
     expect(mount.querySelector('.llm-chat__history')).toBe(history);
 });
 
-it('carries valid input preferences through the project picker without moving either project text or attachments', async () => {
+it('keeps project drafts scoped without a composer project picker and preserves text and attachments', async () => {
     const f = await setup(), shell = f.workbench as any, source = shell.editor;
     const connection = {id: 'carry', name: 'Portable connection', providerId: 'provider', model: 'chat', tiers: {optimal: 'chat', fast: 'fast'},
         hasApiKey: true, credentialsReady: true};
@@ -302,15 +302,15 @@ it('carries valid input preferences through the project picker without moving ei
     await f.workbench.startSessionDraft(folderBrowserPath(f.project.path));
     await source.commands.configureInput({agentId: 'writer', settings: {connectionId: 'carry', modelTier: 'fast', executionMode: 'agent', reasoningEffort: 'high'}});
     source.setText('Source content');
-    const select = shell.tabs.current.panel.querySelector('.llm-draft-scope select');
-    await vi.waitFor(() => expect([...select.options].some((option: any) => option.value === other.project.id)).toBe(true));
-    select.value = other.project.id; select.dispatchEvent(new Event('change', {bubbles: true}));
-    await vi.waitFor(() => expect(target.commands.getInputConfig()).toMatchObject({text: 'Target content', agentId: 'writer',
-        settings: {connectionId: 'carry', modelTier: 'fast', executionMode: 'agent', reasoningEffort: 'high'}}));
+    expect(shell.tabs.current.panel.querySelector('.llm-draft-scope')).toBeNull();
+    await source.flushPendingSave();
+    await f.workbench.startSessionDraft(folderBrowserPath(other.path));
+    expect(target.commands.getInputConfig()).toMatchObject({text: 'Target content'});
     expect(shell.editor).toBe(target); expect(shell.tabs.current.conversationId).toBe(targetId);
     const composer = await f.runtime.projects.drafts.open(other.project.id, await f.runtime.projects.sessionFolder(other));
     const saved = JSON.parse(composer.initialData);
-    expect(saved.config.text).toBe('Target content'); expect(saved.config.settings.connectionId).toBe('carry');
+    expect(saved.config.text).toBe('Target content');
+    expect(source.commands.getInputConfig()).toMatchObject({agentId: 'writer', settings: {connectionId: 'carry', modelTier: 'fast'}});
     expect(saved.files.map((file: any) => file.name)).toEqual(['target.txt']);
     expect(source.commands.getInputConfig().text).toBe('Source content');
 });

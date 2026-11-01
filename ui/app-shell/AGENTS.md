@@ -188,7 +188,7 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 
 页面历史必须在打开目标之前，通过 onBeforeNavigate 记录离开页的 mobileView 与导航 scope；返回侧栏时按模块公开能力恢复该 scope，不能由当前文件所在目录推断。恢复侧栏只取消迟到的定位并恢复范围，不打开父目录、不销毁保留的编辑器；新资源历史使用 detail，确保浏览器 Forward 仍回到正文。
 
-智能体「…」在工作台 @agent/<encoded-id> 标签打开设置。agent-project-preferences 按智能体单独持久化默认项目；通过 EditorOptions.mountSettings 挂载到配置表单。查看会话使用宿主来源过滤并保留文件/收藏夹；项目草稿工具栏选择项目只切换各项目自己的草稿，先 flush，不迁移内容。
+智能体「…」在工作台 @agent/<encoded-id> 标签打开设置。agent-project-preferences 按智能体单独持久化默认项目；通过 EditorOptions.mountSettings 挂载到配置表单。查看会话使用宿主来源过滤并保留文件/收藏夹；项目草稿输入框不展示项目选择，直接使用所在项目；切换项目由工作台导航打开各项目独立草稿，先保存当前输入。
 
 输入区项目切换通过 SessionDraftPreferences 转交不透明设置，SessionWorkbench 不解释聊天配置字段；目标编辑器负责合法性过滤并持久化。目标项目已有正文、附件和 UUID 保留，不能用源草稿覆盖。
 

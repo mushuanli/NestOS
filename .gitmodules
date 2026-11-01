@@ -46,9 +46,9 @@
 [submodule "tools/fc-server"]
 	path = tools/fc-server
 	url = git@github.com:mushuanli/fc-server.git
-[submodule "tools/firecracker-virtiofs"]
-	path = tools/firecracker-virtiofs
-	url = https://github.com/mushuanli/firecracker-virtiofs.git
+[submodule "tools/fc-hp"]
+	path = tools/fc-hp
+	url = https://github.com/mushuanli/fc-hp.git
 [submodule "tools/googlecli"]
 	path = tools/googlecli
 	url = https://github.com/mushuanli/googlecli.git

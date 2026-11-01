@@ -1823,7 +1823,7 @@
       },
       "preservedUserChanges": [
         ".gitmodules",
-        "tools/firecracker-virtiofs",
+        "tools/fc-hp",
         "tools/fc-server"
       ],
       "deployment": "No deployment, restart, remote prompt/resume/interrupt or original production Session acceptance.",
@@ -2853,7 +2853,7 @@
         "excludedUserPaths": [
           ".gitmodules",
           "tools/fc-server",
-          "tools/firecracker-virtiofs"
+          "tools/fc-hp"
         ],
         "note": "After 37991555. F15 input transport and F19 owned cancellation/reconciliation bridge are committed. F16-F18/F20-F24 remain incomplete. Original staged patch unchanged."
       },

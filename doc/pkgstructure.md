@@ -80,3 +80,5 @@ VFS `IPlugin` 可以提供变更提示，但不能替代跨窗口扫描、恢复
 数字分身的领域服务与 SeqFile 布局归 app-core 的 `digital-twin/`，五页工作台归 app-shell 的 `digital-twin/`。kernel-adapters 仅注入通用发送前钩子，vfsdrivers 的 IndexedDB/SQLite schema 不加入分身表或业务字段；固定槽分页与版本链由 SeqTwinStore 管理。见[数字分身实施边界](design/digital-twin.md#实现与边界)。
 
 `tools/image-tools` 是参与 pnpm 工作区的通用外部 Tool 包；核心工厂与 Node 引擎位于该包，Canvas 装配在 Web 宿主，Tauri 复用公开宿主入口。Rust `tools/anki-cli` 与 Node `tools/googlecli` 均为独立 Git 子模块，未加入 pnpm 包工作区；各自的提交先推送到外部仓库，再由主仓库记录子模块提交。
+
+`tools/fc-hp` 是 NestOS 使用的 Firecracker 源码子模块，提供 virtio-fs 目录直通与 Rust 测试工具；`tools/fc-server` 默认从相邻 `../fc-hp` 构建该分支。

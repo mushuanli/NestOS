@@ -10,7 +10,7 @@ import {renderProjectAccess} from '../src/diagnostics/project-access';
 const controllers: AbortController[] = [];
 beforeEach(() => {for (const method of ['showModal', 'close']) Object.defineProperty(HTMLDialogElement.prototype, method, {configurable: true, value: vi.fn()});});
 afterEach(() => {for (const controller of controllers.splice(0)) controller.abort(); document.body.replaceChildren(); vi.restoreAllMocks();});
-const event: DiagnosticEvent = {id: 'event-1', operationId: 'operation-1', timestamp: 1, module: 'nestos-node', operation: 'project.connection',
+const event: DiagnosticEvent = {id: 'event-1', operationId: 'operation-1', timestamp: 1, module: 'cells', operation: 'project.connection',
     projectId: 'project-a', connectionId: 'office', stage: 'root-probe', result: 'failure', level: 'error', code: 'EACCES', reason: 'authorization-changed'};
 function diagnostics(events = [event]) {
     let changed: (() => void) | undefined;
@@ -40,7 +40,7 @@ it('explains accepted identity with denied export and provides exact, editable s
     document.body.append(root);
     expect(root.querySelector('script')).toBeNull(); expect(root.textContent).toContain(t('diagnostics.access.authAccepted'));
     expect(root.textContent).toContain(t('diagnostics.access.reason.export-not-granted'));
-    const command = root.querySelector('pre')!; expect(command.textContent).toBe('nestos-node access --config /path/to/config.toml grant owner docs rw');
+    const command = root.querySelector('pre')!; expect(command.textContent).toBe('cells access --config /path/to/config.toml grant owner docs rw');
     const mode = root.querySelector('select')!; mode.value = 'ro'; mode.dispatchEvent(new Event('change'));
     expect(command.textContent).toContain('grant owner docs ro'); expect(command.textContent).not.toContain('--execute');
     click(t('remote.remountAs')); await vi.waitFor(() => expect(remount).toHaveBeenCalledOnce());

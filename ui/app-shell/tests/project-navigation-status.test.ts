@@ -10,7 +10,7 @@ it('keeps sidebar actions as icons while exposing busy files without disabling n
     const project = {path: '/Remote', name: 'Remote', project: {id: 'remote'}}, projectStatus = vi.fn(), createSession = vi.fn();
     let changed: (() => void) | undefined;
     const state: RemoteProjectStatus = {projectId: 'remote', status: 'degraded', problem: 'files-busy', mounts: [
-        {mountId: 'root', status: 'online', failure: {id: 'failure', timestamp: 1, operationId: 'probe', module: 'nestos-node',
+        {mountId: 'root', status: 'online', failure: {id: 'failure', timestamp: 1, operationId: 'probe', module: 'cells',
             operation: 'remote.operation', stage: 'root-probe', result: 'failure', level: 'error', code: 'EBUSY', reason: 'busy'}}]};
     const readStatus = vi.fn(async () => state), remote = {list: () => [{at: '/', access: 'rw'}], projectOffline: () => false,
         onChange: (listener: () => void) => {changed = listener; return () => {};}, projectStatus: readStatus};

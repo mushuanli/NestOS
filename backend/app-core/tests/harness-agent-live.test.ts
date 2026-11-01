@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { createNestOSNodeDriver, type NestOSNodeDriver, type RemoteProject } from '@itookit/nestos-node-driver';
+import { createCellsDriver, type CellsDriver, type RemoteProject } from '@itookit/cells-driver';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowLibraryCommand } from '@itookit/app-contracts';
 import type { FlowDraft } from '@itookit/llm-flow/contracts';
@@ -14,7 +14,7 @@ const runId = process.env.NESTOS_HARNESS_LIVE_RUN_ID;
 const recoveryOnly = process.env.NESTOS_HARNESS_LIVE_RECOVERY_ONLY === '1';
 const expectedCases = recoveryOnly ? 1 : 4;
 type Runtime = Awaited<ReturnType<typeof createApplicationRuntime>>;
-let runtime: Runtime, driver: NestOSNodeDriver, folder: string, root: string;
+let runtime: Runtime, driver: CellsDriver, folder: string, root: string;
 const results: Array<Record<string, unknown>> = [];
 const nativeObservations: Array<Record<string, unknown>> = [];
 type ModelRequest = { stream?: boolean; messages: Array<{ role: string; content: string }> };
@@ -40,7 +40,7 @@ beforeAll(async () => {
         ] };
         return Promise.resolve(completion(request, message));
     });
-    driver = createNestOSNodeDriver();
+    driver = createCellsDriver();
     runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', remoteSourceProvider: driver,
         digitalTwinAutoStart: false });
     const remote = runtime.projects.remoteMounts!;

@@ -9,7 +9,7 @@ const fields = ['code', 'reason', 'projectId', 'connectionId', 'mountId', 'profi
 export function clean(value: unknown): DiagnosticEvent {
     const v = value as DiagnosticEvent;
     if (!v || typeof v.id !== 'string' || !identity.test(v.id) || typeof v.operationId !== 'string' || !identity.test(v.operationId) || !Number.isFinite(v.timestamp)
-        || !['mcp', 'nestos-node', 'application'].includes(v.module) || typeof v.operation !== 'string' || !label.test(v.operation) || typeof v.stage !== 'string' || !label.test(v.stage)
+        || !['mcp', 'cells', 'application'].includes(v.module) || typeof v.operation !== 'string' || !label.test(v.operation) || typeof v.stage !== 'string' || !label.test(v.stage)
         || !['started', 'success', 'failure', 'cancelled'].includes(v.result) || !['info', 'warn', 'error'].includes(v.level))
         throw new FSError('EINVAL', 'Invalid diagnostic event');
     const event: DiagnosticEvent = {id: v.id, timestamp: v.timestamp, operationId: v.operationId, module: v.module,

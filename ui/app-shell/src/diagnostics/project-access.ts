@@ -57,7 +57,7 @@ function grantGuide(mount: Mount, closed: () => boolean, draft: ProjectAccessDra
     const valid = [mount.principalId, mount.alias].every(value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value));
     if (!valid) return details;
     const update = () => {draft.mode = mode.value === 'rw' ? 'rw' : 'ro'; draft.execute = execute.checked; draft.config = config.value;
-        command.textContent = `nestos-node access --config ${shellPath(config.value)} grant ${mount.principalId} ${mount.alias} ${draft.mode}${execute.checked ? ' --execute' : ''}`;};
+        command.textContent = `cells access --config ${shellPath(config.value)} grant ${mount.principalId} ${mount.alias} ${draft.mode}${execute.checked ? ' --execute' : ''}`;};
     mode.onchange = execute.onchange = config.oninput = update; update(); details.append(config, mode, label, command);
     button(details, t('diagnostics.access.copyGrant'), async () => {
         try {await navigator.clipboard.writeText(command.textContent ?? ''); if (!closed()) hint.textContent = t('diagnostics.copied');}

@@ -9,7 +9,7 @@ import {RemoteMountStore} from '../src/projects/remote-mount-store';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close(); vi.restoreAllMocks();});
-const input = {module: 'nestos-node' as const, operation: 'project.connection', stage: 'root-probe', level: 'error' as const,
+const input = {module: 'cells' as const, operation: 'project.connection', stage: 'root-probe', level: 'error' as const,
     result: 'failure' as const, code: 'EACCES', projectId: 'project-a', connectionId: 'office'};
 
 it('persists safe events across views, bounds queries and isolates runtime journals', async () => {
@@ -107,7 +107,7 @@ it('reports timeout as offline while an explicit cancellation restores the previ
     const {remote, journal} = await remoteFixture(options => new Promise((_resolve, reject) => {if (options?.signal?.aborted) reject(options.signal.reason); else options?.signal?.addEventListener('abort', () => reject(options.signal!.reason), {once: true});}));
     const controller = new AbortController();
     const checking = remote.checkConnections('project-a', {signal: controller.signal}); controller.abort(); await checking;
-    expect((await remote.projectStatus('project-a')).status).toBe('unknown'); expect((await journal.query({module: 'nestos-node'})).events).toHaveLength(0);
+    expect((await remote.projectStatus('project-a')).status).toBe('unknown'); expect((await journal.query({module: 'cells'})).events).toHaveLength(0);
     await remote.checkConnections('project-a', {timeoutMs: 10});
     expect(await remote.projectStatus('project-a')).toMatchObject({status: 'offline', mounts: [{failure: {code: 'ETIMEDOUT', reason: 'timeout'}}]});
 });

@@ -40,7 +40,7 @@
 | 调用配套协议 | [上下文绑定](design/execution-context-binding.md)、[输入解析与文件传输](design/invocation-input-resolution.md)、[Invocation 展示](design/invocation-presentation.md)、[控制与状态矩阵](design/invocation-control-state.md) |
 | 图片处理与聊天接入 | [image-parser、Scanic、裁剪及默认 1024 resize](design/chat-image-editing.md) |
 | 非 ML 纸边检测验收 | [风险、68例回归与正式接入门槛](design/image-parser-detector-validation.md) |
-| 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/nestos-node-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/nestos-node-sync.md) |
+| 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/cells-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/cells-sync.md) |
 | RAPTOR 用例与远程编排 | [现有 Flow、Composite、Claude Code、执行连接与沙箱边界](design/raptor-harness-integration.md)、[可执行 Flow 示例](../apps/cli/examples/raptor/README.md)、[远程 Harness 执行连接](design/remote-harness-connections.md) |
 | Harness 通用原语 | [取自 RAPTOR 的可移植原语、现状实现位置、缺口与闭环方式](design/harness-borrowables.md) |
 | Anki 工作流 | [三连接 Flow、Rust 工具、YAML 清单与打包](design/anki-flow.md) |

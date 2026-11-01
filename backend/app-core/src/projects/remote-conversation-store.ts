@@ -1,5 +1,5 @@
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
-import type { HarnessAttachment, HarnessRecovery } from '@itookit/nestos-node-driver';
+import type { HarnessAttachment, HarnessRecovery } from '@itookit/cells-driver';
 export interface RemoteConversationRecovery extends HarnessRecovery { submittedTurnId?: string }
 export const remoteConversationRecoveryPath = '/etc/fs/harness-conversations.seq';
 /** Persist native references and pending receipts; never native conversation histories. */

@@ -1,8 +1,8 @@
 import {MCPDiagnosticsControls} from './mcp-diagnostics';
 import { RemoteAgentDetailsEditor } from './RemoteAgentDetailsEditor';
-import { NestOSNodeMCPControls } from './nestos-node-controls';
+import { CellsMCPControls } from './cells-controls';
 import { MCPConfigurationControlsRegistry } from './mcp-controls';
-import { NESTOS_NODE_EXTENSION, nestosNodeConfiguration } from '@itookit/app-contracts';
+import { CELLS_EXTENSION, cellsConfiguration } from '@itookit/app-contracts';
 import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import type { NavigationRequest } from '@itookit/common';
@@ -57,7 +57,7 @@ function configurationFactories(options: Options, inventory: ToolboxInventory, r
         mcp: async (element: HTMLElement, config: import('@itookit/ui-common').EditorOptions) => {
             const remote = options.services.projects?.remoteMounts;
             const controls = new MCPConfigurationControlsRegistry().register('diagnostics', new MCPDiagnosticsControls(options.backend.diagnostics, remote), () => true);
-            if (remote) controls.register(NESTOS_NODE_EXTENSION, new NestOSNodeMCPControls(remote, options.services.projects, options.backend.diagnostics), server => !!nestosNodeConfiguration(server));
+            if (remote) controls.register(CELLS_EXTENSION, new CellsMCPControls(remote, options.services.projects, options.backend.diagnostics), server => !!cellsConfiguration(server));
             const editor = new editors.MCPSettingsEditor(element, agentService, config, controls); await editor.init(element); return editor;
         }, tools: async (element: HTMLElement, config: import('@itookit/ui-common').EditorOptions) => {
             const editor = new ToolDetailsEditor(element, inventory, config, resources); await editor.init(element); return editor;

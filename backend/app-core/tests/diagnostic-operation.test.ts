@@ -5,7 +5,7 @@ import {initial} from '../src/diagnostics/series';
 import {DiagnosticStore} from '../src/diagnostics/store';
 
 afterEach(() => {vi.restoreAllMocks();});
-const input = {module: 'nestos-node' as const, operation: 'project.remount', stage: 'commit', projectId: 'a'};
+const input = {module: 'cells' as const, operation: 'project.remount', stage: 'commit', projectId: 'a'};
 
 it('replaces each matching start with its terminal result without hiding concurrent operations', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});

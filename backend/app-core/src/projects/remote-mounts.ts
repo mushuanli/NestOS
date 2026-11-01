@@ -24,10 +24,10 @@ import { checkOperation, createFileSystemView, FSError, normalizeVirtualPath, op
     type FileSystemSourceOwner, type FileSystemMount, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
 import { createUnavailableDirectory } from '../vfs/unavailable-directory';
 import { canReaddressConnection, normalizeConnection, remoteCredentialIdentity, remoteProjectPath, type RemoteFileSystemConfig, type RemoteFileSystemInput } from './remote-connections';
-import type { HarnessClient } from '@itookit/nestos-node-driver/harness';
-import type { ProjectClient, RemoteProject, HarnessConversationPort, HarnessProfile, HarnessConversationJournal } from '@itookit/nestos-node-driver';
+import type { HarnessClient } from '@itookit/cells-driver/harness';
+import type { ProjectClient, RemoteProject, HarnessConversationPort, HarnessProfile, HarnessConversationJournal } from '@itookit/cells-driver';
 
-export interface RemoteFileConnection { endpoint: string; alias: string; credentialRef: string; username?: string; anonymous?: boolean; authorization?: import('@itookit/nestos-node-driver').RemoteAuthorization; }
+export interface RemoteFileConnection { endpoint: string; alias: string; credentialRef: string; username?: string; anonymous?: boolean; authorization?: import('@itookit/cells-driver').RemoteAuthorization; }
 
 /** One directory grant as the execution node must expose it to a process. */
 export interface RemoteProcessMount { alias: string; path: string; at: string; access: 'ro' | 'rw' }
@@ -41,10 +41,10 @@ export interface RemoteProcessRequest {
 export interface RemoteProcessHandle { nativeShell: NonNullable<ProjectExecutionContext['nativeShell']>; release(): Promise<void> }
 
 export interface RemoteFileSourceProvider {
-    observeHarness?(client: HarnessClient, writable?: boolean, options?: {watchFiles?: boolean}): import('@itookit/nestos-node-driver').HarnessStatusPort;
+    observeHarness?(client: HarnessClient, writable?: boolean, options?: {watchFiles?: boolean}): import('@itookit/cells-driver').HarnessStatusPort;
     conversation?(client: HarnessClient, profile: HarnessProfile, workspaceId: string, sessionId?: string, writable?: boolean, journal?: HarnessConversationJournal): HarnessConversationPort;
     resolveCredential?(reference: string): string | Promise<string>;
-    discover?(connection: Omit<RemoteFileConnection, 'alias'>, options?: OperationOptions): Promise<import('@itookit/nestos-node-driver').NestOSNodeDescriptor>;
+    discover?(connection: Omit<RemoteFileConnection, 'alias'>, options?: OperationOptions): Promise<import('@itookit/cells-driver').CellsDescriptor>;
     projects?(connection: Omit<RemoteFileConnection, 'alias'>): ProjectClient;
     projectProcess?(connection: Omit<RemoteFileConnection, 'alias'>, project: RemoteProject, request: RemoteProcessRequest): Promise<RemoteProcessHandle>;
     harness?(connection: Omit<RemoteFileConnection, 'alias'>): HarnessClient;
@@ -61,7 +61,7 @@ export interface RemoteFileSourceProvider {
     dispose(): Promise<void>;
 }
 export interface ProjectRemoteMount extends RemoteFileConnection {
-    capabilities?: import('@itookit/nestos-node-driver').RemoteProjectCapabilities;
+    capabilities?: import('@itookit/cells-driver').RemoteProjectCapabilities;
     serverProjectId?: string; serverProjectRevision?: number; serverId?: string; mountId: string; at: string; root: string; access: 'ro' | 'rw'; connectionId?: string;
 }
 export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline';
@@ -70,7 +70,7 @@ export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offlin
 export class ProjectRemoteMountService {
     private readonly conversations = new ConversationRegistry();
     private conversationRecovery?: RemoteConversationRecoveryLoop;
-    estimateUsage?: (usage: import('@itookit/nestos-node-driver').HarnessUsage) => import('@itookit/kernel-adapters/contracts').UsageCostEstimate;
+    estimateUsage?: (usage: import('@itookit/cells-driver').HarnessUsage) => import('@itookit/kernel-adapters/contracts').UsageCostEstimate;
     readonly sessionStatus = new RemoteSessionStatus(id => {
         const grants = this.list(id), root = grants.find(m => m.at === '/');
         return !this.closed && root?.connectionId && root.serverProjectId ? JSON.stringify(grants) : undefined;
@@ -263,7 +263,7 @@ export class ProjectRemoteMountService {
             || !before.authorization && !!after.authorization && !canReaddressConnection(before, after, legacyCredentialUnchanged)
             || !!before.authorization && before.authorization.principalId !== after.authorization?.principalId
             || !!before.serverId && before.serverId !== after.serverId)
-            throw new FSError('EBUSY', 'Referenced nestos-node connection cannot be retargeted or disabled');
+            throw new FSError('EBUSY', 'Referenced cells connection cannot be retargeted or disabled');
         if (before.endpoint !== after.endpoint || JSON.stringify(before.authorization) !== JSON.stringify(after.authorization) || JSON.stringify(previous.auth) !== JSON.stringify(server.auth) || previous.apiKey !== server.apiKey)
             for (const id of this.connectionProjects(server.id)) await this.beforeChange(id);
     }
@@ -354,7 +354,7 @@ export class ProjectRemoteMountService {
     }
     setMCPCredential(reference: string, password: string): void | (() => void) { return this.provider.setCredential(reference,password); }
     async discoverMCP(endpoint: string, username: string | undefined, credentialRef: string, options?: OperationOptions) {
-        if (!this.provider.discover) throw new FSError('ECAPABILITY', 'nestos-node discovery unavailable');
+        if (!this.provider.discover) throw new FSError('ECAPABILITY', 'cells discovery unavailable');
         return this.provider.discover({endpoint,username,credentialRef},options);
     }
     forgetProject(projectId: string): Promise<void> {
@@ -428,7 +428,7 @@ export class ProjectRemoteMountService {
         try {
             const client = await this.openProjectHarness(projectId, options);
             if (this.clearIssue(projectId, 'harness-open')) {
-                this.eventLog.record({module: 'nestos-node', operation: 'project.harness', stage: 'harness-open', result: 'success', level: 'info', projectId, operationId, durationMs: Date.now() - started});
+                this.eventLog.record({module: 'cells', operation: 'project.harness', stage: 'harness-open', result: 'success', level: 'info', projectId, operationId, durationMs: Date.now() - started});
                 for (const listener of this.listeners) listener();
             }
             return this.guardHarness(client, projectId, JSON.stringify(this.list(projectId)), this.list(projectId).find(mount => mount.at === '/')!.connectionId!);
@@ -512,7 +512,7 @@ export class ProjectRemoteMountService {
             const granted=this.list(projectId);
             if (expected.length!==granted.length || expected.some(m=>!granted.some(g=>g.alias===m.alias && g.root===m.root && g.at===m.at)) || mount.access==='rw' && project.mounts.some(m=>granted.find(g=>g.at===m.at.slice('/workspace'.length))?.access!==m.access)) throw new FSError('ECONFLICT','Server project mounts changed; refresh the project binding');
     }
-    async searchFiles(projectId: string, query: import('@itookit/nestos-node-driver').FileSearchQuery, options?: OperationOptions) {
+    async searchFiles(projectId: string, query: import('@itookit/cells-driver').FileSearchQuery, options?: OperationOptions) {
         const mount = this.list(projectId).find(m => m.at === '/');
         if (!mount?.connectionId || !mount.serverProjectId || !this.provider.projects) throw new FSError('ECAPABILITY', 'Project search unavailable');
         const fingerprint = JSON.stringify(this.list(projectId));
@@ -528,7 +528,7 @@ export class ProjectRemoteMountService {
             return result;
         } finally { await client.close(); }
     }
-    async projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<import('@itookit/nestos-node-driver').HarnessModelCatalog> {
+    async projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<import('@itookit/cells-driver').HarnessModelCatalog> {
         const client = await this.projectHarness(projectId, options);
         const fingerprint = JSON.stringify(this.list(projectId));
         try {
@@ -548,7 +548,7 @@ export class ProjectRemoteMountService {
     async recoverConversations(): Promise<void> {
         if (this.closed) return;
         this.conversationRecovery ??= new RemoteConversationRecoveryLoop(this.store, target => this.openRecoveredConversation(target), event => {
-            this.eventLog.record({module: 'nestos-node', operation: 'remote.queue.recover', operationId: event.operationId,
+            this.eventLog.record({module: 'cells', operation: 'remote.queue.recover', operationId: event.operationId,
                 stage: event.stage, result: event.result === 'success' ? 'success' : 'failure', level: event.result === 'success' ? 'info' : 'warn',
                 projectId: event.projectId, sessionId: event.sessionId, code: event.code, durationMs: event.durationMs});
         });
@@ -634,7 +634,7 @@ export class ProjectRemoteMountService {
     private clearIssue(projectId: string, stage: string, profileId?: string): boolean {
         const key = `${stage}:${profileId ?? ''}`, issues = this.projectIssues.get(projectId), previous = issues?.get(key);
         if (!previous || !issues?.delete(key)) return false;
-        this.eventLog.record({module: 'nestos-node', operation: 'remote.operation.recovered', stage, projectId, profileId,
+        this.eventLog.record({module: 'cells', operation: 'remote.operation.recovered', stage, projectId, profileId,
             connectionId: previous.connectionId, result: 'success', level: 'info'});
         for (const listener of this.listeners) listener(); return true;
     }
@@ -681,7 +681,7 @@ export class ProjectRemoteMountService {
             if ((await source.fs.driver.getNode(mount.root, scoped))?.type !== 'directory') throw new FSError('ENOTDIR', 'Remote root unavailable');
             checkOperation(scoped);
             this.observations.set(mount.mountId, {checkedAt: Date.now(), lastSuccessAt: Date.now()});
-            this.eventLog.record({...context, module: 'nestos-node', operation: 'project.connection', result: 'success', level: 'info', durationMs: Date.now() - started});
+            this.eventLog.record({...context, module: 'cells', operation: 'project.connection', result: 'success', level: 'info', durationMs: Date.now() - started});
             this.setStatus(mount.mountId, 'online');
         } catch (error) {
             if (cancelledByCaller(parent)) {this.setStatus(mount.mountId, previous); return;}
@@ -701,7 +701,7 @@ export class ProjectRemoteMountService {
             if (fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project binding changed during authorization inspection');
             this.authorizationInspections.set(root.mountId, {fingerprint, value});
             if (value.exportAccess === 'none' || value.projectAccess === 'denied') this.setStatus(root.mountId, 'offline');
-            if (value.reason !== 'unverified') this.eventLog.record({module: 'nestos-node', operation: 'project.authorization', projectId, connectionId: root.connectionId,
+            if (value.reason !== 'unverified') this.eventLog.record({module: 'cells', operation: 'project.authorization', projectId, connectionId: root.connectionId,
                 mountId: root.mountId, stage: 'authorization-inspect', operationId, result: value.code ? 'failure' : 'success', level: value.code ? 'error' : 'info',
                 code: value.code, causeCodes: value.causeCodes, reason: value.reason, durationMs: Date.now() - started});
             for (const listener of this.listeners) listener();
@@ -734,7 +734,7 @@ export class ProjectRemoteMountService {
     }
     private async trackProject<T>(operation: string, projectId: string, run: () => Promise<T>, connectionId?: string): Promise<T> {
         const operationId = randomUUID(), started = Date.now();
-        const context = {module: 'nestos-node' as const, operation, projectId, connectionId, operationId, stage: 'commit'};
+        const context = {module: 'cells' as const, operation, projectId, connectionId, operationId, stage: 'commit'};
         this.eventLog.record({...context, result: 'started', level: 'info'});
         try {
             const value = await run();
@@ -749,7 +749,7 @@ export class ProjectRemoteMountService {
     private recordFailure(error: unknown, context: {stage: string; operation?: string; projectId?: string; connectionId?: string; mountId?: string;
         operationId?: string; durationMs?: number; profileId?: string; sessionId?: string}, reason?: string): DiagnosticEvent {
         reportRemoteFailure(error, context);
-        return this.eventLog.record({module: 'nestos-node', operation: 'remote.operation', result: 'failure', level: 'error',
+        return this.eventLog.record({module: 'cells', operation: 'remote.operation', result: 'failure', level: 'error',
             ...diagnosticFailure(error), ...(error instanceof RemoteConnectionUnavailableError ? {reason: error.diagnostic.reason} : {}), ...context, ...(reason ? {reason, code: 'ETIMEDOUT'} : {})});
     }
     private setStatus(id: string, status: RemoteConnectionStatus) {

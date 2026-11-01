@@ -3,7 +3,7 @@ import { createNestosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { SnapshotService } from './storage/snapshots';
 import { createApplicationClient, bindLocalApplicationServices } from '@itookit/app-core/host';
 import { configureAppCache } from './app-cache';
-import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
+import { createCellsDriver } from '@itookit/cells-driver';
 import { initApp, installMobileNavigation, windowSessionLeaseToken } from '@itookit/app-shell';
 import { createApplicationRuntime, createNestosFlowLibrary } from '@itookit/app-core';
 import { openIndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
@@ -40,7 +40,7 @@ async function main(styles: Promise<void>) {
 }
 
 async function createLocalClient() {
-    const backend = await openIndexedDBBackend({dbName: 'MindOS-v3'}), remoteSourceProvider = createNestOSNodeDriver();
+    const backend = await openIndexedDBBackend({dbName: 'MindOS-v3'}), remoteSourceProvider = createCellsDriver();
     const sync = new WebProjectSync(backend, remoteSourceProvider);
     const runtime = await createApplicationRuntime({
         startupMode: 'interactive', remoteSourceProvider, backend, ownerKind: 'web',

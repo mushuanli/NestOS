@@ -120,7 +120,7 @@
         "milestone": "候选方向",
         "dependencies": [],
         "references": [
-          "doc/design/nestos-node-project-model.md"
+          "doc/design/cells-project-model.md"
         ]
       }
     },

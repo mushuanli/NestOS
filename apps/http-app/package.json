@@ -22,7 +22,7 @@
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/ui-common": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
-    "@itookit/nestos-node-driver": "workspace:*",
+    "@itookit/cells-driver": "workspace:*",
     "@itookit/vfsdriver-local": "workspace:*",
     "nestos-web": "workspace:*",
     "@codemirror/state": "^6.5.2",

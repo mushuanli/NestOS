@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createApplicationRuntime } from '@itookit/app-core';
-import { createNestOSNodeDriver, type RemoteProject } from '@itookit/nestos-node-driver';
+import { createCellsDriver, type RemoteProject } from '@itookit/cells-driver';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { RunStore } from '../src/run-store';
@@ -21,7 +21,7 @@ async function prepare(metadata: Metadata): Promise<Fixture> {
     const credential = await readFile(metadata.credentialFile, 'utf8'); let credentialReference = '';
     const workspace = join(directory, 'workspace'); await mkdir(workspace, { recursive: true });
     const backend = await openLocalFSBackend({ rootDir: profile, sidecarDir: join(profile, '_meta'), createDb: NodeSqliteSidecarDb.open });
-    const driver = createNestOSNodeDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli',
+    const driver = createCellsDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli',
         remoteSourceProvider: driver, digitalTwinAutoStart: false });
     try {
         const nodeId = await runtime.projects.remoteMounts!.saveConnection({ name: 'CLI fixture', endpoint: metadata.endpoint }, credential);

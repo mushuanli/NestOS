@@ -61,7 +61,7 @@ localhost-recording*.json
 /Trace-*.json
 /t[0-9]*.json
 
-# Local nestos-node executable and pre-upgrade backup
+# Local cells executable and pre-upgrade backup
 /tools/svr
 /tools/svr.bak-before-autoinit
 /tools/logs/

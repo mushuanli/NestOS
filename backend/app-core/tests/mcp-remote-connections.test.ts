@@ -1,22 +1,22 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
-import { MCPRemoteConnections, NESTOS_NODE_EXTENSION, remoteMCPConnection } from '../src/projects/mcp-remote-connections';
+import { MCPRemoteConnections, CELLS_EXTENSION, remoteMCPConnection } from '../src/projects/mcp-remote-connections';
 import { RemoteMountStore } from '../src/projects/remote-mount-store';
 import { ProjectRemoteMountService } from '../src/projects/remote-mounts';
 
 const server = {id:'office',name:'Office',transport:'http' as const,endpoint:'https://office.test/mcp',
     auth:{type:'basic' as const,username:'alice',credentialRef:'ref'},
-    extensions:{[NESTOS_NODE_EXTENSION]:{version:1,mcpEndpoint:'https://office.test/mcp',httpEndpoint:'https://office.test',
+    extensions:{[CELLS_EXTENSION]:{version:1,mcpEndpoint:'https://office.test/mcp',httpEndpoint:'https://office.test',
         fileProtocol:'fs-agent-http-v1',serverId:'office-node',harness:true}}};
-it('only projects verified nestos-node HTTP configurations and permits multiple independent configurations',async () => {
+it('only projects verified cells HTTP configurations and permits multiple independent configurations',async () => {
     const servers = [server,{...server,id:'second',name:'Second',auth:{...server.auth,credentialRef:'second'}},
-        {id:'plain',name:'nestos-node',transport:'http' as const,endpoint:'https://plain.test/mcp'}];
+        {id:'plain',name:'cells',transport:'http' as const,endpoint:'https://plain.test/mcp'}];
     const registry = new MCPRemoteConnections({getMCPServers:async () => servers,saveMCPServer:vi.fn(),deleteMCPServer:vi.fn()},
         {setCredential:vi.fn(),dispose:vi.fn(),open:vi.fn()});
     await registry.refresh(); expect(registry.list().map(item => item.id)).toEqual(['office','second']);
     expect(remoteMCPConnection({...server,endpoint:'https://other.test/mcp'})).toBeUndefined();
-    expect(remoteMCPConnection({...server,extensions:{[NESTOS_NODE_EXTENSION]:{requested:true}}})).toBeUndefined();
+    expect(remoteMCPConnection({...server,extensions:{[CELLS_EXTENSION]:{requested:true}}})).toBeUndefined();
 });
 it('moves legacy connections and passwords out of the mount catalog without changing project references',async () => {
     const runtime = await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web'});
@@ -55,7 +55,7 @@ it('restores a verified API Key connection from the MCP catalog without a userna
     expect(remoteMCPConnection({...bearer,extensions:undefined})).toBeUndefined();
 });
 
-it('verifies discovered nestos-node tools through the generic connection and reuses verification when saving or renaming',async () => {
+it('verifies discovered cells tools through the generic connection and reuses verification when saving or renaming',async () => {
     const provider = {setCredential:vi.fn(() => vi.fn()),dispose:vi.fn(),open:vi.fn(),discover:vi.fn(async () => ({
         version:1 as const,httpEndpoint:'https://office.test',serverId:'office',fileProtocol:'fs-agent-http-v1' as const,
         harness:true,projects:true,projectProtocol:'fs-agent-project-v1',
@@ -67,7 +67,7 @@ it('verifies discovered nestos-node tools through the generic connection and reu
         if (init?.method !== 'POST') return new Response(null,{status:405});
         const message = JSON.parse(String(init.body));methods.push(message.method);
         const result = message.method === 'server/discover' ? {supportedVersions:['2026-07-28'],capabilities:{tools:{}}}
-            : message.method === 'tools/list' ? {tools:[{name:'piagent_capabilities',inputSchema:{type:'object'}}]}
+            : message.method === 'tools/list' ? {tools:[{name:'cells_capabilities',inputSchema:{type:'object'}}]}
             : {structuredContent:descriptor,content:[],isError:false};
         return new Response(JSON.stringify({jsonrpc:'2.0',id:message.id,result:{resultType:'complete',ttlMs:0,cacheScope:'private',...result}}),
             {headers:{'content-type':'application/json'}});
@@ -76,7 +76,7 @@ it('verifies discovered nestos-node tools through the generic connection and reu
     provider.discover.mockClear();
     try {
         const draft = {id:'office',name:'Office',transport:'http' as const,endpoint:'https://office.test/mcp',
-            apiKey:'fixed-api-key-at-least-24-bytes',tools:[{name:'piagent_capabilities'}]};
+            apiKey:'fixed-api-key-at-least-24-bytes',tools:[{name:'cells_capabilities'}]};
         const discovery = await runtime.agentService.testMCPServer(draft);
         await runtime.agentService.saveMCPServer({...draft,...discovery});
         await runtime.agentService.saveMCPServer({...draft,...discovery,name:'New label'});
@@ -86,12 +86,12 @@ it('verifies discovered nestos-node tools through the generic connection and reu
         expect(provider.discover).not.toHaveBeenCalled();
     } finally {await runtime.dispose();vi.unstubAllGlobals();}
 });
-it('reads old fs-agent extensions without changing project or credential identities',async()=>{
-    const legacy={...server,extensions:{'itookit/fs-agent':server.extensions[NESTOS_NODE_EXTENSION]}};
-    expect(remoteMCPConnection(legacy)).toEqual(remoteMCPConnection(server));
+it('rejects old fs-agent extensions without treating them as cells connections',async()=>{
+    const legacy={...server,extensions:{'itookit/fs-agent':server.extensions[CELLS_EXTENSION]}};
+    expect(remoteMCPConnection(legacy)).toBeUndefined();
     const registry=new MCPRemoteConnections({getMCPServers:async()=>[legacy],saveMCPServer:vi.fn(),deleteMCPServer:vi.fn()},
         {setCredential:vi.fn(),dispose:vi.fn(),open:vi.fn()});
-    await registry.refresh();expect(registry.list()[0]).toMatchObject({id:'office',credentialRef:'ref'});
+    await registry.refresh();expect(registry.list()).toEqual([]);
 });
 
 it('repairs a referenced MCP whose saved capability extension was lost without probing unrelated servers',async()=>{
@@ -114,11 +114,11 @@ it('ignores an older catalog refresh that finishes after a newer configuration u
 
 it('requires explicit anonymous authentication and a verified anonymous principal projection',()=>{
     const authorization={principalId:'anonymous',anonymous:true,revision:'a'.repeat(64)};
-    const anonymous={...server,auth:{type:'anonymous' as const,credentialRef:'public'},extensions:{[NESTOS_NODE_EXTENSION]:{...server.extensions[NESTOS_NODE_EXTENSION],harness:false,projects:false,authorization}}};
+    const anonymous={...server,auth:{type:'anonymous' as const,credentialRef:'public'},extensions:{[CELLS_EXTENSION]:{...server.extensions[CELLS_EXTENSION],harness:false,projects:false,authorization}}};
     expect(remoteMCPConnection(anonymous)).toMatchObject({anonymous:true,authorization});
-    expect(remoteMCPConnection({...anonymous,extensions:{[NESTOS_NODE_EXTENSION]:{...anonymous.extensions[NESTOS_NODE_EXTENSION],authorization:undefined}}})).toBeUndefined();
+    expect(remoteMCPConnection({...anonymous,extensions:{[CELLS_EXTENSION]:{...anonymous.extensions[CELLS_EXTENSION],authorization:undefined}}})).toBeUndefined();
     expect(remoteMCPConnection({...anonymous,auth:undefined})).toBeUndefined();
-    expect(remoteMCPConnection({...anonymous,extensions:{[NESTOS_NODE_EXTENSION]:{...anonymous.extensions[NESTOS_NODE_EXTENSION],authorization:{...authorization,principalId:'alice'}}}})).toBeUndefined();
+    expect(remoteMCPConnection({...anonymous,extensions:{[CELLS_EXTENSION]:{...anonymous.extensions[CELLS_EXTENSION],authorization:{...authorization,principalId:'alice'}}}})).toBeUndefined();
 });
 
 

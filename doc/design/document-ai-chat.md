@@ -101,7 +101,7 @@ HTTP 能力表显式导出这些方法，真实 RpcPeer 往返验证生命周期
 
 ## 远程文件 metadata
 
-所有文件操作经 VFS。nestos-node 的每个 export 是 metadata 项目边界，首次写 metadata 才创建
+所有文件操作经 VFS。cells 的每个 export 是 metadata 项目边界，首次写 metadata 才创建
 `<export>/.nestos/meta.sqlite`，按真实 export 相对路径保存 metadata 和稳定文件身份，改名跟随。
 客户端在明确协商 `metadata: true` 且获得 rw 授权后写入；旧服务不降级为本地副本。
 多个 mount 深度映射同一 export 内文件时读取同一份 metadata；重叠 export 根不共享库，配置应避免。

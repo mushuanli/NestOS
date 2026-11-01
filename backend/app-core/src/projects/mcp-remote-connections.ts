@@ -1,13 +1,12 @@
-import { validateAuthorization } from '@itookit/nestos-node-driver/authorization';
+import { validateAuthorization } from '@itookit/cells-driver/authorization';
 import type { MCPDiscovery, MCPServer } from '@itookit/tools/mcp-contracts';
 import { FSError, checkOperation, type OperationOptions } from '@itookit/vfs-core';
 import { remoteLog, type MCPConnectionDiagnostic, type MCPConnectionReason } from './remote-diagnostics';
 import { normalizeConnection, type RemoteFileSystemConfig, type RemoteFileSystemInput } from './remote-connections';
 import type { RemoteFileSourceProvider } from './remote-mounts';
 
-const LEGACY_EXTENSION = 'itookit/fs-agent';
-import { nestosNodeConfiguration, type NestOSNodeConfiguration } from '@itookit/app-contracts';
-export { NESTOS_NODE_EXTENSION, nestosNodeConfiguration, isNestOSNodeTool, type NestOSNodeConfiguration } from '@itookit/app-contracts';
+import { CELLS_EXTENSION, cellsConfiguration, type CellsConfiguration } from '@itookit/app-contracts';
+export { CELLS_EXTENSION, cellsConfiguration, isCellsTool, type CellsConfiguration } from '@itookit/app-contracts';
 export interface MCPConfigurationStore {
     getMCPServers(): Promise<MCPServer[]>;
     saveMCPServer(server: MCPServer): Promise<void>;
@@ -37,7 +36,7 @@ export class MCPRemoteConnections {
         if (revision !== this.refreshRevision) return;
         this.loadedRevision = revision;
         this.protocol = new Map(servers.map(server => {
-            const descriptor = nestosNodeConfiguration(server), protocolVersion = (server as MCPServer & Pick<MCPDiscovery, 'protocolVersion'>).protocolVersion;
+            const descriptor = cellsConfiguration(server), protocolVersion = (server as MCPServer & Pick<MCPDiscovery, 'protocolVersion'>).protocolVersion;
             return [server.id, {protocol: server.connectionState, protocolVersion, fileProtocol: descriptor?.fileProtocol, projectProtocol: descriptor?.projectProtocol}];
         }));
         this.configured = servers.map(server => ({id: server.id, name: server.name, reason: remoteMCPReason(server)}));
@@ -101,7 +100,7 @@ export class MCPRemoteConnections {
 }
 export function remoteMCPConnection(server: MCPServer): RemoteFileSystemConfig | undefined {
     if (remoteMCPReason(server) !== 'ready') return undefined;
-    const extension = nestosNodeConfiguration(server);
+    const extension = cellsConfiguration(server);
     const credentialRef = server.auth?.credentialRef ?? `mcp-${server.id}`;
     const basic = server.auth?.type === 'basic';
     return { ...normalizeConnection({ name: server.name, endpoint: extension!.httpEndpoint, username: basic ? server.auth?.username : undefined, anonymous: server.auth?.type === 'anonymous' }),
@@ -111,7 +110,7 @@ export function remoteMCPConnection(server: MCPServer): RemoteFileSystemConfig |
 }
 function remoteMCPReason(server: MCPServer): MCPConnectionReason {
     if (server.transport !== 'http') return 'unsupported-transport';
-    const extension = nestosNodeConfiguration(server);
+    const extension = cellsConfiguration(server);
     if (!hasRemoteAuth(server)) return 'auth-missing';
     if (server.auth?.type === 'anonymous' && extension?.authorization?.anonymous !== true) return 'auth-missing';
     if (extension?.authorization && extension.authorization.anonymous !== (server.auth?.type === 'anonymous')) return 'auth-missing';
@@ -132,7 +131,7 @@ function hasRemoteAuth(server: MCPServer): boolean {
     if (server.auth?.type === 'basic') return !!server.auth.username;
     return server.auth?.type === 'bearer' || !!server.apiKey;
 }
-function validRemoteDescriptor(extension: NestOSNodeConfiguration): boolean {
+function validRemoteDescriptor(extension: CellsConfiguration): boolean {
     try { validateAuthorization(extension.authorization); } catch { return false; }
     return extension.version === 1 && extension.fileProtocol === 'fs-agent-http-v1'
         && typeof extension.harness === 'boolean' && typeof extension.httpEndpoint === 'string';
@@ -144,8 +143,8 @@ function legacyMCPConnection(connection: RemoteFileSystemConfig): MCPServer {
     const endpoint = connection.endpoint.replace(/\/+$/, '') + '/mcp';
     return { id:connection.id,name:connection.name,transport:'http',endpoint,
         auth:{type:connection.anonymous ? 'anonymous' : connection.username ? 'basic' : 'bearer',username:connection.username,credentialRef:connection.credentialRef},
-        extensions:{[LEGACY_EXTENSION]:{version:1,mcpEndpoint:endpoint,httpEndpoint:connection.endpoint,
-            fileProtocol:'fs-agent-http-v1',serverId:null,harness:false,legacy:true} satisfies NestOSNodeConfiguration} };
+        extensions:{[CELLS_EXTENSION]:{version:1,mcpEndpoint:endpoint,httpEndpoint:connection.endpoint,
+            fileProtocol:'fs-agent-http-v1',serverId:null,harness:false,legacy:true} satisfies CellsConfiguration} };
 }
 
 function sameConnection(a: RemoteFileSystemConfig | undefined, b: RemoteFileSystemConfig): boolean {

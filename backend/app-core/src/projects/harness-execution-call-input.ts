@@ -1,5 +1,5 @@
 import type {HarnessExecutionRequest} from '@itookit/kernel-adapters/contracts';
-import {validateHarnessTurnInput, type HarnessProfile} from '@itookit/nestos-node-driver/harness';
+import {validateHarnessTurnInput, type HarnessProfile} from '@itookit/cells-driver/harness';
 import {executionError} from './harness-execution-journal';
 
 /** Target preparation is pure and precedes native create/fork/turn and binding claims. */

@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { createNestOSNodeDriver, type RemoteProject } from '@itookit/nestos-node-driver';
+import { createCellsDriver, type RemoteProject } from '@itookit/cells-driver';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { ProjectSearch } from '../src/projects/project-search';
@@ -23,7 +23,7 @@ async function fixture() {
         if (message.method === 'tools/call') calls.push({name: message.params.name, arguments: message.params.arguments});
         return response(message.id, message.method, message.params, project);
     });
-    const driver = createNestOSNodeDriver(() => 'token', fetch), remote = new ProjectRemoteMountService(fs, driver);
+    const driver = createCellsDriver(() => 'token', fetch), remote = new ProjectRemoteMountService(fs, driver);
     await remote.init();
     const search = new ProjectSearch({forFolder: async () => ({path: '/P', project: {id: 'project'}}), remoteMounts: remote} as unknown as ProjectService);
     return {search, remote, project, calls, fetch, async dispose() {await remote.dispose(); await runtime.dispose();}};
@@ -35,7 +35,7 @@ function response(id: unknown, method: string, params: {name: string}, project: 
             capabilities: {history: true, create: true, resume: true, interrupt: true, interactions: true, search: true, searchPrompts: true}}]}
         : {matches: [], truncated: false, nextCursor: null};
     const result = method === 'server/discover'
-        ? {supportedVersions: ['2026-07-28'], capabilities: {tools: {}}, _meta: {'itookit/pi-agent': {fileSearch: true, fileSearchVersion: 2}}}
+        ? {supportedVersions: ['2026-07-28'], capabilities: {tools: {}}, _meta: {'itookit/cells': {fileSearch: true, fileSearchVersion: 2}}}
         : {content: [], structuredContent};
     return new Response(JSON.stringify({jsonrpc: '2.0', id, result: {resultType: 'complete', ttlMs: 0, cacheScope: 'private', ...result}}),
         {headers: {'content-type': 'application/json'}});

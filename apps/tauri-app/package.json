@@ -38,7 +38,7 @@
     "marked": "^16.4.2",
     "yaml": "^2.8.2",
     "@itookit/llm-flow": "workspace:*",
-    "@itookit/nestos-node-driver": "workspace:*",
+    "@itookit/cells-driver": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "@itookit/image-tools": "workspace:*"
   },

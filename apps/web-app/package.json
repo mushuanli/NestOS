@@ -42,7 +42,7 @@
     "mermaid": "^11.12.1",
     "@itookit/tools": "workspace:*",
     "@itookit/sync-adapters": "workspace:*",
-    "@itookit/nestos-node-driver": "workspace:*",
+    "@itookit/cells-driver": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "@itookit/image-tools": "workspace:*"
   },

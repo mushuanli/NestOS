@@ -84,7 +84,7 @@ C4Context
     Person(user, "用户", "输入任务、查看结果并控制执行")
     System(nestos, "NestOS", "Session 状态、Agent 与 Flow 执行、llm-ui")
     System_Ext(models, "模型端点", "本地模型服务或远程 API")
-    System_Ext(node, "原生执行节点", "nestos-node 与 Codex、Claude Code、DSH")
+    System_Ext(node, "原生执行节点", "cells 与 Codex、Claude Code、DSH")
     System_Ext(tools, "外部工具服务", "Tool 包、MCP 与已授权工作区")
     Rel(user, nestos, "提交、观察、交互与控制")
     Rel(nestos, models, "通过模型 Connection 调用")
@@ -138,7 +138,7 @@ C4Component
         Component(program, "Agent 与叶子 Program", "llm-tasks / kernel-adapters", "工具循环、模型调用与 Harness 执行")
         Component(kernel, "Durable Kernel", "durable-kernel", "Task、Effect、租约、交互和恢复")
         Component(adapter, "ConnectionAdapter", "kernel-adapters", "按协议执行、核对和取消")
-        Component(driver, "协议驱动", "driver-llm / nestos-node-driver", "传输、原生能力、回执及事件")
+        Component(driver, "协议驱动", "driver-llm / cells-driver", "传输、原生能力、回执及事件")
     }
     Rel(binding, view, "注入快照源与操作回调")
     Rel(binding, ledger, "复用宿主生命周期及持久保存")
@@ -166,7 +166,7 @@ C4Component
 | llm-tasks | 可恢复 Agent 循环、基础执行契约与任务 Program | Program、输入输出及通用执行引用 |
 | durable-kernel | Task/Effect 状态、租约 fencing、交互、取消与恢复机制 | 已有 Kernel 接口 |
 | kernel-adapters | Connection 能力分派、模型与 Harness Effect | 适配器接口与授权资源句柄 |
-| driver-llm / nestos-node-driver | 各自的传输、协议和原生语义 | 能力目录、执行、回执、事件及核对 |
+| driver-llm / cells-driver | 各自的传输、协议和原生语义 | 能力目录、执行、回执、事件及核对 |
 
 以上职责优先在现有模块内收敛，不为每个概念新建 package。Flow 不依赖 Session 服务，独立 UI 不依赖 app-core、VFS 或执行包。流程字段、业务提示词和业务产物处理继续由外部 Flow、Tool 和产品配置提供。
 
@@ -857,7 +857,7 @@ C4Dynamic
 | [ISession](../../backend/llm-session/src/contracts/session.ts) | signal/events 的控制与事件入口 | 以 Session 状态实体解释其接口，具体运行身份归 Invocation |
 | [独立 llm-ui](../../libraries/llm-ui/src/contracts.ts) | source/actions/operations、冻结 draft、OperationReceipt 与交互 DTO | 同一 OperationLedger 接纳队列证据，修正操作限制范围，再扩展展示 |
 | [AgentComposition](../../backend/kernel-adapters/src/llm-management/contracts/agent-composition.ts) | 主持者选择一批成员任务，再汇总 | 迁入 single-batch orchestration，保持原限制；迭代主持显式 opt-in |
-| [HarnessRecovery](../../libraries/nestos-node-driver/src/harness/conversation-journal.ts) | 原生回执、命令结果、队列与草稿恢复 | 统一逻辑关联，同时保留 adapter journal 所有权 |
+| [HarnessRecovery](../../libraries/cells-driver/src/harness/conversation-journal.ts) | 原生回执、命令结果、队列与草稿恢复 | 统一逻辑关联，同时保留 adapter journal 所有权 |
 
 当前 Agent 的 Flow 执行绑定及远程执行连接可以保留，目标设计不要求先重写它们。当前远程执行节点的输入输出、流式展示和控制能力以各自已实现契约为准，新增能力须经过目录协商。
 
@@ -1040,7 +1040,7 @@ DSH 长串行命令使用独立有界等待，不因普通查询或服务对调�
 | durable-kernel | Task/Effect 事实、事务、CAS、fencing、暂停树与物理清理确认 | Agent/Flow 发布规则、binding 策略、提示词与具体 Harness 识别 | 原子屏障必须在此层，不能上移为 UI 或调度器的先查后写 |
 | kernel-adapters | Effect 能力桥、连接事实到 Kernel 的转换、在途执行等待 | 项目授权、跨分支续接策略、厂商 SDK 或会话历史写入 | cancel/reconcile 的证明校验在此边界；pending/unknown 不转换为清理完成或重试 |
 | app-core | 当前项目授权、连接绑定、上下文兼容策略、资产授权读取与宿主 journal | 通用 reducer、UI DOM、按业务工具名分支 | 本次宿主实现应留在此层；只读资格是投影，实际派发仍复验授权与策略 |
-| nestos-node-driver / nestos-node | 前者负责协议与原生会话恢复；后者调用 SDK 并提供准确回执、能力和范围读取 | 定义宿主 Session/Branch、替代 Kernel 编排、推断宿主草稿消费 | 传输与原生语义保持分层；厂商差异留在对应原生 driver |
+| cells-driver / cells | 前者负责协议与原生会话恢复；后者调用 SDK 并提供准确回执、能力和范围读取 | 定义宿主 Session/Branch、替代 Kernel 编排、推断宿主草稿消费 | 传输与原生语义保持分层；厂商差异留在对应原生 driver |
 
 global/local、默认值覆盖和上下文兼容是策略；序列化、两阶段校验、CAS、回执核对和原子屏障是机制。策略选择由有权限和业务语义的层完成，再把冻结结果交给下层机制执行。不能为减少调用层数，把授权和 native journal 下沉进 Kernel；也不能为复用一段判断，把原子准入上移成宿主内存锁。
 
@@ -1059,8 +1059,8 @@ C4Component
         Component(policy, "app-core", "宿主策略与适配", "授权、binding、资产与执行 journal")
     }
     Container_Boundary(remote, "原生协议") {
-        Component(client, "nestos-node-driver", "平台无关协议", "原生队列、回执与查询恢复")
-        Component(node, "nestos-node drivers", "Rust / SDK", "准确的原生操作身份、能力和资源事实")
+        Component(client, "cells-driver", "平台无关协议", "原生队列、回执与查询恢复")
+        Component(node, "cells drivers", "Rust / SDK", "准确的原生操作身份、能力和资源事实")
     }
     System_Ext(native, "Codex / Claude / DSH", "实际原生执行与上下文")
     Rel(ui, entry, "source / actions / operations")

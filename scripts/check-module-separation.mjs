@@ -97,7 +97,7 @@ export function moduleRole(path, root = repository) {
         if (name === 'device-tty') return tail === 'contracts.ts' ? 'shared' : 'backend';
         // Metering is pure bucket arithmetic over declared types: no client, transport or I/O.
         if (name === 'driver-llm' && (tail === 'contracts.ts' || tail.startsWith('types/') || tail.startsWith('metering/'))) return 'shared';
-        if (['driver-llm', 'nestos-node-driver', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
+        if (['driver-llm', 'cells-driver', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
         return undefined;
     }
     if (frontend.includes(name)) return 'frontend';

@@ -17,7 +17,7 @@
     "@itookit/vfs-sync": "workspace:*",
     "@itookit/vfsdriver-indexeddb": "workspace:*",
     "@itookit/vfsdriver-local": "workspace:*",
-    "@itookit/nestos-node-driver": "workspace:*"
+    "@itookit/cells-driver": "workspace:*"
   },
   "devDependencies": {
     "@itookit/app-core": "workspace:*",

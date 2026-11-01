@@ -198,8 +198,8 @@ test('VFS drivers have no sync runtime or type dependencies', () => {
         assert.equal(inspect(driver, "import type { IStorageBackend } from '@itookit/vfs-core'").length, 0);
     }
     assert.match(dependencyError('@itookit/vfs-core', '@itookit/vfs-sync'), /remain independent/);
-    assert.equal(dependencyError('@itookit/nestos-node-driver','@itookit/vfs-sync'),undefined);
-    assert.match(dependencyError('@itookit/nestos-node-driver','@itookit/vfsdriver-agent'),/public ports/);
+    assert.equal(dependencyError('@itookit/cells-driver','@itookit/vfs-sync'),undefined);
+    assert.match(dependencyError('@itookit/cells-driver','@itookit/vfsdriver-agent'),/public ports/);
 });
 
 test('UI consumes application capabilities instead of backend construction contracts', () => {

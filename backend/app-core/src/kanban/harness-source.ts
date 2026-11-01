@@ -1,4 +1,4 @@
-import type {HarnessClient, HarnessSession} from '@itookit/nestos-node-driver/harness';
+import type {HarnessClient, HarnessSession} from '@itookit/cells-driver/harness';
 import type {KanbanScanSession, KanbanScanText} from '@itookit/app-contracts';
 import type {KanbanScanSource} from './scan-ports';
 import {requireValue} from './rules';

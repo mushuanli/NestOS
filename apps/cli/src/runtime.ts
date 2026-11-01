@@ -1,6 +1,6 @@
 import {stageInputAssets} from '@itookit/app-core';
 import { prepareFlowConnections } from '@itookit/llm-session';
-import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
+import { createCellsDriver } from '@itookit/cells-driver';
 import { selectFinalResult } from './run-store';
 import { recordRuntimeDiagnostic, traceRuntimeStage } from './diagnostics';
 import { leaseSkewConfig } from './lease-config';
@@ -41,7 +41,7 @@ import {
     HarnessConnectionService,
     createHarnessExecutionProvider,
     createHarnessCleanupState,
-    createNestOSNodeMCPExtension,
+    createCellsMCPExtension,
     MCPRemoteConnections,
     ProjectExecutionService,
     createRemoteExecutionProvider,
@@ -158,11 +158,11 @@ export async function createCliRuntime(
     const additionalMounts = hostOptions.useProfileConfig ? [] : ['/etc/llm/.providers', '/etc/llm/.connections']
         .map(path => ({path, backend: new MemoryBackend()}));
     const { manager: vfs } = await openCliVfs(root, sidecarDir, additionalMounts);
-    const remoteProvider = createNestOSNodeDriver(ref => process.env[`NESTOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? '');
+    const remoteProvider = createCellsDriver(ref => process.env[`NESTOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? '');
     let remoteConnections: ProjectRemoteMountService | undefined;
     const llmDriver = new LLMDeviceDriver(vfs, {
         presets: createNestosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
-        mcp: { clientInfo: { name:'nestos-cli',version:'1.0.0' }, extensions: [createNestOSNodeMCPExtension()], resolveCredential:ref => remoteProvider.resolveCredential(ref),
+        mcp: { clientInfo: { name:'nestos-cli',version:'1.0.0' }, extensions: [createCellsMCPExtension()], resolveCredential:ref => remoteProvider.resolveCredential(ref),
             beforeSave:(server,previous) => remoteConnections?.beforeMCPChange(server,previous),
             beforeDelete:id => remoteConnections?.beforeMCPDelete(id),configurationChanged:() => remoteConnections?.refreshMCPConnections() },
     });

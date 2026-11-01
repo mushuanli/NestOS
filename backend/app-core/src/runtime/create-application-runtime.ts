@@ -25,7 +25,7 @@ import { recoverInstructionQueues } from '../session/instruction-queue-recovery'
 import { StartupCoordinator } from './startup-coordinator';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
-import { createNestOSNodeMCPExtension } from '../projects/nestos-node-mcp-extension';
+import { createCellsMCPExtension } from '../projects/cells-mcp-extension';
 import { ProjectSyncService, type ProjectSyncProvider } from '../projects/sync/service';
 import type { Coordinator } from '@itookit/vfs-sync';
 import { seedDefaultFlows } from '../presets/default-flows';
@@ -191,7 +191,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             diagnostics.record({...event, module: 'mcp', operation: 'mcp.connection', level: event.result === 'failure' ? 'error' : 'info'});
             injectedMCP?.diagnostic?.(event);
         },
-        extensions:[...(injectedMCP?.extensions ?? []),...(options.remoteSourceProvider ? [createNestOSNodeMCPExtension()] : [])],
+        extensions:[...(injectedMCP?.extensions ?? []),...(options.remoteSourceProvider ? [createCellsMCPExtension()] : [])],
         resolveCredential:injectedMCP?.resolveCredential ?? options.remoteSourceProvider?.resolveCredential?.bind(options.remoteSourceProvider),
         beforeSave:async (server,previous) => { await injectedMCP?.beforeSave?.(server,previous); await remoteConnections?.beforeMCPChange(server,previous); },
         beforeDelete:async id => { await injectedMCP?.beforeDelete?.(id); remoteConnections?.beforeMCPDelete(id); },

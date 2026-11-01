@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { createNestOSNodeDriver, type HarnessClient, type HarnessEvents, type RemoteProject } from '@itookit/nestos-node-driver';
+import { createCellsDriver, type HarnessClient, type HarnessEvents, type RemoteProject } from '@itookit/cells-driver';
 
 const metadataFile = process.env.NESTOS_HARNESS_LIVE_METADATA;
 interface Metadata { endpoint: string; project: RemoteProject; credentialFile: string; profileId: string; root: string; gatewayPid: number }
@@ -51,7 +51,7 @@ describe.skipIf(!metadataFile)('installed Claude capacity with a local fixed mod
     it('executes twenty independent sessions, preserves evicted history and receipts, and resumes the first', async () => {
         const metadata: Metadata = JSON.parse(await readFile(resolve(metadataFile!), 'utf8'));
         const prefix = randomUUID(), directory = join(metadata.root, `capacity-${prefix}`); await mkdir(directory);
-        const driver = createNestOSNodeDriver(); driver.setCredential(prefix, await readFile(metadata.credentialFile, 'utf8'));
+        const driver = createCellsDriver(); driver.setCredential(prefix, await readFile(metadata.credentialFile, 'utf8'));
         const projectClient = driver.projects({ endpoint: metadata.endpoint, credentialRef: prefix });
         const project = await projectClient.read(metadata.project.id), client = projectClient.harness(project);
         try {

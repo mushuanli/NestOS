@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { IndexedDBSyncStore } from '@itookit/sync-adapters';
-import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
+import { createCellsDriver } from '@itookit/cells-driver';
 import { webcrypto } from 'node:crypto';
 import { randomId } from '@itookit/vfs-sync';
 import type { ProjectService } from '@itookit/app-core';
@@ -28,7 +28,7 @@ async function server(directoryProjects = false, apiKey = false) {
         const original=await readFile(config,'utf-8');
         await writeFile(config,`server_id = "web-directory-test"\n${original}\n[projects]\nroot = ${JSON.stringify(join(directory,'catalog'))}\n[[exports]]\nalias = "home"\npath = ${JSON.stringify(join(directory,'exports'))}\naccess = "rw"\n`);
     }
-    const child = spawn('cargo' , ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/nestos-node/Cargo.toml'), '--', config],
+    const child = spawn('cargo' , ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/cells/Cargo.toml'), '--', config],
         { env: { ...process.env, SYNC_TEST_PASSWORD: 'test-secret' }, stdio: ['ignore', 'ignore', 'pipe'] });
     const exited = once(child, 'exit');
     const close = async () => { child.kill('SIGTERM'); await exited; await rm(directory, { recursive: true, force: true }); };
@@ -45,7 +45,7 @@ async function server(directoryProjects = false, apiKey = false) {
 async function device(endpoint: string) {
     const backend = new IndexedDBBackend({ dbName: 'web-sync-' + randomId() }); await backend.init();
     const directory = '/home/admin/projects/local'; await backend.mkdir(directory);
-    const http = createNestOSNodeDriver(); http.setCredential('saved', 'test-secret');
+    const http = createCellsDriver(); http.setCredential('saved', 'test-secret');
     const project = { name: 'Local', project: { id: 'local', directory } };
     const connection = () => ({id: 'server', name: 'Server', endpoint, username: 'owner', credentialRef: 'saved'});
     const projects = { get: async () => project, assertIndependent: async () => {}, remoteMounts: { list: () => [], connection,
@@ -100,24 +100,24 @@ it('only resolves a sync client when an operation needs it and preserves its met
         expect(resolve).toHaveBeenCalledOnce(); expect(receiver).toBeInstanceOf(HttpSyncClient);
     } finally {await service.dispose(); await a.close(); vi.restoreAllMocks();}
 });
-it('discovers nestos-node on the generic MCP connection without extra verification and binds its native project',async()=>{
+it('discovers cells on the generic MCP connection without extra verification and binds its native project',async()=>{
     const running = await server(true,true);
-    const backend = new IndexedDBBackend({dbName:'mcp-nestos-node-'+randomId()}), originalFetch = globalThis.fetch;
+    const backend = new IndexedDBBackend({dbName:'mcp-cells-'+randomId()}), originalFetch = globalThis.fetch;
     const methods:string[] = [];
     const fetch = vi.spyOn(globalThis,'fetch').mockImplementation(async (input,init) => {
         if (String(input).endsWith('/mcp') && typeof init?.body === 'string') methods.push(JSON.parse(init.body).method);
         return originalFetch(input,init);
     });
-    const driver = createNestOSNodeDriver();
+    const driver = createCellsDriver();
     const runtime = await createApplicationRuntime({backend,ownerKind:'web',remoteSourceProvider:driver});
     try {
         const draft = {id:'office',name:'Office',transport:'http' as const,endpoint:running.endpoint+'/mcp',apiKey:'fixed-network-api-key-at-least-24-bytes'};
         const discovery = await runtime.agentService.testMCPServer(draft);
-        expect(discovery.extensions?.['itookit/pi-agent']).toMatchObject({serverId:'web-directory-test',projects:true});
+        expect(discovery.extensions?.['itookit/cells']).toMatchObject({serverId:'web-directory-test',projects:true});
         await runtime.agentService.saveMCPServer({...draft,...discovery});
         await runtime.agentService.saveMCPServer({...draft,...discovery,name:'Personal server'});
         expect(methods).toEqual(['server/discover','tools/list','resources/list']);
-        expect(discovery.resources).toMatchObject([{uri:'nestos-node://web-directory-test/directories',mimeType:'application/json'}]);
+        expect(discovery.resources).toMatchObject([{uri:'cells://web-directory-test/directories',mimeType:'application/json'}]);
         const contents = await runtime.agentService.readMCPResource(draft.id,discovery.resources[0].uri) as {contents:Array<{text:string}>};
         expect(JSON.parse(contents.contents[0].text)).toMatchObject({serverId:'web-directory-test',exports:[{alias:'home',virtualPath:'/home'}]});
         const remote = await runtime.projects.createRemote('Notes',null,draft.id,'/home/target','rw');

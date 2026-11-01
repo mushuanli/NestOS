@@ -2,7 +2,7 @@ import {createBrowserImageTools} from '@itookit/image-tools/browser';
 import { createNestosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { openApplicationView } from '@itookit/app-core/host';
 import { createNestosFlowLibrary } from '@itookit/app-core';
-import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
+import { createCellsDriver } from '@itookit/cells-driver';
 import { createTauriMCPTransport } from './shell/tauri-mcp-transport';
 import { recordDiagnostic, observeTools } from './log/desktop-diagnostics';
 import { errorDetails, t } from '@itookit/common';
@@ -295,7 +295,7 @@ async function bootstrap(): Promise<void> {
     const llmLogger = new TauriLLMLogger(rootDir);
     const runtime = await createApplicationRuntime({
         startupMode: 'interactive',
-        remoteSourceProvider: createNestOSNodeDriver(),
+        remoteSourceProvider: createCellsDriver(),
         backend: rootBackend,
         additionalMounts: [...workspaceMounts],
         ownerKind: 'tauri',

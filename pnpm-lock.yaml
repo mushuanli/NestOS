@@ -35,7 +35,7 @@ overrides:
   '@itookit/driver-llm': workspace:*
   '@itookit/mdxeditor': workspace:*
   '@itookit/image-parser': workspace:*
-  '@itookit/nestos-node-driver': workspace:*
+  '@itookit/cells-driver': workspace:*
   '@itookit/vfs-core': workspace:*
   '@itookit/vfs-sync': workspace:*
   '@itookit/vfs-ui': workspace:*
@@ -125,9 +125,9 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../../backend/llm-tasks
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../node-host
@@ -277,9 +277,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../node-host
@@ -347,9 +347,9 @@ importers:
       '@itookit/kernel-adapters':
         specifier: workspace:*
         version: link:../../backend/kernel-adapters
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -426,9 +426,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -547,9 +547,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/sync-adapters':
         specifier: workspace:*
         version: link:../../backend/sync-adapters
@@ -626,9 +626,9 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../llm-tasks
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../tools
@@ -859,9 +859,9 @@ importers:
 
   backend/sync-adapters:
     dependencies:
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/vfs-sync':
         specifier: workspace:*
         version: link:../../libraries/vfs-sync
@@ -1110,7 +1110,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@1.21.7)(jsdom@27.4.0)(tsx@4.20.6)(yaml@2.8.2)
 
-  libraries/nestos-node-driver:
+  libraries/cells-driver:
     dependencies:
       '@itookit/vfs-core':
         specifier: workspace:*
@@ -1271,9 +1271,9 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../../backend/llm-tasks
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -1434,9 +1434,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/nestos-node-driver':
+      '@itookit/cells-driver':
         specifier: workspace:*
-        version: link:../../libraries/nestos-node-driver
+        version: link:../../libraries/cells-driver
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../../apps/node-host

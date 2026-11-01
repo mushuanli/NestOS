@@ -5,15 +5,15 @@
 | 原名称 | 新名称 |
 | --- | --- |
 | `mushuanli/itookit` | `mushuanli/NestOS` |
-| `mushuanli/mindos-node` | `mushuanli/nestos-node` |
-| `mushuanli/mindos-node-driver` | `mushuanli/nestos-node-driver` |
-| `tools/mindos-node` | `tools/nestos-node` |
-| `libraries/mindos-node-driver` | `libraries/nestos-node-driver` |
-| `@itookit/mindos-node-driver` | `@itookit/nestos-node-driver` |
+| `mushuanli/mindos-node` | `mushuanli/cells` |
+| `mushuanli/mindos-node-driver` | `mushuanli/cells-driver` |
+| `tools/mindos-node` | `tools/cells` |
+| `libraries/mindos-node-driver` | `libraries/cells-driver` |
+| `@itookit/mindos-node-driver` | `@itookit/cells-driver` |
 | Web 工作区 `mind-os` | `nestos-web` |
 | 主仓库私有工作区 `itookit` | `nestos-workspace` |
-| Node Rust crate `mindos_node` | `nestos_node` |
-| 远程服务命令 `mindos-node` | `nestos-node` |
+| Node Rust crate `mindos_node` | `cells` |
+| 远程服务命令 `mindos-node` | `cells` |
 | CLI 命令 `mindos` | `nestos` |
 
 产品显示名、Web/PWA 标题、桌面 productName、证书新生成时的显示名统一为 NestOS。
@@ -41,8 +41,8 @@ Node CLI/httpd 与桌面端采用相同选择规则：有新配置时使用新�
 桌面 `identifier` 保留既有安装身份，只修改显示名；改变安装身份是另一项迁移，不能靠替换字符串处理。
 已生成的 CA、浏览器身份和允许指纹不重新生成；旧证书的 CN 显示旧名不会使证书失效。
 
-驱动主入口为 `createNestOSNodeDriver` / `NestOSNodeDriver` / `NestOSNodeDescriptor`，旧 MindOS 工厂和类型名保留为弃用别名。
-新 MCP 发现名为 `itookit/nestos-node`，兼容读取旧的 `itookit/mindos-node` 和历史 extension key；保存过的授权不会因此失效。
+驱动主入口为 `createCellsDriver` / `CellsDriver` / `CellsDescriptor`，旧 MindOS 工厂和类型名保留为弃用别名。
+cells 的 MCP 发现名为 `itookit/cells`，能力工具为 `cells_capabilities`；驱动为 `@itookit/cells-driver`，环境变量使用 `CELLS_*`，不兼容旧节点名称。
 HTTP View 的新响应头使用 NestOS 名称，同时兼容旧头名。
 
 远程 export 新 metadata 使用 `.nestos/meta.sqlite`；已有 `.mindos` 继续原地使用，不自动产生第二份库。
@@ -50,7 +50,7 @@ HTTP View 的新响应头使用 NestOS 名称，同时兼容旧头名。
 
 ## 笔记模板
 
-- `readme.md`：功能说明、文档 AI、HTML Live 和 nestos-node 集成示例。
+- `readme.md`：功能说明、文档 AI、HTML Live 和 cells 集成示例。
 - `person-agent-demo.md`：独立的虚构人物笔记，供人物 Agent/数字分析使用，保持原来的正文。
 
 恢复入口按缺失文件创建，保留已有修改。旧用户的 `demo.md` 不在普通启动时自动改写或删除；显式文件改名走 VFS。

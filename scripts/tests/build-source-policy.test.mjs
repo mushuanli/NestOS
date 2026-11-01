@@ -17,7 +17,7 @@ test('HTTP fences ignore tests, documentation and other app implementations but 
         write('tools/image-tools/package.json', '{}'); write('tools/image-tools/src/index.ts', 'initial');
         const guard = captureSourceGuard(root);
         for (const file of ['ui/chat/src/view.test.ts', 'backend/p/tests/run.ts', 'shared/p/__tests__/run.ts', 'scripts/tests/build.test.mjs',
-            'doc/design/ui.md', 'AGENTS.md', 'apps/tauri-app/src/config/modules.ts', 'apps/cli/src/cli.ts', 'tools/nestos-node/src/main.rs']) write(file, 'irrelevant');
+            'doc/design/ui.md', 'AGENTS.md', 'apps/tauri-app/src/config/modules.ts', 'apps/cli/src/cli.ts', 'tools/cells/src/main.rs']) write(file, 'irrelevant');
         guard.check();
         write('apps/web-app/src/main.ts', 'changed');
         assert.throws(() => guard.check(), error => error.code === 'HTTP_BUILD_SOURCE_CHANGED' && error.changedFiles.join() === 'apps/web-app/src/main.ts');

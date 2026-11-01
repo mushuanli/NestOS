@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createApplicationRuntime, harnessExecutionJournalKey } from '@itookit/app-core';
-import { createNestOSNodeDriver, type HarnessUsage, type RemoteProject } from '@itookit/nestos-node-driver';
+import { createCellsDriver, type HarnessUsage, type RemoteProject } from '@itookit/cells-driver';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { SeqFileKernelStore } from '@itookit/durable-kernel';
@@ -30,7 +30,7 @@ async function prepare(metadata: Metadata): Promise<Fixture> {
     expect(nonce.length > 16 && !instruction.includes(nonce)).toBe(true);
     let credentialReference = ''; const workspace = join(directory, 'workspace'); await mkdir(workspace, { recursive: true });
     const backend = await openLocalFSBackend({ rootDir: profile, sidecarDir: join(profile, '_meta'), createDb: NodeSqliteSidecarDb.open });
-    const driver = createNestOSNodeDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli', remoteSourceProvider: driver,
+    const driver = createCellsDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli', remoteSourceProvider: driver,
         digitalTwinAutoStart: false });
     try {
         const nodeId = await runtime.projects.remoteMounts!.saveConnection({ name: 'Real native model fixture', endpoint: metadata.endpoint }, credential);
@@ -83,7 +83,7 @@ function hasRead(value: unknown): boolean {
 }
 
 async function verifyNativeRead(f: Fixture, sessionId: string): Promise<HarnessUsage | undefined> {
-    const driver = createNestOSNodeDriver(); driver.setCredential('cli-real-inspection', f.credential);
+    const driver = createCellsDriver(); driver.setCredential('cli-real-inspection', f.credential);
     const projects = driver.projects({ endpoint: f.metadata.endpoint, credentialRef: 'cli-real-inspection' });
     const client = projects.harness(await projects.read(f.metadata.project.id));
     try {

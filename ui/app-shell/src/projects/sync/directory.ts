@@ -1,5 +1,5 @@
 import { t } from '@itookit/common';
-import type { DirectorySyncBinding, DirectorySyncPlan, DirectorySyncDirection, DirectorySyncComparison, DirectorySyncConflict } from '@itookit/nestos-node-driver';
+import type { DirectorySyncBinding, DirectorySyncPlan, DirectorySyncDirection, DirectorySyncComparison, DirectorySyncConflict } from '@itookit/cells-driver';
 import { SyncDialog, paragraph } from './dialog';
 import { directionSelect, renderChanges, conflictReason, resolutionToolbar } from './controls';
 import { conflictMetadata, renderComparison } from './comparison';

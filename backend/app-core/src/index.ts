@@ -93,7 +93,7 @@ export { OcrService, type OcrSettings, type OcrConnection } from './configuratio
 
 export { ProjectRemoteMountService } from './projects/remote-mounts';
 export { HarnessConnectionService } from './projects/harness-connections';
-export { createNestOSNodeMCPExtension } from './projects/nestos-node-mcp-extension';
+export { createCellsMCPExtension } from './projects/cells-mcp-extension';
 export type { HarnessConnectionAcquisition } from './projects/harness-connections';
 export type { HarnessConnectionRecord } from './projects/harness-connection-store';
 export { createHarnessExecutionProvider, harnessExecutionJournalKey } from './projects/harness-execution';
@@ -129,10 +129,10 @@ export type { ProjectSyncProvider, ProjectSyncSession, ProjectSyncComparison, Pr
 
 export { prepareProjectSync } from './projects/sync/prepare';
 export type { ProjectSyncPreparationRemote } from './projects/sync/prepare';
-export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/nestos-node-driver/harness';
+export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/cells-driver/harness';
 
-export { MCPRemoteConnections, NESTOS_NODE_EXTENSION, remoteMCPConnection, nestosNodeConfiguration, isNestOSNodeTool } from './projects/mcp-remote-connections';
-export type { NestOSNodeConfiguration, MCPConfigurationStore } from './projects/mcp-remote-connections';
+export { MCPRemoteConnections, CELLS_EXTENSION, remoteMCPConnection, cellsConfiguration, isCellsTool } from './projects/mcp-remote-connections';
+export type { CellsConfiguration, MCPConfigurationStore } from './projects/mcp-remote-connections';
 
 export { listRemoteHarnessAgents } from './projects/remote-agent-catalog';
 export type { RemoteHarnessAgent } from './projects/remote-agent-catalog';

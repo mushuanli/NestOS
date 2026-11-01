@@ -24,8 +24,8 @@
     "workspace": true
   },
   {
-    "directory": "nestos-node-driver",
-    "name": "@itookit/nestos-node-driver",
+    "directory": "cells-driver",
+    "name": "@itookit/cells-driver",
     "version": "0.4.3",
     "workspace": true
   },

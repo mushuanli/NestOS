@@ -156,11 +156,11 @@ HTTP 的 `usersDir` 配合 mTLS 证书登记启用多用户；每个 userId 独�
 | 远程原生指令队列、pending 请求与回执关联 | 本用户逻辑 `/etc/fs/harness-conversations.seq` | 启动扫描有待办的已有记录，重验绑定后重建后台观察；同一 turn 的确认终态随队列持久化，未知提交仍需精确回执核对 |
 | 用户级精简事件与通知已读状态 | 本用户逻辑 `/var/lib/events/events.seq` | 启动打开原 stream，补读持久 Kernel 源并原子保存投影/checkpoint，追加 runtime.reset 提示快照重建 |
 | 网页 SSE 通知、VFS 失效通知 | ViewEventStream 等进程内缓冲 | 短暂断线有界补读；daemon 重启后重新绑定并读取持久快照，不能恢复旧能力句柄 |
-| nestos-node 诊断日志 | 配置文件所在目录的 `logs/`（可配置），JSONL | 保留排障证据；不是事件消费或执行恢复的权威存储 |
+| cells 诊断日志 | 配置文件所在目录的 `logs/`（可配置），JSONL | 保留排障证据；不是事件消费或执行恢复的权威存储 |
 
 当前用户级 journal 只保存精简事件，默认保留 1000 条；原始 SSE、消息正文与逐 token 增量不复制进去。app-core 负责 schema、路径、源 checkpoint 和启动恢复，宿主注入按用户隔离的文件系统；每个浏览器使用独立游标，通知已读状态按用户共享落盘。事件与对应 SeqFile 状态需要在同一事务提交才能保证原子性；当前 Kernel 投影与 checkpoint 满足此条件，但文件等提交后 callback 仍可能在崩溃时丢失提示，由 runtime.reset 触发快照重建，不能称为无损审计。
 
-`vfs-core` 提供通用 SeqFile、事务、提交观察和 `SeqEventJournal<T>`；用户目录策略、Harness 锁归属、队列重试和业务事件 schema 留在各领域服务及宿主。app-shell 的 `ShellApplicationEvents` 已装配独立游标消费，首屏后补读，在线/焦点/可见性恢复和可见窗口的 15 秒核对修复漏提示；事件使已有工作区快照失效，隐藏视图延后刷新，不重建编辑器。远程启动观察的暂时性失败按 15 至 60 秒退避，只重试失败目标且重新校验授权。用户级业务 outbox 与领域状态同事务提交仍需按具体领域接入，不能由提交后 callback 自动保证。详细 C4 与剩余限制见 [多用户与重启恢复](design/nestos-node-project-model.md#多用户事件持久化与队列重启恢复)。
+`vfs-core` 提供通用 SeqFile、事务、提交观察和 `SeqEventJournal<T>`；用户目录策略、Harness 锁归属、队列重试和业务事件 schema 留在各领域服务及宿主。app-shell 的 `ShellApplicationEvents` 已装配独立游标消费，首屏后补读，在线/焦点/可见性恢复和可见窗口的 15 秒核对修复漏提示；事件使已有工作区快照失效，隐藏视图延后刷新，不重建编辑器。远程启动观察的暂时性失败按 15 至 60 秒退避，只重试失败目标且重新校验授权。用户级业务 outbox 与领域状态同事务提交仍需按具体领域接入，不能由提交后 callback 自动保证。详细 C4 与剩余限制见 [多用户与重启恢复](design/cells-project-model.md#多用户事件持久化与队列重启恢复)。
 
 ```mermaid
 C4Container
@@ -173,7 +173,7 @@ C4Container
         ContainerDb(home, "用户 home 与 .nestos", "文件 + sidecar", "Session 事实、事件、队列及原生恢复记录")
         Container(view, "ViewApi / SSE", "内存缓冲", "视图通知与短暂断线补读")
     }
-    System_Ext(node, "nestos-node / Codex", "远端 principal、原生会话、写入权与回执")
+    System_Ext(node, "cells / Codex", "远端 principal、原生会话、写入权与回执")
     ContainerDb(log, "tools/logs", "JSONL", "关联请求、原生 RPC 与子进程生命周期")
     Rel(user, auth, "认证请求")
     Rel(auth, runtime, "按 userId 路由")

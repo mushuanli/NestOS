@@ -3,7 +3,7 @@ import {ToolOAuthApplications} from './tool-oauth-applications';
 import {canonical, within} from './paths';
 import path from 'node:path';
 import { createApplicationRuntime, type ApplicationRuntime, type ApplicationRuntimeOptions } from '@itookit/app-core';
-import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
+import { createCellsDriver } from '@itookit/cells-driver';
 import { guardHostStorage } from '../storage/host-storage';
 import type { IStorageBackend } from '@itookit/vfs-core';
 import type { AuditPort } from '../logging/audit-log';
@@ -50,7 +50,7 @@ export async function createNodeRuntime(source: IStorageBackend, root?: string, 
         await packages.initialize();
         const additionalTools = mergeNodePackageTools(packages.userTools([...createStandardNodeTools(), ...await loadNodeToolModules(undefined, options.toolConnections),
             ...options.kernelPlatform?.additionalTools ?? []]), packages.initialTools(), BUILTIN_TOOLS);
-        const runtime = await createApplicationRuntime({remoteSourceProvider: createNestOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
+        const runtime = await createApplicationRuntime({remoteSourceProvider: createCellsDriver(), ownerKind: 'cli', ...options, backend: borrowed,
             toolDependencies: options.toolDependencies ?? packages,
             kernelPlatform: { ...options.kernelPlatform, additionalTools, configure: async (kernel, services) => {
                 await packages.bind(kernel); await options.kernelPlatform?.configure?.(kernel, services);

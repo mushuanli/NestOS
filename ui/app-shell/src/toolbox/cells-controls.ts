@@ -1,19 +1,19 @@
 import {showDiagnostics} from '../diagnostics/dialog';
 import type {ApplicationDiagnostics} from '@itookit/app-contracts/services';
-import { nestosNodeConfiguration } from '@itookit/app-contracts';
+import { cellsConfiguration } from '@itookit/app-contracts';
 import type { ProjectRemoteMountPort, ProjectService } from '@itookit/app-contracts/services';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import { t } from '@itookit/common';
 import { showHarnessControl } from '../harness/control';
 
 /** Presentation only; standard discovery and extension verification are owned by MCPManager. */
-export class NestOSNodeMCPControls {
+export class CellsMCPControls {
     private readonly lifetime = new AbortController();
     private stopMounts?: () => void;
     private mountRead = 0;
     constructor(private readonly remote: ProjectRemoteMountPort, private readonly projects?: ProjectService, private readonly diagnostics?: ApplicationDiagnostics) {}
     render(parent: HTMLElement, server: MCPServer): void {
-        const settings = nestosNodeConfiguration(server);
+        const settings = cellsConfiguration(server);
         if (!settings) return;
         const hint = document.createElement('p'); hint.textContent = t('remote.mcpApiKeyHint'); parent.append(hint);
         this.renderMounts(parent, server.id);
@@ -42,7 +42,7 @@ export class NestOSNodeMCPControls {
         this.stopMounts = this.remote.onChange(refresh); refresh();
     }
     read(server: MCPServer): MCPServer {
-        if (!server.apiKey || !nestosNodeConfiguration(server)) return server;
+        if (!server.apiKey || !cellsConfiguration(server)) return server;
         const headers = Object.fromEntries(Object.entries(server.headers ?? {}).filter(([key]) => key.toLowerCase() !== 'authorization'));
         return {...server,headers,auth:undefined};
     }

@@ -7,7 +7,7 @@ import type {RemoteFileSourceProvider, ProjectRemoteMount} from '../src/projects
 
 const releases: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of releases.splice(0).reverse()) await close(); vi.restoreAllMocks();});
-const input = {module: 'nestos-node' as const, operation: 'remote.operation', stage: 'root-probe', level: 'error' as const,
+const input = {module: 'cells' as const, operation: 'remote.operation', stage: 'root-probe', level: 'error' as const,
     result: 'failure' as const, code: 'EACCES', projectId: 'a', connectionId: 'node'};
 
 it('merges repeated failures across unrelated sources, retains bounded correlations and closes on recovery', async () => {

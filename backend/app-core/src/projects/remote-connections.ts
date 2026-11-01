@@ -2,7 +2,7 @@ import { FSError, normalizeVirtualPath } from '@itookit/vfs-core';
 
 export interface RemoteFileSystemConfig {
     anonymous?: boolean;
-    authorization?: import('@itookit/nestos-node-driver').RemoteAuthorization;
+    authorization?: import('@itookit/cells-driver').RemoteAuthorization;
     id: string; name: string; endpoint: string; username?: string; credentialRef: string; serverId?: string; projects?: boolean;
 }
 export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username' | 'anonymous'>;

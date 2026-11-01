@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { createNestOSNodeDriver, type NestOSNodeDriver } from '@itookit/nestos-node-driver';
+import { createCellsDriver, type CellsDriver } from '@itookit/cells-driver';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowLibraryCommand } from '@itookit/app-contracts';
 import type { FlowDraft } from '@itookit/llm-flow/contracts';
@@ -17,13 +17,13 @@ const coordinatorPath = process.env.NESTOS_REAL_COORDINATOR_CONFIG;
 const cases: Array<Record<string, unknown>> = [], observations: Array<Record<string, unknown>> = [], sessions: string[] = [];
 const kinds = ['sql', 'shell'] as const;
 const responded = new Set<string>();
-let runtime: Awaited<ReturnType<typeof createApplicationRuntime>>, driver: NestOSNodeDriver;
+let runtime: Awaited<ReturnType<typeof createApplicationRuntime>>, driver: CellsDriver;
 let metadata: RealMetadata, nonce: string, folder: string, initialized = false;
 
 beforeAll(async () => {
     if (!metadataPath) return;
     metadata = await realMetadata(metadataPath); nonce = (await readFile(join(metadata.projectDirectory, 'challenge.txt'), 'utf8')).trim();
-    driver = createNestOSNodeDriver(); runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli',
+    driver = createCellsDriver(); runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli',
         remoteSourceProvider: driver, digitalTwinAutoStart: false });
     const remote = runtime.projects.remoteMounts!;
     const nodeId = await remote.saveConnection({ name: 'Actual model validation', endpoint: metadata.endpoint }, await readFile(metadata.credentialFile, 'utf8'));

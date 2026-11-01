@@ -3,7 +3,7 @@ export interface DiagnosticEvent {
     id: string;
     timestamp: number;
     startedAt?: number;
-    module: 'mcp' | 'nestos-node' | 'application';
+    module: 'mcp' | 'cells' | 'application';
     operation: string;
     operationId: string;
     stage: string;

@@ -1,4 +1,4 @@
-import type { HarnessObservation, HarnessStatusPort, HarnessStatusRow } from '@itookit/nestos-node-driver';
+import type { HarnessObservation, HarnessStatusPort, HarnessStatusRow } from '@itookit/cells-driver';
 import type { OperationOptions } from '@itookit/vfs-core';
 
 interface Watch {

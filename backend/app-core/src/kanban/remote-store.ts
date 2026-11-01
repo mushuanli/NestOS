@@ -1,5 +1,5 @@
 import {numberEntities, boardCounterKey, boardNumberKey, counter, allocateBoardNumber, storedBoardNumber} from './numbering';
-import {HttpMutationError, type HttpSeqClient, type HttpSeqChange, type HttpSeqSnapshot} from '@itookit/nestos-node-driver';
+import {HttpMutationError, type HttpSeqClient, type HttpSeqChange, type HttpSeqSnapshot} from '@itookit/cells-driver';
 import type {KanbanEvent, KanbanArchivedItem} from '@itookit/app-contracts';
 import {KanbanError, type KanbanState, type KanbanStore} from './ports';
 import {requireValue} from './rules';

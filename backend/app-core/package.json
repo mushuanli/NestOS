@@ -49,7 +49,7 @@
     "@itookit/llm-tasks": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
-    "@itookit/nestos-node-driver": "workspace:*",
+    "@itookit/cells-driver": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "js-yaml": "^4.1.1"
   },

@@ -27,7 +27,7 @@ UI 不附带业务模板。NestOS 产品 Flow 以本目录的 JSON 定义保存�
 
 图片限制由各外部定义的 `imageConstraints` 声明。图片值复用标准 `image_url` 消息内容块；`messageTemplates` 渲染声明的多模态消息，`messages` 保持已有消息快照。
 
-`notes-readme.json` 是笔记 `readme.md` 的正文源，包含编辑器/AI Chat、HTML Live 可运行示例、nestos-node 接入、权限与功能说明，以及 httpd 可选 swap 配置。与人物样本分开存放；已有文件不自动覆盖，使用恢复初始文件入口按需创建。
+`notes-readme.json` 是笔记 `readme.md` 的正文源，包含编辑器/AI Chat、HTML Live 可运行示例、cells 接入、权限与功能说明，以及 httpd 可选 swap 配置。与人物样本分开存放；已有文件不自动覆盖，使用恢复初始文件入口按需创建。
 
 `flow-format-guide.json` 是笔记 `flow文件格式说明.md` 的唯一内容源，通过系统恢复 `note:flow-format` 写入 `/home/admin/notes/`，包含供用户与 AI 使用的完整示例与参数说明。恢复保留已有笔记；测试以实际 Flow 校验器验证文档首个完整示例。系统恢复内置 Flow 则覆盖当前草稿并发布新修订，保留历史版本。
 

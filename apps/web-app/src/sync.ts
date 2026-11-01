@@ -3,7 +3,7 @@ import { showProjectSyncSetup, showDirectorySync, showSyncPreview } from '@itook
 import { t } from '@itookit/common';
 import { OperationManager, randomId, scopedStore, SyncError, assertSync, validId, type CoordinationGuard, type SyncState, type Coordinator, type FileRemote } from '@itookit/vfs-sync';
 import { normalizeVirtualPath } from '@itookit/vfs-core';
-import type { NestOSNodeDriver } from '@itookit/nestos-node-driver';
+import type { CellsDriver } from '@itookit/cells-driver';
 import type { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { HttpSyncClient, IndexedDBSyncStore, IndexedDBSyncCoordinator, createIndexedDBSyncSession, browserSyncStorageStatus, compareSyncConflict } from '@itookit/sync-adapters';
 
@@ -13,7 +13,7 @@ export class WebProjectSync implements ProjectSyncProvider {
     private readonly clients = new Map<string, HttpSyncClient>();
     projects?: ProjectService;
     service?: ProjectSyncService;
-    constructor(private readonly backend: IndexedDBBackend, private readonly http: NestOSNodeDriver, coordinator?: Coordinator) {
+    constructor(private readonly backend: IndexedDBBackend, private readonly http: CellsDriver, coordinator?: Coordinator) {
         this.coordinator = coordinator ?? new IndexedDBSyncCoordinator(backend.storageAccess());
     }
     async open(localProjectId: string): Promise<ProjectSyncSession> {

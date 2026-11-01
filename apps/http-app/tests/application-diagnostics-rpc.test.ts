@@ -24,7 +24,7 @@ it('queries and observes backend diagnostics through the real RPC graph, scoped 
     const a = await setup(), b = await setup(), changed = vi.fn();
     expect(a.root.services.diagnostics).toBeUndefined();
     const stop = a.root.backend.diagnostics.onChange(changed); await a.client.whenIdle();
-    a.runtime.diagnostics.record({module: 'nestos-node', operation: 'project.connection', stage: 'root-probe', result: 'failure', level: 'error',
+    a.runtime.diagnostics.record({module: 'cells', operation: 'project.connection', stage: 'root-probe', result: 'failure', level: 'error',
         projectId: 'project-a', connectionId: 'office', code: 'EACCES'});
     await vi.waitFor(() => expect(changed).toHaveBeenCalled());
     expect((await a.root.backend.diagnostics.query({projectId: 'project-a'})).events).toEqual([expect.objectContaining({code: 'EACCES', connectionId: 'office'})]);

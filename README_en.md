@@ -149,7 +149,7 @@ pnpm --filter @itookit/vfs-core test
 libraries/               # Independent Git libraries in the source workspace
 ├── driver-llm/ # LLM transport
 ├── mdxeditor/ # Standalone Markdown editor
-├── nestos-node-driver/ # nestos-node files, sync and execution client
+├── cells-driver/ # cells files, sync and execution client
 ├── vfs-core/ # VFS engine and contracts
 ├── vfs-sync/ # Multi-device file sync
 ├── vfs-ui/ # File and resource browsing UI

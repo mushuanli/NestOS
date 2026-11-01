@@ -1,6 +1,6 @@
 import {FSError, type IFileSystem} from '@itookit/vfs-core';
 import {createModuleLogger, randomUUID} from '@itookit/common';
-import type {HarnessRecovery} from '@itookit/nestos-node-driver';
+import type {HarnessRecovery} from '@itookit/cells-driver';
 import type {ProjectConversationPort} from '@itookit/app-contracts/services';
 import {remoteConversationRecoveryPath} from './remote-conversation-store';
 import {mapConcurrent} from '../utils/map-concurrent';

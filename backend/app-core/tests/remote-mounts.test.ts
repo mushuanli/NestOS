@@ -3,7 +3,7 @@ import { MemoryBackend, createFileSystemSource, createFileSystemView, createVFS,
 import { createSessionBrowser, folderBrowserPath } from '../src/session/session-browser';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { MCPRemoteConnections } from '../src/projects/mcp-remote-connections';
-import { mockNestOSNodeDiscovery } from './helpers/mcp-discovery';
+import { mockCellsDiscovery } from './helpers/mcp-discovery';
 
 it('removes the remote identity if navigation creation fails before a grant is published', async () => {
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: {
@@ -416,13 +416,13 @@ it('binds a server-managed writable subdirectory while keeping workbench Session
         if (input.createDirectory) await remoteBackend.mkdir('/group/new'); return record;
     });
     const harnessClose=vi.fn(async () => {}), stopEvents=vi.fn(), subscribeEvents=vi.fn(() => stopEvents), harness=vi.fn(() => ({close:harnessClose,subscribe:subscribeEvents}));
-    const client={register,read:async()=>record,close:vi.fn(async()=>{}),harness} as unknown as import('@itookit/nestos-node-driver').ProjectClient;
+    const client={register,read:async()=>record,close:vi.fn(async()=>{}),harness} as unknown as import('@itookit/cells-driver').ProjectClient;
     const runtime=await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web',remoteSourceProvider:{
         setCredential() {},async dispose() {},projects:()=>client,
         resolveCredential:()=>'secret',discover:vi.fn(async()=>{throw new Error('Use generic MCP discovery');}),
         async open() {return createFileSystemSource({backend:remoteBackend,viewId:'server-files',access:'rw'});},
     }});
-    const fetch = mockNestOSNodeDiscovery({version:1,fileProtocol:'fs-agent-http-v1',httpEndpoint:'https://files.test',serverId:'node',harness:true,projects:true,projectProtocol:'fs-agent-project-v1'});
+    const fetch = mockCellsDiscovery({version:1,fileProtocol:'fs-agent-http-v1',httpEndpoint:'https://files.test',serverId:'node',harness:true,projects:true,projectProtocol:'fs-agent-project-v1'});
     try {
         const remote=runtime.projects.remoteMounts!;
         const connection=await remote.saveConnection({name:'Server',endpoint:'https://files.test',username:'user'},'secret');

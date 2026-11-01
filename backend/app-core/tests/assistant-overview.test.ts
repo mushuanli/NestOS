@@ -1,4 +1,5 @@
 import {expect, it, vi} from 'vitest';
+import {getLogger} from '@itookit/common';
 import type {SessionActivity} from '@itookit/durable-kernel/contracts';
 import {assistantOverview, sessionEvent} from '../src/assistant/overview';
 const activity = (patch: Partial<SessionActivity> = {}): SessionActivity => ({sessionId: 'session', sessionStatus: 'open', revision: 1, asOfSequence: 1,
@@ -36,5 +37,45 @@ it('reports partial source failures without leaking titles or error bodies into 
         const result = await assistantOverview(ports as never);
         expect(result.unavailable).toEqual(['sessions']); expect(result.events.map(item => item.kind)).toEqual(['scanFailure']);
         expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE_TOKEN'); expect(JSON.stringify(warn.mock.calls)).not.toContain('Private session title');
+    } finally {warn.mockRestore();}
+});
+
+it('shares overlapping reads across views of the same services and gives each caller its own result', async () => {
+    const ports = services();
+    let release!: () => void;
+    const waiting = new Promise<void>(resolve => {release = resolve;});
+    ports.kernel.kernel.sessionActivity.mockImplementation(async () => {await waiting; return activity();});
+    const first = assistantOverview(ports as never), second = assistantOverview({...ports, kernel: {...ports.kernel}} as never);
+    await vi.waitFor(() => expect(ports.kernel.kernel.sessionActivity).toHaveBeenCalledTimes(1)); release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(ports.sessionRepository.listSummaries).toHaveBeenCalledTimes(1);
+    expect(ports.digitalTwin.activitySummary).toHaveBeenCalledTimes(1);
+    a.scanners[0].name = 'Changed by caller'; expect(b.scanners[0].name).toBe('Scan');
+    await assistantOverview(ports as never);
+    expect(ports.sessionRepository.listSummaries).toHaveBeenCalledTimes(2);
+});
+
+it('does not share projections between different users, kernels or scanner authorization scopes', async () => {
+    const ports = services(), otherUser = services(), otherKernel = services(), otherTwin = services();
+    await Promise.all([assistantOverview(ports as never), assistantOverview(otherUser as never),
+        assistantOverview({...ports, kernel: otherKernel.kernel} as never), assistantOverview({...ports, digitalTwin: otherTwin.digitalTwin} as never)]);
+    expect(ports.kernel.kernel.sessionActivity).toHaveBeenCalledTimes(2);
+    expect(otherUser.kernel.kernel.sessionActivity).toHaveBeenCalledTimes(1);
+    expect(otherKernel.kernel.kernel.sessionActivity).toHaveBeenCalledTimes(1);
+    expect(otherTwin.digitalTwin.activitySummary).toHaveBeenCalledTimes(1);
+});
+
+it('reads fresh sources after a failed shared projection and records each source duration without private content', async () => {
+    const ports = services(), warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const started = Date.now();
+    ports.kernel.kernel.sessionActivity.mockRejectedValueOnce(new Error('PRIVATE_TOKEN'));
+    try {
+        const results = await Promise.all([assistantOverview(ports as never), assistantOverview(ports as never)]);
+        expect(results.map(result => result.unavailable)).toEqual([['sessions'], ['sessions']]);
+        expect((await assistantOverview(ports as never)).unavailable).toEqual([]);
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE_TOKEN');
+        const logs = getLogger().query({modules: ['assistant-overview'], startTime: started}).map(entry => entry.data);
+        expect(logs).toEqual(expect.arrayContaining([expect.objectContaining({stage: 'sessions', result: 'success', durationMs: expect.any(Number)}),
+            expect.objectContaining({stage: 'scanners', result: 'success', durationMs: expect.any(Number)})]));
     } finally {warn.mockRestore();}
 });

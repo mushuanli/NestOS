@@ -1,5 +1,13 @@
 # CLI 与 HTTP 应用模式
 
+会话切换性能可用 `pnpm --filter @itookit/cli exec tsx scripts/profile-session-switch.ts --connect <HTTPS地址> --session <会话ID> --session <另一会话ID> --samples 3 --overview` 验证，证书参数沿用 `--client-cert`、`--client-key`、`--ca-cert`。脚本分别输出单独 `session.bind`、与概览并发绑定和概览查询的 JSONL 耗时，不输出会话正文、不提交消息；该结果只测后端，不含 DOM 渲染，也不直接等同于锁等待时长。脚本通过独立 HTTP 视图调用运行中的宿主，不另启本地运行时或手动触发扫描。
+
+隔离复现：`pnpm --filter @itookit/cli exec tsx scripts/reproduce-session-contention.ts --sessions 100 --rounds 40 --samples 3 --out /tmp/nestos-session-profile`。脚本在独立临时目录使用实际 Node SQLite、LocalFS 与应用运行时，准备合成 Session，前两个各有指定轮数的历史；不启动数字分身扫描或模型。API 顺序为 `openSessionView → activate(main) → session.targets.list + listSessionTasks`，分别对照单独切换、与概览并发、与 40 次后台存储事务并发。每组先预热两个目标，输出 JSONL、存储操作数量、`cpu.cpuprofile`、`spans.json` 和 `wait-trace.json`；不包含 HTTP/TLS、浏览器渲染或真实扫描业务，因此不直接等同于线上延迟。
+
+运行 `node apps/cli/scripts/render-session-profile.mjs /tmp/nestos-session-profile` 可生成 `cpu-flamegraph.svg` 和 `summary.json`。CPU 图包含 idle、Profiler 与采样仪表开销，需结合 API 墙钟时间判读。`record.transaction.admission` 是提交事务到进入回调的时间，包含串行排队、BEGIN 及恢复探针，不能直接称为 SQLite 锁等待；`sqlite.begin` 单独计时。并发请求的累计等待不可作为页面耗时相加。临时数据与分析工件保留，便于复查；脚本不接收线上数据根作为输入。
+
+`storage-transactions.json` 进一步按事务中的操作、逻辑路径和字段归组，只记录合成数据的访问形态，不记录值。重开已生成夹具可用 `pnpm --filter @itookit/cli exec tsx scripts/profile-session-startup.ts --fixture <先前输出的临时夹具目录> --out /tmp/nestos-startup-profile`，采集打开存储、创建运行时、创建视图、会话激活及概览读取的 CPU/事务计时。该脚本只接受系统临时目录下生成的夹具，不会重启或连接线上 httpd。
+
 CLI 应用命令、HTTP 浏览器和 Tauri 直接 API 共用 `ApplicationClient`、应用视图、Project/Session 模型和持久化 schema。`llm-ui` 负责输入、历史和状态呈现，权限、恢复、发送及回执由后端端口执行。
 
 ## 默认本地单进程

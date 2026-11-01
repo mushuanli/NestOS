@@ -3,22 +3,55 @@ import type {AssistantEvent, AssistantOverview, LocalApplicationServices, TwinAc
 import type {SessionActivity} from '@itookit/durable-kernel/contracts';
 const log = createModuleLogger('assistant-overview');
 type Services = Pick<LocalApplicationServices, 'kernel' | 'sessionRepository' | 'digitalTwin'>;
+interface PendingOverview {kernel: Services['kernel']['kernel']; twin: Services['digitalTwin']; result: Promise<AssistantOverview>}
+const pendingOverviews = new WeakMap<Services['sessionRepository'], Set<PendingOverview>>();
 
 /** Query existing cold projections; never opens execution Sessions or starts background work. */
 export async function assistantOverview(services: Services): Promise<AssistantOverview> {
+    const repository = services.sessionRepository, kernel = services.kernel.kernel, twin = services.digitalTwin;
+    const pending = pendingOverviews.get(repository) ?? new Set<PendingOverview>();
+    let entry = [...pending].find(item => item.kernel === kernel && item.twin === twin);
+    if (!entry) {
+        const result = projectOverview(services).finally(() => {
+            pending.delete(created);
+            if (!pending.size) pendingOverviews.delete(repository);
+        });
+        const created = {kernel, twin, result}; entry = created;
+        pending.add(entry); pendingOverviews.set(repository, pending);
+    }
+    // Callers own their projection; only overlapping reads share storage work.
+    return structuredClone(await entry.result);
+}
+
+async function projectOverview(services: Services): Promise<AssistantOverview> {
     const started = performance.now(), operationId = randomUUID();
-    const results = await Promise.allSettled([sessionEvents(services), scannerEvents(services)]);
+    const results = await Promise.allSettled([
+        readSource(operationId, 'sessions', () => sessionEvents(services)),
+        readSource(operationId, 'scanners', () => scannerEvents(services)),
+    ]);
     const events: AssistantEvent[] = [], scanners: AssistantOverview['scanners'] = [], unavailable: AssistantOverview['unavailable'] = [];
     for (const [index, result] of results.entries()) {
         const source = index === 0 ? 'sessions' : 'scanners';
         if (result.status === 'rejected') {
             unavailable.push(source);
-            log.warn('assistant.overview', {operationId, stage: source, result: 'failure', code: 'ASSISTANT_SOURCE_UNAVAILABLE', errorType: result.reason instanceof Error ? result.reason.name : typeof result.reason, durationMs: Math.round(performance.now() - started)});
         } else {events.push(...result.value.events); if ('scanners' in result.value) scanners.push(...result.value.scanners);}
     }
     events.sort((a, b) => a.priority - b.priority || b.at - a.at || a.id.localeCompare(b.id));
     log.info('assistant.overview', {operationId, stage: 'project', result: unavailable.length ? 'partial' : 'success', count: events.length, durationMs: Math.round(performance.now() - started)});
     return {events, scanners, unavailable};
+}
+
+async function readSource<T extends {events: AssistantEvent[]}>(operationId: string, stage: string, read: () => Promise<T>): Promise<T> {
+    const started = performance.now();
+    try {
+        const result = await read();
+        log.info('assistant.overview', {operationId, stage, result: 'success', count: result.events.length, durationMs: Math.round(performance.now() - started)});
+        return result;
+    } catch (error) {
+        log.warn('assistant.overview', {operationId, stage, result: 'failure', code: 'ASSISTANT_SOURCE_UNAVAILABLE',
+            errorType: error instanceof Error ? error.name : typeof error, durationMs: Math.round(performance.now() - started)});
+        throw error;
+    }
 }
 async function sessionEvents(services: Services): Promise<{events: AssistantEvent[]}> {
     const repository = services.sessionRepository, kernel = services.kernel.kernel;

@@ -785,7 +785,7 @@ Task 事件裁剪：`Kernel.pruneTaskEvents(sessionId, taskId, { keepEvents? })`
 
 `taskEventPage` 返回可选 `firstAvailableIndex`；旧游标被推进到保留窗口，固定的 `throughIndex` 早于窗口时返回空页，调用方应据水位重新同步。这一兼容水位仅用于 Task 索引分页。新 readEvents / watch 统一使用 Session sequence，过期游标抛 CURSOR_EXPIRED；Task / Session snapshot 的 asOfSequence 与状态同事务读取，可据此重同步。未实现跨进程订阅者的保留租约。
 
-提交事件触发调度：catalog 文件变化唤醒 Kernel 资源清理和已打开 Session 的轮询；Kernel 的 resources 文件变化仅唤醒资源清理。同一文件系统内其他文件的提交（例如 Session 租约心跳）不通过 catalog 监听器触发扫描。Session 监听器仍处理所属存储根下的提交，但仅 resources 文件变化直接唤醒该 Session 的资源清理。定时截止和正常调度保持原有行为；这项触发范围优化本身不证明桌面发送延迟或 IPC 总量达标。
+提交事件触发调度：catalog 文件变化唤醒 Kernel 资源清理和已打开 Session 的轮询；Kernel 的 resources 文件变化仅唤醒资源清理。同一文件系统内其他文件的提交（例如 Session 租约心跳）不通过 catalog 监听器触发扫描。Session 内提交仅轮询所属 Session，并继续发送变化通知供已有依赖观察者核对；跨 Session 投递通过接收方持久输入唤醒，不按 UI 是否订阅决定调度。仅 resources 文件变化直接唤醒该 Session 的资源清理，跨进程漏通知仍由提交水位核对补偿。定时截止和正常调度保持原有行为；这项触发范围优化本身不证明桌面发送延迟或 IPC 总量达标。
 
 Task 全量列表扫描复用目录扫描时已经读取的 `record`，每个有效 Task 只读取一次记录，按目录 Task ID 排序。缺少 Task 文件的残留目录跳过，数据仅在单次调用内复用，不跨调用缓存；扫描不是跨 Task 的原子快照。此优化不改变持久索引分页接口。
 

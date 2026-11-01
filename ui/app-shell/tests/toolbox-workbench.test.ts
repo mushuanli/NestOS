@@ -874,12 +874,12 @@ it('shows dependency issues returned by import instead of treating saved Flow re
     vi.spyOn(archiveTransfer, 'chooseArchive').mockResolvedValue({text: async () => '{}'} as File);
     const imported = vi.spyOn(f.resources, 'importWithReport').mockResolvedValue({paths: [], installations: [report]});
     const legacy = vi.spyOn(f.resources, 'import');
-    Object.defineProperty(f.resources, 'flowInstallations', {value: {list: async () => [report], check: vi.fn(), ensure: vi.fn()}, configurable: true});
+    Object.defineProperty(f.resources, 'flowInstallations', {value: {list: async () => [report], check: vi.fn(async () => report), ensure: vi.fn()}, configurable: true});
     f.sidebar.querySelector<HTMLButtonElement>('[data-action="import"]')!.click();
-    await vi.waitFor(() => expect(document.querySelector('[data-flow-id="imported-flow"]')?.textContent).toContain('Trusted package is not installed'));
+    await vi.waitFor(() => expect(document.querySelector('.flow-dependencies-dialog__content')?.textContent).toContain('Trusted package is not installed'));
     expect(imported).toHaveBeenCalledWith('{}'); expect(legacy).not.toHaveBeenCalled();
-    const dialog = document.querySelector<HTMLDialogElement>('.tool-packages-dialog')!;
-    dialog.close(); dialog.dispatchEvent(new Event('close'));
+    const dialog = document.querySelector<HTMLDialogElement>('.flow-dependencies-dialog')!;
+    dialog.querySelector<HTMLButtonElement>('footer button:last-child')!.click();
 });
 
 async function selectDrawer(f: Awaited<ReturnType<typeof setup>>, id: string): Promise<void> {

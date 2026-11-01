@@ -436,7 +436,7 @@ it('keeps passive native diagnostics in More while preserving live updates and i
         const openInfo = () => host.querySelector<HTMLButtonElement>('[data-action="conversation-information"]')!.click();
         openInfo(); const dialog = document.querySelector<HTMLDialogElement>('.remote-conversation-info')!;
         expect(dialog.open).toBe(true); expect(menu.open).toBe(false);
-        expect([...dialog.querySelectorAll('dt')].map(item => item.textContent)).toEqual([t('project.createdAt'), t('project.lastActivity')]);
+        expect([...dialog.querySelectorAll('.remote-conversation-info__body > dl dt')].map(item => item.textContent)).toEqual([t('project.createdAt'), t('project.lastActivity')]);
         const time = (field: string) => dialog.querySelector<HTMLTimeElement>(`[data-session-time="${field}"]`)!;
         expect(time('createdAt').dateTime).toBe(new Date(1000).toISOString());
         expect(time('updatedAt').dateTime).toBe(new Date(2000).toISOString());

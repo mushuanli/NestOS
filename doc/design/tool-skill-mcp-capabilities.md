@@ -54,6 +54,8 @@ stdio 服务器是用户配置的外部进程，使用该服务器的启动目�
 
 配置页支持 HTTP headers 与 stdio env 的字符串 JSON 对象；所有配置和返回文案先转义再渲染。导出不包含 apiKey、headers、env 中的凭据。
 
+HTTP Bearer API Key 与 `auth.credentialRef` 是互斥的凭据来源。表单填写 API Key 时不附加凭据引用，并清除 headers 中大小写不敏感的 Authorization；未填写 API Key 时保留已有凭据引用。测试连接日志按草稿读取、发现和保存阶段记录操作 ID、结果、错误分类及耗时，不记录密钥、请求头或原始异常正文。
+
 ## MCP 配置扩展
 
 `MCPConnectionOptions.extensions` 注册 `MCPConfigurationExtension`。管理器完成标准发现后，以本地 `matches` 筛选扩展；扩展只消费 `MCPDiscovery.metadata` 或经同一连接调用已声明的工具。普通 MCP 不发 cells 能力探测。服务名称只用于展示，不参与类型识别。

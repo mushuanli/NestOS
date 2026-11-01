@@ -2,6 +2,7 @@ import { SettingsValidationError } from '@itookit/ui-common';
 // @file llm-ui/editors/MCPSettingsEditor.ts
 import {
     generateShortUUID,
+    randomUUID,
     escapeHTML as escape,
     t,
     MCP_TRANSPORT_ICONS,
@@ -467,10 +468,11 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
         if (transport !== 'stdio') {
             const mode = this.val('authenticationMode') || existing.auth?.type || 'bearer';
             if (!['anonymous','bearer','basic'].includes(mode)) throw new Error(t('mcp.invalidMap'));
-            draft.auth = mode === 'bearer' && !draft.apiKey && !existing.auth ? undefined : {type:mode as 'anonymous' | 'bearer' | 'basic',credentialRef:existing.auth?.credentialRef ?? `mcp-${existing.id}`,
+            const inlineBearer = mode === 'bearer' && !!draft.apiKey;
+            draft.auth = mode === 'bearer' && (inlineBearer || !existing.auth) ? undefined : {type:mode as 'anonymous' | 'bearer' | 'basic',credentialRef:existing.auth?.credentialRef ?? `mcp-${existing.id}`,
                 ...(mode === 'basic' ? {username:this.val('authenticationUsername')} : {})};
             if (mode === 'anonymous') draft.apiKey = undefined;
-            if (draft.auth) draft.headers = Object.fromEntries(Object.entries(draft.headers ?? {}).filter(([key]) => key.toLowerCase() !== 'authorization'));
+            if (draft.auth || inlineBearer) draft.headers = Object.fromEntries(Object.entries(draft.headers ?? {}).filter(([key]) => key.toLowerCase() !== 'authorization'));
         } else draft.auth = undefined;
         return this.controls?.read(draft) ?? draft;
     }
@@ -490,17 +492,26 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
         if (!existing || !btn) return;
         const originalHTML = btn.innerHTML;
         btn.textContent = t('status.testing'); btn.disabled = true;
+        const operationId = randomUUID(), started = performance.now(); let stage = 'draft';
         try {
             const draft = this.readDraft(existing);
+            stage = 'discover';
             const discovered = await this.service.testMCPServer(draft);
             const verified = {...draft,extensions:{...draft.extensions,...discovered.extensions}};
             const configured = await this.controls?.tested?.(verified,discovered) ?? verified;
+            stage = 'save';
             await this.service.saveMCPServer({ ...configured, ...discovered, status: 'connected' });
             this.controls?.committed?.();
             Object.assign(existing,configured,discovered,{status:'connected'});
             Toast.success(t('mcp.discoverySuccess', { count: discovered.tools.length }));
+            console.info('mcp.connection.test', {operation: 'mcp.connection.test', operationId, stage, result: 'success', durationMs: performance.now() - started});
             await this.render();
-        } catch (error) { this.controls?.failed?.(); Toast.error(t('mcp.toast.testError', { message: (error as Error).message })); }
+        } catch (error) {
+            this.controls?.failed?.();
+            console.warn('mcp.connection.test', {operation: 'mcp.connection.test', operationId, stage, result: 'failure',
+                code: stage === 'draft' ? 'MCP_DRAFT_INVALID' : stage === 'discover' ? 'MCP_DISCOVERY_FAILED' : 'MCP_SAVE_FAILED', durationMs: performance.now() - started});
+            Toast.error(t('mcp.toast.testError', { message: (error as Error).message }));
+        }
         finally { if (btn.isConnected) { btn.innerHTML = originalHTML; btn.disabled = false; } }
     }
 

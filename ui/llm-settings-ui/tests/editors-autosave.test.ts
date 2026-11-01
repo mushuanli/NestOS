@@ -119,6 +119,49 @@ it('saves explicit anonymous MCP access without retaining API keys or Authorizat
     expect(JSON.stringify(saved)).not.toContain('fixture-private');
 });
 
+it.each([false, true])('tests inline Bearer credentials without conflicting references (existing reference: %s)', async referenced => {
+    const container = mount(), saveMCPServer = vi.fn().mockResolvedValue(undefined);
+    const server = {id: 'm', name: 'MCP', transport: 'http', endpoint: 'https://example.test/mcp',
+        headers: {aUtHoRiZaTiOn: 'Bearer fixture-old-header', 'X-Test': 'preserved'},
+        ...(referenced ? {auth: {type: 'bearer', credentialRef: 'existing-reference'}} : {})};
+    const testMCPServer = vi.fn(async (_server: unknown) => ({tools: [], resources: [], prompts: []}));
+    const editor = new MCPSettingsEditor(container, {getMCPServers: async () => [server], saveMCPServer, testMCPServer} as never,
+        {target: {kind: 'entity', entityType: 'mcp', id: 'm'}});
+    editors.push(editor); await editor.init(container);
+    container.querySelector<HTMLInputElement>('[name="apiKey"]')!.value = 'fixture-new-api-key';
+    container.querySelector<HTMLButtonElement>('[data-action="test"]')!.click();
+    await vi.waitFor(() => expect(saveMCPServer).toHaveBeenCalledOnce());
+    expect(testMCPServer.mock.calls[0][0]).toMatchObject({apiKey: 'fixture-new-api-key', auth: undefined, headers: {'X-Test': 'preserved'}});
+    expect(saveMCPServer.mock.calls[0][0]).toMatchObject({apiKey: 'fixture-new-api-key', auth: undefined, status: 'connected'});
+});
+
+it('preserves reference-based MCP authentication when no inline API key is supplied', async () => {
+    vi.useFakeTimers(); const container = mount(), saveMCPServer = vi.fn().mockResolvedValue(undefined);
+    const auth = {type: 'bearer', credentialRef: 'existing-reference'};
+    const server = {id: 'm', name: 'MCP', transport: 'http', endpoint: 'https://example.test/mcp', auth};
+    const editor = new MCPSettingsEditor(container, {getMCPServers: async () => [server], saveMCPServer} as never,
+        {target: {kind: 'entity', entityType: 'mcp', id: 'm'}});
+    editors.push(editor); await editor.init(container);
+    change(container, '[name="description"]', 'Updated'); await vi.advanceTimersByTimeAsync(1000);
+    expect(saveMCPServer.mock.calls[0][0]).toMatchObject({auth, apiKey: undefined});
+});
+
+it('reports MCP discovery failures without logging credentials or raw errors', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const container = mount(), saveMCPServer = vi.fn(), testMCPServer = vi.fn().mockRejectedValue(new Error('fixture-secret-failure'));
+    const server = {id: 'm', name: 'MCP', transport: 'http', endpoint: 'https://example.test/mcp', apiKey: 'fixture-private-key'};
+    try {
+        const editor = new MCPSettingsEditor(container, {getMCPServers: async () => [server], saveMCPServer, testMCPServer} as never,
+            {target: {kind: 'entity', entityType: 'mcp', id: 'm'}});
+        editors.push(editor); await editor.init(container);
+        container.querySelector<HTMLButtonElement>('[data-action="test"]')!.click();
+        await vi.waitFor(() => expect(warning).toHaveBeenCalled());
+        expect(warning).toHaveBeenCalledWith('mcp.connection.test', expect.objectContaining({operationId: expect.any(String), stage: 'discover', result: 'failure', code: 'MCP_DISCOVERY_FAILED', durationMs: expect.any(Number)}));
+        expect(JSON.stringify(warning.mock.calls)).not.toContain('fixture-');
+        expect(saveMCPServer).not.toHaveBeenCalled();
+    } finally {warning.mockRestore();}
+});
+
 it('flushes host-owned settings on navigation and retains failed settings for retry', async () => {
     const container = mount(), flush = vi.fn().mockRejectedValueOnce(new Error('Project save failed')).mockResolvedValue(undefined), destroy = vi.fn(async () => {});
     const saveAgent = vi.fn(), mountSettings = vi.fn(async (slot: HTMLElement) => {

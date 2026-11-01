@@ -2,9 +2,9 @@
 
 ## 定位与模块边界
 
-`@itookit/app-core/kanban` 是可单独装配的应用模块，支持个人事务、研究、运营、支持工单和软件开发。核心管理工作项、责任、依赖、在制额度、交付验收和历史；具体业务规则与工具副作用由外部 Tool / Flow 负责。没有另建执行内核、通知库或通用审批引擎。
+`@itookit/kanban` 是独立协调库（`libraries/kanban/`），唯一运行依赖为 vfs-core，支持个人事务、研究、运营、支持工单和软件开发。核心管理工作项、责任、依赖、在制额度、交付验收、持久派发意图和历史；具体业务规则与工具副作用由外部 Tool / Flow 负责。
 
-纯契约在 `shared/app-contracts/src/kanban/`；用例、规则与持久化适配在 `backend/app-core/src/kanban/`。核心不依赖 UI，不调用模型、不自动启动 Session。会话需求扫描是可选的入板适配器，不是每个看板必须具备的能力。
+纯契约在 `libraries/kanban/src/contracts/`；应用端口直接引用库的 KanbanClient。`@itookit/app-core/kanban` 的 createNestOSKanban 负责 NestOS 的 Session、Flow、Kernel、远程连接、调度与系统事件接线，不代转出库 API。扫描状态机、条件事务存储、执行桥、可选活动投影及 DOM UI 均位于独立库；NestOS UI 只注入文案、图标、资源路由和激活事件。核心不依赖这些实现、不调用模型、不启动 Session。历史 sessionId/messageId 仅为不透明来源字段；来源扫描 DTO、状态解释及检查点提交归独立库；实际会话内容读取与正式模型执行归应用适配层。
 
 ```mermaid
 flowchart TD
@@ -25,12 +25,26 @@ flowchart TD
 | `planning.ts` / `planning-commands.ts` | 层级、依赖、准备队列、阻塞与安全释放 |
 | `transitions.ts` / `reducer.ts` | 所有权、交付、验收、升级及追加事件 |
 | `queries.ts` / `archives.ts` | 摘要分页、进度、保留期归档和恢复 |
-| `store.ts` / `remote-store.ts` | 本地与远程原子提交、回执和历史正文 |
+| 核心 `store.ts` / `conditional-store.ts` | 本地与远程原子提交、回执和历史正文 |
+| 核心 `workflow.ts` / `workflow-plans.ts` | 计划发布、依赖解锁、派发身份与验收 |
+| 核心 `execution-bridge.ts` / 应用 `published-work.ts` | 冻结执行请求、提交前日志、发布 Agent/Flow 的正式 Task 调用与只读核对 |
 | `notifications.ts` | 对接系统事件与 notify，幂等投影和恢复 |
-| `discovery.ts` / `scan-context.ts` | 扫描准入、恢复、有界模型上下文 |
+| 核心 `discovery.ts` / `scan-context.ts` / `scan-commit.ts` | 扫描准入、恢复、有界模型上下文 |
 | `flow.ts` / `published-executor.ts` | Flow 资源与正式独立调用适配 |
 | `local-source.ts` / `harness-source.ts` | 本地/原生会话精简读取 |
-| `monitor.ts` | 注入调度源、触发合并、停止与排空 |
+| 核心 `monitor.ts` | 注入调度源、触发合并、停止与排空 |
+
+## 独立接口与接入
+
+根入口的 `createKanban` 按 boards/items/records/planning/references 分组查询，通过单一 execute 写入并返回轻量 Commit；旧 `createKanbanModule` 仍返回 KanbanService，现有 RPC 无需改变。存储、执行、来源发现、活动与 UI 分别使用 `/storage`、`/execution`、`/discovery`、`/activity`、`/ui` 入口。
+
+来源发现的批量变更与水位统一由核心内置 apply-discovery 校验、提交；不再允许宿主以 reducer extension 任意改状态。远程 Store 的布局、编号、正文摘要、回执和条件事务编码也归独立库，NestOS 仅注入授权 HttpSeqClient。库无 mechanisms 入口。版本化内容经 install-content 授权后，由 installKanbanContent 原子安装；应用只提供内容定义，不调用 reducer 或 codec。
+
+UI 按实例注入 presentation（文案、可信图标、日志及链接生成）、selected/openSession 和可选执行引用转换。NestOS 不复制模板、命令映射或 CSS。无活动端口不展示执行筛选、不安装活动轮询。当前活动筛选仍为有界扫描（最多 10000 个候选项），尚未引入持久活动索引，不能宣称大型看板查询为常数成本。
+
+独立验证入口和可运行示例见 [库 README](../../libraries/kanban/README.md)；示例只依赖 VFS 与假执行端口，不启动应用 Runtime。
+
+NestOS 的服务与执行引用绑定集中在 app-core/kanban/module.ts，公开 createNestOSKanban 与 createNestOSKanbanExecutionBridge。执行桥的持久状态机仍归独立库，不另建应用包装文件。通用活动绑定、分页、游标和过期状态测试位于 libraries/kanban/tests/activity-projection.test.ts；应用的 kanban-session-activity.test.ts 使用真实 Runtime、Session 与 Kernel 人工交互验证接入，不复制通用机制断言。
 
 ## 数据模型与通用配置
 
@@ -40,7 +54,7 @@ scope 支持 system、project，以及 `{kind:'collection', namespace, id}`。�
 
 新定义优先使用 members / eligiblePrincipals；每个主体为 `{kind:'agent'|'human'|'service', id}`。members 记录职责及 worker/reviewer/coordinator 角色。角色帮助路由和协调，不替代宿主授权。agents / eligibleAgentIds 保留为兼容输入，同一个主体不能重复登记。
 
-人和服务无需虚构 Agent 或 Session。Agent Actor 仍必须绑定真实 Session/Task 身份；兼容原 agentId，也可使用 kind=agent + id。Actor 由可信宿主注入，命令 payload 不能覆盖。项目访问、角色登记、结果引用、外部资源及控制权都在每次操作重新授权。
+人和服务无需虚构 Agent 或 Session。独立 Agent Actor 可以只提供自己的 ID；NestOS 适配边界仍要求绑定真实 Session/Task 身份。兼容原 agentId，也可使用 kind=agent + id。Actor 由可信宿主注入，命令 payload 不能覆盖。项目访问、角色登记、结果引用、外部资源及控制权都在每次操作重新授权。
 
 ### 工作类型、列与业务引用
 
@@ -74,6 +88,27 @@ planning 携带类型、父项、area、milestone、priority（0 最高，4 最�
 
 父项进度包含已归档后代，子项计数不等于父目标验收。close-plan 及有子项的交付都要求子项已终态，并由宿主验证结果引用和业务验收条件。
 
+### 管理主体、计划与执行协议
+
+决策可带 `coordination: {manager, executor?}`；主体必须在名册，manager 具备 coordinator 角色。决策确认后，关联计划只能由指定 manager 发布。executor 表达初始执行责任，不额外授予权限；每项任务最终指定 assignee，管理 Agent 可拆解给其他已授权成员。未指定 coordination 的历史决策保持兼容。
+
+```json
+{
+  "schema": "kanban.plan/1", "id": "delivery", "revision": 1,
+  "decisionId": "decision-1", "sealed": true,
+  "items": [
+    {"id": "contract", "title": "确认接口", "responsibility": "发布约定", "acceptance": "评审通过", "assignee": {"kind": "service", "id": "builder"}, "dependsOn": [], "outputs": ["schema"]},
+    {"id": "implementation", "title": "实现", "responsibility": "实现已确认接口", "acceptance": "检查通过", "assignee": {"kind": "service", "id": "builder"}, "dependsOn": ["contract"], "inputs": {"schema": {"fromItemId": "contract", "output": "schema"}}}
+  ]
+}
+```
+
+publish-plan 一次最多 100 项，校验版本、循环、跨计划身份和悬空依赖，拓扑排序后原子建项；sealed=false 不进入自动派发队列。definitionDigest 固定定义；修改定义使用新任务 ID。活动派发未结算时禁止替换其计划或转交/释放责任，不能用普通 claim/submit/review 绕过已封闭计划的派发和验收。
+
+prepare-dispatch 在同一事务中提交认领、估算、attempt、fence、计划版本、依赖产物引用和事件/回执。独立 execution 桥随后冻结宿主 prepare 返回的请求，不从界面当前设置重建。observe-execution 只接受原派发与 fence，成功输出先由宿主 verifyOutputs 核对实际内容、权限、摘要和字节数。默认进入 review，独立 accept-execution 才算完成并解锁后续；review=assignee 是明确启用的自动验收策略。失败/取消保留 blocked，unknown 保留责任；均不自动重派。
+
+workflow(boardId) 读取计划、派发、ready 和 completedPlans。核心只确定性推进已发布 DAG，不调用模型分析下一项。管理 Agent 可在原执行结算后发布后续计划；completedPlans 仅表示已封闭任务集合完成，根目标仍需单独验收。
+
 ## 查询与内容增长
 
 query 默认 Ready，只返回摘要，支持领域、周期、父项、类型、Session、业务引用及搜索筛选。最多 200 条一页；游标绑定筛选和修订，变化后报 CURSOR_STALE，要求刷新。普通列表按优先级排序，归档按时间倒序。overview 给出可见/活动数量、阶段分布、待梳理数与额度；item 按身份读取正文。read 是协调器的完整活动快照，不作为界面默认列表。
@@ -86,6 +121,22 @@ restore-item 只恢复可见性，不把完成事实改成待执行。新要求�
 
 ## 相关 Session 与来源
 
+### 工作项的执行 Session
+
+执行关系为 WorkItem → 执行 Session；看板中类型为 task 的条目仍是 WorkItem。Dispatch 保存一次执行尝试，Kernel Task 仅由集成层用于回执核对，不进入看板的执行 DTO 或界面。Decision 可关联 WorkPlan，计划再创建工作项；讨论、来源、验收 Session 不等于执行 Session。
+
+NestOS 用通用 externalRefs 保存 `{system:'nestos-execution-session',id:sessionId,revision:bindingId}`。手动绑定的 bindingId 为稳定表单身份；自动派发使用 dispatchId，并从正式执行接纳回执取得真正的 executionSessionId，不能使用 caller Session 代替。引用随工作项、事件及回执同 SeqFile 事务保存。最后一条有效绑定为当前执行者，旧绑定保留历史；新 attempt 尚未绑定时不沿用上一 attempt 的执行状态。未结算派发禁止更换其绑定。
+
+界面详情支持「绑定／更换执行会话」、状态、最近活动、观察时间、跳转和执行历史；卡片只显示 Session 汇总，不列出内部 Task。普通 register-session 继续用于上下文。应用 related(sessionId) 同时包含执行绑定及其历史；核心库仍只理解不透明外部引用。绑定校验当前责任/名册与源端 Session 权限，不启动会话、不发送消息、不改变工作项交付状态。
+
+app-contracts 的应用 KanbanService 增加可选 queryActivity 和 executionSession；独立库 API 不增加 Session 能力。queryActivity 的 execution 支持 all/running/recent/active，active 为正在运行或最近 10 分钟活跃。执行筛选先作用于完整匹配集再分页，游标绑定看板修订和匹配集合；活动变化使游标失效。最多检查 10000 条匹配事项，超限要求缩小条件；同一执行 Session 合并读取，并发至多 8。
+
+本地来源通过 SessionRepository.getManifest 和 Kernel.sessionActivity 冷读汇总，不 activate/resume/recover。最近活动直接读取 Session 活动摘要的 lastActivityAt；该时间与执行事件同事务持久化，不读取事件正文或 Task 正文。旧存储缺失时仅使用可确认的最后结算时间；读取、文件关闭、租约心跳、改标题和日志清理不计活动。没有时间证据则显示未知，不使用 manifest.updatedAt 推断。会话运行与最近活跃分别判断；10 分钟无活动不代表完成，会话执行结束也不自动验收工作项。
+
+状态观察超过 90 秒或源端声明 stale 时标为过期，不计入正在运行/最近活跃筛选。暂时网络/存储错误可保留本进程最近状态并明确标过期；权限撤销或 Session 缺失不回填旧标题。远程项目注入绑定原 authority 的 KanbanSessionSource，在同一授权连接核对；不能回退其他项目或本地状态。缺少能力时报告待核对，不能当成空闲。
+
+可见看板每 15 秒补读执行状态，隐藏、正在操作或有草稿时暂停，销毁时注销；系统事件仍负责已有变更失效。教学示例 v5 增加真实 Session 绑定与活跃筛选练习，不预置虚构执行者。
+
 看板和事项可以记录 participants：Session、可选 Agent、角色、加入时间和订阅状态。Agent 创建/领取/转交时自动登记，其他上下文显式 register-session。历史关联保留；当前负责人以 owner 为准，不根据历史 owner 角色猜测。
 
 related(sessionId) 同时查活动与归档摘要；来源引用也保留 Session、消息和读取修订。人或服务可以只使用 externalRefs，不必创建聊天会话。订阅只决定消息目标，不授予权限，也不启动模型。
@@ -96,7 +147,7 @@ related(sessionId) 同时查活动与归档摘要；来源引用也保留 Sessio
 
 事务先提交看板，再由 projectKanbanEvents 读取持久事实。系统事件 ID 基于 sourceId/boardId 的 SHA-256 及源 sequence。消费水位与投影 append 在系统 journal 同一个事务提交；多实例、重启、丢回复及重复扫描不会重复发布。每轮最多 10 页，每页 200 条，剩余事件由后续健康扫描继续处理。
 
-默认：升级进入 error 通知；待验收、待接受转交、提案显式发布为 Ready 以及新的待确认提案进入 info。其他状态变化保留系统事实；续租、进展和普通讨论不默认刷屏。notifications.rules 可按事件或升级原因配置 info/error/none。已经解决的旧升级不会在迟到连接时重新提示；事实仍保留用于视图失效与追踪。
+默认：升级及执行 unknown/failed/cancelled 进入 error 通知；执行成功待验收、待接受转交、提案显式发布为 Ready 以及新的待确认提案进入 info。其他状态变化保留系统事实；续租、进展和普通讨论不默认刷屏。notifications.rules 可按事件或升级原因配置 info/error/none。已经解决的旧升级不会在迟到连接时重新提示；事实仍保留用于视图失效与追踪。
 
 系统事实仅含类型、资源身份、操作身份和源序号，不复制标题、需求正文、讨论、估算或凭据。通知不等于执行授权，不启动 Agent。读取事件也不标记通知已读；由用户显式 setNotificationRead。
 
@@ -107,6 +158,8 @@ related(sessionId) 同时查活动与归档摘要；来源引用也保留 Sessio
 ## 存储与显式装配
 
 本地项目使用 `.nestos/kanban/boards.seq`（openProjectKanbanStore）；远程为 RemoteKanbanStore + 已绑定授权的 HttpSeqClient，默认使用授权 export 内的 `kanban/boards.seq`，由宿主提前准备目录，也可显式指定其他授权路径。节点通用文件协议保留 `.nestos` 供节点私有元数据使用，因此远程默认路径不再使用该保留目录。远程事务仍限定在一个 SeqFile 内。系统收件箱可使用用户 SeqKanbanStore。collection 的物理位置同样由宿主选择，不强制依赖项目或 Session。
+
+独立库默认目录为 `/kanban`，NestOS 的 openPersonalKanbanStore 明确绑定 `/var/lib/kanban`，这些默认值互不混用。所有控制记录、事件/outbox 与幂等收据同文件事务提交；计划和派发位于 board 清单 state.workflow 内。具体键约定见 [核心库协议](../../libraries/kanban/README.md)。宿主授权的强类型命令接口是写入口，不监视任意 JSON 文件来采信其中的 actor。产物正文先保存并核验，再发布引用；孤立正文保留待以后回收。
 
 远端 export 不等于项目根时，宿主传入经授权解析的路径。prepareDirectory 只准备授权目录，只读项目拒绝写入；不会静默改存本地。凭据、连接秘密和模型定义不写进项目。实时状态不是 Git 多人合并的普通 JSON。
 
@@ -123,7 +176,17 @@ const kanban = createKanbanModule({
 
 create 接受部分 policy 并补齐默认值。业务名册、工作类型及列映射由创建配置提供。所有命令带稳定 operationId 和 expectedRevision；同键不同内容报幂等冲突，竞争报修订冲突。配置、持久化及通知仍在同一用户服务图中，不另建跨用户全局事件。
 
-startKanbanMonitor 使用宿主调度源，可同时接会话/业务事件与定时补漏；重复 tick 合并。dispose 停止新扫描并排空当前操作，之后再释放文件系统和事件服务。通知故障不会让监控偷偷重放业务命令。
+### 提交、关停与恢复
+
+ApplicationRuntimeOptions.configureKanban 是可插拔的应用接线钩子，提供 fs、核心服务、Kernel、IndependentCallService、SessionRepository 和原有租约准备入口。宿主可以返回 createNestOSKanbanExecutionBridge 等适配器；默认不绑定 Agent，不发起模型调用。自动派发默认关闭；开启时通过 worker 解析可信执行主体，estimate 提供估算，authorize 在 prepare/start/inspect 分别复验权限。
+
+应用执行桥在自己的 `executions.seq` 中，以 dispatchId 为键持久保存 `{schema:1,fence,request,digest,phase}`。request 在 prepare 中冻结；SeqFile CAS 将 prepared 切为 submitting，只有胜出者调用 start。重启后的 submitting 只 inspect 原身份，回执缺失保持 unknown，即使可能从未发出也不盲目重试。这份日志与核心数据库、外部执行器之间不宣称原子提交。
+
+createPublishedKanbanWorkExecutor 复用正式发布 Agent/Flow 的 IndependentCallService，原 submission ID 等于 dispatchId。检查 caller 和执行树都 settled，并读取 Kernel Task 的真实 exit；executionPolicy 在请求准备时冻结，默认 maxDepth=4，执行超时由宿主显式配置，不把看板告警阈值当作取消指令。模型总结、普通文件关闭和单个父 Task 退出均不能替代整体结算。产物读取仍经宿主权限及内容核验。
+
+startKanbanMonitor 接宿主调度源；Runtime 监听本地 boards.seq 的 seq:committed，并每 60 秒补漏。content:finished 在读句柄关闭时也会触发，不能表示任务完成。启动先扫描持久状态和未投影事件；配置执行桥后再核对原派发。通知失败不重放业务命令。
+
+关停先 quiesce 核心准入、注销事件与定时监听，等待已接纳事务；执行桥有界等待当前观察（默认 5 秒），迟到结果不写回，原 submitting 日志留给重启核对。随后停止其他后台能力，最后释放 VFS。关闭某个适配器失败仍继续其余清理。扫描/恢复错误通过既有 global event/notify 报告，同一故障周期只发一次，恢复后下一故障重新报告；不记录正文或原始异常。
 
 ## 可选的会话需求扫描
 
@@ -163,7 +226,7 @@ createKanbanDiscoveryFlow() 提供本地 analysis 槽；远程使用 createKanba
 
 ## 可见界面与默认宿主装配
 
-Web、HTTP 浏览器界面和 Tauri 的桌面侧栏及手机导航都有「看板」入口，对应 `kanban-workspace`，路由为 `#/kanban`；事项资源路径为 `/board/<boardId>/<itemId>`，由 Shell 对完整资源路径编码后生成可分享的 hash 深链。启动时创建「NestOS 示例看板 · 从这里开始」，包含 15 张教学卡片、3 条日志/决策记录和 1 条教学修改建议；旧版示例增量补入新练习，已有内容不覆盖。用户也可点击「新建看板」创建正式看板。
+Web、HTTP 浏览器界面和 Tauri 的桌面侧栏及手机导航都有「看板」入口，对应 `kanban-workspace`，路由为 `#/kanban`；事项资源路径为 `/board/<boardId>/<itemId>`，由 Shell 对完整资源路径编码后生成可分享的 hash 深链。启动时创建「NestOS 示例看板 · 从这里开始」，包含 17 张教学卡片、3 条日志/决策记录和 1 条教学修改建议；旧版示例增量补入新练习，已有内容不覆盖。用户也可点击「新建看板」创建正式看板。
 
 界面位于 `ui/app-shell/src/kanban/`，通过共享契约消费 `ApplicationServices.kanban`，不直接导入 app-core。左侧选择看板，右侧在「工作看板／工作日志／决策记录」间切换；支持工作/归档视图、搜索、领域/里程碑筛选和每页 50 项。详情显示工作内容、验收条件、负责人、阻塞、关联会话及有界事件记录；可以规划、认领、续租、提交结果、验收、归档和恢复，关联会话复用原工作台导航。
 

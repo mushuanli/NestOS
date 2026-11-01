@@ -70,5 +70,11 @@
     "name": "@itookit/device-tty",
     "version": "0.1.0",
     "workspace": true
+  },
+  {
+    "directory": "kanban",
+    "name": "@itookit/kanban",
+    "version": "0.1.0",
+    "workspace": true
   }
 ]

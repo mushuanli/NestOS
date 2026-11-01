@@ -1,6 +1,6 @@
 # 独立库本地快照、源码开发与 npm 构建
 
-MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本地制品快照；可选的全工作区快照模式用于制品验收。十二个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui、durable-kernel、device-tty），保留 npm 发布能力；durable-kernel、llm-ui、device-tty 和其他库统一使用各自独立仓库与 Git 子模块。libraries 下的子模块目录是唯一开发工作树，不维护另一份发布源码。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
+MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本地制品快照；可选的全工作区快照模式用于制品验收。十三个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui、durable-kernel、device-tty、kanban），保留 npm 发布能力；既有库使用各自独立仓库与 Git 子模块；新拆出的 kanban 暂为主仓库源码工作区，支持本地快照，但尚未创建外部仓库或发布 npm 版本，注册表模式须待发布后验收。libraries 下的子模块目录是唯一开发工作树，不维护另一份发布源码。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|

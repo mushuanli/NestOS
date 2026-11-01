@@ -1,0 +1,30 @@
+import {afterEach, expect, it, vi} from 'vitest';
+import {MemoryBackend} from '@itookit/vfs-core';
+import {executionSessionReference} from '@itookit/app-contracts';
+import type {KanbanCommand} from '@itookit/kanban/contracts';
+import {createApplicationRuntime, type ApplicationRuntime} from '../src/runtime/create-application-runtime';
+
+let runtime: ApplicationRuntime | undefined;
+afterEach(async () => {await runtime?.dispose(); runtime = undefined; vi.restoreAllMocks();});
+it('projects a real Session and Kernel interaction through the NestOS binding without changing work status', async () => {
+    runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false});
+    const project = await runtime.projects.personal(), folder = await runtime.projects.sessionFolder(project);
+    const sessionId = await runtime.projects.sessions.create('Execution', folder), service = runtime.kanban!;
+    await runtime.sessionManager.bindSession(sessionId);
+    await service.create({id: 'integration', title: 'Integration', scope: {kind: 'system'}, members: [{kind: 'human', id: 'admin', responsibility: 'Work'}]});
+    let serial = 0;
+    const run = async (command: KanbanCommand) => service.execute('integration', {operationId: `op-${++serial}`, expectedRevision: (await service.read('integration')).revision, command});
+    await run({type: 'create-item', item: {id: 'work', title: 'Work', responsibility: 'Investigate', acceptance: 'Verified'}});
+    await run({type: 'link-reference', itemId: 'work', reference: executionSessionReference(sessionId, 'binding')});
+    const history = vi.spyOn(runtime.sessionRepository, 'listHistory');
+    const session = await runtime.kernel.kernel.openSession(sessionId);
+    const task = await session.submit({program: {kind: 'flow.human', version: '1'}, input: {requestId: 'input', prompt: 'private prompt', dependencies: []}});
+    await expect.poll(async () => (await task.status()).task.interactions.input?.status).toBe('pending');
+    await expect.poll(async () => (await service.executionSession!('integration', 'work')).current?.state).toBe('waiting-input');
+    const page = await service.queryActivity!('integration', {view: 'all'});
+    expect(page.items[0].execution).toMatchObject({sessionId, title: 'Execution', state: 'waiting-input', stale: false});
+    expect(JSON.stringify(page)).not.toContain('private prompt'); expect(page.items[0].execution).not.toHaveProperty('tasks');
+    await task.respond({interactionId: 'input', value: 'private response'}); await task.wait({timeoutMs: 2000});
+    await expect.poll(async () => (await service.executionSession!('integration', 'work')).current?.state).toBe('completed');
+    expect((await service.item('integration', 'work')).item.status).toBe('backlog'); expect(history).not.toHaveBeenCalled();
+});

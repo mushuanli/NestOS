@@ -2,7 +2,8 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {KanbanExamples} from '../src/presets/kanban-examples';
 import demo from '../src/presets/kanban-demo.json';
-import {createKanbanModule, SeqKanbanStore} from '../src/kanban';
+import {createNestOSKanban} from '../src/kanban';
+import {SeqKanbanStore} from '@itookit/kanban/storage';
 import {UserEventService} from '../src/events/service';
 import {createApplicationRuntime} from '../src/runtime/create-application-runtime';
 import {openApplicationView} from '../src/host';
@@ -12,7 +13,7 @@ async function fixture() {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); cleanup.push(() => manager.dispose());
     const fs = await manager.openFileSystem('/'), store = await SeqKanbanStore.open(fs), events = await UserEventService.open(fs);
     cleanup.push(async () => {events.journal.close();});
-    const service = createKanbanModule({store, actor: {kind: 'human', id: 'admin'}, authorize: async () => {}, log: vi.fn(),
+    const service = createNestOSKanban({store, actor: {kind: 'human', id: 'admin'}, authorize: async () => {}, log: vi.fn(),
         notifications: {sourceId: 'test:examples', journal: events.journal}});
     const examples = new KanbanExamples(store, service); return {fs, store, service, examples, events};
 }
@@ -68,7 +69,7 @@ it('upgrades the earlier demo with context exercises while preserving deleted ol
         state!.board.items = state!.board.items.filter(item => !['demo-session', 'demo-context', 'demo-review-change', 'demo-scroll'].includes(item.id));
         delete state!.records; state!.board.revision++; return state!;
     });
-    await f.fs.meta.seq!.deleteEntry('/var/lib/kanban/boards.seq', `receipt/${encodeURIComponent(demo.id)}/${encodeURIComponent('preset:kanban-demo:v' + demo.version)}`);
+    await f.fs.meta.seq!.deleteEntry('/kanban/boards.seq', `receipt/${encodeURIComponent(demo.id)}/${encodeURIComponent('preset:kanban-demo:v' + demo.version)}`);
     await f.examples.seed(); const state = (await f.store.read(demo.id))!;
     expect(state.board.items.some(item => item.id === 'demo-session')).toBe(false);
     expect(state.board.items.find(item => item.id === 'demo-context')?.amendments).toHaveLength(1);

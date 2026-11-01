@@ -19,7 +19,7 @@ export interface LocalApplicationServices {
     flowInstallations?: import('./flow-installation').FlowInstallations;
     toolPackages?: import('./flow-installation').ToolPackages;
     digitalTwin?: DigitalTwinService;
-    kanban?: import('../kanban/contracts').KanbanService;
+    kanban?: import('@itookit/kanban/contracts').KanbanClient;
     vfs: IVFSManager;
     llmDriver: IConnectionService & { init(): Promise<void> };
     agentService: ApplicationAgentPort;

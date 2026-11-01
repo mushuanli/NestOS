@@ -1,7 +1,9 @@
 import { afterEach, expect, it } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
-import type { KanbanActor, KanbanBoard, KanbanCommand } from '@itookit/app-contracts';
-import { createKanbanModule, KanbanError, SeqKanbanStore } from '../src/kanban';
+import type {KanbanActor, KanbanBoard, KanbanCommand} from '@itookit/kanban/contracts';
+import {createNestOSKanban} from '../src/kanban';
+import {KanbanError} from '@itookit/kanban';
+import {SeqKanbanStore} from '@itookit/kanban/storage';
 
 const disposers: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
@@ -14,7 +16,7 @@ async function setup() {
     const fs = await manager.openFileSystem('/'), store = await SeqKanbanStore.open(fs);
     let time = 1000, serial = 0;
     const logs: unknown[] = [];
-    const module = (actor: KanbanActor = a) => createKanbanModule({ store, actor, now: () => time,
+    const module = (actor: KanbanActor = a) => createNestOSKanban({ store, actor, now: () => time,
         id: () => `id-${++serial}`, log: event => logs.push(event), authorize: async () => {} });
     const service = module();
     const input = { id: 'board', title: 'Board', agents: [{ agentId: 'a', responsibility: 'Investigate' }, { agentId: 'b', responsibility: 'Review' }], scope: { kind: 'project' as const, projectId: 'p' },
@@ -101,7 +103,7 @@ it('persists messages but does not expose message content in diagnostic logs', a
     expect(JSON.stringify(f.logs)).toContain('UNKNOWN_RECIPIENT');
 });
 it('enforces host authorization before mutation or idempotency replay', async () => {
-    const f = await setup(), denied = createKanbanModule({ store: f.store, actor: a, log: () => {},
+    const f = await setup(), denied = createNestOSKanban({ store: f.store, actor: a, log: () => {},
         authorize: async () => { throw new KanbanError('FORBIDDEN'); } });
     await expect(denied.read('board')).rejects.toThrow('FORBIDDEN');
     expect(await denied.list()).toEqual([]);
@@ -133,7 +135,7 @@ it('pages events with stable sequence and validates cursors', async () => {
     await expect(f.service.events('board', -1)).rejects.toThrow('INVALID_CURSOR');
 });
 it('coalesces monitor ticks and waits for in-flight scanning on disposal', async () => {
-    const { startKanbanMonitor } = await import('../src/kanban');
+    const { startKanbanMonitor } = await import('@itookit/kanban/execution');
     let tick = () => {}, scans = 0, released = false, unsubscribed = false;
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });

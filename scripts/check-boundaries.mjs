@@ -9,7 +9,7 @@ import { WORKSPACE_GROUPS } from './workspace-packages.mjs';
 
 const application = new Set(['@itookit/app-core', '@itookit/app-shell', '@itookit/app-settings']);
 const coreDependencies = new Set(['app-contracts', 'common', 'llm-context', 'vfs-core', 'durable-kernel', 'kernel-adapters',
-    'llm-flow', 'llm-session', 'llm-tasks', 'tools', 'driver-llm', 'vfs-sync', 'cells-driver'].map(name => '@itookit/' + name));
+    'llm-flow', 'llm-session', 'llm-tasks', 'tools', 'driver-llm', 'vfs-sync', 'cells-driver', 'kanban'].map(name => '@itookit/' + name));
 // Portable codecs are allowed explicitly; native I/O still requires host ports.
 coreDependencies.add('js-yaml');
 const browserGlobals = new Set(['window', 'document', 'localStorage', 'sessionStorage', 'navigator',
@@ -35,6 +35,7 @@ export function dependencyError(source, target) {
     if (source === '@itookit/llm-context') return 'llm-context must receive I/O through its public ports';
     if (source === '@itookit/mdxeditor' && target.startsWith('@itookit/')) return 'mdxeditor must receive host capabilities through its public ports';
     if (source === '@itookit/vfs-ui' && target !== '@itookit/vfs-core') return 'vfs-ui must not depend on host packages; use its public ports';
+    if (source === '@itookit/kanban' && target !== '@itookit/vfs-core') return 'kanban may only depend on vfs-core; execution and application policy require host ports';
     if (source === '@itookit/app-core' && !coreDependencies.has(target)) return 'app-core may only depend on its platform-neutral capabilities';
     if (source !== '@itookit/app-shell' && application.has(target)) return 'capability packages must not depend on application packages';
 }
@@ -128,6 +129,10 @@ export function sourceErrors(source, file, text, packages) {
         if (source.name === '@itookit/llm-ui-adapter' && ts.isStringLiteralLike(node) && node.text === 'app_create_params')
             report(node, 'UI must receive initial input through instance options, not ambient host storage');
         const specifier = moduleSpecifier(node);
+        if (source.name === '@itookit/app-contracts' && ts.isExportDeclaration(node) && specifier && ts.isStringLiteralLike(specifier) && specifier.text.startsWith('@itookit/kanban'))
+            report(node, 'Kanban contracts belong to the independent library; import its public entry directly');
+        if (source.name === '@itookit/app-core' && file.startsWith(resolve(source.dir, 'src/kanban') + sep) && ts.isExportDeclaration(node) && specifier && ts.isStringLiteralLike(specifier) && specifier.text.startsWith('@itookit/kanban'))
+            report(node, 'NestOS Kanban adapters must not forward independent library APIs');
         if (specifier && ts.isStringLiteralLike(specifier)) {
             const error = importError(source, file, specifier.text, packages);
             if (error) report(node, `${error} (${specifier.text})`);

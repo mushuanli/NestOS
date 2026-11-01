@@ -51,7 +51,8 @@
     "@itookit/vfs-sync": "workspace:*",
     "@itookit/cells-driver": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "@itookit/kanban": "workspace:*"
   },
   "devDependencies": {
     "@itookit/vfsdriver-indexeddb": "workspace:*",

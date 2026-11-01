@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runtimeSpecifiers, separationErrors, moduleRole, directoryErrors } from '../check-module-separation.mjs';
+import { runtimeSpecifiers, separationErrors, moduleRole, directoryErrors, moduleSeparationPlugin } from '../check-module-separation.mjs';
 
 function fixture(t) {
     const root = mkdtempSync(join(tmpdir(), 'x1-module-boundary-'));
@@ -51,6 +51,10 @@ test('domain contracts and codecs are shared while host factories and independen
     assert.equal(moduleRole('/repo/libraries/durable-kernel/src/contracts.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/device-tty/src/contracts.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/device-tty/src/index.ts', '/repo'), 'backend');
+    assert.equal(moduleRole('/repo/libraries/kanban/src/index.ts', '/repo'), 'backend');
+    assert.equal(moduleRole('/repo/libraries/kanban/src/ui/index.ts', '/repo'), 'frontend');
+    assert.equal(moduleRole('/repo/libraries/kanban/src/contracts/index.ts', '/repo'), 'shared');
+    assert.equal(moduleRole('/repo/libraries/kanban/src/utils/random.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/driver-llm/src/types/provider.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/driver-llm/src/metering/meter.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/image-parser/src/processing.ts', '/repo'), 'shared');
@@ -122,4 +126,58 @@ test('portable transport cannot load the Node host, and Node host cannot load UI
     const errors = separationErrors(root);
     assert.ok(errors.some(error => /shared loads backend/.test(error)));
     assert.ok(errors.some(error => /backend loads frontend/.test(error)));
+});
+
+test('mixed Kanban entries keep the UI and persistence graphs separate', t => {
+    const {root} = fixture(t), directory = join(root, 'libraries/kanban');
+    mkdirSync(join(directory, 'src/ui'), {recursive: true});
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({name: '@itookit/kanban', exports: {'.': './src/index.ts', './ui': './src/ui/index.ts'}}));
+    writeFileSync(join(directory, 'src/index.ts'), 'export const store = 1;');
+    writeFileSync(join(directory, 'src/ui/index.ts'), "export {store} from '../index';");
+    assert.ok(separationErrors(root).some(error => error.startsWith('frontend loads backend')));
+    writeFileSync(join(directory, 'src/ui/index.ts'), 'export const view = 1;');
+    writeFileSync(join(directory, 'src/index.ts'), "export {view} from './ui/index';");
+    assert.ok(separationErrors(root).some(error => error.startsWith('backend loads frontend')));
+});
+
+test('split Kanban artifacts follow their owned sourcemap sources and fail closed without evidence', t => {
+    const {root} = fixture(t);
+    const directory = join(root, 'node_modules/.pnpm/artifact/node_modules/@itookit/kanban/dist');
+    mkdirSync(directory, {recursive: true});
+    const chunk = join(directory, 'chunk-NEUTRAL.js');
+    const save = sources => writeFileSync(chunk + '.map', JSON.stringify({version: 3, sources}));
+    assert.equal(moduleRole(chunk, root), 'backend');
+    save(['../src/contracts/references.ts', '../src/contracts/configuration.ts']);
+    assert.equal(moduleRole(chunk, root), 'shared');
+    save(['../src/utils/random.ts', '../src/utils/digest.ts']);
+    assert.equal(moduleRole(chunk, root), 'shared');
+    save(['../src/store.ts', '../src/utils/random.ts']);
+    assert.equal(moduleRole(chunk, root), 'backend');
+    save(['../src/ui/view.ts', '../src/utils/random.ts']);
+    assert.equal(moduleRole(chunk, root), 'frontend');
+    save(['../../another-package/src/contracts.ts']);
+    assert.equal(moduleRole(chunk, root), 'backend');
+    writeFileSync(chunk + '.map', 'invalid JSON');
+    assert.equal(moduleRole(chunk, root), 'backend');
+    const commonjs = join(directory, 'chunk-NEUTRAL.cjs');
+    writeFileSync(commonjs + '.map', JSON.stringify({version: 3, sources: ['../src/contracts/references.ts']}));
+    assert.equal(moduleRole(commonjs, root), 'shared');
+});
+
+test('bundler guard accepts neutral split artifacts and rejects backend or mixed code in frontend builds', t => {
+    const {root} = fixture(t), directory = join(root, 'node_modules/@itookit/kanban/dist');
+    mkdirSync(directory, {recursive: true});
+    const chunk = join(directory, 'chunk-GUARD.js'), context = {
+        getModuleIds: () => [chunk], error: message => {throw new Error(message);},
+    };
+    const save = sources => writeFileSync(chunk + '.map', JSON.stringify({version: 3, sources}));
+    const frontend = moduleSeparationPlugin('frontend'), backend = moduleSeparationPlugin('backend');
+    save(['../src/contracts/references.ts', '../src/utils/random.ts']);
+    assert.doesNotThrow(() => frontend.buildEnd.call(context));
+    save(['../src/store.ts']);
+    assert.throws(() => frontend.buildEnd.call(context), /frontend bundle loads backend/);
+    save(['../src/store.ts', '../src/ui/index.ts']);
+    assert.equal(moduleRole(chunk, root), 'mixed');
+    assert.throws(() => frontend.buildEnd.call(context), /frontend bundle loads backend/);
+    assert.throws(() => backend.buildEnd.call(context), /backend bundle loads frontend/);
 });

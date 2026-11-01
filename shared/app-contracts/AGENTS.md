@@ -9,7 +9,7 @@
 - `session/`、`vfs/`、`configuration/`、`projects/`、`digital-twin/`：身份、结构化错误、DTO、纯路由和校验。
 - `presets/`：共享产品常量与持久工作区身份；无网络、初始化或服务实例。
 
-运行时只依赖 common 与 vfs-core。领域类型通过公开入口引用，开发依赖不授予运行时实现导入权限。不得在契约里重新导出 Runtime、执行服务或 DOM 组件的值。`pnpm modules:check` 校验传递加载，`pnpm modules:buildcheck` 校验完整前端公开入口。
+运行时只依赖 common 与 vfs-core；Kanban 仅通过独立库 contracts 进行类型依赖。Kanban DTO 与 KanbanClient 由库自包含定义，本包只在应用端口引用，不代转出库 API；NestOS 执行引用保留在 presets/kanban-execution。领域类型通过公开入口引用，开发依赖不授予运行时实现导入权限。不得在契约里重新导出 Runtime、执行服务或 DOM 组件的值。`pnpm modules:check` 校验传递加载，`pnpm modules:buildcheck` 校验完整前端公开入口。
 
 - WorkbenchView/SessionOpenView 是应用聚合契约：后端准备只读模型、能力与资源所有权，前端决定编辑器保存/切换时机。UI 文档保持不透明，连接兴趣按 revision 更新，不能传递实现类或前端类型。
 

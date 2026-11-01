@@ -1,8 +1,8 @@
 import type {SessionRepository} from '@itookit/llm-session';
 import type {ChatMessage} from '@itookit/llm-context';
-import type {KanbanScanSession, KanbanScanText} from '@itookit/app-contracts';
-import type {KanbanScanSource} from './scan-ports';
-import {requireValue} from './rules';
+import type {KanbanScanSession, KanbanScanText} from '@itookit/kanban/contracts';
+import type {KanbanScanSource} from '@itookit/kanban/discovery';
+import {requireValue} from './validation';
 
 /** The host catalog supplies project membership, archive policy and authoritative queue/Task activity. */
 export function createLocalKanbanSource(options: {

@@ -6,7 +6,7 @@ import ts from 'typescript';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const roots = ['ui', 'shared', 'apps/http-app/src/client', 'apps/web-app/src', 'apps/tauri-app/src',
     'backend', 'libraries'];
-const implementations = new Set(['shared/common/src/utils/random.ts', 'libraries/llm-ui/src/random.ts', 'backend/kernel-adapters/src/utils/random.ts', 'shared/app-transport/src/rpc/random.ts',
+const implementations = new Set(['shared/common/src/utils/random.ts', 'libraries/kanban/src/utils/random.ts', 'libraries/llm-ui/src/random.ts', 'backend/kernel-adapters/src/utils/random.ts', 'shared/app-transport/src/rpc/random.ts',
     'libraries/durable-kernel/src/identity.ts', 'backend/llm-flow/src/flow-definition-store.ts',
     'backend/llm-context/src/assembly/context-assembler.ts', 'libraries/vfs-ui/src/utils/local.ts',
     'libraries/vfs-sync/src/random-id.ts', 'libraries/cells-driver/src/files/request-id.ts']);

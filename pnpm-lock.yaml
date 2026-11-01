@@ -611,6 +611,9 @@ importers:
       '@itookit/durable-kernel':
         specifier: workspace:*
         version: link:../../libraries/durable-kernel
+      '@itookit/kanban':
+        specifier: workspace:*
+        version: link:../../libraries/kanban
       '@itookit/kernel-adapters':
         specifier: workspace:*
         version: link:../kernel-adapters
@@ -1015,6 +1018,27 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1(@types/node@20.19.43)(jsdom@27.4.0)
 
+  libraries/kanban:
+    devDependencies:
+      '@itookit/vfs-core':
+        specifier: workspace:*
+        version: link:../vfs-core
+      jsdom:
+        specifier: ^27.4.0
+        version: 27.4.0
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@microsoft/api-extractor@7.55.1(@types/node@25.2.3))(jiti@1.21.7)(postcss@8.5.16)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
+      tsx:
+        specifier: ^4.20.6
+        version: 4.20.6
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.2.3)(jiti@1.21.7)(jsdom@27.4.0)(tsx@4.20.6)(yaml@2.8.2)
+
   libraries/llm-ui:
     dependencies:
       '@itookit/mdxeditor':
@@ -1246,6 +1270,9 @@ importers:
       '@itookit/common':
         specifier: workspace:*
         version: link:../common
+      '@itookit/kanban':
+        specifier: workspace:*
+        version: link:../../libraries/kanban
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -1394,6 +1421,9 @@ importers:
       '@itookit/app-transport':
         specifier: workspace:*
         version: link:../../shared/app-transport
+      '@itookit/kanban':
+        specifier: workspace:*
+        version: link:../../libraries/kanban
     devDependencies:
       '@itookit/app-core':
         specifier: workspace:*

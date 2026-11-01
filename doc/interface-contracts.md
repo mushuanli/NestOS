@@ -377,3 +377,11 @@ StudyCreation.documents.save 可返回 {label: string}，由宿主提供包含�
 生成宿主通过 `StudyGenerationFailure.recovery = 'pending'` 明确标记结果待确认，独立编辑器不按错误码前缀判断可恢复性。重试优先 resume 原 operationId，避免重新提交。AbortSignal 只停止当前观察；显式关闭通过 generation.cancel 请求取消执行，页面中断保留检查点且不取消。NestOS 的 TEXT_RESULT 错误分类仅在 app-shell 适配边界解释。身份和生成状态转换由无 DOM 的 CreationState 管理，DOM 负责收集输入和展示结果。
 
 来源文件元数据采用浅合并 patch：省略字段保持原值，嵌套值整体替换，null 是显式值；该端口不支持字段删除或修订条件更新。`FSCapabilities.metadata` 表示元数据写入能力，旧驱动省略时为未知；file-only 来源从 updateMetadata 能力派生，支持时允许携带元数据创建，在线传输在目标明确不支持时于发布前拒绝。来源身份只在同一来源命名空间内比较：重命名保留，复制与删除重建分配新身份，视图投影不改写。
+
+### Kanban 协调与执行端口
+
+`@itookit/kanban` 的 KanbanService/KanbanStore 与 DTO 位于独立库公开入口；createKanban 提供分组查询与轻量 Commit，createKanbanModule 提供服务接口。`/storage` 拥有本地/条件事务存储，`/discovery` 拥有来源扫描与原子检查点提交，`/activity` 拥有可选活动投影，`/ui` 通过实例端口接入文案、图标及导航；应用端口直接引用库自包含的 KanbanClient，DTO 和库 API 不在应用包代转出。核心只依赖 vfs-core，宿主注入 actor、authorize、verifyOutputs、onCommitted 和 log。execute 使用稳定 operationId/expectedRevision；workflow(boardId) 查询计划、派发与 ready，不启动任务。quiesce 拒绝新准入并等待已接纳操作。
+
+publish-plan → prepare-dispatch → observe-execution → accept-execution 表达已封闭计划的控制协议，状态、依赖产物引用、派发、事件/outbox 和幂等回执同 SeqFile 事务。KanbanExecutionPort 属于独立库 `/execution`，Session/Task/模型调用由 NestOS 的正式 IndependentCallService 适配；prepare 冻结可持久请求，start 仅在提交前日志 CAS 胜出时调用，inspect 只能核对原身份。unknown 不产生重派授权；产物需要内容核验，默认独立验收后解锁依赖。文件键、关闭与恢复边界见 [Kanban 设计](design/kanban-coordination.md)。
+
+应用 KanbanService.queryActivity / executionSession 投影 WorkItem 对应的执行 Session，DTO 只包含 Session 身份、状态、活动及观察时间，不暴露内部 Task。绑定使用通用 link-reference 的 nestos-execution-session 外部引用，业务解释和权限校验归 app-core。queryActivity 的执行筛选先过滤后分页；不把已认领或最近 10 分钟活跃当成执行仍运行。独立库继续仅依赖 vfs-core。

@@ -1,0 +1,84 @@
+import {afterEach, expect, it, vi} from 'vitest';
+import {createVFS, MemoryBackend} from '@itookit/vfs-core';
+import {createKanbanModule, SeqKanbanStore, type KanbanCommand, type KanbanModuleHandle} from '../src';
+import {createKanbanExecutionBridge, type KanbanExecutionPort} from '../src/execution';
+const closes: Array<()=>Promise<void>>=[];
+afterEach(async()=>{for(const close of closes.splice(0).reverse()) await close();});
+async function fixture(autoAccept=false) {
+    const backend=new MemoryBackend(),{manager}=await createVFS({rootBackend:backend});closes.push(()=>manager.dispose());
+    const fs=await manager.openFileSystem('/'),store=await SeqKanbanStore.open(fs), log=vi.fn();
+    const api=(id:string)=>createKanbanModule({store,actor:{kind:'service',id},authorize:async()=>{},log});
+    const service=api('manager'),worker=api('worker');let serial=0;
+    await service.create({id:'b',title:'Work',scope:{kind:'system'},members:[{kind:'service',id:'manager',responsibility:'Manage',roles:['coordinator','reviewer']},{kind:'service',id:'worker',responsibility:'Build',roles:['worker']}],policy:{requireEstimate:false,review:autoAccept?'assignee':'independent'}});
+    const run=async(command:KanbanCommand,actor:KanbanModuleHandle=service)=>actor.execute('b',{operationId:`op-${++serial}`,expectedRevision:(await actor.read('b')).revision,command});
+    await run({type:'publish-plan',plan:{schema:'kanban.plan/1',id:'p',revision:1,sealed:true,items:['first','second'].map((id,i)=>({id,title:id,responsibility:'Work',acceptance:'Done',assignee:{kind:'service',id:'worker'},dependsOn:i?['first']:[]}))}});
+    const executor:KanbanExecutionPort={prepare:vi.fn(async dispatch=>({dispatchId:dispatch.id})),start:vi.fn(async()=>({outcome:'running'})),inspect:vi.fn(async()=>({outcome:'unknown',code:'RECEIPT_MISSING'}))};
+    const bridge=async(autoDispatch=false,port=executor)=>{
+        const bridge=await createKanbanExecutionBridge({executionReference:(id,revision)=>({system:'external-execution',id,revision}),fs,directory:'/bridge',boardId:'b',service,worker:async()=>worker,executor:port,authorize:async()=>{},log,autoDispatch,shutdownTimeoutMs:5});
+        closes.push(()=>bridge.quiesce());return bridge;
+    };
+    const prepare=()=>run({type:'prepare-dispatch',itemId:'first',dispatchId:'d'},worker);
+    return {fs,service,worker,run,executor,bridge,prepare,log,backend};
+}
+it('preserves submission identity after response loss and only inspects it after restart',async()=>{
+    const f=await fixture();await f.prepare();
+    vi.mocked(f.executor.start).mockRejectedValueOnce(Object.assign(new Error('secret request body'),{code:'TRANSPORT_LOST'}));
+    const bridge=await f.bridge();await bridge.scan();await bridge.quiesce();
+    expect((await f.service.workflow('b')).dispatches.d.outcome).toBe('unknown');
+    const restarted=await f.bridge();await restarted.scan();await restarted.scan();
+    expect(f.executor.start).toHaveBeenCalledTimes(1);expect(f.executor.prepare).toHaveBeenCalledTimes(1);expect(f.executor.inspect).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(f.log.mock.calls)).not.toContain('secret request body');
+});
+it('allows only one submitting bridge across concurrent observers',async()=>{
+    const f=await fixture();await f.prepare();const first=await f.bridge(),second=await f.bridge();
+    await Promise.all([first.scan(),second.scan()]);
+    expect(f.executor.start).toHaveBeenCalledTimes(1);expect(f.executor.inspect).toHaveBeenCalledTimes(1);
+});
+it('links the actual execution Session to the work item once, retaining the dispatch identity',async()=>{
+    const f=await fixture();await f.prepare();vi.mocked(f.executor.start).mockResolvedValueOnce({outcome:'running',executionSessionId:'execution-session'});
+    const bridge=await f.bridge();await bridge.scan();
+    expect((await f.service.item('b','first')).item.externalRefs).toEqual([{system:'external-execution',id:'execution-session',revision:'d'}]);
+    vi.mocked(f.executor.inspect).mockResolvedValueOnce({outcome:'running',executionSessionId:'execution-session'});await bridge.scan();
+    expect((await f.service.item('b','first')).item.externalRefs).toHaveLength(1);expect(f.executor.start).toHaveBeenCalledTimes(1);
+});
+it('ignores late responses after bounded shutdown and reconciles the original dispatch on restart',async()=>{
+    const f=await fixture();await f.prepare();let release!:(value:{outcome:'succeeded'})=>void,entered!:()=>void;
+    const gate=new Promise<{outcome:'succeeded'}>(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{entered=resolve;});
+    vi.mocked(f.executor.start).mockImplementationOnce(async()=>{entered();return gate;});
+    const bridge=await f.bridge(),scan=bridge.scan();await started;await bridge.quiesce();
+    release({outcome:'succeeded'});await scan;
+    expect((await f.service.workflow('b')).dispatches.d.outcome).toBe('prepared');
+    vi.mocked(f.executor.inspect).mockResolvedValueOnce({outcome:'succeeded'});
+    const restarted=await f.bridge();await restarted.scan();
+    expect((await f.service.workflow('b')).dispatches.d.outcome).toBe('succeeded');expect(f.executor.start).toHaveBeenCalledTimes(1);
+});
+it('advances a sealed DAG with explicit automatic acceptance, and stops for independent review',async()=>{
+    const f=await fixture(true);vi.mocked(f.executor.start).mockResolvedValue({outcome:'succeeded'});
+    const bridge=await f.bridge(true);await bridge.scan();await bridge.scan();
+    expect((await f.service.workflow('b')).completedPlans).toEqual(['p']);expect(f.executor.start).toHaveBeenCalledTimes(2);
+    const independent=await fixture();vi.mocked(independent.executor.start).mockResolvedValue({outcome:'succeeded'});
+    const guarded=await independent.bridge(true);await guarded.scan();await guarded.scan();
+    expect((await independent.service.workflow('b')).completedPlans).toEqual([]);expect(independent.executor.start).toHaveBeenCalledTimes(1);
+});
+it('drains a journal transaction beyond the external-observation timeout before releasing storage',async()=>{
+    const f=await fixture();await f.prepare();const bridge=await f.bridge();
+    let release!:()=>void,entered!:()=>void;
+    const gate=new Promise<void>(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{entered=resolve;});
+    const records=f.backend.records,set=records.setRecordField.bind(records);
+    const spy=vi.spyOn(records,'setRecordField').mockImplementation(async(path,key,value)=>{
+        if(path==='/bridge/executions.seq'&&typeof value==='string'&&JSON.parse(value).phase==='prepared') {entered();await gate;}
+        return set(path,key,value);
+    });
+    const scan=bridge.scan();await started;let closed=false;
+    const closing=bridge.quiesce().then(()=>{closed=true;});
+    await new Promise(resolve=>setTimeout(resolve,15));expect(closed).toBe(false);
+    release();await closing;await scan;spy.mockRestore();expect(f.executor.start).not.toHaveBeenCalled();
+});
+it('reports a corrupt frozen request without executing or inspecting it',async()=>{
+    const f=await fixture();await f.prepare();const bridge=await f.bridge();await bridge.scan();await bridge.quiesce();
+    const path='/bridge/executions.seq',record=JSON.parse((await f.fs.meta.seq!.getEntry(path,'d'))!);
+    await f.fs.meta.seq!.setEntry(path,'d',JSON.stringify({...record,request:{dispatchId:'different'}}));
+    const restarted=await f.bridge();await restarted.scan();
+    expect(f.executor.start).toHaveBeenCalledTimes(1);expect(f.executor.inspect).not.toHaveBeenCalled();
+    expect((await f.service.workflow('b')).dispatches.d).toMatchObject({outcome:'unknown',code:'INVALID_EXECUTION_JOURNAL'});
+});

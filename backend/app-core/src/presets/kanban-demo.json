@@ -250,6 +250,21 @@
         "dependencies": [],
         "references": []
       }
+    },
+    {
+      "id": "demo-execution-session",
+      "introduced": 5,
+      "title": "第八步：为工作项绑定执行会话，查看实时状态",
+      "responsibility": "打开本项详情，在「执行会话」中选择自己的真实会话并绑定。回到会话处理工作后，在卡片查看运行状态和最近活动；用「执行会话正在运行」「最近 10 分钟活跃」或两者合并的筛选查找事项。普通关联会话保留讨论与来源，不改变执行标记。更换执行会话后可展开历史。状态过期或待核对时检查原会话，勿重复派发；会话结束后仍需提交结果和验收。本教学项不预置会话或伪造正在执行的任务。",
+      "acceptance": "能够绑定和跳转到执行会话，理解工作项阶段与会话活动分别显示，并能使用活跃筛选。",
+      "planning": {
+        "kind": "task",
+        "parentId": "demo-guide",
+        "priority": 2,
+        "area": "使用指南",
+        "dependencies": [],
+        "references": []
+      }
     }
   ],
   "workTypes": [
@@ -274,7 +289,7 @@
   ],
   "resultRef": "demo://教学示例，不代表真实交付",
   "archiveReason": "示例：已结束的教学记录",
-  "version": 4,
+  "version": 5,
   "records": [
     {
       "id": "demo-log-context",

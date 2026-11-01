@@ -1,7 +1,7 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import type {KanbanActor, KanbanCommand, KanbanPlanning, KanbanPolicy} from '@itookit/app-contracts';
-import {createKanbanModule, openProjectKanbanStore} from '../src/kanban';
+import type {KanbanActor, KanbanCommand, KanbanPlanning, KanbanPolicy} from '@itookit/kanban/contracts';
+import {createNestOSKanban, openProjectKanbanStore} from '../src/kanban';
 
 const disposers: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const dispose of disposers.splice(0)) await dispose();});
@@ -12,7 +12,7 @@ async function fixture(policy: Partial<KanbanPolicy> = {}) {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); disposers.push(() => manager.dispose());
     const store = await openProjectKanbanStore(await manager.openFileSystem('/'));
     let now = 1000, serial = 0; const log = vi.fn();
-    const serviceFor = (id = 'a') => createKanbanModule({store, actor: actor(id), authorize: async () => {}, log, now: () => now, id: () => `id-${++serial}`});
+    const serviceFor = (id = 'a') => createNestOSKanban({store, actor: actor(id), authorize: async () => {}, log, now: () => now, id: () => `id-${++serial}`});
     const service = serviceFor();
     await service.create({id: 'board', title: 'Planning', scope: {kind: 'project', projectId: 'p'},
         agents: ['a', 'b', 'c'].map(agentId => ({agentId, responsibility: 'Deliver'})), policy: {
@@ -132,7 +132,7 @@ it('keeps archive replay idempotent across independent module instances', async 
     expect((await f.service.query('board', {view: 'archive'})).total).toBe(1);
 });
 it('preserves archived records and restores them atomically through the remote single-file adapter', async () => {
-    const {RemoteKanbanStore} = await import('../src/kanban');
+    const {ConditionalKanbanStore} = await import('@itookit/kanban/storage');
     const f = await fixture(); await f.create('old'); await f.finish('old');
     const saved = (await f.store.read('board'))!, data = new Map<string, unknown>(); let revision = 0;
     const transaction = vi.fn(async (_path: string, expected: string | null, changes: Array<{action: string; key: string; value?: unknown}>) => {
@@ -140,10 +140,10 @@ it('preserves archived records and restores them atomically through the remote s
         for (const change of changes) if (change.action === 'delete') data.delete(change.key); else data.set(change.key, change.value);
         return {revision: String(++revision)};
     });
-    const store = new RemoteKanbanStore({query: async (_path: string, selection: {keys: string[]}) => ({next: null, revision: revision ? String(revision) : null,
+    const store = new ConditionalKanbanStore({query: async (_path: string, selection: {keys: string[]}) => ({next: null, revision: revision ? String(revision) : null,
         entries: [...data].filter(([key]) => selection.keys.includes(key)).map(([key, value]) => ({key, value}))}), transaction} as never, async () => {});
     await store.update('board', 'seed', 'seed', () => saved);
-    const service = createKanbanModule({store, actor: actor('a'), authorize: async () => {}, log: () => {}, now: () => 1000});
+    const service = createNestOSKanban({store, actor: actor('a'), authorize: async () => {}, log: () => {}, now: () => 1000});
     await service.execute('board', {operationId: 'archive', expectedRevision: saved.board.revision,
         command: {type: 'archive-items', itemIds: ['old'], reason: 'Delivered'}});
     expect(data.has('archive/board/old')).toBe(true); expect((await service.item('board', 'old')).archive?.reason).toBe('Delivered');

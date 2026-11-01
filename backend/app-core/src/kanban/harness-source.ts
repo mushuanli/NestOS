@@ -1,7 +1,7 @@
 import type {HarnessClient, HarnessSession} from '@itookit/cells-driver/harness';
-import type {KanbanScanSession, KanbanScanText} from '@itookit/app-contracts';
-import type {KanbanScanSource} from './scan-ports';
-import {requireValue} from './rules';
+import type {KanbanScanSession, KanbanScanText} from '@itookit/kanban/contracts';
+import type {KanbanScanSource} from '@itookit/kanban/discovery';
+import {requireValue} from './validation';
 
 /** A client must already be bound to one authorized remote project. */
 export function createHarnessKanbanSource(options: {

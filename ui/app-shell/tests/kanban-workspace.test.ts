@@ -1,16 +1,17 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import {createKanbanModule, SeqKanbanStore} from '@itookit/app-core/kanban';
+import {createNestOSKanban} from '@itookit/app-core/kanban';
+import {SeqKanbanStore} from '@itookit/kanban/storage';
 import {KanbanWorkbench} from '../src/kanban';
 import {t} from '@itookit/common';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const cleanup of cleanups.splice(0)) await cleanup(); document.body.replaceChildren();});
-async function fixture() {
+async function fixture(source?: import('@itookit/app-core/kanban').KanbanSessionSource) {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()});
     const store = await SeqKanbanStore.open(await manager.openFileSystem('/'));
-    const service = createKanbanModule({store, actor: {kind: 'human', id: 'admin'}, authorize: async () => {}, log: vi.fn()});
+    const service = createNestOSKanban({store, actor: {kind: 'human', id: 'admin'}, authorize: async () => {}, log: vi.fn(),executionSessions:source?{source}:undefined});
     const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
     const selected = vi.fn(), openSession = vi.fn(async () => {}), workbench = new KanbanWorkbench({service, sidebar, editor, selected, openSession});
     cleanups.push(async () => {await workbench.destroy(); await manager.dispose();}); await workbench.start();
@@ -64,6 +65,23 @@ it('shows an actionable unavailable state when the host has not been updated', a
     const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
     const workbench = new KanbanWorkbench({sidebar, editor, selected: vi.fn(), openSession: vi.fn()}); await workbench.start();
     expect(editor.textContent).toContain(t('kanban.unavailable')); await workbench.destroy();
+});
+it('binds an execution Session through the inspector, shows session-only activity and filters the board',async()=>{
+    let state='running' as const;
+    const inspect=vi.fn(async(_board:unknown,id:string)=>({sessionId:id,title:'Execution conversation',state,lastActivityAt:Date.now()-120000,observedAt:Date.now(),stale:false}));
+    const f=await fixture({inspect});await click(f.editor,'[data-action=new-board]');input(f.editor,'title','Sessions');await submit(f.editor,'board');
+    await click(f.editor,'[data-action=new-item]');input(f.editor,'title','Work');input(f.editor,'responsibility','Build');input(f.editor,'acceptance','Reviewed');await submit(f.editor,'item');
+    expect(f.editor.textContent).toContain(t('kanban.noExecutionSession'));
+    const search=f.editor.querySelector<HTMLInputElement>('[data-form=execution-session] [role=combobox]')!;
+    search.closest<HTMLDetailsElement>('details')!.open=true;search.value='execution-session';search.dispatchEvent(new Event('input',{bubbles:true}));search.focus();
+    await vi.waitFor(()=>expect(f.editor.querySelector('[data-form=execution-session] [role=option]')).not.toBeNull());
+    f.editor.querySelector<HTMLButtonElement>('[data-form=execution-session] [role=option]')!.click();await submit(f.editor,'execution-session');
+    expect(f.editor.querySelector('[data-execution-session]')!.textContent).toContain('Execution conversation');
+    await click(f.editor,'[data-execution-session] [data-session]');expect(f.openSession).toHaveBeenCalledWith('execution-session');
+    await click(f.editor,'[data-action=close-panel]');expect(f.editor.querySelector('[data-execution-state=running]')).not.toBeNull();
+    const filter=f.editor.querySelector<HTMLSelectElement>('[name=execution]')!;filter.value='recent';await submit(f.editor,'filter');
+    expect(f.editor.querySelectorAll('[data-item]')).toHaveLength(1);
+    expect(f.editor.querySelector('[data-content]')!.textContent).not.toContain('taskId');expect(inspect).toHaveBeenCalled();
 });
 it('retries a card write with the same operation and item identities after a lost response', async () => {
     const f = await fixture();

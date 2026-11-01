@@ -73,10 +73,32 @@ function sourceFiles(directory) {
     });
 }
 
+/** Resolve split artifacts through owned source paths; unknown/missing evidence stays backend. */
+function kanbanChunkRole(path, root) {
+    try {
+        const map = JSON.parse(readFileSync(path + '.map', 'utf8'));
+        if (!Array.isArray(map.sources) || !map.sources.length || (map.sourceRoot !== undefined && typeof map.sourceRoot !== 'string')) return 'backend';
+        const file = relative(root, path).replaceAll('\\', '/');
+        const packageDirectory = resolve(root, file.slice(0, file.lastIndexOf('/dist/')));
+        const sourceDirectory = resolve(packageDirectory, 'src');
+        const roles = new Set(map.sources.map(source => {
+            if (typeof source !== 'string') return 'backend';
+            const original = resolve(dirname(path), map.sourceRoot ?? '', source);
+            const owned = relative(sourceDirectory, original).replaceAll('\\', '/');
+            if (!owned || owned.startsWith('../') || owned.startsWith('/')) return 'backend';
+            return moduleRole(resolve(root, 'libraries/kanban/src', owned), root) ?? 'backend';
+        }));
+        if (roles.has('backend') && roles.has('frontend')) return 'mixed';
+        if (roles.has('backend')) return 'backend';
+        return roles.has('frontend') ? 'frontend' : 'shared';
+    } catch {return 'backend';}
+}
+
 export function moduleRole(path, root = repository) {
     const file = relative(root, path).replaceAll('\\', '/');
     const installed = /(?:^|\/)node_modules\/@itookit\/([^/]+)\/dist\/(.*)$/.exec(file);
     if (installed) {
+        if (installed[1] === 'kanban' && /(?:^|\/)chunk-[\w-]+\.(?:cjs|js)$/.test(installed[2])) return kanbanChunkRole(path, root);
         const tail = installed[2].replace(/^(processing|policy|validation|contracts)-[\w-]+\./, '$1.').replace(/\.(?:cjs|js)$/, '.ts');
         return moduleRole(resolve(root, 'libraries', installed[1], 'src', tail), root);
     }
@@ -93,6 +115,10 @@ export function moduleRole(path, root = repository) {
         if (name === 'image-parser' && /^(processing|policy|validation|contracts)\.ts$/.test(tail)) return 'shared';
         if (['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui'].includes(name)) return 'frontend';
         if (name === 'vfs-core') return 'shared';
+        if (name === 'kanban') {
+            if (tail.startsWith('ui/')) return 'frontend';
+            return tail.startsWith('contracts/') || tail.startsWith('utils/') ? 'shared' : 'backend';
+        }
         if (name === 'durable-kernel') return tail === 'contracts.ts' ? 'shared' : 'backend';
         if (name === 'device-tty') return tail === 'contracts.ts' ? 'shared' : 'backend';
         // Metering is pure bucket arithmetic over declared types: no client, transport or I/O.
@@ -144,13 +170,15 @@ export function separationErrors(root = repository) {
     for (const [role, forbidden] of [['frontend', 'backend'], ['backend', 'frontend'], ['shared', 'backend']]) {
         const roots = workspacePackages(root)
             .filter(pkg => moduleRole(resolve(pkg.directory, 'src/index.ts'), root) === role)
-            .flatMap(pkg => sourceFiles(resolve(pkg.directory, 'src')).filter(file => moduleRole(file, root) !== 'host'));
+            .flatMap(pkg => sourceFiles(resolve(pkg.directory, 'src')).filter(file => moduleRole(file, root) !== 'host'
+                && !(pkg.name === '@itookit/kanban' && role === 'backend' && moduleRole(file, root) === 'frontend')));
+        if (role === 'frontend') roots.push(...sourceFiles(resolve(root, 'libraries/kanban/src/ui')));
         if (role === 'frontend') roots.push(...sourceFiles(resolve(root, 'apps/http-app/src/client')));
         if (role === 'backend') roots.push(...sourceFiles(resolve(root, 'apps/http-app/src/server')), ...sourceFiles(resolve(root, 'apps/cli/src')));
         errors.push(...contractErrors(roots, role, root));
         for (const [file, chain] of runtimeGraph(roots, root)) {
             const target = moduleRole(file, root);
-            if (target !== forbidden && !(role === 'shared' && target === 'frontend')) continue;
+            if (target !== 'mixed' && target !== forbidden && !(role === 'shared' && target === 'frontend')) continue;
             errors.push(`${role} loads ${target}: ${chain.map(path => relative(root, path)).join(' -> ')}`);
         }
     }
@@ -166,7 +194,10 @@ export function moduleSeparationPlugin(role) {
             if (error) return;
             const forbidden = role === 'frontend' ? 'backend' : 'frontend';
             const modules = [...this.getModuleIds()].filter(id => !id.startsWith('\0'));
-            const violations = modules.filter(id => moduleRole(id.split('?')[0]) === forbidden);
+            const violations = modules.filter(id => {
+                const actual = moduleRole(id.split('?')[0]);
+                return actual === forbidden || actual === 'mixed';
+            });
             if (violations.length) this.error(`${role} bundle loads ${forbidden} implementations:\n${violations.map(id => relative(repository, id)).join('\n')}`);
         },
     };

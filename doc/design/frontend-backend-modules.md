@@ -26,6 +26,8 @@
 
 “后端”是职责归属。Web 本地模式的执行与 IndexedDB 适配可以运行在浏览器内；Tauri 本地模式可通过直接 API。HTTP 浏览器只加载前端。当前未把 Web 的本地后端移到 Worker，也未把 Tauri 的整个执行内核移到 Rust 进程。
 
+Kanban 是混合入口独立库：ui/ 属于前端，contracts/ 与 utils/ 属于共享，其余实现属于后端。安装制品中的匿名 chunk 按随包 sourcemap 的原始源码路径判定；全部来自共享目录才视为共享。缺失、损坏或越出包源码目录的映射按后端处理；混合前后端的 chunk 在双方构建中均拒绝。不能按 hash 文件名放行。前端公开入口构建在制品模式下读取已安装的 kanban/ui，HTTP release 构建验证真实快照依赖图。
+
 ## app-shell 与 app-core
 
 app-shell 接收 `ApplicationClient` 的 `services: ApplicationServices` 与 `backend: ApplicationBackend`。前端接口显式声明，不从 Runtime 或后端构造接口派生；UI 不传 repository、kernel、LLM service 或服务工厂。`AppHandle.services` 不提供 Runtime 的 dispose、openConversation、RunCatalog；宿主拥有运行时生命周期。

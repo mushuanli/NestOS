@@ -1,18 +1,20 @@
 import {afterEach, expect, it} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import type {KanbanCommand, KanbanService} from '@itookit/app-contracts';
-import {kanbanReference} from '@itookit/app-contracts';
-import {createKanbanModule, SeqKanbanStore, KanbanError} from '../src/kanban';
+import type {KanbanCommand, KanbanClient} from '@itookit/kanban/contracts';
+import {kanbanReference} from '@itookit/kanban/contracts';
+import {createNestOSKanban} from '../src/kanban';
+import {SeqKanbanStore} from '@itookit/kanban/storage';
+import {KanbanError} from '@itookit/kanban';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async()=>{for(const close of cleanup.splice(0)) await close();});
 async function fixture() {
     const {manager}=await createVFS({rootBackend:new MemoryBackend()}); cleanup.push(()=>manager.dispose());
     const fs=await manager.openFileSystem('/'), store=await SeqKanbanStore.open(fs);
-    const service=(authorize:()=>Promise<void>=async()=>{})=>createKanbanModule({store,actor:{kind:'human',id:'admin'},authorize,log:()=>{}});
+    const service=(authorize:()=>Promise<void>=async()=>{})=>createNestOSKanban({store,actor:{kind:'human',id:'admin'},authorize,log:()=>{}});
     const input=(id:string)=>({id,title:id,scope:{kind:'system' as const},members:[{kind:'human' as const,id:'admin',responsibility:'Manage',roles:['worker','coordinator'] as Array<'worker'|'coordinator'>}],policy:{requireEstimate:false,review:'assignee' as const}});
     let serial=0;
-    const run=async(api:KanbanService,id:string,command:KanbanCommand,operationId=`op-${++serial}`)=>api.execute(id,{operationId,expectedRevision:(await api.read(id)).revision,command});
+    const run=async(api:KanbanClient,id:string,command:KanbanCommand,operationId=`op-${++serial}`)=>api.execute(id,{operationId,expectedRevision:(await api.read(id)).revision,command});
     const item=(id:string)=>({type:'create-item' as const,item:{id,title:id,responsibility:'Work',acceptance:'Evidence'},planning:{kind:'feature',priority:2,dependencies:[],references:[]}});
     return {fs,store,service,input,run,item};
 }
@@ -21,7 +23,7 @@ it('allocates unique board numbers atomically across instances and keeps creatio
     const boards=await Promise.all([a.create(f.input('a')),b.create(f.input('b'))]);
     expect(boards.map(board=>board.number).sort()).toEqual([1,2]);
     expect((await a.create(f.input('a'))).number).toBe(boards[0].number);
-    expect(await f.fs.meta.seq!.getEntry('/var/lib/kanban/boards.seq','counter/board')).toBe('2');
+    expect(await f.fs.meta.seq!.getEntry('/kanban/boards.seq','counter/board')).toBe('2');
     expect((await f.service().read('a')).number).toBe(boards[0].number);
     expect((await a.resolve(`KB-${boards[0].number}`)).boardId).toBe('a');
 });
@@ -65,7 +67,7 @@ it('backfills legacy identities on the next write and preserves old archive refe
     const state=(await f.store.read('b'))!;delete state.board.number;delete state.numbering;
     for(const item of state.archiveIndex!) delete item.number;
     const archive=await f.store.archived('b','old');delete archive!.item.number;
-    const path='/var/lib/kanban/boards.seq';
+    const path='/kanban/boards.seq';
     await f.fs.meta.seq!.setEntry(path,'board/b',JSON.stringify(state));await f.fs.meta.seq!.setEntry(path,'archive/b/old',JSON.stringify(archive));
     await f.fs.meta.seq!.deleteEntry(path,'counter/board');await f.fs.meta.seq!.deleteEntry(path,'reference/board/1');
     expect((await api.read('b')).number).toBeUndefined();
@@ -78,7 +80,7 @@ it('backfills legacy identities on the next write and preserves old archive refe
 
 it('rejects a damaged counter instead of overwriting another board reference',async()=>{
     const f=await fixture(), api=f.service();await api.create(f.input('a'));
-    await f.fs.meta.seq!.setEntry('/var/lib/kanban/boards.seq','counter/board','0');
+    await f.fs.meta.seq!.setEntry('/kanban/boards.seq','counter/board','0');
     await expect(api.create(f.input('b'))).rejects.toMatchObject({code:'INVALID_NUMBERING'});
     expect((await api.resolve('KB-1')).boardId).toBe('a');expect(await f.store.read('b')).toBeNull();
 });

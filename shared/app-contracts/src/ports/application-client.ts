@@ -31,7 +31,7 @@ export interface ApplicationServices {
     commandBus: ICommandBus;
     projectSync?: ProjectSyncService;
     digitalTwin?: DigitalTwinService;
-    kanban?: import('../kanban/contracts').KanbanService;
+    kanban?: import('@itookit/kanban/contracts').KanbanClient;
     startBackground?(): void;
     prepareSession?(sessionId: string): Promise<boolean>;
 }

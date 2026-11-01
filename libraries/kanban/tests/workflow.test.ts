@@ -1,0 +1,119 @@
+import {afterEach, expect, it, vi} from 'vitest';
+import {createVFS, MemoryBackend} from '@itookit/vfs-core';
+import {SeqKanbanStore, createKanbanModule, type KanbanWorkPlan, type KanbanCommand, type KanbanModuleHandle} from '../src';
+const closes: Array<()=>Promise<void>>=[];
+afterEach(async()=>{for(const close of closes.splice(0)) await close();});
+async function fixture() {
+    const backend=new MemoryBackend(),{manager}=await createVFS({rootBackend:backend});closes.push(()=>manager.dispose());
+    const fs=await manager.openFileSystem('/'),store=await SeqKanbanStore.open(fs);
+    const log=vi.fn(); const api=(id:string)=>createKanbanModule({store,actor:{kind:'service',id},authorize:async()=>{},verifyOutputs:async()=>true,log});
+    const managerApi=api('manager'),worker=api('worker');
+    await managerApi.create({id:'b',title:'Work',scope:{kind:'system'},members:[{kind:'service',id:'manager',responsibility:'Manage',roles:['coordinator','reviewer']},{kind:'service',id:'worker',responsibility:'Build',roles:['worker']},{kind:'human',id:'reviewer',responsibility:'Review',roles:['reviewer']},{kind:'service',id:'other-manager',responsibility:'Other',roles:['coordinator']}],policy:{requireEstimate:false,review:'independent'}});
+    let serial=0;
+    const run=async(service:KanbanModuleHandle,command:KanbanCommand)=>service.execute('b',{operationId:`op-${++serial}`,expectedRevision:(await service.read('b')).revision,command});
+    const plan:KanbanWorkPlan={schema:'kanban.plan/1',id:'plan',revision:1,sealed:true,items:[
+        {id:'api',title:'Implement',responsibility:'Implement the contract',acceptance:'Tests pass',assignee:{kind:'service',id:'worker'},dependsOn:['schema'],inputs:{schema:{fromItemId:'schema',output:'schema'}}},
+        {id:'schema',title:'Contract',responsibility:'Define contract',acceptance:'Reviewed',assignee:{kind:'service',id:'worker'},dependsOn:[],outputs:['schema']},
+    ]};
+    return {fs,store,api,managerApi,worker,run,plan,log,backend};
+}
+it('publishes an unordered DAG atomically, pins inputs and advances only after independent acceptance',async()=>{
+    const f=await fixture();await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});
+    expect((await f.managerApi.workflow('b')).ready).toEqual(['schema']);
+    await f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'d1'});
+    const dispatch=(await f.managerApi.workflow('b')).dispatches.d1;
+    const output={name:'schema',ref:'artifact:one',sha256:'a'.repeat(64),bytes:10};
+    await f.run(f.managerApi,{type:'observe-execution',dispatchId:'d1',fence:dispatch.fence,outcome:'succeeded',outputs:[output]});
+    expect((await f.managerApi.workflow('b')).ready).toEqual([]);
+    await f.run(f.managerApi,{type:'accept-execution',dispatchId:'d1',accept:true});
+    expect((await f.managerApi.workflow('b')).ready).toEqual(['api']);
+    await f.run(f.worker,{type:'prepare-dispatch',itemId:'api',dispatchId:'d2'});
+    const next=(await f.managerApi.workflow('b')).dispatches.d2;expect(next.inputs.schema).toEqual(output);
+    await f.run(f.managerApi,{type:'observe-execution',dispatchId:'d2',fence:next.fence,outcome:'succeeded'});
+    await f.run(f.managerApi,{type:'accept-execution',dispatchId:'d2',accept:true});
+    expect((await f.managerApi.workflow('b')).completedPlans).toEqual(['plan']);
+    expect((await f.managerApi.events('b')).some(event=>event.kind==='prepare-dispatch'&&event.data.dispatchId==='d1')).toBe(true);
+});
+it('rejects cycles and incomplete output contracts without publishing any items or events',async()=>{
+    const f=await fixture(),before=await f.store.read('b');f.plan.items[1].dependsOn=['api'];
+    await expect(f.run(f.managerApi,{type:'publish-plan',plan:f.plan})).rejects.toMatchObject({code:'DEPENDENCY_CYCLE'});
+    expect(await f.store.read('b')).toEqual(before);
+    f.plan.items[1].dependsOn=[];await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});await f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'d'});
+    const fence=(await f.managerApi.workflow('b')).dispatches.d.fence,saved=await f.store.read('b');
+    await expect(f.run(f.managerApi,{type:'observe-execution',dispatchId:'d',fence,outcome:'succeeded'})).rejects.toMatchObject({code:'REQUIRED_OUTPUT_MISSING'});
+    expect(await f.store.read('b')).toEqual(saved);
+});
+it('does not reassign unknown work or accept stale callbacks, and blocks confirmed failures',async()=>{
+    const f=await fixture();await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});await f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'d'});
+    const fence=(await f.managerApi.workflow('b')).dispatches.d.fence;
+    await f.run(f.managerApi,{type:'observe-execution',dispatchId:'d',fence,outcome:'unknown',code:'TRANSPORT_LOST'});
+    await expect(f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'other'})).rejects.toMatchObject({code:'WORK_NOT_READY'});
+    await expect(f.run(f.managerApi,{type:'observe-execution',dispatchId:'d',fence:'wrong',outcome:'succeeded'})).rejects.toMatchObject({code:'STALE_EXECUTION_RESULT'});
+    await f.run(f.managerApi,{type:'observe-execution',dispatchId:'d',fence,outcome:'failed',code:'WORK_FAILED'});
+    expect((await f.managerApi.workflow('b')).ready).toEqual([]);expect((await f.managerApi.item('b','schema')).item.blocked?.reason).toBe('WORK_FAILED');
+    await f.run(f.managerApi,{type:'unblock-item',itemId:'schema'});await f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'retry'});
+    expect((await f.managerApi.workflow('b')).dispatches.retry.attempt).toBe(2);
+    await expect(f.run(f.managerApi,{type:'observe-execution',dispatchId:'d',fence,outcome:'succeeded'})).rejects.toMatchObject({code:'STALE_EXECUTION_RESULT'});
+});
+it('extends a settled plan while preserving archived dependencies and their accepted artifacts',async()=>{
+    const f=await fixture();f.plan.items=f.plan.items.filter(item=>item.id==='schema');await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});
+    await f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'d'});
+    const fence=(await f.managerApi.workflow('b')).dispatches.d.fence,artifact={name:'schema',ref:'artifact:one',sha256:'a'.repeat(64),bytes:10};
+    await f.run(f.managerApi,{type:'observe-execution',dispatchId:'d',fence,outcome:'succeeded',outputs:[artifact]});await f.run(f.managerApi,{type:'accept-execution',dispatchId:'d',accept:true});
+    await f.run(f.managerApi,{type:'archive-items',itemIds:['schema'],reason:'Complete'});
+    f.plan.revision=2;f.plan.items.push({id:'next',title:'Next',responsibility:'Build',acceptance:'Done',assignee:{kind:'service',id:'worker'},dependsOn:['schema'],inputs:{schema:{fromItemId:'schema',output:'schema'}}});
+    await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});await f.run(f.worker,{type:'prepare-dispatch',itemId:'next',dispatchId:'next-d'});
+    expect((await f.managerApi.workflow('b')).dispatches['next-d'].inputs.schema).toEqual(artifact);
+});
+it('drains admitted work before shutdown while refusing new submissions',async()=>{
+    const f=await fixture();let release!:()=>void,entered!:()=>void;
+    const gate=new Promise<void>(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{entered=resolve;});
+    const service=createKanbanModule({store:f.store,actor:{kind:'human',id:'owner'},authorize:async()=>{entered();await gate;},log:f.log});
+    const request={id:'shutdown',title:'Shutdown',scope:{kind:'system' as const},members:[{kind:'human' as const,id:'owner',responsibility:'Manage',roles:['worker' as const]}]};
+    const pending=service.create(request);await started;const closing=service.quiesce();
+    await expect(service.create({...request,id:'late'})).rejects.toMatchObject({code:'SERVICE_STOPPING'});release();await pending;await closing;
+    expect((await f.store.read('shutdown'))?.board.id).toBe('shutdown');await expect(service.read('shutdown')).rejects.toMatchObject({code:'SERVICE_STOPPING'});
+});
+it('requires verified immutable outputs and prevents bypassing a sealed plan through ordinary commands',async()=>{
+    const f=await fixture();await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});
+    await expect(f.run(f.worker,{type:'claim',itemId:'schema'})).rejects.toMatchObject({code:'WORKFLOW_COMMAND_REQUIRED'});
+    await f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'d'});
+    const fence=(await f.managerApi.workflow('b')).dispatches.d.fence;
+    await expect(f.run(f.worker,{type:'request-transfer',itemId:'schema',token:fence,target:{kind:'service',id:'manager'}})).rejects.toMatchObject({code:'EXECUTION_UNSETTLED'});
+    const unverified=createKanbanModule({store:f.store,actor:{kind:'service',id:'manager'},authorize:async()=>{},log:f.log});
+    await expect(f.run(unverified,{type:'observe-execution',dispatchId:'d',fence,outcome:'succeeded',outputs:[{name:'schema',ref:'artifact:one',sha256:'a'.repeat(64),bytes:10}]})).rejects.toMatchObject({code:'OUTPUT_VERIFICATION_REQUIRED'});
+    expect((await f.managerApi.workflow('b')).dispatches.d.outcome).toBe('prepared');
+    await expect(f.run(f.managerApi,{type:'review',itemId:'schema',accept:true})).rejects.toMatchObject({code:'WORKFLOW_COMMAND_REQUIRED'});
+});
+it('enforces the confirmed decision manager when publishing a plan',async()=>{
+    const f=await fixture();
+    await f.run(f.managerApi,{type:'append-record',record:{id:'decision',kind:'decision',title:'Build',content:'Scope',rationale:'Needed',itemIds:[],sources:[],coordination:{manager:{kind:'service',id:'manager'},executor:{kind:'service',id:'worker'}}}});
+    const reviewer=createKanbanModule({store:f.store,actor:{kind:'human',id:'reviewer'},authorize:async()=>{},log:f.log});
+    await f.run(reviewer,{type:'review-record',recordId:'decision',accept:true});
+    f.plan.decisionId='decision';await expect(f.run(f.api('other-manager'),{type:'publish-plan',plan:f.plan})).rejects.toMatchObject({code:'DECISION_MANAGER_REQUIRED'});
+    await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});
+    expect((await f.managerApi.workflow('b')).plans.plan.decisionId).toBe('decision');
+    expect((await f.managerApi.record('b','decision')).coordination?.executor).toEqual({kind:'service',id:'worker'});
+});
+it('rolls back plan, outbox, numbering and receipt together when persistence fails mid-transaction',async()=>{
+    const f=await fixture(),before=await f.store.read('b'),seq=f.fs.meta.seq!,records=f.backend.records,set=records.setRecordField.bind(records);
+    const request={operationId:'atomic-plan',expectedRevision:before!.board.revision,command:{type:'publish-plan' as const,plan:f.plan}};
+    const spy=vi.spyOn(records,'setRecordField').mockImplementation(async(path,key,value)=>{
+        await set(path,key,value);
+        if(key.includes('event/')) throw Object.assign(new Error('simulated commit failure'),{code:'STORAGE_UNAVAILABLE'});
+    });
+    await expect(f.managerApi.execute('b',request)).rejects.toMatchObject({code:'EIO'});spy.mockRestore();
+    expect(await f.store.read('b')).toEqual(before);expect(await f.managerApi.events('b')).toEqual([]);
+    expect(await seq.getEntry('/kanban/boards.seq','receipt/b/atomic-plan')).toBeNull();
+    await f.managerApi.execute('b',request);await f.managerApi.execute('b',request);
+    expect((await f.managerApi.read('b')).items).toHaveLength(2);
+    expect((await f.managerApi.events('b')).filter(event=>event.kind==='publish-plan')).toHaveLength(1);
+});
+it('rejects malformed model-produced definitions with specific errors before publishing state',async()=>{
+    const f=await fixture(),before=await f.store.read('b');
+    const malformed=structuredClone(f.plan);malformed.items[0].inputs=[] as unknown as typeof malformed.items[0]['inputs'];
+    await expect(f.run(f.managerApi,{type:'publish-plan',plan:malformed})).rejects.toMatchObject({code:'INVALID_INPUT_BINDINGS'});
+    malformed.items[0].inputs={schema:{fromItemId:'schema',output:'undeclared'}};
+    await expect(f.run(f.managerApi,{type:'publish-plan',plan:malformed})).rejects.toMatchObject({code:'OUTPUT_NOT_DECLARED'});
+    expect(await f.store.read('b')).toEqual(before);
+});

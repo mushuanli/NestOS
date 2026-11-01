@@ -1,5 +1,9 @@
 # @itookit/app-core
 
+Kanban 的实际执行者按 WorkItem ↔ Session 关联，执行绑定通过 nestos-execution-session 外部引用与核心状态同事务保存；Dispatch 记录尝试身份，自动适配使用真实 executionSessionId。queryActivity/executionSession 只投影 Session 状态与活动，不向看板暴露内部 Task；普通 participants 不触发执行标记。Session 状态取授权来源的冷摘要，lastActivityAt 不能使用读取、心跳或 manifest.updatedAt 补齐；过期/不可达不计活跃。源端授权和只读核对留在应用集成层。
+
+Kanban 通用规则、契约与 SeqFile 存储位于独立库 `@itookit/kanban`（仅依赖 vfs-core）。本包 kanban/ 仅承担授权 Session 来源读取、远程客户端绑定、正式发布 Agent/Flow 调用、Kernel 回执核对和 UserEventService 投影。扫描状态机、远程事务编码、执行日志与恢复及活动投影归独立库；应用仅提供端口，不改写 reducer、不代转出库 API。示例配置保留在 presets，借助库 installKanbanContent 安装。独立执行桥先保存冻结请求及 submitting 标记再调用执行入口，重启只核对原身份；unknown 不重派。Runtime 关停先停止准入和监听、排空事务与观察，再关闭 VFS；恢复错误通过现有 global event/notify 去重报告。接线使用 configureKanban，默认不自动启动模型，见 [协调设计](../../doc/design/kanban-coordination.md)。
+
 远程原生队列启动恢复由 projects/remote-conversation-recovery 扫描当前用户已有 journal，重验连接、项目、principal 与稳定会话身份后挂入 ConversationRegistry。恢复只建立观察和读取基线，不直接重发原指令；失效绑定或不可用远端保留 deferred 与原记录。所有存储沿注入 IFileSystem 的 SeqFile CAS，不创建跨用户全局 events.seq，也不把会话恢复策略放进 vfs-core。
 
 projects/remote-conversation-retry 对暂时性观察接线失败按 15 至 60 秒退避，仅重试失败目标并重新读取原 journal；授权变化/身份冲突不自动放行。原 journal 是跨重启索引，重试集合只用于进程内调度；dispose 先关闭重试循环并等待当前扫描，再释放 Registry。

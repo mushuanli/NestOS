@@ -50,7 +50,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/mdx-adapter` | NestOS 编辑器适配：VFS/namespace/Session 校验、文件格式、插件元数据、笔记挖空复习状态的共享 seqfile（路径作用域、评分时按卡写入）、附件管理 UI、文件聊天引用及会话打印。 |
 | `@itookit/ui-common` | 共享 UI 组件、契约、浏览器工具。 |
 | `@itookit/app-settings` | 设置 UI 与导航投影：SettingsEngine；技能文件系统、持久化、标签和维护用例归 app-core，Web 快照归宿主。 |
-| `@itookit/kanban` | 独立协调库，仅依赖 vfs-core：责任、计划 DAG、产物引用、派发意图、验收、SeqFile 原子事件与回执；Session/Flow/Kernel/notify 接入归 app-core。 |
+| `@itookit/kanban` | 独立协调库，仅依赖 vfs-core：责任、计划 DAG、产物引用、派发意图、验收、SeqFile 原子事件与回执、条件事务存储、来源扫描、执行恢复与 DOM UI；Session/Flow/Kernel/notify 接入归 app-core，呈现和导航接线归 app-shell。 |
 | `@itookit/app-contracts` | 共享应用 DTO、事件、设置端口、身份与纯变换；不加载后端执行或 UI 实现。 |
 | `@itookit/app-transport` | 平台中立的 HTTP/SSE 与能力 RPC，应用描述/selector 注入机制，不加载 Node 或 UI。 |
 | `@itookit/app-core` | 无 UI 应用核心：NestOS profile、RunDefinition、共享 Session 文件/目录服务，以及统一装配 `createApplicationRuntime`（VFS/LLM/Session/Flow）与 headless `createKernelRuntime`（durable-kernel + kernel-adapters + Flow programs）。Web/Tauri/CLI 共用。 |
@@ -75,7 +75,7 @@ VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依�
 
 VFS `IPlugin` 可以提供变更提示，但不能替代跨窗口扫描、恢复日志与条件提交。core 不内置同步业务。
 
-协作看板核心位于独立库 `@itookit/kanban`，仅依赖 vfs-core；app-contracts 兼容转出契约，`@itookit/app-core/kanban` 显式装配 Session/Flow/Kernel、远程存储、调度与 notify，身份授权由宿主注入。项目/系统看板及相关 Session 登记独立于聊天 Session 生命周期，运行时装配用户个人看板，Web/桌面通过共享看板工作区和 RPC 访问，不自动启动 Agent。见[Kanban 协调模块](design/kanban-coordination.md)。
+协作看板核心位于独立库 `@itookit/kanban`，仅依赖 vfs-core；应用端口直接引用库自包含的 KanbanClient，`@itookit/app-core/kanban` 显式装配 Session/Flow/Kernel、远程存储、调度与 notify，身份授权由宿主注入。项目/系统看板及相关 Session 登记独立于聊天 Session 生命周期，运行时装配用户个人看板，Web/桌面通过共享看板工作区和 RPC 访问，不自动启动 Agent。见[Kanban 协调模块](design/kanban-coordination.md)。
 
 数字分身的领域服务与 SeqFile 布局归 app-core 的 `digital-twin/`，五页工作台归 app-shell 的 `digital-twin/`。kernel-adapters 仅注入通用发送前钩子，vfsdrivers 的 IndexedDB/SQLite schema 不加入分身表或业务字段；固定槽分页与版本链由 SeqTwinStore 管理。见[数字分身实施边界](design/digital-twin.md#实现与边界)。
 

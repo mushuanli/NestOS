@@ -1,6 +1,6 @@
 import type {FlowDraft, JsonValue} from '@itookit/llm-flow/contracts';
 import template from '../presets/kanban-discovery.json';
-import {requireValue} from './rules';
+import {requireValue} from './validation';
 
 /** Explicit product resource, published by the existing Flow service. */
 export function createKanbanDiscoveryFlow(agentId?: string, execution: 'local' | 'remote' = 'local'): FlowDraft {

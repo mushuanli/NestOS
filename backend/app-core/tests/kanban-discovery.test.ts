@@ -1,8 +1,10 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import type {KanbanDiscoveryChange, KanbanScanInput, KanbanScanSession} from '@itookit/app-contracts';
-import {DEFAULT_KANBAN_SCAN_POLICY} from '@itookit/app-contracts';
-import {createKanbanDiscovery, createKanbanModule, SeqKanbanStore, createKanbanDiscoveryFlow, createHarnessKanbanSource, RemoteKanbanStore} from '../src/kanban';
+import type {KanbanDiscoveryChange, KanbanScanInput, KanbanScanSession} from '@itookit/kanban/contracts';
+import {DEFAULT_KANBAN_SCAN_POLICY} from '@itookit/kanban/contracts';
+import {createKanbanDiscovery} from '@itookit/kanban/discovery';
+import {createNestOSKanban, createKanbanDiscoveryFlow, createHarnessKanbanSource} from '../src/kanban';
+import {SeqKanbanStore, ConditionalKanbanStore} from '@itookit/kanban/storage';
 
 const disposers: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const dispose of disposers.splice(0)) await dispose();});
@@ -11,7 +13,7 @@ async function fixture(autoCreate = false) {
     const store = await SeqKanbanStore.open(await manager.openFileSystem('/'), '/project/.nestos/kanban');
     let now = 1000, serial = 0;
     const actor = {agentId: 'planner', sessionId: 'scan-session', taskId: 'scan-task'}, log = vi.fn();
-    const service = createKanbanModule({store, actor, log, now: () => now, id: () => `token-${++serial}`, authorize: async () => {}});
+    const service = createNestOSKanban({store, actor, log, now: () => now, id: () => `token-${++serial}`, authorize: async () => {}});
     await service.create({id: 'b', title: 'Board', scope: {kind: 'project', projectId: 'p'}, agents: [{agentId: 'worker', responsibility: 'Implement'}],
         policy: {claimTimeoutMs: 100, leaseMs: 10000, progressTimeoutMs: 1000, transferTimeoutMs: 100,
             maxComplexity: 10, maxWorkUnits: 20, maxDurationMs: 10000, escalationSessionIds: ['supervisor']}});
@@ -102,7 +104,7 @@ it('refuses remote history fallback and preserves canonical source identities', 
 });
 it('remote project storage uses one conditional SeqFile transaction and never retries unknown writes', async () => {
     const entries = new Map<string, unknown>(), transaction = vi.fn(async () => {throw new Error('unknown');});
-    const store = new RemoteKanbanStore({query: async (_path: string, selection: {keys: string[]}) => ({next: null, revision: 'old', entries: [...entries].filter(([key]) => selection.keys.includes(key)).map(([key, value]) => ({key, value}))}), transaction} as never, async () => {});
+    const store = new ConditionalKanbanStore({query: async (_path: string, selection: {keys: string[]}) => ({next: null, revision: 'old', entries: [...entries].filter(([key]) => selection.keys.includes(key)).map(([key, value]) => ({key, value}))}), transaction} as never, async () => {});
     await expect(store.update('b', 'op', 'fingerprint', () => ({schema: 1, board: {id: 'b', items: []} as never, sequence: 0, events: [], escalations: []}))).rejects.toThrow('unknown');
     expect(transaction).toHaveBeenCalledOnce(); expect(transaction.mock.calls[0][0]).toBe('kanban/boards.seq');
 });

@@ -1,7 +1,8 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import type {KanbanActor, KanbanBoardInput, KanbanCommand, KanbanPlanning} from '@itookit/app-contracts';
-import {createKanbanModule, SeqKanbanStore, projectKanbanEvents} from '../src/kanban';
+import type {KanbanActor, KanbanBoardInput, KanbanCommand, KanbanPlanning} from '@itookit/kanban/contracts';
+import {createNestOSKanban, projectKanbanEvents} from '../src/kanban';
+import {SeqKanbanStore} from '@itookit/kanban/storage';
 import {UserEventService} from '../src/events/service';
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -14,7 +15,7 @@ async function fixture(extra: Partial<KanbanBoardInput> = {}, notifications = fa
     let serial = 0, now = 1000; const log = vi.fn();
     const options = {store, authorize: async () => {}, log, now: () => now, id: () => `id-${++serial}`,
         ...(notifications ? {notifications: {sourceId: 'collection:operations', journal: events.journal}} : {})};
-    const serviceFor = (actor = alice) => createKanbanModule({...options, actor}), service = serviceFor();
+    const serviceFor = (actor = alice) => createNestOSKanban({...options, actor}), service = serviceFor();
     const input: KanbanBoardInput = {id: 'work', title: 'Operations', scope: {kind: 'collection', namespace: 'personal', id: 'operations'},
         members: [{kind: 'human', id: 'alice', responsibility: 'Handle requests', roles: ['worker']},
             {kind: 'human', id: 'bob', responsibility: 'Verify outcomes', roles: ['reviewer']},
@@ -143,7 +144,7 @@ it('allows humans to release their own work but requires settled execution proof
     board = await f.run({type: 'claim', itemId: 'automated'}, robot);
     const command = {type: 'release-item' as const, itemId: 'automated', token: board.items.find(i => i.id === 'automated')!.owner!.token, next: 'cancelled' as const, reason: 'Stopped'};
     await expect(f.run(command, robot)).rejects.toThrow('EXECUTION_NOT_SETTLED');
-    const verified = createKanbanModule({...f.options, actor: robot, verifyRelease: async () => true});
+    const verified = createNestOSKanban({...f.options, actor: robot, verifyRelease: async () => true});
     const result = await verified.execute('work', {operationId: 'verified-release', expectedRevision: (await f.service.read('work')).revision, command});
     expect(result.items.find(i => i.id === 'automated')?.status).toBe('cancelled');
 });

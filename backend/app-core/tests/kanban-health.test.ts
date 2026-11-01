@@ -1,0 +1,20 @@
+import {afterEach, expect, it} from 'vitest';
+import {createVFS, MemoryBackend} from '@itookit/vfs-core';
+import {UserEventService} from '../src/events/service';
+import {reportKanbanHealth} from '../src/kanban/health-events';
+let close:(()=>Promise<void>)|undefined;
+afterEach(async()=>{await close?.();close=undefined;});
+it('persists one global notification per failure episode across reporter recreation',async()=>{
+    const {manager}=await createVFS({rootBackend:new MemoryBackend()});close=()=>manager.dispose();
+    const fs=await manager.openFileSystem('/'),events=await UserEventService.open(fs);
+    const error=Object.assign(new Error('private path and body'),{code:'BODY_MISSING'});
+    await reportKanbanHealth(events,new AggregateError([error]));await reportKanbanHealth(events,error);
+    const reopened=await UserEventService.open(fs);await reportKanbanHealth(reopened,error);
+    expect(JSON.parse((await events.journal.transaction(tx=>tx.getState('kanban:personal:health')))!).episode).toBe(1);
+    expect((await events.listNotifications()).items).toHaveLength(1);
+    await reportKanbanHealth(reopened);await reportKanbanHealth(reopened,error);
+    expect(JSON.parse((await events.journal.transaction(tx=>tx.getState('kanban:personal:health')))!).episode).toBe(2);
+    const facts=await events.readEvents();expect(facts.events).toHaveLength(2);
+    expect(facts.events[0].value).toMatchObject({type:'kanban.runtime.BODY_MISSING',notification:'error'});
+    expect(JSON.stringify(facts)).not.toContain('private path and body');
+});

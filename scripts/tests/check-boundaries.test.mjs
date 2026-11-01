@@ -95,6 +95,14 @@ test('standalone vfs-ui only depends on vfs-core internally', () => {
     assert.match(dependencyError(vfs.name, 'immer'), /public ports/);
 });
 
+test('standalone kanban only accepts vfs-core and injected execution ports', () => {
+    const name='@itookit/kanban';
+    for (const target of ['@itookit/common','@itookit/app-contracts','@itookit/llm-session','@itookit/llm-flow','@itookit/durable-kernel','node:fs','some-agent-sdk'])
+        assert.match(dependencyError(name,target), /only depend on vfs-core/);
+    assert.equal(dependencyError(name,'@itookit/vfs-core'),undefined);
+    assert.equal(manifestDependencyError(name,'@itookit/vfs-core'),undefined);
+});
+
 test('public LLM mechanisms reject host dependencies', () => {
     for (const name of ['common', 'ui-common', 'vfs-core', 'kernel-adapters/llm', 'llm-session'])
         assert.match(dependencyError('@itookit/driver-llm', '@itookit/' + name), /public ports/);
@@ -230,4 +238,16 @@ test('standalone llm-ui rejects all runtime and contract dependencies except mdx
         assert.match(manifestDependencyError(ui.name, name), /only depend on mdxeditor/);
     }
     assert.equal(inspect(ui, "import { MDxRenderer } from '@itookit/mdxeditor'").length, 0);
+});
+
+test('application contracts consume Kanban ports without forwarding the library API', () => {
+    const source = {name: '@itookit/app-contracts', dir: '/repo/shared/app-contracts'};
+    const file = '/repo/shared/app-contracts/src/index.ts';
+    assert.ok(sourceErrors(source, file, "export type {KanbanItem} from '@itookit/kanban/contracts';", []).some(error => error.includes('import its public entry directly')));
+    assert.deepEqual(sourceErrors(source, file, "import type {KanbanClient} from '@itookit/kanban/contracts'; export interface Client {kanban?: KanbanClient}", []), []);
+});
+
+test('Kanban adapters export their bindings rather than duplicate the library surface', () => {
+    assert.ok(inspect(core, "export {SeqKanbanStore} from '@itookit/kanban/storage';", '/repo/backend/app-core/src/kanban/index.ts').some(error => error.includes('must not forward')));
+    assert.deepEqual(inspect(core, "export {createKanbanModule} from './module';", '/repo/backend/app-core/src/kanban/index.ts'), []);
 });

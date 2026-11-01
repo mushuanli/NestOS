@@ -1,5 +1,6 @@
+import {reportKanbanHealth, kanbanFailureCode} from '../kanban/health-events';
 import {createPersonalKanban} from '../kanban/personal';
-import {startKanbanMonitor} from '../kanban/monitor';
+import {startKanbanMonitor} from '@itookit/kanban/execution';
 import {UserEventService} from '../events/service';
 import {attachRuntimeEvents} from '../events/runtime-events';
 import {DiagnosticJournal} from '../diagnostics/journal';
@@ -109,7 +110,7 @@ export interface ApplicationRuntime {
     flowInstallations: import('@itookit/app-contracts/services').FlowInstallations;
     toolPackages: import('@itookit/app-contracts/services').ToolPackages;
     digitalTwin?: DigitalTwinService;
-    kanban?: import('@itookit/app-contracts').KanbanService;
+    kanban?: import('@itookit/kanban/contracts').KanbanClient;
     vfs: import('@itookit/vfs-core').IVFSManager;
     llmDriver: LLMDeviceDriver;
     agentService: VFSAgentService;
@@ -134,6 +135,10 @@ export interface ApplicationRuntime {
 }
 
 export interface ApplicationRuntimeOptions {
+    /** Optional host integrations own bindings and execution, never the portable board library. */
+    configureKanban?(context: {fs: import('@itookit/vfs-core').IFileSystem; service: import('@itookit/kanban').KanbanModuleHandle;
+        kernel: import('@itookit/durable-kernel').Kernel; calls?: import('@itookit/llm-session').IndependentCallService;
+        sessions: SessionRepository; prepareSession(id: string): Promise<boolean>}): Promise<Array<{scan(): Promise<void>; quiesce(): Promise<void>}>>;
     toolConnections?: import('@itookit/app-contracts/services').ToolConnectionAccess;
     /** The host resolves only trusted, locally available tool packages. */
     toolDependencies?: import('@itookit/app-contracts/services').ToolDependencyResolver;
@@ -542,7 +547,18 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         }
 
         const events = await UserEventService.open(systemFS);
-        const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository);
+        const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore).catch(async error => {
+            try {await reportKanbanHealth(events,error);} catch { /* Preserve the initialization failure. */ }
+            throw error;
+        });
+        cleanupFns.push(() => kanban.dispose());
+        const kanbanIntegrations = await options.configureKanban?.({fs:systemFS,service:kanban,kernel:kernelCore,calls:independentCalls,
+            sessions:sessionRepository,prepareSession:id=>recovery.acquireLater(id)}) ?? [];
+        const stopKanbanIntegrations = kanbanIntegrations.map(integration => {
+            let closing: Promise<void> | undefined;
+            return () => closing ??= Promise.resolve().then(() => integration.quiesce());
+        });
+        cleanupFns.push(...stopKanbanIntegrations);
         let kanbanMonitor: ReturnType<typeof startKanbanMonitor> | undefined;
         const eventSources = await attachRuntimeEvents(events, {kernel, sessionRepository, digitalTwin}, notesFiles);
         cleanupFns.push(() => eventSources.dispose());
@@ -551,9 +567,12 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const dispose = async () => {
             if (disposed) return;
             disposed = true;
-            await startup.close();
-            await executionActivity.dispose();
             const errors: unknown[] = [];
+            const stoppingStartup = startup.close();
+            const stoppingKanban = kanban.quiesce();
+            const stopping = await Promise.allSettled([kanbanMonitor?.dispose(), ...stopKanbanIntegrations.map(close=>close()), stoppingKanban, stoppingStartup]);
+            for (const result of stopping) if (result.status === 'rejected') errors.push(result.reason);
+            try {await executionActivity.dispose();} catch(error) {errors.push(error);}
             for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
                 try { await close(); } catch (error) { errors.push(error); }
             }
@@ -562,9 +581,10 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         await startup.schedule(policy.workers, 'runtime.workers', async () => {
             await initializeProjects();
             if (!startup.active) return;
-            kanbanMonitor = startKanbanMonitor({service: kanban, initialScan: false, subscribeTick: tick => {
+            kanbanMonitor = startKanbanMonitor({service: {scan:async()=>{await kanban.scan();for(const integration of kanbanIntegrations) await integration.scan();}}, initialScan: kanbanIntegrations.length > 0, subscribeTick: tick => {
                 const timer = setInterval(tick, 60_000); return () => clearInterval(timer);
-            }, onError: () => {diagnostics.record({module: 'application', operation: 'kanban.monitor', stage: 'scan', result: 'failure', level: 'warn', code: 'KANBAN_SCAN_FAILED'});}});
+            }, subscribeChanges: tick => systemFS.on('seq:committed', event => {if(event.payload.paths.includes('/var/lib/kanban/boards.seq')) tick();}),
+            onSuccess: () => reportKanbanHealth(events), onError: async error => {diagnostics.record({module: 'application', operation: 'kanban.monitor', stage: 'scan', result: 'failure', level: 'warn', code: kanbanFailureCode(error)}); await reportKanbanHealth(events,error);}});
             recovery.startBackground();
             if (options.digitalTwinAutoStart !== false) for (const twin of twinServices) {
                 const view = await twin.workspaceView().catch(() => null); if (view && !view.readOnly) twin.start();

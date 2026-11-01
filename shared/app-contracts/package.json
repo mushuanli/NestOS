@@ -27,7 +27,8 @@
   },
   "dependencies": {
     "@itookit/common": "workspace:*",
-    "@itookit/vfs-core": "workspace:*"
+    "@itookit/vfs-core": "workspace:*",
+    "@itookit/kanban": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

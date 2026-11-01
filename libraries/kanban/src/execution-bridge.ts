@@ -1,0 +1,139 @@
+import {sha256HexSync, randomUUID} from './utils';
+import type {IFileSystem} from '@itookit/vfs-core';
+import type {KanbanDispatch, KanbanService, KanbanItem, KanbanArtifactRef, KanbanPrincipal, KanbanEstimate} from './contracts';
+import {KanbanError} from './ports';
+
+export interface KanbanExecutionObservation {
+    executionSessionId?: string;
+    outcome: 'running' | 'unknown' | 'succeeded' | 'failed' | 'cancelled';
+    outputs?: KanbanArtifactRef[]; code?: string;
+}
+export interface KanbanExecutionPort {
+    /** Persistable request; preparing cannot submit agent work. */
+    prepare(dispatch: KanbanDispatch, item: KanbanItem): Promise<unknown>;
+    start(request: unknown): Promise<KanbanExecutionObservation>;
+    /** Observe the original admission only. Missing receipts mean unknown. */
+    inspect(request: unknown): Promise<KanbanExecutionObservation>;
+}
+export interface KanbanExecutionBridgeOptions {
+    fs: IFileSystem; directory: string; boardId: string; service: KanbanService;
+    worker(principal: KanbanPrincipal): Promise<KanbanService>;
+    executor: KanbanExecutionPort;
+    authorize(stage: 'prepare' | 'start' | 'inspect', dispatch: KanbanDispatch): Promise<void>;
+    log(input: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; durationMs: number}): void;
+    executionReference?(sessionId: string, dispatchId: string): import('./contracts').KanbanExternalReference;
+    subscribe?(wake: () => void): () => void;
+    autoDispatch?: boolean; shutdownTimeoutMs?: number;
+    estimate?(item: KanbanItem, principal: KanbanPrincipal): Promise<KanbanEstimate | undefined>;
+}
+interface ExecutionRecord {schema: 1; fence: string; request: unknown; digest: string; phase: 'prepared' | 'submitting'}
+type TrackWrite = <T>(operation: Promise<T>) => Promise<T>;
+
+/** The host owns execution. Prepared/submitting identities survive response loss and host shutdown. */
+export async function createKanbanExecutionBridge(options: KanbanExecutionBridgeOptions) {
+    const path = `${options.directory}/executions.seq`;
+    try {await options.fs.driver.createFile({parentPath:options.directory,name:'executions.seq',type:'seqfile',recursive:true});}
+    catch(error) {if((error as {code?:string})?.code!=='EEXIST') throw error;}
+    if(!options.fs.meta.seq?.transaction) throw new KanbanError('TRANSACTION_REQUIRED');
+    let stopped=false, again=false, pending: Promise<void>|undefined;
+    const writes=new Set<Promise<unknown>>();
+    const track:TrackWrite=operation=>{const tracked=operation.finally(()=>{writes.delete(tracked);});writes.add(tracked);return tracked;};
+    const active=()=>!stopped;
+    const scan=async()=>{if(stopped) return; if(pending) {again=true; return pending;} const started=Date.now();
+        pending=runBridge(options,path,active,track).catch(error=>{try {options.log({operationId:randomUUID(),stage:'bridge.scan',result:'failure',code:safeCode(error),durationMs:Date.now()-started});} catch {/* Diagnostics cannot replay work. */} throw error;}).finally(()=>{pending=undefined;if(again&&!stopped) {again=false;void scan().catch(()=>{});}});
+        return pending;
+    };
+    const unsubscribe=options.subscribe?.(()=>{void scan().catch(()=>{});});
+    return {scan, tick: scan, async quiesce() {
+        stopped=true;unsubscribe?.(); if(!pending) return;
+        let timer: ReturnType<typeof setTimeout>|undefined;
+        try {await Promise.race([pending,new Promise<void>(resolve=>{timer=setTimeout(resolve,options.shutdownTimeoutMs ?? 5000);})]);}
+        finally {if(timer) clearTimeout(timer);await Promise.allSettled([...writes]);}
+    }};
+}
+async function runBridge(options: KanbanExecutionBridgeOptions, path: string, active: () => boolean, track: TrackWrite): Promise<void> {
+    const workflow=await options.service.workflow(options.boardId);
+    for(const dispatch of Object.values(workflow.dispatches)) {
+        if(!active()) return;
+        if(['prepared','running','unknown'].includes(dispatch.outcome)) await runDispatch(options,path,dispatch,active,track);
+    }
+    if(!options.autoDispatch||!active()) return;
+    for(const id of (await options.service.workflow(options.boardId)).ready) {
+        if(!active()) return;
+        const {item}=await options.service.item(options.boardId,id), owner=item.eligiblePrincipals?.[0]; if(!owner) continue;
+        const worker=await options.worker(owner), board=await worker.read(options.boardId);if(!active()) return;
+        try {
+            const dispatchId=randomUUID();
+            const estimate=await options.estimate?.(item,owner);if(!active()) return;
+            await worker.execute(board.id,{operationId:randomUUID(),expectedRevision:board.revision,command:{type:'prepare-dispatch',itemId:id,dispatchId,estimate}});
+            const dispatch=(await options.service.workflow(board.id)).dispatches[dispatchId];
+            if(active()) await runDispatch(options,path,dispatch,active,track);
+        }
+        catch(error) {if(!['WIP_LIMIT','ASSIGNEE_WIP_LIMIT','READY_LIMIT','REVISION_CONFLICT'].includes(safeCode(error))) throw error;}
+    }
+}
+async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch, active: () => boolean, track: TrackWrite): Promise<void> {
+    const start=Date.now(); let stage: 'inspect' | 'prepare' | 'start'='inspect', result: KanbanExecutionObservation;
+    try {
+        let record=await loadRecord(options,path,dispatch);if(!active()) return;
+        if(!record) {
+            stage='prepare';await options.authorize(stage,dispatch);if(!active()) return;
+            const item=(await options.service.item(options.boardId,dispatch.itemId)).item;if(!active()) return;
+            const request=await options.executor.prepare(dispatch,item);if(!active()) return;
+            record=await track(savePrepared(options,path,dispatch,request));
+        }
+        if(!active()) return;
+        const submit=record.phase==='prepared'&&await track(claimSubmission(options,path,dispatch));
+        if(!active()) return; stage=submit?'start':'inspect';await options.authorize(stage,dispatch);if(!active()) return;
+        result=await (submit?options.executor.start(record.request):options.executor.inspect(record.request));
+    } catch(error) {result={outcome:'unknown',code:safeCode(error)};}
+    try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
+    if(active()) try {await linkSession(options,dispatch,result.executionSessionId);if(active()) await settle(options,dispatch,result);} catch(error) {if(safeCode(error)!=='REVISION_CONFLICT') throw error;}
+}
+async function loadRecord(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch): Promise<ExecutionRecord|undefined> {
+    const raw=await options.fs.meta.seq!.getEntry(path,dispatch.id); if(!raw) return;
+    return decodeRecord(raw,dispatch);
+}
+async function savePrepared(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch, request: unknown): Promise<ExecutionRecord> {
+    const rawRequest=JSON.stringify(request);
+    if(typeof rawRequest!=='string'||new TextEncoder().encode(rawRequest).byteLength>1024*1024) throw new KanbanError('INVALID_EXECUTION_REQUEST');
+    return options.fs.meta.seq!.transaction!(async tx=>{
+        const raw=await tx.getEntry(path,dispatch.id);if(raw) return decodeRecord(raw,dispatch);
+        const record: ExecutionRecord={schema:1,fence:dispatch.fence,request:JSON.parse(rawRequest),digest:sha256HexSync(rawRequest),phase:'prepared'};
+        await tx.setEntry(path,dispatch.id,JSON.stringify(record));return record;
+    });
+}
+async function claimSubmission(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch): Promise<boolean> {
+    return options.fs.meta.seq!.transaction!(async tx=>{
+        const raw=await tx.getEntry(path,dispatch.id);if(!raw) throw new KanbanError('EXECUTION_JOURNAL_MISSING');
+        const record=decodeRecord(raw,dispatch);
+        if(record.phase!=='prepared') return false;
+        await tx.setEntry(path,dispatch.id,JSON.stringify({...record,phase:'submitting'}));return true;
+    });
+}
+function decodeRecord(raw: string, dispatch: KanbanDispatch): ExecutionRecord {
+    const record=JSON.parse(raw) as ExecutionRecord;
+    if(record.schema!==1||record.fence!==dispatch.fence||!['prepared','submitting'].includes(record.phase)||record.digest!==sha256HexSync(JSON.stringify(record.request))) throw new KanbanError('INVALID_EXECUTION_JOURNAL');return record;
+}
+async function settle(options: KanbanExecutionBridgeOptions, dispatch: KanbanDispatch, result: KanbanExecutionObservation): Promise<void> {
+    const current=(await options.service.workflow(options.boardId)).dispatches[dispatch.id];
+    if(!current||!['prepared','running','unknown'].includes(current.outcome)) return;
+    if(current.outcome===result.outcome&&current.code===result.code&&JSON.stringify(current.outputs ?? [])===JSON.stringify(result.outputs ?? [])) return;
+    const {outcome,outputs,code}=result, observation={outcome,...(outputs?{outputs}:{}),...(code?{code}:{})};
+    const board=await options.service.read(options.boardId), digest=sha256HexSync(JSON.stringify(observation));
+    await options.service.execute(board.id,{operationId:`settle:${dispatch.id}:${digest}`,expectedRevision:board.revision,
+        command:{type:'observe-execution',dispatchId:dispatch.id,fence:dispatch.fence,...observation}});
+}
+async function linkSession(options: KanbanExecutionBridgeOptions, dispatch: KanbanDispatch, sessionId?: string): Promise<void> {
+    if(!sessionId || !options.executionReference) return;
+    const reference = options.executionReference(sessionId, dispatch.id);
+    const board=await options.service.read(options.boardId),item=board.items.find(item=>item.id===dispatch.itemId);
+    if(item?.owner?.token!==dispatch.fence) throw new KanbanError('STALE_EXECUTION_RESULT');
+    const current=item.externalRefs?.filter(ref=>ref.system===reference.system).at(-1);
+    if(current?.id===reference.id&&current.revision===reference.revision) return;
+    await options.service.execute(board.id,{operationId:`execution-session:${dispatch.id}:${sha256HexSync(sessionId)}:${board.revision}`,expectedRevision:board.revision,
+        command:{type:'link-reference',itemId:dispatch.itemId,reference}});
+}
+function safeCode(error: unknown): string {
+    const code=(error as {code?:unknown})?.code;return typeof code==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/.test(code)?code:'EXECUTION_OBSERVATION_FAILED';
+}

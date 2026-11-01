@@ -27,7 +27,8 @@
   },
   "dependencies": {
     "@itookit/app-contracts": "workspace:*",
-    "@itookit/app-transport": "workspace:*"
+    "@itookit/app-transport": "workspace:*",
+    "@itookit/kanban": "workspace:*"
   },
   "peerDependencies": {
     "@itookit/app-settings": "workspace:*",

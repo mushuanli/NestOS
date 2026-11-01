@@ -1,8 +1,9 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import type {KanbanActor, KanbanCommand, KanbanDiscoveryChange, KanbanRecordInput} from '@itookit/app-contracts';
-import {createKanbanModule, SeqKanbanStore} from '../src/kanban';
-import {scanContext} from '../src/kanban/scan-context';
+import type {KanbanActor, KanbanCommand, KanbanDiscoveryChange, KanbanRecordInput} from '@itookit/kanban/contracts';
+import {createNestOSKanban} from '../src/kanban';
+import {SeqKanbanStore} from '@itookit/kanban/storage';
+import {buildDiscoveryContext} from '@itookit/kanban/discovery';
 import {UserEventService} from '../src/events/service';
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close();});
@@ -14,7 +15,7 @@ async function fixture() {
     const fs = await manager.openFileSystem('/'), store = await SeqKanbanStore.open(fs), events = await UserEventService.open(fs);
     cleanup.push(async () => {events.journal.close();}); let serial = 0;
     const opts = {store, authorize: async () => {}, log: vi.fn(), now: () => 1000, id: () => `id-${++serial}`, notifications: {sourceId: 'context', journal: events.journal}};
-    const service = createKanbanModule({...opts, actor: human}), scanner = createKanbanModule({...opts, actor: flow});
+    const service = createNestOSKanban({...opts, actor: human}), scanner = createNestOSKanban({...opts, actor: flow});
     await service.create({id: 'b', title: 'Board', scope: {kind: 'project', projectId: 'p'},
         members: [{kind: 'human', id: 'admin', responsibility: 'Manage', roles: ['worker', 'coordinator']}, {kind: 'service', id: 'planner', responsibility: 'Discover', roles: ['worker', 'reviewer']}],
         policy: {requireEstimate: false, review: 'assignee'}});
@@ -94,7 +95,7 @@ it('preserves linked context across card archival and binds record pagination to
 it('includes only confirmed current project records in bounded scan context', async () => {
     const f = await fixture(); await f.create(); await f.run({type: 'append-record', record: record('accepted')});
     await f.run({type: 'append-record', record: record('draft')}); await f.run({type: 'review-record', recordId: 'accepted', accept: true});
-    const state = (await f.store.read('b'))!, input = scanContext(state.board, state, [], {executor: {identity: 'flow'}, policy: {maxInputBytes: 32000, connection: {kind: 'local', connectionId: 'analysis', allowContentTransfer: false}}} as never, 'run');
+    const state = (await f.store.read('b'))!, input = buildDiscoveryContext(state.board, state, [], {executor: {identity: 'flow'}, policy: {maxInputBytes: 32000, connection: {kind: 'local', connectionId: 'analysis', allowContentTransfer: false}}} as never, 'run');
     expect(input.projectContext!.records.map(record => record.id)).toEqual(['accepted']); expect(input.projectContext!.omittedRecords).toBe(0); expect(input.projectContext!.excludedRecords).toBe(1);
     expect(new TextEncoder().encode(JSON.stringify(input)).length).toBeLessThanOrEqual(32000);
 });

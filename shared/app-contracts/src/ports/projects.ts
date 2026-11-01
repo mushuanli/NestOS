@@ -127,11 +127,13 @@ export interface ProjectService {
     get(id: string): Promise<ProjectFolder>;
     forFolder(path: string | null | undefined, folders?: readonly SessionFolder[]): Promise<ProjectFolder | undefined>;
     current(): Promise<ProjectFolder | undefined>;
+    localExecutionSettings(id: string): Promise<{revision:number;variables:Record<string,string>}>;
+    setLocalExecution(id: string, revision: number, variables: Record<string,string>): Promise<void>;
     getDefaultProject(): Promise<ProjectFolder | undefined>;
     setDefaultProject(id: string): Promise<void>;
-    create(name: string, parent?: string | null, directory?: string): Promise<ProjectFolder>;
+    create(name: string, parent?: string | null, directory?: string, projectId?: string): Promise<ProjectFolder>;
     createRemote(name: string, parent: string | null, connectionId: string, path: string, access?: 'ro' | 'rw', options?: OperationOptions & {
-        createDirectory?: boolean;
+        createDirectory?: boolean; projectId?: string;
     }): Promise<ProjectFolder>;
     discardImportedProject(project: ProjectFolder): Promise<void>;
     ensureDirectory(directory: string, label?: string): Promise<ProjectFolder>;
@@ -327,6 +329,8 @@ export interface ProjectRemoteMountService {
     projectHarness(projectId: string, options?: OperationOptions & {requireRegistered?: boolean}): Promise<HarnessClient>;
     projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<HarnessContracts.HarnessModelCatalog>;
     refreshProjectBinding(projectId: string, options?: OperationOptions): Promise<void>;
+    executionSettings(projectId: string, options?: OperationOptions): Promise<HarnessContracts.ProjectExecutionSettings & {project: HarnessContracts.RemoteProject}>;
+    setExecution(projectId: string, expected: HarnessContracts.RemoteProject, execution: HarnessContracts.ProjectEnvironment, options?: OperationOptions): Promise<void>;
     remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;
     projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean, draftId?: string): Promise<ProjectConversationPort>;

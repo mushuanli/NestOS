@@ -17,6 +17,7 @@ export interface NativeShellResult {
  * Platform applications provide implementations and inject them at assembly time.
  */
 export interface NativeShellOptions {
+  env?: Record<string, string>;
   cwd?: string; timeoutMs?: number; signal?: AbortSignal;
   onOutput?: (chunk: { stream: 'stdout' | 'stderr'; text: string }) => void;
 }

@@ -1,3 +1,4 @@
+import {withProjectEnvironment} from '@itookit/app-core';
 import {stageInputAssets} from '@itookit/app-core';
 import { prepareFlowConnections } from '@itookit/llm-session';
 import { createCellsDriver } from '@itookit/cells-driver';
@@ -300,11 +301,13 @@ export async function createCliRuntime(
     const acquireFiles = async (id: string) => {
         const execution = project && await projects.execution?.acquire(project.project.id, id);
         if (execution) return execution;
-        return acquireSessionProcessContext(
+        const variables = project && !hasRemoteMounts ? (await projects.localExecutionSettings(project.project.id)).variables : undefined;
+        const context = await acquireSessionProcessContext(
             sessionFiles, id,
             hasRemoteMounts ? undefined : async () => ({ nativeShell: shell, ttyDriver, release: async () => {} }),
             () => directoryMounts.processMounts(id),
         );
+        return variables ? withProjectEnvironment(context,variables) : context;
     };
     let digitalTwin: DigitalTwinService | undefined;
     let harnessKernel: Kernel | undefined;

@@ -1,4 +1,5 @@
 import {reportKanbanHealth, kanbanFailureCode} from '../kanban/health-events';
+import {withProjectEnvironment} from '../projects/project-environment';
 import {createPersonalKanban} from '../kanban/personal';
 import {startKanbanMonitor} from '@itookit/kanban/execution';
 import {UserEventService} from '../events/service';
@@ -354,8 +355,10 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 const execution = project && await projects.execution?.acquire(project.project.id, id);
                 if (execution) return execution;
                 const remote = project && (projects.fileSource(project).kind === 'remote' || projects.remoteMounts?.list(project.project.id).length);
-                return acquireSessionProcessContext(sessionFiles, id, remote ? undefined : options.kernelPlatform?.createSessionProcesses,
+                const variables = project && !remote && options.kernelPlatform?.createSessionProcesses ? (await projects.localExecutionSettings(project.project.id)).variables : undefined;
+                const context = await acquireSessionProcessContext(sessionFiles, id, remote ? undefined : options.kernelPlatform?.createSessionProcesses,
                     () => directoryMounts.processMounts(id));
+                return variables ? withProjectEnvironment(context,variables) : context;
             },
             configureSession: options.kernelPlatform?.configureSession,
             additionalTools: options.kernelPlatform?.additionalTools,
@@ -367,7 +370,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 if (project && (projects.fileSource(project).kind === 'remote' || projects.remoteMounts?.list(project.project.id).length))
                     throw new FSError('ECAPABILITY', 'Remote server does not provide command execution');
                 if (!options.kernelPlatform?.fileContextForScope) throw new FSError('ECAPABILITY', 'Workspace scope provider is unavailable');
-                return options.kernelPlatform.fileContextForScope(id, scopeId);
+                const variables = project ? (await projects.localExecutionSettings(project.project.id)).variables : undefined;
+                const context = await options.kernelPlatform.fileContextForScope(id, scopeId);
+                return variables ? withProjectEnvironment(context,variables) : context;
             } : undefined,
             skillSource: options.kernelPlatform?.skillSource,
             skillSourceForSession: options.kernelPlatform?.skillSourceForSession,

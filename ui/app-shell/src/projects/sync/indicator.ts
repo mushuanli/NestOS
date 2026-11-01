@@ -1,4 +1,4 @@
-import { ENTITY_ICONS, FEEDBACK_ICONS, escapeAttr, t, randomUUID } from '@itookit/common';
+import { ACTION_ICONS, PROJECT_ACTION_ICONS, ENTITY_ICONS, FEEDBACK_ICONS, escapeAttr, t, randomUUID } from '@itookit/common';
 import { syncIndicatorDescription, type ProjectSyncIndicator } from './presentation';
 
 /** Icon markup uses only shared icons; names and issues are escaped as attribute text. */
@@ -13,7 +13,7 @@ export class ProjectSyncStatusIndicator {
     readonly element = document.createElement('span');
     private readonly button = document.createElement('button');
     private readonly tooltip = document.createElement('span');
-    constructor(open: () => void) {
+    constructor(open: () => void, private readonly labeled = false) {
         this.element.className = 'project-sync-status'; this.element.hidden = true;
         this.button.type = 'button'; this.button.onclick = open;
         this.tooltip.id = 'project-sync-status-' + randomUUID(); this.tooltip.className = 'project-sync-status__tooltip';
@@ -28,6 +28,10 @@ export class ProjectSyncStatusIndicator {
         if (!value) return;
         this.button.className = `project-sync-status__button project-sync-status__button--${value.state}`;
         this.button.textContent = value.state === 'configured' ? ENTITY_ICONS.sync : FEEDBACK_ICONS.warning;
+        if (this.labeled) {
+            this.button.innerHTML = value.state === 'configured' ? ACTION_ICONS.refreshView : PROJECT_ACTION_ICONS.warning;
+            const label = document.createElement('span'); label.textContent = t('project.sync.status'); this.button.append(label);
+        }
         this.button.setAttribute('aria-label', syncIndicatorDescription(value));
         this.tooltip.replaceChildren();
         const heading = document.createElement('strong'); heading.textContent = value.label; this.tooltip.append(heading);

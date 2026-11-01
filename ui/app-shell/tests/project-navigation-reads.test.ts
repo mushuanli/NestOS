@@ -70,7 +70,7 @@ it('resolves project folders from one organization snapshot per sync and refresh
         expect(folders).toHaveBeenCalledTimes(1);
         expect(navigation.currentProject()?.path).toBe('/Demo');
         expect(navigation.toolbarContainer.hidden).toBe(false);
-        expect(navigation.header.querySelectorAll(':scope > button:not([hidden])')).toHaveLength(1);
+        expect(navigation.header.querySelector<HTMLButtonElement>('[data-project-action="settings"]')?.hidden).toBe(false);
         expect(navigation.header.querySelector('[data-project-action="settings"]')).not.toBeNull();
         const selector = navigation.header.querySelector('select')!;
         expect(selector.querySelector('option[value="/"]')?.textContent).toBe('所有项目');
@@ -279,15 +279,22 @@ it('keeps project selection separate from entry and exposes creation only in its
         await workbench.start();
         const selector = sidebar.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!;
         const createProject = () => sidebar.querySelector<HTMLButtonElement>('[data-action="create-project"]')!;
+        const up = () => sidebar.querySelector<HTMLButtonElement>('[data-action="project-up"]')!;
         const createSession = () => sidebar.querySelector<HTMLButtonElement>('.workbench-project-navigation__create')!;
         expect(selector.value).toBe('/'); expect(createProject().hidden).toBe(false); expect(createSession().hidden).toBe(true);
+        expect(up().hidden).toBe(true);
         const row = () => sidebar.querySelector<HTMLElement>(`[data-item-id="${path}"] .vfs-directory-item__header`)!;
         row().click();
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(path));
         expect(main.querySelector('.workbench-directory')).not.toBeNull();
         expect(selector.value).toBe(path); expect(createProject().hidden).toBe(true); expect(createSession().hidden).toBe(false);
         expect(selector.querySelector('[value="@new-project"]')).toBeNull();
-        await workbench.openResource('/'); expect(selector.value).toBe('/');
+        expect(up().hidden).toBe(false);
+        expect(up().closest('details')).toBeNull();
+        expect(up().querySelector('.vfs-node-list__button-label')).toBeNull();
+        up().click();
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('/'));
+        expect(selector.value).toBe('/'); expect(up().hidden).toBe(true);
         expect(createProject().hidden).toBe(false); expect(createSession().hidden).toBe(true);
         await expect(workbench.createResource()).rejects.toThrow('请在项目内创建会话');
     } finally {

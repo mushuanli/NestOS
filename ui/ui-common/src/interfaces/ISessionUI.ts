@@ -8,6 +8,7 @@ interface IRegularMenuItem<TItem extends object = Record<string, unknown>> {
     label: string;
     iconHTML?: string; iconOnly?: boolean;
     disabled?: boolean;
+    danger?: boolean;
     type?: 'item'; // 'type' 是可辨识的属性
     hidden?: (item: TItem) => boolean;
     /** Custom click handler. When provided, bypasses the command-bus dispatch. */

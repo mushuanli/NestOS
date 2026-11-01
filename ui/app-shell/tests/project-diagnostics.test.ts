@@ -129,3 +129,15 @@ it('preserves repair choices across status refreshes and quotes a configuration 
     expect(next.querySelector<HTMLInputElement>('input[type=text]')!.value).toBe("/srv/a'b/config.toml");
     expect(next.querySelector('pre')!.textContent).toContain("--config '/srv/a'\\''b/config.toml' grant owner docs ro --execute");
 });
+
+it('embeds project diagnostics without a second modal and releases subscriptions on close', async () => {
+    const d = diagnostics(), controller = new AbortController(), container = document.createElement('section');
+    document.body.append(container);
+    const closed = showDiagnostics({container, diagnostics:d.port, title:t('diagnostics.projectStatus'), signal:controller.signal});
+    await vi.waitFor(() => expect(d.port.onChange).toHaveBeenCalled());
+    expect(container.querySelector('.diagnostic-dialog--embedded')).not.toBeNull();
+    expect(container.querySelector('dialog')).toBeNull();
+    expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled();
+    controller.abort(); await closed;
+    expect(d.stop).toHaveBeenCalled(); expect(container.childElementCount).toBe(0);
+});

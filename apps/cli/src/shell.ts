@@ -27,7 +27,7 @@ export class NodeNativeShell implements INativeShell {
             timeoutMs: options.timeoutMs,
             signal: options.signal,
             onOutput: options.onOutput,
-            env: safeEnvironment(),
+            env: {...safeEnvironment(),...options.env},
         });
     }
 }
@@ -49,7 +49,7 @@ export class OciSandboxShell implements INativeShell {
         const shellCommand = command === 'sh' && args[0] === '-c' ? args[1] : quote([command, ...args]);
         const grants = await this.grants();
         requireSessionWorkspace(grants);
-        const runArgs = sandboxArgs(this.workflow, grants, shellCommand, options.cwd);
+        const runArgs = sandboxArgs(this.workflow, grants, shellCommand, options.cwd, options.env);
         return runProcess(this.engine, runArgs, {
             timeoutMs: options.timeoutMs,
             signal: options.signal,
@@ -180,8 +180,9 @@ function sandboxArgs(
     grants: WorkspaceGrant[],
     shellCommand: string,
     cwd?: string,
+    env?: Record<string,string>,
 ): string[] {
-    const { args, image } = sandboxBaseArgs(workflow, grants, cwd, false);
+    const { args, image } = sandboxBaseArgs(workflow, grants, cwd, false, env);
     return [...args, image, '/bin/sh', '-c', shellCommand];
 }
 

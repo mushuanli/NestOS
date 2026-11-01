@@ -8,7 +8,7 @@
 - **itookit**：pnpm monorepo，承载 **NestOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
 - 工具链：`pnpm@10.20.0`（`workspace:*`）、TypeScript 5.9 strict（`target: ES2022`、`moduleResolution: bundler`，见 `tsconfig.base.json`）
 - 无前端框架：原生 DOM + TypeScript
-- 19 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 12 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
+- 19 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 13 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
 
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
@@ -126,3 +126,9 @@ LLMProvider (云厂商) → LLMConnection (tier→model) → AgentDefinition (sy
 - Provider 实现: `https://github.com/mushuanli/driver-llm/blob/main/src/providers/`
 - 联网搜索: `resolveWebSearchStrategy` → `WebSearchMode`（详见 [联网搜索](./doc/web-search.md)）
 - 详见 [架构设计](./doc/architecture.md)
+
+## 项目身份约定
+
+- 新项目 ID 使用唯一、易读的字母数字标识，可含 `-`、`_`，以字母或数字开头，长度 1–64；禁止用 UUID、时间戳或随机十六进制串生成项目 ID。按名称生成时重名追加 `-2`、`-3`，唯一性比较不区分大小写。会话与操作 ID 继续遵循既有 UUID/ULID 规则。
+- 项目 ID 在创建时确定，创建后不可修改，删除后也不复用；项目名称可以修改。历史 ID 保持兼容，不为迁移名称改写既有身份。
+- 系统保留项目称为“本地”（Local），新安装默认 ID 为 `local`；用户可在设置中修改其名称。其身份独立于用户选择的默认项目，无论名称如何修改，都不可删除。

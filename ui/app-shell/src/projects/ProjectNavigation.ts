@@ -1,9 +1,10 @@
+import {showProjectSettings} from './project-settings';
 import {projectStatusLabel} from '../diagnostics/presentation';
 import {diagnosticReasonText} from '@itookit/app-settings';
 import { sessionCreationReason } from './session-creation-policy';
 import { fileFirst, projectItems } from './navigation-policy';
 import { remapProjectPath } from './project-paths';
-import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS, ACTION_ICONS } from '@itookit/common';
+import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS, PROJECT_ACTION_ICONS } from '@itookit/common';
 import { ProjectSyncStatusIndicator, projectSyncIcon } from './sync/indicator';
 import type { ProjectSyncIndicator } from './sync/presentation';
 import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget } from '@itookit/app-contracts';
@@ -16,6 +17,7 @@ import { showProjectDefaultSettings } from './project-default-settings';
 interface Actions {
     refresh?(): Promise<void>;
     projectRenamed?(from: ProjectFolder, to: ProjectFolder): void;
+    projectSettings?(projectId: string): Promise<void>;
     projectStatus?(projectId: string): Promise<void>;
     projectMenu?(event: MouseEvent, project: ProjectFolder): Promise<void>;
     projectsChanged?(projects: ProjectFolder[]): void;
@@ -36,6 +38,7 @@ export class ProjectNavigation {
     readonly header = document.createElement('div');
     readonly toolbarContainer = document.createElement('span');
     readonly options: Pick<VFSColumnsOptions, 'navigationToolbarOptions'>;
+    private readonly up = document.createElement('button');
     private readonly create = document.createElement('button');
     private readonly selector: ScopeSelector;
     private readonly retry = document.createElement('button');
@@ -44,6 +47,7 @@ export class ProjectNavigation {
     readonly overflow = {root: this.menu, content: this.menuContent};
     private readonly projectActions = document.createElement('button');
     private readonly settings = document.createElement('button');
+    private readonly overflowSettings = document.createElement('button');
     private settingsPending = false;
     private defaultProjectId?: string;
     private readonly menuEvents = new AbortController();
@@ -62,8 +66,9 @@ export class ProjectNavigation {
     private pendingDeletions = 0;
     constructor(private readonly projects: ProjectService, private readonly ui: () => VFSUIShell | undefined, private readonly actions: Actions) {
         this.syncStatus = new ProjectSyncStatusIndicator(() => {
+            this.menu.open = false;
             if (this.project) void this.actions.syncStatus?.(this.project.project.id).catch(this.actions.report);
-        });
+        }, true);
         this.selector = new ScopeSelector({ label: t('project.workspace'), onError: actions.report,
             select: async (value, signal) => {
                 if (value === '@new-project') await actions.createProject('/');
@@ -73,7 +78,7 @@ export class ProjectNavigation {
         this.stopRemote = this.projects.remoteMounts?.onChange(() => {void this.updateRemoteStatus();});
         this.updateHeader([], 0);
         this.options = {
-            navigationToolbarOptions: { variant: 'plain', definitions: [
+            navigationToolbarOptions: { variant: 'plain', iconOnlyActions: ['create-project'], definitions: [
                 { id: 'create-project', label: t('project.create'), iconHTML: FILE_BROWSER_ICONS.addFolder, placement: () => this.project ? 'hidden' : 'toolbar',
                     run: async () => { await this.actions.createProject('/'); } },
                 { id: 'refresh', label: t('action.refresh'), iconHTML: FILE_BROWSER_ICONS.refresh, placement: 'toolbar',
@@ -98,6 +103,9 @@ export class ProjectNavigation {
     }
     private buildHeader(): void {
         this.header.className = 'workbench-project-navigation';
+        this.button(this.up, t('workbench.allProjects'), () => this.choose('/', this.menuEvents.signal));
+        this.up.dataset.action = 'project-up';
+        decorateButton(this.up, FILE_BROWSER_ICONS.up, t('workbench.allProjects'), true);
         this.button(this.create, t('project.createSession'), () => this.createSession());
         this.create.className = 'workbench-project-navigation__create';
         decorateButton(this.create, FILE_BROWSER_ICONS.newSession, t('project.createSession'), true);
@@ -106,20 +114,29 @@ export class ProjectNavigation {
         this.selector.element.oncontextmenu = event => { if (this.project) { event.preventDefault(); this.showMenu(event); } };
         this.toolbarContainer.className = 'workbench-project-navigation__transfer';
         this.toolbarContainer.append(this.menu);
-        this.button(this.settings, t('project.default.settings'), () => this.configureDefaultProject());
+        this.button(this.settings, t('project.default.settings'), () => this.configureSettings());
         this.settings.dataset.projectAction = 'settings';
-        decorateButton(this.settings, ACTION_ICONS.settings, t('project.default.settings'));
-        this.menuContent.append(this.settings, this.retry);
+        decorateButton(this.settings, PROJECT_ACTION_ICONS.settings, t('project.default.settings'), true);
+        this.button(this.overflowSettings,t('project.settings'),() => this.configureSettings());
+        this.overflowSettings.dataset.projectAction = 'settings';
+        this.menuContent.append(this.overflowSettings, this.retry);
         this.button(this.remoteState, t('diagnostics.projectStatus'), async () => {if (this.project) await this.actions.projectStatus?.(this.project.project.id);});
         this.remoteState.className = 'project-remote-status'; this.remoteState.hidden = true;
-        this.header.append(this.selector.element, this.remoteState, this.syncStatus.element, this.create, this.toolbarContainer);
+        this.header.append(this.selector.element, this.up, this.create, this.settings, this.toolbarContainer);
     }
-    private async configureDefaultProject(): Promise<void> {
+    private async configureSettings(): Promise<void> {
         if (this.settingsPending) return;
-        this.settingsPending = true; this.settings.disabled = true;
-        try { await showProjectDefaultSettings(this.projects, this.menuEvents.signal,
-            async () => { await this.refresh(); await this.actions.refresh?.(); }); }
-        finally { this.settingsPending = false; this.settings.disabled = false; }
+        this.settingsPending = true; this.settings.disabled = this.overflowSettings.disabled = true;
+        const selected = this.project;
+        const changed = async () => {await this.refresh(); await this.actions.refresh?.();};
+        try {
+            if (selected && this.actions.projectSettings) await this.actions.projectSettings(selected.project.id);
+            else if (selected) await showProjectSettings(this.projects,selected.project.id,this.menuEvents.signal,async (from,to) => {
+                this.actions.projectRenamed?.(from,to); await changed();
+            });
+            else await showProjectDefaultSettings(this.projects,this.menuEvents.signal,changed);
+        }
+        finally { this.settingsPending = false; this.settings.disabled = this.overflowSettings.disabled = false; }
     }
     private buildMenu(): void {
         this.menu.className = 'workbench-project-navigation__menu';
@@ -135,7 +152,7 @@ export class ProjectNavigation {
             const rect = summary.getBoundingClientRect(); this.menu.open = false;
             this.showMenu(new MouseEvent('contextmenu', { clientX: rect.left, clientY: rect.bottom }));
         });
-        panel.append(this.projectActions); this.menu.append(summary, panel);
+        panel.append(this.syncStatus.element, this.projectActions); this.menu.append(summary, panel);
         this.menu.addEventListener('keydown', event => {
             if (event.key === 'Escape') { this.menu.open = false; summary.focus(); }
         });
@@ -216,10 +233,13 @@ export class ProjectNavigation {
         if (revision === this.revision) this.ui()?.refreshList();
     }
     private updateHeader(projects: ProjectFolder[], pending: number): void {
+        this.up.hidden = !this.project;
         this.pendingDeletions = pending;
         this.projectChoices = [...projects].sort((a, b) => Number(b.project.id === this.defaultProjectId) - Number(a.project.id === this.defaultProjectId));
         const project = this.project;
+        for (const button of [this.settings,this.overflowSettings]) decorateButton(button,PROJECT_ACTION_ICONS.settings,t(project ? 'project.settings' : 'project.default.settings'),button === this.settings);
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
+        delete this.settings.dataset.status;
         void this.updateRemoteStatus();
         this.updateCreation();
         this.projectActions.hidden = !project || !this.actions.projectMenu;
@@ -231,15 +251,15 @@ export class ProjectNavigation {
         const projectId = this.project?.project.id, remote = this.projects.remoteMounts, revision = ++this.stateRead;
         this.remoteState.hidden = !projectId || !this.actions.projectStatus || !remote?.list(projectId).length;
         if (this.remoteState.hidden || !projectId) return;
-        decorateButton(this.remoteState, ACTION_ICONS.info, t('diagnostics.projectStatus'), true);
+        decorateButton(this.settings, PROJECT_ACTION_ICONS.settings, t('diagnostics.projectStatus'), true);
         try {
             const state = await remote?.projectStatus?.(projectId);
             if (revision !== this.stateRead || !state) return;
-            this.remoteState.dataset.status = state.status;
-            const label = t('diagnostics.projectState', {state: projectStatusLabel(state)});
-            decorateButton(this.remoteState, state.status === 'offline' || state.status === 'degraded' ? FEEDBACK_ICONS.warning : ACTION_ICONS.info, label, true);
-            this.remoteState.title = [label, ...(state.issue ? [state.issue.code, diagnosticReasonText(state.issue.reason)] : []), ...state.mounts.flatMap(mount => mount.failure ? [mount.failure.code, mount.failure.reason ? diagnosticReasonText(mount.failure.reason) : ''] : []).filter(Boolean)].filter(Boolean).join(' · ');
-        } catch {if (revision === this.stateRead) decorateButton(this.remoteState, FEEDBACK_ICONS.warning, t('diagnostics.statusFailed'), true);}
+            this.settings.dataset.status = state.status;
+            const label = t('project.settings') + ' · ' + t('diagnostics.projectState', {state: projectStatusLabel(state)});
+            decorateButton(this.settings, state.status === 'offline' || state.status === 'degraded' ? PROJECT_ACTION_ICONS.warning : PROJECT_ACTION_ICONS.settings, label, true);
+            this.settings.title = [label, ...(state.issue ? [state.issue.code, diagnosticReasonText(state.issue.reason)] : []), ...state.mounts.flatMap(mount => mount.failure ? [mount.failure.code, mount.failure.reason ? diagnosticReasonText(mount.failure.reason) : ''] : []).filter(Boolean)].filter(Boolean).join(' · ');
+        } catch {if (revision === this.stateRead) decorateButton(this.settings, PROJECT_ACTION_ICONS.warning, t('diagnostics.statusFailed'), true);}
     }
     private creationProject(): ProjectFolder | undefined {
         if (this.project) return this.project;

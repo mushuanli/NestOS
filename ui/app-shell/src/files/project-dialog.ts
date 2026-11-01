@@ -21,7 +21,7 @@ export function showNameDialog(title: string, label: string, signal: AbortSignal
         cancel.onclick = close; dialog.oncancel = event => { event.preventDefault(); close(); };
         form.onsubmit = event => {
             event.preventDefault(); if (submit.disabled) return; submit.disabled = true;
-            const inputs = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input, select, button')).filter(item => item !== cancel && item !== submit && !item.disabled);
+            const inputs = Array.from(form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>('input, textarea, select, button')).filter(item => item !== cancel && item !== submit && !item.disabled);
             inputs.forEach(item => { item.disabled = true; });
             void save(input.value.trim()).then(close).catch(error => { status.textContent = error.message; })
                 .finally(() => { submit.disabled = false; inputs.forEach(item => { item.disabled = false; }); });
@@ -36,6 +36,10 @@ export async function showProjectDialog(projects: ProjectService, parent: string
     created: (path: string) => Promise<void>): Promise<void> {
     const controller = new AbortController();
     const fields = document.createElement('div');
+    const idLabel = document.createElement('label'); idLabel.textContent = t('project.id');
+    const projectId = document.createElement('input'); projectId.setAttribute('aria-label', t('project.id'));
+    projectId.pattern = '[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}'; projectId.maxLength = 64; idLabel.append(projectId); fields.append(idLabel);
+    const idHint = document.createElement('p'); idHint.textContent = t('project.idHint'); fields.append(idHint);
     const group = document.createElement('label'); group.textContent = t('project.group');
     const select = document.createElement('select');
     const root = document.createElement('option'); root.value = ''; root.textContent = t('project.root'); select.append(root);
@@ -59,8 +63,8 @@ export async function showProjectDialog(projects: ProjectService, parent: string
     const abort = () => controller.abort(); signal.addEventListener('abort', abort, { once: true });
     try { await showNameDialog(t('project.create'), t('project.name'), signal, async name => {
         const project = remote?.isRemote()
-            ? await projects.createRemote(name, select.value || null, remote.connection.value, remote.path.value.trim(), remote.writable.checked ? 'rw' : 'ro', { signal: controller.signal, timeoutMs: 10000, createDirectory:remote.createDirectory.checked })
-            : await projects.create(name, select.value || null, directory);
+            ? await projects.createRemote(name, select.value || null, remote.connection.value, remote.path.value.trim(), remote.writable.checked ? 'rw' : 'ro', { signal: controller.signal, timeoutMs: 10000, createDirectory:remote.createDirectory.checked, projectId:projectId.value.trim() || undefined })
+            : await projects.create(name, select.value || null, directory, projectId.value.trim() || undefined);
         await created(project.path);
     }, fields); } finally { controller.abort(); signal.removeEventListener('abort', abort); }
 }

@@ -7,9 +7,40 @@ pub fn command(script: &str, cwd: &str, mounts: &[Mount]) -> Result<Command, Str
     session_command(script, cwd, mounts, NetworkAccess::Deny)
 }
 
+/// Values travel as process environment entries, never as shell source.
+pub fn command_with_environment(script: &str, cwd: &str, mounts: &[Mount], env: &std::collections::BTreeMap<String, String>) -> Result<Command, String> {
+    if env.len() > 64 { return Err("PROJECT_ENV_TOO_MANY".into()); }
+    for (key, value) in env {
+        if key.is_empty() || key.len() > 128 || !key.bytes().enumerate().all(|(i,c)| c == b'_' || c.is_ascii_alphabetic() || i > 0 && c.is_ascii_digit()) {
+            return Err("PROJECT_ENV_INVALID_NAME".into());
+        }
+        if value.len() > 8192 || value.contains('\0') { return Err("PROJECT_ENV_INVALID_VALUE".into()); }
+        if key.starts_with("NESTOS_") || key.starts_with("FS_AGENT_") || key.starts_with("PI_AGENT_")
+            || ["LD_PRELOAD","LD_LIBRARY_PATH","CODEX_HOME","CLAUDE_CONFIG_DIR","DSH_HOME"].contains(&key.as_str()) {
+            return Err("PROJECT_ENV_RESERVED".into());
+        }
+    }
+    let mut command = command(script,cwd,mounts)?;
+    command.envs(env);
+    Ok(command)
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_environment_is_literal_and_rejects_reserved_names() {
+        let root = std::env::temp_dir().join(format!("session-bash-project-env-{}",std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mounts = [Mount {source:root.to_string_lossy().into(),target:"/workspace".into(),writable:true}];
+        let env = std::collections::BTreeMap::from([("GIT_AUTHOR_NAME".into(),"Rain Li $(literal)".into())]);
+        let built = command_with_environment("true","/workspace",&mounts,&env).unwrap();
+        assert!(built.get_envs().any(|(key,value)| key == "GIT_AUTHOR_NAME" && value == Some(std::ffi::OsStr::new("Rain Li $(literal)"))));
+        let denied = std::collections::BTreeMap::from([("LD_PRELOAD".into(),"value".into())]);
+        assert_eq!(command_with_environment("true","/workspace",&mounts,&denied).unwrap_err(),"PROJECT_ENV_RESERVED");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn a_session_without_a_mount_explains_how_to_enable_bash() {

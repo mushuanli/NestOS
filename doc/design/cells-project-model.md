@@ -53,7 +53,7 @@ itookit 保存自己的项目 ID 与服务端项目引用，显示「服务器�
 
 默认隔离网络；`projects.network=true` 明确允许联网，并只读提供解析器和证书文件。命令和运行时 home 来自部署配置，远程请求不能修改。没有可用的 bubblewrap/user namespaces 时执行拒绝启动，不能退回直接宿主执行。
 
-进程执行和 Codex turn 与文件访问共用 FileGate。Codex 收到完成事件后失效文件 revision 并释放 gate；中断需确认原生完成，断开控制面板不会被当作完成。清理不能确认时保留未知/拒绝状态。当前 gate 是安装级，运行期间其他项目的文件访问也可能收到 EBUSY；项目级并发、强跨进程 lease 和 VMM guest 回收属于后续工作。
+进程执行和 Codex turn 与文件访问共用 FileGate。Codex 收到完成事件后失效文件 revision 并释放 gate；中断需确认原生完成，断开控制面板不会被当作完成。清理不能确认时保留未知/拒绝状态。原生 turn 只排斥文件修改；stat、目录、内容、SeqFile 查询、项目搜索和 MCP 目录读取可并发进行，只读请求不再使新 turn 准入失败。写保护仍是安装级，其他项目的修改可能收到 EBUSY；project_exec 和挂载变更保留完整排他，未知进程回收仍封闭两类访问。并发读取不是内容快照；弱 revision 额外核对大小、mtime 和 ctime，防止原地修改继续复用旧校验值。项目级写保护、强跨进程 lease 和 VMM guest 回收属于后续工作。
 
 客户端根目录探测收到 `EBUSY` 时保留连接可达，项目状态显示“远程文件暂时忙碌”，不将其投影为离线或阻止新会话草稿；文件操作仍遵守远端 FileGate，任务结束后重试。诊断保存 `root-probe`、`EBUSY`、`busy`、操作关联 ID 与耗时，成功探测清除当前忙碌状态，保留历史日志。项目侧栏的新会话与状态入口使用带 title/aria-label 的图标按钮，为项目选择框保留宽度。项目状态弹窗固定顶部标题和底部操作栏，关闭按钮位于底部右侧，仅内容区随长挂载列表及日志滚动。
 
@@ -511,3 +511,52 @@ cells 的原生历史、执行器状态与实际写锁是执行基准；httpd jo
 上下文读取边界之外，客户端直接消费既有 thread/tokenUsage/updated：按 thread 身份更新最近 last 占用及容量，不因累计 total、缺失字段或低百分比舍入显示为零。指标 RPC 在途遇到新事件时保留新上下文，额度/费用独立合并，不增加轮询。Codex 额度读取兼容 rateLimits 单桶及 rateLimitsByLimitId 中明确的当前 limitId/codex 桶；单桶仅有余额、映射中有窗口百分比时优先窗口，不猜测无关桶的模型归属。有效额度包含剩余 0%，额度缺失才回退价格估算。
 
 上下文详情明确显示“已用”比例和“容量来源：当前会话的原生上报值”，输入占用条与会话信息面板共用同一投影。容量仍使用 limitTokens 原值；未上报时显示未知，不以固定 1M、模型宣传上限或目录默认值替代当前会话容量。
+
+### 远程项目执行环境
+
+远程项目菜单的“执行环境”选择节点管理员定义的执行配置档，并保存项目普通环境变量。配置保存在节点项目目录，与项目修订号一起做 CAS；拒绝未知配置档、未授权 principal、只读项目和旧修订。旧节点未声明 `projectExecutionEnvironment` 时不发送新协议。HTTP 应用通过同一服务端口转发配置。
+
+节点 `[projects]` 的 `execution_profiles` 定义身份、环境来源及只读配置挂载，例如：
+
+```toml
+[[projects.execution_profiles]]
+id = "li-dev"
+name = "Li development"
+user = "li"
+principals = ["developer"] # Authentication principal ID, not the Unix username.
+inherit = ["HTTPS_PROXY", "SSH_AUTH_SOCK"]
+
+[projects.execution_profiles.variables]
+GIT_AUTHOR_NAME = "Rain Li"
+GIT_AUTHOR_EMAIL = "lizlok@gmail.com"
+GIT_COMMITTER_NAME = "Rain Li"
+GIT_COMMITTER_EMAIL = "lizlok@gmail.com"
+
+[[projects.execution_profiles.mounts]]
+source = "/home/li/.gitconfig"
+target = "/home/li/.gitconfig"
+```
+
+`user` 是节点机器的系统账号。节点以目标 UID 运行时保留该身份；不同 UID 需要 root 权限，子进程清除附加组后切换 GID/UID。不会加载 `.bashrc` 或登录 shell；`inherit` 读取节点服务进程启动环境，服务管理器需显式注入变量。主目录与配置文件不会因设置 HOME 而自动可见，所需文件由管理员显式只读挂载。SSH socket 等其他资源也需显式可见，本例仅继承其路径不能自动获得 socket。
+
+环境优先级：现有驱动隔离默认值 → 配置档继承值 → 配置档固定值 → 项目覆盖。配置档用户提供 USER、LOGNAME、HOME；配置档或项目可再覆盖 HOME。平台身份变量及驱动状态目录不可覆盖。变量值原样作为进程参数传递，不做 shell 展开。单层最多 64 项，键最长 128 字节，值最长 8192 字节；拒绝 NUL。密钥应由配置档继承节点服务变量，不写项目普通变量；配置档源环境和挂载不返回客户端。
+
+保存执行配置会提升修订并关闭该项目旧的 harness 连接，已有活动执行由项目忙碌边界拒绝配置变更；新启动的会话与项目进程使用新环境。配置变更日志仅记录项目 ID、阶段、结果、错误码和耗时，不记录变量值。
+
+### 项目 ID 与保留本地项目
+
+新建项目使用唯一、易读 ID，规则为 1–64 位字母、数字、短横线或下划线，以字母或数字开头；UUID 不作为新项目 ID。创建对话框允许手填 ID，留空按名称生成 `notes`、`notes-2`，非拉丁名称缺省使用 `project` 及序号。应用项目目录与节点项目 catalog 分别保证大小写不敏感的唯一性。ID 创建后不可修改；重命名仅修改名称及导航路径，不修改文件根和执行身份。
+
+应用 `/etc/project-identities.seq` 事务保留已分配 ID，防止并发创建或删除后重新绑定旧引用；节点 catalog 的 `retired_ids` 记录已撤销身份，重新登记目录分配新 ID。已有项目 ID（包括历史 UUID）保持不变，不批量迁移身份。
+
+系统保留项目由“个人项目”改称“本地”（Local），新安装默认 ID 为 `local`。`/etc/system-local-project.json` 保存保留身份，兼容读取旧 `/etc/system-personal-project.json`；`/etc/personal-project.json` 继续只保存用户选择的默认项目。各项目设置展示所选项目的只读 ID，并允许修改其名称；名称、默认项目选择均不改变其不可删除约束。旧系统保留项目仅迁移显示名称与身份记录位置，不改变 ID、文件或会话。
+
+### 项目设置入口与本地环境
+
+工作台标题的设置按钮、标题“…”菜单和每个项目条目菜单都绑定具体 projectId；选择远程项目时读取其节点执行配置，不读取保留的本地项目。未选择项目的全局设置只管理默认项目选择。设置标题包含当前项目显示名，旧节点缺少执行环境协议时显示具体能力错误，仍允许修改该项目名称。
+
+本地项目环境保存在 `/var/lib/projects/<id>/settings.seq` 的 `environment` 记录，使用独立 revision CAS；不同项目隔离，改名不搬迁配置。普通变量默认应用到新会话执行上下文的 Shell/TTY，单次调用显式环境可以覆盖默认值。CLI native/OCI 与桌面 Session/Flow Bash 通过进程环境参数传递变量，不拼接 shell 文本、不修改宿主 process.env。Web 无本地执行端口时仅保存配置，不提供宿主进程能力。远程项目继续由节点管理环境和配置档。诊断仅记录项目、操作、阶段、修订、数量、错误分类及耗时，不输出变量值。
+
+DSH 展示投影不将明确来源为 agent-instructions、runtime-context、tool-jobs 的注入消息当作用户提问；原生日志与接纳核对仍保留完整事件。reasoning 经驱动标记为 assistant.reasoning，由默认聊天视图作为助手思考默认折叠展示，不再显示为系统正文。命令结果、错误、审批及未知来源记录继续沿用原展示。
+
+远程会话的单项菜单、侧栏多选和右侧目录多选统一经宿主确认与原生管理端口处理，不使用普通文件删除。所选会话不能删除但全部允许归档时，明确询问是否改为归档并说明保留历史和项目文件，确认前不执行。存在既不可删除又不可归档的项时显示原因，不自动删除子集或归档；批量部分成功后保留进度，显式重试跳过已完成项，原生结果未知仍沿用原 journal 核对。

@@ -45,7 +45,7 @@ function scopedProcesses(files: Parameters<Factory>[1], grants: Array<[string, s
             options?.signal?.addEventListener('abort', cancel, { once: true });
             const output = shellOutputChannel(options?.onOutput);
             const result = invoke<[string, string, number]>('session_shell_exec', {
-                onOutput: output.channel, command: args[1], cwd, mounts: grants, requestId, timeoutMs: options?.timeoutMs ?? 30_000,
+                onOutput: output.channel, command: args[1], cwd, mounts: grants, env: options?.env, requestId, timeoutMs: options?.timeoutMs ?? 30_000,
             });
             active.set(requestId, result);
             try { const [stdout, stderr, code] = await result; return { stdout, stderr, code }; }

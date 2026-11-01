@@ -1,13 +1,16 @@
-import { it, expect, vi } from 'vitest';
+import { it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryBackend, createFileSystemSource, createFileSystemView, createVFS, FSError, type FileSystemSourceOwner } from '@itookit/vfs-core';
 import { createSessionBrowser, folderBrowserPath } from '../src/session/session-browser';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { MCPRemoteConnections } from '../src/projects/mcp-remote-connections';
 import { mockCellsDiscovery } from './helpers/mcp-discovery';
 
+beforeEach(() => { mockCellsDiscovery({version:1,fileProtocol:'fs-agent-http-v1',httpEndpoint:'/',serverId:null,harness:false}); });
+afterEach(() => { vi.restoreAllMocks(); });
+
 it('removes the remote identity if navigation creation fails before a grant is published', async () => {
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: {
-        setCredential() {}, async dispose() {}, async open() { throw new Error('not contacted'); },
+        resolveCredential:()=>'fixture-secret', setCredential() {}, async dispose() {}, async open() { throw new Error('not contacted'); },
     } });
     try {
         const remote = runtime.projects.remoteMounts!;
@@ -29,7 +32,7 @@ it('moves files through a writable remote subdirectory of an ordinary project', 
     const backend = new MemoryBackend(); await backend.init();
     await backend.write('/note.md', new TextEncoder().encode('remote content'));
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: {
-        setCredential() {}, async dispose() {}, async open() {
+        resolveCredential:()=>'fixture-secret', setCredential() {}, async dispose() {}, async open() {
             return createFileSystemSource({ backend, viewId: 'remote-transfer', access: 'rw' });
         },
     } });
@@ -65,7 +68,7 @@ it('opens remote project files and Session workspaces using only the remote refe
     const backend = new MemoryBackend(); await backend.init();
     await backend.write('/note.md', new TextEncoder().encode('remote content'));
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: {
-        setCredential() {}, async dispose() {}, async open() {
+        resolveCredential:()=>'fixture-secret', setCredential() {}, async dispose() {}, async open() {
             return createFileSystemSource({ backend, viewId: 'remote-root', access: 'rw' });
         },
     } });
@@ -104,7 +107,7 @@ it('shares project remote grants with Sessions, retains remote routing during sh
     await remoteBackend.init(); await remoteBackend.write('/guide.md', new TextEncoder().encode('remote'));
     const owners: FileSystemSourceOwner[] = [];
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web',
-        remoteSourceProvider: { setCredential() {}, async dispose() {}, open: async () => {
+        remoteSourceProvider: { resolveCredential:()=>'fixture-secret', setCredential() {}, async dispose() {}, open: async () => {
             const owner = await createFileSystemSource({ backend: remoteBackend, viewId: 'remote-test', access: 'ro' });
             owners.push(owner); return owner;
         } } });
@@ -150,7 +153,7 @@ it('never falls back to a local same-name directory when the remote is unavailab
 it('disables only the disconnected project and restores existing Session views after recovery', async () => {
     let connected = true;
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: {
-        setCredential() {}, async dispose() {}, async open() {
+        resolveCredential:()=>'fixture-secret', setCredential() {}, async dispose() {}, async open() {
             const owner = await createFileSystemSource({ backend: new MemoryBackend(), viewId: 'remote', access: 'rw' });
             await owner.fs.driver.createFile({ parentPath: '/', name: 'remote.txt', content: 'remote' });
             const stat = owner.fs.driver.getNode.bind(owner.fs.driver);
@@ -194,6 +197,7 @@ it('shares named connections across distinct remote roots and reuses the same pr
     const opened: Array<{ credentialRef: string; username?: string }> = [];
     const secrets = new Map<string, string>();
     const provider = {
+        resolveCredential: (id: string) => secrets.get(id),
         setCredential(id: string, secret: string) { secrets.set(id, secret); }, async dispose() {},
         async open(connection: { credentialRef: string; username?: string }) {
             opened.push(connection);
@@ -265,7 +269,7 @@ it('shares named connections across distinct remote roots and reuses the same pr
 
 /** Shared provider that exposes a writable-looking `/a` directory for one export alias. */
 function memoryProvider(hooks: { onOpen?: (connection: { credentialRef: string }) => void } = {}) {
-    return { setCredential() {}, async dispose() {}, async open(connection: { credentialRef: string }) {
+    return { resolveCredential:()=>'fixture-secret', setCredential() {}, async dispose() {}, async open(connection: { credentialRef: string }) {
         hooks.onOpen?.(connection);
         const backend = new MemoryBackend(); await backend.init(); await backend.mkdir('/a');
         return createFileSystemSource({ backend, viewId: 'remote', access: 'ro' });
@@ -363,7 +367,7 @@ it('skips damaged catalog records instead of blocking startup', async () => {
 it('releases the replaced source even when view invalidation fails', async () => {
     const disposed: string[] = [];
     let failAfter = false;
-    const provider = { setCredential() {}, async dispose() {}, async open(connection: { credentialRef: string }) {
+    const provider = { resolveCredential:()=>'fixture-secret', setCredential() {}, async dispose() {}, async open(connection: { credentialRef: string }) {
         const backend = new MemoryBackend(); await backend.init(); await backend.mkdir('/a');
         const owner = await createFileSystemSource({ backend, viewId: connection.credentialRef, access: 'ro' });
         const dispose = owner.dispose.bind(owner);
@@ -418,8 +422,8 @@ it('binds a server-managed writable subdirectory while keeping workbench Session
     const harnessClose=vi.fn(async () => {}), stopEvents=vi.fn(), subscribeEvents=vi.fn(() => stopEvents), harness=vi.fn(() => ({close:harnessClose,subscribe:subscribeEvents}));
     const client={register,read:async()=>record,close:vi.fn(async()=>{}),harness} as unknown as import('@itookit/cells-driver').ProjectClient;
     const runtime=await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web',remoteSourceProvider:{
-        setCredential() {},async dispose() {},projects:()=>client,
-        resolveCredential:()=>'secret',discover:vi.fn(async()=>{throw new Error('Use generic MCP discovery');}),
+        resolveCredential:()=>'fixture-secret', setCredential() {},async dispose() {},projects:()=>client,
+        discover:vi.fn(async()=>{throw new Error('Use generic MCP discovery');}),
         async open() {return createFileSystemSource({backend:remoteBackend,viewId:'server-files',access:'rw'});},
     }});
     const fetch = mockCellsDiscovery({version:1,fileProtocol:'fs-agent-http-v1',httpEndpoint:'https://files.test',serverId:'node',harness:true,projects:true,projectProtocol:'fs-agent-project-v1'});
@@ -444,7 +448,7 @@ it('binds a server-managed writable subdirectory while keeping workbench Session
 
 it('restores missing capability metadata only when verified discovery matches the existing directory grants',async()=>{
     const backend=new MemoryBackend();await backend.init();
-    const runtime=await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web',remoteSourceProvider:{setCredential() {},dispose:async()=>{},
+    const runtime=await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web',remoteSourceProvider:{resolveCredential:()=>'fixture-secret', setCredential() {},dispose:async()=>{},
         open:async()=>createFileSystemSource({backend,viewId:'recover-binding',access:'ro'})}});
     try {
         const remote=runtime.projects.remoteMounts!;

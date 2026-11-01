@@ -667,6 +667,15 @@
 .tool-connections__form [data-import-status]:empty { display: none; }
 .tool-connections__help { color: var(--text-secondary, #666); font-size: 13px; }
 
+.diagnostic-dialog--embedded { width: 100%; max-height: none; border: 0; background: transparent; }
+.diagnostic-dialog--embedded .diagnostic-dialog__content { max-height: 320px; }
+
+.workbench-project-navigation__menu-items > .project-sync-status { display: flex; width: 100%; }
+.workbench-project-navigation__menu-items > .project-sync-status[hidden] { display: none; }
+.workbench-project-navigation__menu-items .project-sync-status__button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; text-align: left; border-radius: 5px; }
+.workbench-project-navigation__menu-items .project-sync-status__button:hover { background: var(--vfs-active-bg, #eef2ff); }
+.workbench-project-navigation__menu-items .project-sync-status__button svg { width: 18px; height: 18px; flex: 0 0 18px; }
+
 .workbench-window-navigation { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
 .workbench-window-navigation[hidden] { display: none; }
 .workbench-window-navigation > svg { width: 18px; height: 18px; }

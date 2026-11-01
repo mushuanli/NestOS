@@ -1,3 +1,4 @@
+import {confirmRemoteRemoval} from './remote-session-removal';
 import type { NativeSessionCommand } from '@itookit/app-contracts/services';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import { t } from '@itookit/common';
@@ -21,14 +22,11 @@ export function nativeSessionMenu(manageRemoteSession: ApplicationBackend['manag
         return showNameDialog(t(archived ? 'harness.unarchive' : 'harness.archive'), '', signal,
             () => save({kind: archived ? 'unarchive' : 'archive'}), detail, {hideName: true, confirmLabel: t(archived ? 'harness.unarchive' : 'harness.archive')});
     };
-    const remove = () => {
-        const detail = document.createElement('p'); detail.textContent = t('harness.deleteEffect');
-        return showNameDialog(t('harness.delete'), '', signal, () => save({kind: 'delete'}), detail,
-            {hideName: true, confirmLabel: t('harness.delete')});
-    };
+    const remove = () => confirmRemoteRemoval([{id: target.nativeSessionId!, target: {kind: 'remote', ...target}, capability: caps}],
+        signal, (_item, command) => save(command));
     return [
         ...(caps?.rename ? [{id: 'native-rename', label: t('harness.rename'), onClick: () => { void rename().catch(report); }}] : []),
-        ...(caps?.delete ? [{id: 'native-delete', label: t('harness.delete'), onClick: () => { void remove().catch(report); }}] : []),
+        ...(caps?.delete || !archived && caps?.archive ? [{id: 'native-delete', label: t('harness.delete'), onClick: () => { void remove().catch(report); }}] : []),
         ...(caps?.archive || caps?.unarchive ? [{id: 'native-archive', label: t(archived ? 'harness.unarchive' : caps.archiveDisabled ? 'harness.archiveUnavailable' : 'harness.archive'), disabled: !archived && caps.archiveDisabled, onClick: () => { void archive().catch(report); }}] : []),
     ];
 }

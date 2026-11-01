@@ -16,11 +16,11 @@ it('keeps sidebar actions as icons while exposing busy files without disabling n
         onChange: (listener: () => void) => {changed = listener; return () => {};}, projectStatus: readStatus};
     const navigation = new ProjectNavigation({remoteMounts: remote, navigation: async () => ({project, projects: [project], path: '/', offlineProjectIds: [], pendingDeletions: 0, loadPaths: []})} as never,
         () => undefined, {createProject: vi.fn(), createSession, createChild: vi.fn(), importItems: vi.fn(), exportItems: vi.fn(),
-            report: vi.fn(), retryDeletions: vi.fn(), contentChanged: vi.fn(), projectStatus});
+            report: vi.fn(), retryDeletions: vi.fn(), contentChanged: vi.fn(), projectStatus, projectSettings: projectStatus});
     document.body.append(navigation.header);
     try {
         await navigation.sync('/');
-        const status = navigation.header.querySelector<HTMLButtonElement>('.project-remote-status')!;
+        const status = navigation.header.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!;
         const create = navigation.header.querySelector<HTMLButtonElement>('.workbench-project-navigation__create')!;
         await vi.waitFor(() => expect(status.title).toContain('EBUSY'));
         expect(status.querySelector('.workbench-icon')).not.toBeNull();

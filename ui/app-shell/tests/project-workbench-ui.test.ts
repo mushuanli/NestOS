@@ -71,11 +71,11 @@ it('creates project Sessions from the selected project and edits its files in th
         }
         const header = navigation.querySelector('.workbench-project-navigation')!;
         expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden], details')).map(button => button.title))
-            .toEqual(['新会话']);
+            .toEqual(['所有项目','新会话','项目设置']);
         expect(header.querySelector('.vfs-toolbar-overflow [data-action="refresh"]')).not.toBeNull();
         expect(header.querySelector('.vfs-toolbar-overflow [data-project-action="settings"]')).not.toBeNull();
         expect([...header.querySelectorAll<HTMLElement>('[data-action]')].map(button => button.dataset.action))
-            .toEqual(['create-project', 'refresh', 'import', 'export']);
+            .toEqual(['project-up', 'create-project', 'refresh', 'import', 'export']);
         const createdProject = vi.spyOn(workbench as any, 'createProject').mockResolvedValue(undefined);
         header.querySelector<HTMLButtonElement>('[data-action="create-project"]')!.click();
         await new Promise(resolve => setTimeout(resolve, 0)); expect(createdProject).not.toHaveBeenCalled(); createdProject.mockRestore();

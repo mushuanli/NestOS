@@ -18,7 +18,8 @@ export async function showProjectDefaultSettings(projects: ProjectService, signa
             onConfirm: async element => {
                 if (signal.aborted) { done(); return; }
                 const id = element.querySelector<HTMLSelectElement>('#project-default-select')!.value;
-                if (id) { await projects.setDefaultProject(id); await changed(); }
+                if (id) await projects.setDefaultProject(id);
+                await changed();
                 done();
             },
         });

@@ -1,3 +1,7 @@
+import {confirmRemoteRemoval, remoteRemovalItems} from './remote-session-removal';
+import { PROJECT_ACTION_ICONS } from '@itookit/common';
+import {projectFileSource} from '@itookit/app-contracts';
+import {showProjectSettings} from './project-settings';
 import {showDiagnostics} from '../diagnostics/dialog';
 import {withAssistantShortcut} from '../navigation/assistant-actions';
 import {projectAssistantShortcut} from './project-assistant-shortcut';
@@ -443,8 +447,13 @@ export class SessionWorkbench implements WorkspaceController {
             fileCreation: { label: '会话', title: formatDefaultFileTitle(), resolveParent: sessionCreationParent },
             contextMenu: {
                 mapItem: item => projectItems([item])[0] ?? item,
-                bulkItems: (items, defaults) => items.some(item => item.metadata.custom.remoteProject)
-                    ? defaults.filter(entry => !('id' in entry) || !['bulk-delete', 'bulk-move', 'bulk-copy'].includes(entry.id)) : defaults,
+                bulkItems: (items, defaults) => {
+                    const remote = remoteRemovalItems(items);
+                    if (remote) return [...defaults.filter(entry => !('id' in entry) || !['bulk-delete', 'bulk-move', 'bulk-copy', 'bulk-edit-tags'].includes(entry.id)),
+                        {id: 'bulk-delete', label: t('harness.delete'), onClick: () => this.removeRemoteSessions(remote)}];
+                    return items.some(item => item.metadata.custom.remoteProject)
+                        ? defaults.filter(entry => !('id' in entry) || !['bulk-delete', 'bulk-move', 'bulk-copy'].includes(entry.id)) : defaults;
+                },
                 items: projectIconMenu(withAssistantShortcut((item, defaults) => {
                     if (item.id === '/' && this.projects) return [{id: 'create-project', label: t('project.create'), onClick: () => this.createProject('/')}];
                     if (isFlowPath(item.id)) return this.flows?.menu.items?.(item,
@@ -483,13 +492,14 @@ export class SessionWorkbench implements WorkspaceController {
                         ] : [];
                     }
                     if (target.kind === 'favorite' || target.kind === 'favorites') return [];
+                    if ((target.kind === 'project-files' || target.kind === 'files') && item.type === 'file') defaults = [...defaults, {id: 'download-file', label: t('project.downloadFile'), onClick: () => this.downloadProjectFile(item.id).catch(error => this.report(error))}];
                     if ((target.kind === 'project-files' || target.kind === 'files') && item.type === 'directory') {
                         const entries = ['file', 'directory'].map(type => ({
                             disabled: item.metadata.custom._readOnly === true || item.metadata.custom._disabled === true,
                             id: type === 'file' ? 'create-file' : 'create-folder', label: t(type === 'file' ? 'project.createFile' : 'project.createFolder'),
                             onClick: () => this.createDirectoryEntry(item.id, type as 'file' | 'directory'),
                         }));
-                        return [...(target.kind === 'project-files' && target.path === WORKSPACE_PATH ? twin : defaults.filter(entry => !('id' in entry) || !['create-in-folder-session', 'create-in-folder-folder'].includes(entry.id))), ...entries];
+                        return [...(target.kind === 'project-files' && target.path === WORKSPACE_PATH ? twin : defaults.filter(entry => !('id' in entry) || !['create-in-folder-session', 'create-in-folder-folder'].includes(entry.id))), ...entries, {id: 'upload-file', label: t('project.uploadFile'), disabled: item.metadata.custom._readOnly === true || item.metadata.custom._disabled === true, onClick: () => this.uploadProjectFiles(item.id)}];
                     }
                     if (this.projects && item.metadata?.custom?.projectId)
                         return this.projectEntryMenu(item, defaults);
@@ -639,9 +649,9 @@ export class SessionWorkbench implements WorkspaceController {
         this.container.setAttribute('aria-disabled', String(offline));
     }
 
-    private showProjectStatus(projectId: string): Promise<void> {
+    private showProjectStatus(projectId: string, container?: HTMLElement, signal = this.dialogs.signal): Promise<void> {
         return showDiagnostics({diagnostics: this.backend.diagnostics, remote: this.projects?.remoteMounts,
-            projectId, title: t('diagnostics.projectStatus'), signal: this.dialogs.signal, refreshBinding: () => this.refreshProjectBinding(projectId), remount: () => this.remountProjectDialog(projectId),
+            projectId, container, title: t('diagnostics.projectStatus'), signal, refreshBinding: () => this.refreshProjectBinding(projectId), remount: () => this.remountProjectDialog(projectId),
             configureConnection: async id => {await this.hostContext?.navigate({target: 'mcp', resourceId: '/' + encodeURIComponent(id)});}});
     }
     private projectHarnessMenu(id: string) {
@@ -656,7 +666,8 @@ export class SessionWorkbench implements WorkspaceController {
     private projectEntryMenu(item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]): MenuItem<VFSNodeUI>[] {
         const id = String(item.metadata.custom.projectId), remote = !!item.metadata.custom.remoteProject;
         const hidden = ['create-in-folder-session', 'create-in-folder-folder', ...(item.metadata.custom.protectedProject ? ['delete', 'moveTo'] : []), ...(remote ? ['delete', 'moveTo', 'copyTo', 'duplicate'] : [])];
-        return [...(remote || this.projects?.remoteMounts?.list(id).length ? [{id: 'project-status', label: t('diagnostics.projectStatus'), onClick: () => this.showProjectStatus(id)}] : []), {id: 'create-session', label: t('project.createSession'), disabled: !!this.projects && !!sessionCreationReason(this.projects, id), onClick: () => this.startSessionDraft(item.id)},
+        const entries: MenuItem<VFSNodeUI>[] = [{id: 'create-session', label: t('project.createSession'), disabled: !!this.projects && !!sessionCreationReason(this.projects, id), onClick: () => this.startSessionDraft(item.id)},
+            {id:'project-settings',label:t('project.settings'),onClick:() => this.projectSettingsDialog(id)},
             { id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
             ...defaults.filter(entry => !('id' in entry) || !hidden.includes(entry.id))
                 .map(entry => 'id' in entry && entry.id === 'rename' ? {...entry, onClick: () => this.renameProjectDialog(id)} : entry),
@@ -666,6 +677,18 @@ export class SessionWorkbench implements WorkspaceController {
                 {id: 'unmount-project', label: t('remote.unmountProject'), onClick: () => this.unmountProjectDialog(id)},
             ] : []),
             {type: 'separator'}, ...this.syncMenu.items(id), ...this.projectHarnessMenu(id)];
+        const groups: MenuItem<VFSNodeUI>[][] = [[], [], [], [], []];
+        for (const entry of entries) {
+            if (entry.type === 'separator') continue;
+            const key = entry.id;
+            const group = ['create-session','enter-project'].includes(key) ? 0
+                : key === 'project-settings' ? 1 : key.startsWith('project-sync-') ? 3
+                : ['refresh-project-binding','remount-project','unmount-project','project-harness'].includes(key) ? 4 : 2;
+            groups[group]!.push(entry);
+        }
+        groups[2]!.sort((a,b) => Number('id' in a && a.id === 'delete') - Number('id' in b && b.id === 'delete'));
+        groups[4]!.sort((a,b) => Number('id' in a && a.id === 'unmount-project') - Number('id' in b && b.id === 'unmount-project'));
+        return groups.filter(group => group.length).flatMap((group,index) => index ? [{type:'separator'} as MenuItem<VFSNodeUI>,...group] : group);
     }
     private async closeProjectTabs(path: string): Promise<void> {
         const prefix = folderBrowserPath(path);
@@ -689,6 +712,16 @@ export class SessionWorkbench implements WorkspaceController {
         try {await remote.refreshProjectBinding(id, {timeoutMs: 10000});}
         finally {await this.sidebarUI?.refresh(); await this.projectNavigation?.refresh();}
         if (active === prefix || active?.startsWith(prefix + '/')) await this.openResource(active);
+    }
+    private async projectSettingsDialog(id: string): Promise<void> {
+        await showProjectSettings(this.projects!,id,this.dialogs.signal,async (from,to) => {
+            if (from.path !== to.path) this.remapProjectRoutes(folderBrowserPath(from.path),folderBrowserPath(to.path),to.name);
+            await this.sidebarUI?.refresh(); await this.projectNavigation?.refresh();
+        },async project => {
+            if (projectFileSource(project,this.projects!.remoteMounts).kind === 'remote') {
+                await this.projects!.remoteMounts!.assertUnmountable(id); await this.closeProjectTabs(project.path);
+            }
+        }, (container,signal) => {if (this.projects?.remoteMounts?.list(id).length) void this.showProjectStatus(id,container,signal);});
     }
     private async remountProjectDialog(id: string): Promise<void> {
         const project = await this.projects!.get(id), remote = this.projects!.remoteMounts!;
@@ -1250,6 +1283,7 @@ export class SessionWorkbench implements WorkspaceController {
             session: folder => this.startSessionDraft(folder), project: () => this.createProject('/'),
             entry: (directory, type) => this.createDirectoryEntry(directory, type), report: error => this.report(error),
         });
+        if ((target.kind === 'project-files' || target.kind === 'files') && directoryNode?.type === 'directory') actions.push({id: 'upload-file', label: t('project.uploadFile'), icon: PROJECT_ACTION_ICONS.upload, disabled: directoryNode.metadata._readOnly === true || directoryNode.metadata._disabled === true, run: () => this.uploadProjectFiles(path)});
         if (this.closed || generation !== this.contentVersion) return;
         const search = this.projects && this.search ? await createProjectDirectorySearch(path, this.projects, this.search,
             (row, query) => this.openSearchMatch(row, query)) : undefined;
@@ -1272,7 +1306,7 @@ export class SessionWorkbench implements WorkspaceController {
             select: ids => this.selectDirectoryItems(ids),
             selectedIds: () => this.sidebarUI?.getSnapshot().selectedIds ?? [],
             bulkActions: this.sidebarUI && (target.kind === 'project-files' || target.kind === 'files')
-                ? directoryBulkActions(this.sidebarUI, ids => this.selectDirectoryItems(ids)) : undefined,
+                ? directoryBulkActions(this.sidebarUI, ids => this.selectDirectoryItems(ids)) : this.remoteDirectoryBulkActions(),
             favorite: favorites, search,
             actions });
         list.dataset.compactPath = 'true';
@@ -1309,6 +1343,23 @@ export class SessionWorkbench implements WorkspaceController {
             priority: navigationPriority(node.path),
             disabled: node.metadata._disabled === true, description: localSessionStatus(node.metadata.sessionActivity)?.text
                 || String(node.metadata.navigationDescription ?? node.metadata.harnessLabel ?? '')};
+    }
+    private uploadProjectFiles(path: string): void {
+        const input = document.createElement('input'); input.type = 'file'; input.multiple = true;
+        input.onchange = () => { void (async () => {
+            for (const file of Array.from(input.files ?? [])) {
+                await this.navigationFiles!.driver.createFile({parentPath: path, name: file.name, content: await file.arrayBuffer()});
+            }
+            await this.sidebarUI?.refresh();
+            await this.openResource(path, {reload: true});
+        })().catch(error => this.report(error)); };
+        input.click();
+    }
+    private async downloadProjectFile(path: string): Promise<void> {
+        const content = await this.navigationFiles!.driver.readContent(path, {encoding: 'binary'});
+        const url = URL.createObjectURL(new Blob([content]));
+        const link = document.createElement('a'); link.href = url; link.download = path.split('/').pop()!;
+        link.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
     private async createDirectoryEntry(path: string, type: 'file' | 'directory'): Promise<void> {
         await showNameDialog(t(type === 'file' ? 'project.createFile' : 'project.createFolder'), t('project.newFileName'), this.dialogs.signal, async name => {
@@ -1424,6 +1475,36 @@ export class SessionWorkbench implements WorkspaceController {
         button.onclick = () => { button.disabled = true; void action().catch(error => this.report(error)).finally(() => { button.disabled = false; }); };
         parent.append(button); return button;
     }
+    private remoteDirectoryBulkActions(): NonNullable<import('../workbench/directory-list').DirectoryListOptions['bulkActions']> {
+        return [{id: 'delete', label: t('harness.delete'), allows: ids => !!ids.length && ids.every(id => {
+            const target = resolveBrowserTarget(id); return target.kind === 'remote' && !!target.nativeSessionId;
+        }), run: async ids => {
+            const nodes = await Promise.all(ids.map(id => this.navigationFiles!.driver.getNode(id)));
+            if (nodes.some(node => !node)) throw new Error(t('harness.removalUnavailable'));
+            const items = remoteRemovalItems(nodes.map(node => ({id: node!.path, metadata: {custom: node!.metadata ?? {}}})));
+            if (!items) throw new Error(t('harness.removalUnavailable'));
+            await this.removeRemoteSessions(items);
+        }}];
+    }
+    private async removeRemoteSessions(items: NonNullable<ReturnType<typeof remoteRemovalItems>>): Promise<void> {
+        const removed = new Set<string>(), committed = new Map<string, Awaited<ReturnType<ApplicationBackend['manageRemoteSession']>>>();
+        await confirmRemoteRemoval(items, this.dialogs.signal, async (item, command) => {
+            const target = item.target, key = `${target.folder}/${target.profileId}/${target.nativeSessionId}`;
+            if (removed.has(key) && !committed.has(item.id)) return;
+            const result = committed.get(item.id) ?? await this.backend.manageRemoteSession(target.folder, target.profileId!, target.nativeSessionId!, command,
+                {signal: this.dialogs.signal, timeoutMs: 30_000});
+            committed.set(item.id, result);
+            for (const id of result.deletedSessionIds ?? []) removed.add(`${target.folder}/${target.profileId}/${id}`);
+            for (const tab of this.tabs.values()) {
+                const route = resolveBrowserTarget(tab.id);
+                if (route.kind !== 'remote' || route.folder !== target.folder || route.profileId !== target.profileId || !route.nativeSessionId) continue;
+                if (command.kind === 'delete' ? result.deletedSessionIds?.includes(route.nativeSessionId) : route.nativeSessionId === target.nativeSessionId)
+                    await this.tabs.close(tab.id, false);
+            }
+            await this.browser?.invalidateNavigation(); await this.sidebarUI?.refresh();
+            await Promise.all(this.tabs.values().map(tab => refreshDirectoryList(tab.panel)));
+        });
+    }
     private async removeSession(id: string): Promise<void> {
         await this.lifecycle.deleteSession(id);
         for (const tab of this.tabs.values()) if (tab.value?.active === id) await this.tabs.close(tab.id);
@@ -1459,6 +1540,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.projectNavigation = new ProjectNavigation(this.projects!, () => this.sidebarUI, {
             refresh: () => this.refresh(),
             projectRenamed: (from, to) => this.remapProjectRoutes(folderBrowserPath(from.path), folderBrowserPath(to.path), to.name),
+            projectSettings: id => this.projectSettingsDialog(id),
             projectStatus: id => this.showProjectStatus(id),
             projectMenu: async (event, project) => {
                 void this.syncMenu.refresh(project.project.id).catch(error => this.report(error));

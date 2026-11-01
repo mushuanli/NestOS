@@ -161,7 +161,7 @@ NestOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createNe
 
 - host.workbenchView 的 initialNavigation=false 只准备当前正文需要的能力，不预读项目组织或根目录；目录由可见导航单独读取。ProjectService.navigation 在后端聚合项目归属、当前会话路径、离线项目、删除待办与不透明分组加载路径；session-browser 标记 navigationTransparent，UI 不解析内部目录名。Session/Kernel 执行与恢复始终由 Runtime 持有，不随前端隐藏、取消订阅或释放视图附着而取消。
 
-- host.createSessionDraft 在后端解析来源项目，以 SessionRepository 的 initialState 参数将会话身份与初始输入放入同一事务。引用排版和页面跳转属于前端；来源项目失效时拒绝创建，根级旧会话可使用个人项目。
+- host.createSessionDraft 在后端解析来源项目，以 SessionRepository 的 initialState 参数将会话身份与初始输入放入同一事务。引用排版和页面跳转属于前端；来源项目失效时拒绝创建，根级旧会话可使用本地项目。
 - ConversationContexts.open 返回可幂等释放的观察租约。SessionOpenView 持有租约至文件视图释放，宿主每分钟检查无引用上下文：默认保留 5 分钟、最多缓存 32 个闲置实例；运行、排队、等待交互或外部副作用未收尾时不得回收。acquireConversation 只在 LocalApplicationServices 接线，不进入前端能力。
 - ConversationViews 由 Runtime 持有所有会话视图；浏览器关闭时仅解绑，仍有运行/排队任务的视图继续保留草稿投影监听，终态后排空收尾再销毁。Runtime 退出统一释放剩余视图，先于 Kernel 与存储关闭。
 
@@ -236,6 +236,10 @@ configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、�
 
 configuration/text-generation 校验连接、模型及上下文预算，再由 text-session 走正式 Session Submit；按 submission ID 观察持久轮次结果。同一文档草稿复用 Session，多次生成追加轮次，不自动保存笔记。取消按该提交的队列项和 Task 定位，不中断同 Session 的其他任务；视图关闭等待取消清理。日志仅保留 operationId、sessionId、阶段及安全错误码。学习预设由 presets/study-files 初始化，YAML 提示词在显式恢复时完整覆盖。
 
-projects/personal-project 用 /etc/system-personal-project.json 保存保留项目身份，与 /etc/personal-project.json 的用户默认项目选择独立。启动确保保留项目存在；项目来源删除、Session 文件夹删除和浏览器删除在副作用前校验。导航 protected 标记隐藏删除入口，后端仍强制保护。
+projects/personal-project 用 /etc/system-local-project.json 保存保留的本地项目身份（兼容读取旧 system-personal-project.json），与 /etc/personal-project.json 的用户默认项目选择独立。新项目 ID 为创建时确定的唯一易读标识，创建后不可修改；本地项目新安装默认 ID 为 local，设置中仅修改名称。启动确保保留项目存在；项目来源删除、Session 文件夹删除和浏览器删除在副作用前校验。导航 protected 标记隐藏删除入口，后端仍强制保护。
+
+projects/project-environment 将本地普通环境按项目 ID 存在 settings.seq，以独立 revision CAS 写入；读写日志不得包含变量值。新会话执行上下文的 Shell/TTY 通过 options.env 获得项目默认值，单次调用显式值优先；不修改宿主全局环境，不给浏览器增加本地执行能力。远程项目环境仍由节点协议持久化与应用，不能落到本地保留项目。
+
+导航索引模式下，ProjectService.forFolder 未显式传入 folders 时也从 Session folder 索引解析项目，与工作台目录投影保持一致；最近会话等虚拟目录不得因权威目录尚未初始化而误报 ENOENT。回归见 tests/host/project-navigation.test.ts。
 
 直接 Tool 扫描器的 collection.destination 或 projectId 与 directory 在 Run 内冻结，由宿主将授权目标挂载为 /workspace。项目来源通过 ProjectService 获取并逐文件操作复验，不按工具/供应商/账号参数推导目录。拒绝父目录、隐藏路径和宿主绝对路径；纯采集规则保存/启停不等待无关来源索引。

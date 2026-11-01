@@ -155,3 +155,5 @@ export { LabelStore } from './settings/LabelStore';
 export type { TwinScanScope } from './digital-twin/scan-domain';
 
 export {stageInputAssets} from './runtime/input-assets';
+
+export {withProjectEnvironment} from './projects/project-environment';

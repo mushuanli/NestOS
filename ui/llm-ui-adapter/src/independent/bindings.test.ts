@@ -580,3 +580,13 @@ it('retires automatic queued steering previews from their durable queue receipts
     const binding = await createNativeChatBinding({...host.options, operations});
     expect(binding.source.getSnapshot().operationMessages).toContainEqual({operationId: 'queued-context', message: null}); binding.dispose();
 });
+
+it('projects native reasoning as a collapsible assistant part', async () => {
+    const host = fixture();
+    host.emit({messages: [{id: 'thinking', role: 'assistant', text: 'reasoning fixture',
+        contentParts: ['reasoning fixture'], contentPartKinds: ['assistant.reasoning']}]});
+    const binding = await createNativeChatBinding(host.options);
+    expect(binding.source.getSnapshot().messages[0]).toMatchObject({role: 'assistant',
+        parts: [{kind: 'reasoning', text: 'reasoning fixture'}]});
+    binding.dispose();
+});

@@ -462,6 +462,33 @@ export class ProjectRemoteMountService {
             return harness;
         } catch(error) {await client.close();throw error;}
     }
+    async executionSettings(projectId: string, options?: OperationOptions) {
+        const root = this.list(projectId).find(m => m.at === '/');
+        if (!root?.connectionId || !root.serverProjectId || !this.provider.projects) throw new FSError('ECAPABILITY', 'Registered project required');
+        const client = this.provider.projects(await this.resolveConnection(root.connectionId, options));
+        try {
+            const project = await client.read(root.serverProjectId, options); this.assertProjectGrant(projectId, root, project);
+            if (!client.executionSettings) throw new FSError('ECAPABILITY', 'Execution settings unavailable');
+            return {project, ...await client.executionSettings(project, options)};
+        } finally { await client.close(); }
+    }
+    async setExecution(projectId: string, expected: RemoteProject, execution: import('@itookit/cells-driver').ProjectEnvironment, options?: OperationOptions): Promise<void> {
+        await this.trackProject('project.execution.configure', projectId, () => this.serial(async () => {
+            await this.beforeChange(projectId);
+            const grants = this.list(projectId), root = grants.find(m => m.at === '/');
+            if (!root?.connectionId || !root.serverProjectId || !this.provider.projects) throw new FSError('ECAPABILITY', 'Registered project required');
+            if (root.access !== 'rw') throw new FSError('EROFS', 'Project is read-only');
+            const client = this.provider.projects(await this.resolveConnection(root.connectionId, options));
+            try {
+                this.assertProjectGrant(projectId, root, expected);
+                if (!client.setExecution) throw new FSError('ECAPABILITY', 'Execution settings unavailable');
+                const project = await client.setExecution(expected, execution, options);
+                this.assertProjectGrant(projectId, root, project);
+                await this.save(projectId, grants.map(m => ({...m, serverProjectRevision: project.revision, mountId: randomUUID()})));
+                try { await this.changed(projectId); } finally { await this.releaseSources(grants); }
+            } finally { await client.close(); }
+        }));
+    }
     async refreshProjectBinding(projectId: string, options?: OperationOptions): Promise<void> {
         const root = this.list(projectId).find(mount => mount.at === '/');
         if (!root?.connectionId) throw new FSError('ECAPABILITY', 'Registered project binding unavailable');

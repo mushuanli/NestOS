@@ -67,3 +67,19 @@ it('publishes a newly created Session with its initial draft already persisted',
         expect(await app.sessionRepository.list()).toHaveLength(1);
     } finally { stop(); }
 });
+
+it('reads recent conversation directories from the navigation index without an authoritative catalog', async () => {
+    const app = await setup(), project = await app.projects.create('X1');
+    app.projects.navigationFromIndex = true;
+    const catalog = vi.spyOn(app.projects, 'list').mockResolvedValue([]);
+    const backend = bindApplicationBackend(bindLocalApplicationServices(app));
+    const workbench = await backend.workbenchView({initialNavigation:false});
+    try {
+        const path = '/folder:X1/@recent-conversations';
+        expect((await workbench.browser.fs.driver.getChildren('/')).some(node => node.path === '/folder:X1')).toBe(true);
+        expect((await workbench.browser.fs.driver.getNode(path))?.type).toBe('directory');
+        await expect(workbench.browser.fs.driver.getChildren(path)).resolves.toEqual([]);
+        expect(catalog).not.toHaveBeenCalled();
+        expect((await app.projects.forFolder(project.path))?.project.id).toBe(project.project.id);
+    } finally {await workbench.browser.dispose();}
+});

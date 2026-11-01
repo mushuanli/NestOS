@@ -1,4 +1,3 @@
-import { randomUUID } from '@itookit/common';
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
 import type { ISessionRepository, SessionFolder } from '@itookit/llm-session';
 import type { DirectoryMountService } from '@itookit/app-contracts/services';
@@ -43,7 +42,7 @@ async function recoverDirectory(context: Context, directory: string, folders: Se
     if (!data) return;
     const cached = folders.find(folder => folder.project?.directory === directory)
         ?? folders.find(folder => !folder.project && folder.path === '/' + directory.split('/').pop());
-    const id = cached?.project?.id ?? randomUUID();
+    const id = cached?.project?.id ?? await context.identities.allocateId(directory.split('/').pop()!);
     if (active.some(project => project.id === id)) throw new FSError('ECONFLICT', 'Legacy project identity refers to multiple directories');
     const parent = cached?.parentPath ?? null;
     const base = cached && !cached.path.startsWith('/.retired-project-') ? cached.name : directory.split('/').pop()!;

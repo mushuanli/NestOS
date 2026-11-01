@@ -95,3 +95,26 @@ it('refreshes a project binding without increasing its access or replacing its r
         expect(f.remount).not.toHaveBeenCalled();
     } finally {await f.dispose();}
 });
+
+it('saves execution settings with the captured revision and updates the local binding only after success', async () => {
+    const f = await fixture();
+    try {
+        await f.remote.remountProject('project', 'rw');
+        const before = f.get();
+        const execution = {profile: 'dev', variables: {GIT_AUTHOR_NAME: 'Rain Li'}};
+        f.client.executionSettings = vi.fn(async () => ({execution, profiles: [{id:'dev', name:'Development', user:'li'}]}));
+        f.client.setExecution = vi.fn(async project => ({...project, revision: project.revision + 1}));
+        const settings = await f.remote.executionSettings('project');
+        expect(settings.project.revision).toBe(before.revision);
+        await f.remote.setExecution('project', settings.project, execution);
+        expect(f.client.setExecution).toHaveBeenCalledWith(settings.project, execution, undefined);
+        expect(f.remote.list('project')[0].serverProjectRevision).toBe(before.revision + 1);
+        const stable = f.remote.list('project');
+        vi.mocked(f.client.setExecution).mockRejectedValueOnce(new Error('Response lost'));
+        await expect(f.remote.setExecution('project', settings.project, execution)).rejects.toThrow('Response lost');
+        expect(f.remote.list('project')).toEqual(stable);
+        await f.remote.remountProject('project', 'ro');
+        await expect(f.remote.setExecution('project', settings.project, execution)).rejects.toMatchObject({code:'EROFS'});
+        expect(f.client.setExecution).toHaveBeenCalledTimes(2);
+    } finally {await f.dispose();}
+});

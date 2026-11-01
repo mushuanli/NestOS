@@ -1,3 +1,5 @@
+import {createModuleLogger, randomUUID} from '@itookit/common';
+import {allocateProjectId} from './project-id';
 import { moveSessionDataDirectory } from '@itookit/llm-session';
 import { FSError, type IFileSystem, type FileSystemSourceOwner } from '@itookit/vfs-core';
 import type { DirectoryMountService } from '@itookit/app-contracts/services';
@@ -64,8 +66,8 @@ export class ProjectRepository {
         }
         const ids = new Set<string>();
         for (const record of records) {
-            if (ids.has(record.id)) throw new FSError('ECONFLICT', 'Duplicate project identity');
-            ids.add(record.id);
+            if (ids.has(record.id.toLowerCase())) throw new FSError('ECONFLICT', 'Duplicate project identity');
+            ids.add(record.id.toLowerCase());
         }
         return records;
     }
@@ -76,6 +78,35 @@ export class ProjectRepository {
         if (!raw) return undefined;
         const identity = this.decode(raw);
         return { ...identity, directory: `project:${identity.id}`, kind: 'remote', metadataDirectory: directory };
+    }
+    async allocateId(name: string, requested?: string): Promise<string> {
+        const operationId = randomUUID(), started = Date.now(), log = createModuleLogger('project-identity');
+        try {
+            const id = await this.claimId(name, requested);
+            log.info('project.identity.allocate', {operationId,stage:'reserve',result:'success',projectId:id,durationMs:Date.now()-started});
+            return id;
+        } catch (error) {
+            log.error('project.identity.allocate', {operationId,stage:'reserve',result:'failure',code:error instanceof FSError?error.code:'PROJECT_ID_ALLOCATION_FAILED',durationMs:Date.now()-started});
+            throw error;
+        }
+    }
+    private async identityRegistry(): Promise<string> {
+        const path = '/etc/project-identities.seq';
+        if (!await this.root.driver.exists(path)) {
+            try {await this.root.driver.createFile({parentPath:'/etc',name:'project-identities.seq',type:'seqfile',recursive:true});}
+            catch (error) {if (!(error instanceof FSError) || error.code !== 'EEXIST') throw error;}
+        }
+        return path;
+    }
+    private async claimId(name: string, requested?: string): Promise<string> {
+        const path = await this.identityRegistry(), projects = await this.list();
+        return this.root.meta.seq!.transaction!(async tx => {
+            const used = projects.map(p => p.id);
+            await tx.walkEntries(path, entry => {used.push(entry.key); return true;});
+            const id = allocateProjectId(name, used, requested);
+            await tx.setEntry(path, id.toLowerCase(), id);
+            return id;
+        });
     }
     async createLocal(directory: string, identity: ProjectIdentity): Promise<void> {
         this.invalidate();
@@ -130,6 +161,8 @@ export class ProjectRepository {
         finally { this.invalidate(); await owner.dispose(); }
     }
     async remove(project: StoredProject): Promise<void> {
+        const registry = await this.identityRegistry();
+        await this.root.meta.seq!.setEntry(registry, project.id.toLowerCase(), project.id);
         this.invalidate();
         if (project.kind === 'remote') {
             const path = `${project.metadataDirectory}/info.seq`;

@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import type { NativeShellResult, NativeShellOptions } from '@itookit/tools';
 import { signalProcessGroup, stopProcessGroup } from './process-stop';
 
-interface ProcessOptions extends NativeShellOptions {
+interface ProcessOptions extends Omit<NativeShellOptions, 'env'> {
     cwd?: string;
     timeoutMs?: number;
     signal?: AbortSignal;

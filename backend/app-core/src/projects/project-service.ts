@@ -1,3 +1,5 @@
+import {LEGACY_LOCAL_PROJECT_NAMES} from '@itookit/app-contracts';
+import {ProjectEnvironmentStore} from './project-environment';
 import {PersonalProject} from './personal-project';
 import { projectFileSource, projectWorkspaceAccess, projectNavigation } from '@itookit/app-contracts';
 import { trackFavoriteFiles } from './favorites/lifecycle';
@@ -44,7 +46,6 @@ export class ProjectService {
     private startupId?: string;
     private readonly personalProject: PersonalProject;
     private readonly defaultProjects: ProjectDefaults;
-    private remoteCreation: Promise<unknown> = Promise.resolve();
     private localCreation: Promise<unknown> = Promise.resolve();
     readonly sessions: ProjectSessions;
     readonly drafts: ProjectDraftService;
@@ -71,7 +72,7 @@ export class ProjectService {
         this.projectRepository = new ProjectRepository(root, directories);
         this.defaultProjects = new ProjectDefaults(root, () => this.list(), replacement => this.createUnique(t(replacement ? 'project.default.replacementName' : 'project.defaultName')),
             project => this.fileSource(project).kind === 'local');
-        this.personalProject = new PersonalProject(root, () => this.list(), () => this.createUnique(t('project.defaultName')), t('project.defaultName'));
+        this.personalProject = new PersonalProject(root, () => this.list(), () => this.create(t('project.defaultName'), null, undefined, 'local'), t('project.defaultName'));
         repository.setFolderDeletionGuard?.(async path => {
             const personal = await this.personal();
             if (personal.path === path || personal.path.startsWith(path.replace(/\/$/, '') + '/'))
@@ -195,6 +196,7 @@ export class ProjectService {
         if (!project || project.path !== from) throw new FSError('ENOENT', 'Project not found');
         const stored = (await this.projectRepository.list()).find(item => item.id === project.project.id)!;
         const name = to.split('/').pop()!;
+        if (!name.trim() || /[\\\0]/.test(to) || ['.', '..', '@sessions'].includes(name)) throw new FSError('EINVAL', t('project.error.name'));
         const sessions = await this.repository.list();
         await this.repository.assertStructuralWritable(sessions.filter(item => item.folder === from || item.folder?.startsWith(from + '/')).map(item => item.id));
         await this.projectRepository.rename(stored, name);
@@ -240,7 +242,8 @@ export class ProjectService {
         return project;
     }
     async forFolder(path: string | null | undefined, folders?: readonly SessionFolder[]): Promise<ProjectFolder | undefined> {
-        const projects = folders && this.navigationFromIndex ? this.listNavigation(folders) : await this.list(folders);
+        const projects = this.navigationFromIndex
+            ? this.listNavigation(folders ?? await this.repository.listFolders()) : await this.list(folders);
         return projects.filter(folder => path === folder.path || path?.startsWith(folder.path + '/'))
             .sort((a, b) => b.path.length - a.path.length)[0];
     }
@@ -249,13 +252,22 @@ export class ProjectService {
         return projects.find(folder => folder.project.id === this.startupId) ?? await this.getDefaultProject()
             ?? projects.find(project => this.fileSource(project).kind === 'local') ?? projects[0];
     }
+    async localExecutionSettings(id: string) {
+        const project = await this.get(id);
+        if (this.fileSource(project).kind !== 'local') throw new FSError('EINVAL','Remote project settings belong to the execution node');
+        return new ProjectEnvironmentStore(this.root).read(id);
+    }
+    async setLocalExecution(id: string, revision: number, variables: Record<string,string>): Promise<void> {
+        await this.localExecutionSettings(id);
+        await new ProjectEnvironmentStore(this.root).save(id,revision,structuredClone(variables));
+    }
     getDefaultProject(): Promise<ProjectFolder | undefined> { return this.defaultProjects.get(); }
     async setDefaultProject(id: string): Promise<void> {
         await this.defaultProjects.set(id);
         this.startupId = id;
     }
-    create(name: string, parent: string | null = null, directory?: string): Promise<ProjectFolder> {
-        const work = this.localCreation.catch(() => {}).then(() => this.createLocal(name, parent, directory));
+    create(name: string, parent: string | null = null, directory?: string, projectId?: string): Promise<ProjectFolder> {
+        const work = this.localCreation.catch(() => {}).then(() => this.createLocal(name, parent, directory, projectId));
         this.localCreation = work; return work;
     }
     private async assertName(name: string, parent: string | null): Promise<string> {
@@ -279,9 +291,9 @@ export class ProjectService {
         console.warn('[Project index] Reconciled stale name', { path, projectId: cached.project?.id,
             directory: cached.project?.directory, relocatedIndex: target, reason: live ? 'identity-renamed' : 'identity-not-discovered' });
     }
-    private async createLocal(name: string, parent: string | null, directory?: string): Promise<ProjectFolder> {
+    private async createLocal(name: string, parent: string | null, directory?: string, requestedId?: string): Promise<ProjectFolder> {
         const path = await this.assertName(name, parent);
-        const id = randomUUID();
+        const id = await this.projectRepository.allocateId(name, requestedId);
         const target = directory?.trim() ?? `/home/admin/projects/${id}`;
         if (!target || target.startsWith('project:')) throw new FSError('EINVAL', 'Local projects require a file directory');
         await this.assertIndependent({ path, name: name.trim(), parentPath: parent, updatedAt: Date.now(),
@@ -305,8 +317,8 @@ export class ProjectService {
     }
 
     createRemote(name: string, parent: string | null, connectionId: string, path: string,
-        access: 'ro' | 'rw' = 'ro', options?: OperationOptions & {createDirectory?: boolean}): Promise<ProjectFolder> {
-        const work = this.remoteCreation.catch(() => {}).then(async () => {
+        access: 'ro' | 'rw' = 'ro', options?: OperationOptions & {createDirectory?: boolean; projectId?: string}): Promise<ProjectFolder> {
+        const work = this.localCreation.catch(() => {}).then(async () => {
             const remote = this.remoteMounts;
             if (!remote) throw new FSError('ECAPABILITY', 'Remote file systems unavailable');
             if (access==='rw' && !remote.connection(connectionId).projects) throw new FSError('ECAPABILITY','Writable remote projects require the server project protocol');
@@ -316,7 +328,7 @@ export class ProjectService {
                 if (project) return project;
                 await remote.forgetProject(existing);
             }
-            const id = randomUUID();
+            const id = await this.projectRepository.allocateId(name, options?.projectId);
             const projectPath = await this.remoteNavigationPath(name,parent,id);
             const navigationName = projectPath.split('/').pop()!;
             await this.projectRepository.createRemote({version:1,id,name:name.trim(),createdAt:Date.now(),
@@ -337,7 +349,7 @@ export class ProjectService {
                 throw error;
             }
         });
-        this.remoteCreation = work; return work;
+        this.localCreation = work; return work;
     }
 
     private async remoteNavigationPath(name: string, parent: string | null, id: string): Promise<string> {
@@ -368,10 +380,17 @@ export class ProjectService {
         for (let n = 2; folders.some(folder => folder.path === '/' + name); n++) name = `${base} (${n})`;
         return this.create(name, null, directory);
     }
-    /** The reserved personal project never follows the user's default-project preference. */
+    /** The reserved local project never follows the user's default-project preference. */
     async personal(): Promise<ProjectFolder> {return this.personalProject.ensure();}
     async ensureStartup(directory?: string): Promise<void> {
-        await this.personal();
+        const reserved = await this.personal();
+        if (this.personalProject.migrateName && LEGACY_LOCAL_PROJECT_NAMES.includes(reserved.name)) {
+            const paths = new Set((await this.list()).map(p => p.path)), base = t('project.defaultName');
+            let name = base;
+            for (let suffix = 2; paths.has('/' + name); suffix++) name = `${base} (${suffix})`;
+            await this.renameProject(reserved.path, '/' + name);
+        }
+        this.personalProject.migrateName = false;
         const explicit = directory ? await this.ensureDirectory(directory) : undefined;
         const existing = explicit ?? await this.defaultProjects.ensure();
         if (explicit) await this.defaultProjects.ensure();

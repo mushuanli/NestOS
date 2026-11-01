@@ -249,6 +249,21 @@ export const VFS_TOOLBAR_ICONS = {
 
 /** Consistent outline icons for toolbox resource types and purpose groups. */
 const toolboxIcon = (shape: string): string => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg>`;
+/** Consistent outline actions for project navigation and context menus. */
+export const PROJECT_ACTION_ICONS = {
+    close: toolboxIcon('<path d="m6 6 12 12M6 18 18 6"/>'),
+    move: toolboxIcon('<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v3M3 7v12a2 2 0 0 0 2 2h6M13 17h9m-4-4 4 4-4 4"/>'),
+    tags: toolboxIcon('<path d="M3 3h8l10 10-8 8L3 11V3Z"/><circle cx="7" cy="7" r="1"/>'),
+    favorite: toolboxIcon('<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>'),
+    settings: toolboxIcon('<path d="M4 6h16M4 12h16M4 18h16"/><rect x="7" y="4" width="3" height="4" rx="1"/><rect x="14" y="10" width="3" height="4" rx="1"/><rect x="8" y="16" width="3" height="4" rx="1"/>'),
+    enter: toolboxIcon('<path d="M10 4H5v16h5M10 12h11m-4-4 4 4-4 4"/>'),
+    disconnect: toolboxIcon('<path d="m3 3 18 18M8 3v4m8-4v5M6 8h12v3a6 6 0 0 1-10 4M12 18v4"/>'),
+    archive: toolboxIcon('<rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v13h14V8M9 12h6"/>'),
+    upload: toolboxIcon('<path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/>'),
+    download: toolboxIcon('<path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/>'),
+    warning: toolboxIcon('<path d="m12 3 10 18H2L12 3Z M12 9v5m0 3h.01"/>'),
+} as const;
+
 /** Quiet outline controls for conversation content and its composer. */
 export const CHAT_ICONS = {
     enqueue: toolboxIcon('<path d="M4 5h10M4 11h10M4 17h6M19 10v10m-4-4 4 4 4-4"/>'),

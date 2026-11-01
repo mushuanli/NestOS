@@ -1,3 +1,4 @@
+import { t } from '@itookit/common';
 import { afterEach, expect, it, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
@@ -583,4 +584,45 @@ it('projects an empty Sessions section when a discovered project has no organiza
         const id = await runtime.sessionRepository.createSession('First', section);
         expect((await runtime.browser.fs.driver.getChildren(route)).map(node => node.path)).toContain(route + '/' + id);
     } finally { writes.mockRestore(); }
+});
+
+it('creates readable unique project IDs and accepts explicit IDs without reusing retired identities', async () => {
+    const r = await setup();
+    const reserved = await r.projects.personal();
+    expect(reserved.project.id).toBe('local');
+    const first = await r.projects.create('Research Notes');
+    const second = await r.projects.create('Research Notes', (await r.sessionRepository.createFolder('/Group')).path);
+    expect(first.project.id).toBe('research-notes'); expect(second.project.id).toBe('research-notes-2');
+    const custom = await r.projects.create('Custom', null, undefined, 'my-notes');
+    expect(custom.project.id).toBe('my-notes');
+    await expect(r.projects.create('Collision', null, undefined, 'MY-NOTES')).rejects.toMatchObject({code:'EEXIST'});
+    await expect(r.projects.create('Invalid', null, undefined, '../invalid')).rejects.toMatchObject({code:'EINVAL'});
+    await r.projects.removeProjectSource(custom);
+    await expect(r.projects.create('Retired', null, undefined, 'my-notes')).rejects.toMatchObject({code:'EEXIST'});
+});
+
+it('renames the reserved local project without changing its identity or deletion guards', async () => {
+    const r = await setup(), local = await r.projects.personal();
+    const session = await r.sessionRepository.createSession('Keep local', await r.projects.sessionFolder(local));
+    await r.projects.renameProject(local.path, '/My workspace');
+    const renamed = await r.projects.personal();
+    expect(renamed.name).toBe('My workspace');
+    expect(renamed.project.id).toBe(local.project.id);
+    expect(renamed.project.directory).toBe(local.project.directory);
+    expect((await r.sessionRepository.getManifest(session)).folder).toBe(await r.projects.sessionFolder(renamed));
+    await expect(r.projects.removeProjectSource(renamed)).rejects.toMatchObject({code:'EACCES'});
+    await expect(r.sessionRepository.deleteFolder(renamed.path,true)).rejects.toMatchObject({code:'EACCES'});
+});
+
+it('migrates the legacy reserved label once without changing IDs or later user names', async () => {
+    const r = await setup(), local = await r.projects.personal(), root = await r.vfs.openFileSystem('/');
+    await r.projects.renameProject(local.path, '/Personal project');
+    await root.driver.createFile({parentPath:'/etc',name:'system-personal-project.json',content:JSON.stringify({id:local.project.id})});
+    await root.driver.delete(['/etc/system-local-project.json']);
+    await r.projects.ensureStartup();
+    expect((await r.projects.personal()).name).toBe(t('project.defaultName'));
+    expect((await r.projects.personal()).project.id).toBe(local.project.id);
+    await r.projects.renameProject((await r.projects.personal()).path, '/Personal project');
+    await r.projects.ensureStartup();
+    expect((await r.projects.personal()).name).toBe('Personal project');
 });

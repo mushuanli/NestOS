@@ -32,7 +32,7 @@ it('browses mounted native history pages, opens their conversations and routes a
     const files = new MemoryBackend(); await files.mkdir('/project');
     const fileSource = await createFileSystemSource({backend: files, viewId: 'server-files', access: 'rw'});
     const record = {id:'server-project',name:'Notes',alias:'docs',path:'project',access:'rw' as const,revision:1,mounts:[]};
-    const profile = {id:'codex',kind:'codex',projectRuntime:true,workspaces:[{id:record.id}],capabilities:{history:true,create:true,resume:true,interrupt:true,interactions:true,fork:true}};
+    const profile = {id:'codex',kind:'codex',projectRuntime:true,workspaces:[{id:record.id}],capabilities:{history:true,create:true,resume:true,interrupt:true,interactions:true,fork:true,archive:true}};
     const native = {id:'native',title:'Native session',cwd:'/projects/server-project',status:'idle',createdAt:1791458500000,updatedAt:1791458565000,resumable:true,owned:true};
     const sessionList=[{...native,id:'earlier-native',title:'A much older session',updatedAt:1791458500000}, native];
     const peer: HarnessClient = {subscribe:vi.fn(() => () => {}),profiles:vi.fn(async () => ({epoch:'e',profiles:[profile]})),list:vi.fn(async (_profile, query) => query?.cursor
@@ -136,6 +136,21 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(nativeRow.cells[2].textContent).not.toContain('1970'); expect(nativeRow.cells[2].textContent).not.toBe('—');
         expect(nativeRow.querySelector('button')!.title).toContain(t('workbench.created'));
         expect(nativeRow.querySelector('button')!.title).toContain(t('workbench.modified'));
+        for (const id of ['native', 'earlier-native']) {
+            const checkbox = list.querySelector<HTMLInputElement>(`[data-selection-id="${remoteSessionPath(project.path, 'codex', id)}"]`)!;
+            checkbox.click();
+        }
+        const bulkDelete = activePanel().querySelector<HTMLButtonElement>('[data-action="bulk-delete"]')!;
+        expect(bulkDelete.hidden).toBe(false); bulkDelete.click();
+        await vi.waitFor(() => expect(document.querySelector('dialog')?.textContent).toContain(t('harness.deleteToArchivePrompt', {count: '2'})));
+        document.querySelector<HTMLButtonElement>('dialog button[type=button]')!.click();
+        await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+        const bulkUI = (workbench as unknown as {sidebarUI: VFSUIShell}).sidebarUI;
+        const nativeIds = ['native', 'earlier-native'].map(id => preview(remoteSessionPath(project.path, 'codex', id)));
+        const deleting = bulkUI.runBulkAction('delete', nativeIds);
+        await vi.waitFor(() => expect(document.querySelector('dialog')?.textContent).toContain(t('harness.deleteToArchivePrompt', {count: '2'})));
+        document.querySelector<HTMLButtonElement>('dialog button[type=button]')!.click(); await deleting;
+        bulkUI.setSelection([]);
         sessionList.push({...native, id: 'refreshed-native', title: 'Fresh native session'});
         await workbench.refresh();
         expect(activePanel().textContent).toContain('Fresh native session');

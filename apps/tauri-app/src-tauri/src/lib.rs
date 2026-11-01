@@ -408,7 +408,7 @@ async fn shell_exec(
 
 #[tauri::command]
 async fn session_shell_exec(command: String, cwd: String, timeout_ms: Option<u64>, request_id: String,
-    mounts: Vec<(String, String, bool)>, directories: State<'_, scoped_fs::DirectoryScopes>,
+    env: Option<std::collections::BTreeMap<String, String>>, mounts: Vec<(String, String, bool)>, directories: State<'_, scoped_fs::DirectoryScopes>,
     processes: State<'_, ShellProcesses>, on_output: Option<tauri::ipc::JavaScriptChannelId>, webview: tauri::Webview) -> Result<(String, String, i32), String> {
     let grants = {
         let scopes = directories.0.lock().map_err(|_| "directory lock poisoned")?;
@@ -417,7 +417,7 @@ async fn session_shell_exec(command: String, cwd: String, timeout_ms: Option<u64
             Ok(session_bash::Mount { source: source.to_string_lossy().into_owned(), target, writable })
         }).collect::<Result<Vec<_>, String>>()?
     };
-    run_shell(session_bash::command(&command, &cwd, &grants)?, timeout_ms.unwrap_or(30_000), request_id, processes.0.clone(), on_output.map(|id| id.channel_on(webview))).await
+    run_shell(session_bash::command_with_environment(&command, &cwd, &grants, &env.unwrap_or_default())?, timeout_ms.unwrap_or(30_000), request_id, processes.0.clone(), on_output.map(|id| id.channel_on(webview))).await
 }
 
 async fn run_shell(command: Command, timeout_ms: u64, request_id: String,

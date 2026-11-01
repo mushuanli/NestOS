@@ -306,7 +306,7 @@ function nativeMessage(message: NativeSnapshot['messages'][number], operations: 
     const parts: ChatMessage['parts'][number][] = message.role === 'tool' ? [{ id: message.id, kind: 'tool', name: message.name ?? '',
         summary: message.commandPreview ?? message.operation ?? '',
         state: toolState(message.status) }]
-        : (message.contentParts ?? [message.text]).map((text, index) => ({ id: `${message.id}-${index}`, kind: 'markdown', text }));
+        : (message.contentParts ?? [message.text]).map((text, index) => ({ id: `${message.id}-${index}`, kind: message.contentPartKinds?.[index] === 'assistant.reasoning' ? 'reasoning' : 'markdown', text }));
     if (message.commandOutput) parts.push({id: `${message.id}-output`, kind: 'extension', type: 'native-command-output',
         data: JSON.parse(JSON.stringify(message.commandOutput)) as JsonValue});
     return { id: message.id, revision: 0, role: message.role, state: messageState(message.status),

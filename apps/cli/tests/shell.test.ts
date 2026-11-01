@@ -122,3 +122,10 @@ it('does not recreate an unmounted workspace from the workflow path for Shell or
     await expect(shell.exec('sh', ['-c', 'true'])).rejects.toThrow('Session workspace is not mounted');
     expect(() => new OciTtyDriver('docker', workflow(), []).spawn('sh')).toThrow('Session workspace is not mounted');
 });
+it('passes project environment as literal child variables without changing the host environment',async () => {
+    const before = process.env.NESTOS_TEST_PROJECT_VALUE;
+    const shell = new NodeNativeShell();
+    const result = await shell.exec('sh',['-c','printf %s "$NESTOS_TEST_PROJECT_VALUE"'],{env:{NESTOS_TEST_PROJECT_VALUE:'Rain Li $(literal)'}});
+    expect(result.code).toBe(0); expect(result.stdout).toBe('Rain Li $(literal)');
+    expect(process.env.NESTOS_TEST_PROJECT_VALUE).toBe(before);
+});

@@ -44,7 +44,7 @@ it('creates files and conversations with styled icon buttons on fixed directory 
         panel().querySelector<HTMLButtonElement>('[data-action="directory-menu"]')!.click();
         await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu [data-action="create-file"]')).not.toBeNull());
         const menuAction = document.querySelector<HTMLButtonElement>('.vfs-context-menu [data-action="create-file"]')!;
-        expect(menuAction.querySelector('svg')).not.toBeNull(); expect(menuAction.textContent).toBe(''); expect(menuAction.getAttribute('aria-label')).toBe('新建文件');
+        expect(menuAction.querySelector('svg')).not.toBeNull(); expect(menuAction.textContent).toBe('新建文件'); expect(menuAction.getAttribute('aria-label')).toBe('新建文件');
         document.body.click();
         for (const [action, name] of [['create-file', 'created.md'], ['create-folder', 'child']] as const) {
             const button = panel().querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;

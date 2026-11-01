@@ -5,6 +5,7 @@ import {DiagnosticLogView, diagnosticReasonText} from '@itookit/app-settings';
 import type {ApplicationDiagnostics, ProjectRemoteMountPort, RemoteProjectStatus} from '@itookit/app-contracts/services';
 
 interface Options extends ProjectAccessActions {
+    container?: HTMLElement;
     diagnostics?: ApplicationDiagnostics;
     remote?: ProjectRemoteMountPort;
     projectId?: string;
@@ -18,7 +19,7 @@ export function showDiagnostics(options: Options): Promise<void> {
     return new Promise(resolve => new DiagnosticDialog(options, resolve).open());
 }
 class DiagnosticDialog {
-    private readonly dialog = document.createElement('dialog');
+    private readonly dialog: HTMLDialogElement | HTMLDivElement;
     private readonly summary = document.createElement('section');
     private readonly hint = document.createElement('p');
     private readonly check = document.createElement('button');
@@ -32,11 +33,12 @@ class DiagnosticDialog {
     private lastState: string | undefined = '@initial';
     private accessDrafts = new Map<string, ProjectAccessDraft>();
     constructor(private readonly options: Options, private readonly done: () => void) {
+        this.dialog = document.createElement(options.container ? 'div' : 'dialog');
         this.logs = new DiagnosticLogView(this.logsRoot, options.diagnostics,
             {projectId: options.projectId, connectionId: options.connectionId});
     }
     open(): void {
-        this.dialog.className = 'diagnostic-dialog';
+        this.dialog.className = this.options.container ? 'diagnostic-dialog diagnostic-dialog--embedded' : 'diagnostic-dialog';
         const title = document.createElement('h2'); title.textContent = this.options.title;
         this.dialog.setAttribute('aria-label', this.options.title);
         const close = document.createElement('button'); close.type = 'button'; close.textContent = t('action.close'); close.onclick = () => this.close();
@@ -52,7 +54,8 @@ class DiagnosticDialog {
         this.check.hidden = !this.options.remote || !this.options.projectId && !this.options.connectionId;
         this.dialog.oncancel = event => {event.preventDefault(); this.close();};
         this.options.signal.addEventListener('abort', this.close, {once: true});
-        document.body.append(this.dialog); this.dialog.showModal();
+        if (this.options.container) {close.hidden = true; this.options.container.append(this.dialog);}
+        else {document.body.append(this.dialog); (this.dialog as HTMLDialogElement).showModal();}
         this.stop = this.options.remote?.onChange(() => {void this.refresh();});
         void this.logs.init(); void this.refresh();
         if (this.options.projectId && this.options.remote?.inspectProjectAccess)
@@ -115,6 +118,7 @@ class DiagnosticDialog {
     private close = (): void => {
         if (this.closed) return;
         this.closed = true; this.stop?.(); this.logs.destroy(); this.options.signal.removeEventListener('abort', this.close);
-        this.dialog.close(); this.dialog.remove(); this.done();
+        if (this.dialog instanceof HTMLDialogElement) this.dialog.close();
+        this.dialog.remove(); this.done();
     };
 }

@@ -59,3 +59,17 @@ it('auto reads classify binary references without decoding or staging them', asy
     expect(await readResource(options, {...input, reference: '@notes:/words.jpg', mode: 'auto'}))
         .toMatchObject({kind: 'text', mimeType: 'text/plain', text: 'actual text'});
 });
+
+it('completes a path with immediate directories and files without scanning unrelated trees', async () => {
+    const {searchResources} = await import('../src/host/resource-references');
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); closes.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/');
+    await fs.driver.createFile({parentPath: '/home/admin/notes/tools/example', name: 'README.md', content: 'fixture', recursive: true});
+    await fs.driver.createFile({parentPath: '/home/admin/notes/tools/node_modules', name: 'ignored', content: 'fixture', recursive: true});
+    const options = {vfs: manager, repository: {} as any};
+    expect(await searchResources(options, {query: 'tools/', scope: {navigation: 'notes'}}))
+        .toEqual([{label: '/tools/example/', reference: '@notes:/tools/example/'}]);
+    expect(await searchResources(options, {query: 'tools/example/R', scope: {navigation: 'notes'}}))
+        .toEqual([{label: '/tools/example/README.md', reference: '@notes:/tools/example/README.md'}]);
+    await expect(searchResources(options, {query: 'tools/../', scope: {navigation: 'notes'}})).rejects.toMatchObject({code: 'EINVAL'});
+});

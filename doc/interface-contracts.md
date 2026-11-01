@@ -378,6 +378,14 @@ StudyCreation.documents.save 可返回 {label: string}，由宿主提供包含�
 
 来源文件元数据采用浅合并 patch：省略字段保持原值，嵌套值整体替换，null 是显式值；该端口不支持字段删除或修订条件更新。`FSCapabilities.metadata` 表示元数据写入能力，旧驱动省略时为未知；file-only 来源从 updateMetadata 能力派生，支持时允许携带元数据创建，在线传输在目标明确不支持时于发布前拒绝。来源身份只在同一来源命名空间内比较：重命名保留，复制与删除重建分配新身份，视图投影不改写。
 
+### VFS 文件变更与操作生命周期
+
+`FSEventPayloadMap` 定义于 `libraries/vfs-core/src/interfaces/core/events.ts`。
+`operation:started/finished` 通过 `operation` 区分复制、移动、重命名、删除等操作，以 `operationId` 配对，结束携带 `outcome`、`durationMs` 和失败 `errorCode`。事务内事件提交后重放、回滚丢弃。
+`node:updated` 仅表示写入或元数据更新成功，不代表句柄操作完成；tags 更新归入 `reason: metadata`，以 `changedFields: ['tags']` 区分。
+`content:started/finished` 通过 `fs.on/onAny` 订阅，以 FileHandle 创建及显式 `close()` 为边界。关闭等待该句柄的在途主内容及附件 IO，幂等且拒绝后续内容 IO。未调用关闭不会发送完成通知；关闭不表示其他句柄关闭或底层 fsync。
+`seq:committed` 保留 `paths`，新增 `changes`（路径、记录键、`set/delete` 类型），提交成功后发送，回滚和 CAS 未命中不产生变化；不携带记录正文，也不推断业务记录类型。
+
 ### Kanban 协调与执行端口
 
 `@itookit/kanban` 的 KanbanService/KanbanStore 与 DTO 位于独立库公开入口；createKanban 提供分组查询与轻量 Commit，createKanbanModule 提供服务接口。`/storage` 拥有本地/条件事务存储，`/discovery` 拥有来源扫描与原子检查点提交，`/activity` 拥有可选活动投影，`/ui` 通过实例端口接入文案、图标及导航；应用端口直接引用库自包含的 KanbanClient，DTO 和库 API 不在应用包代转出。核心只依赖 vfs-core，宿主注入 actor、authorize、verifyOutputs、onCommitted 和 log。execute 使用稳定 operationId/expectedRevision；workflow(boardId) 查询计划、派发与 ready，不启动任务。quiesce 拒绝新准入并等待已接纳操作。

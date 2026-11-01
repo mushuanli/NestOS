@@ -1,7 +1,7 @@
 import {createModuleLogger, randomUUID, sha256Hex} from '@itookit/common';
 import {INPUT_ASSET_MAX_BYTES, ResourceCommand, parseResourceReference, formatResourceReference, type ResourceScope, type ResourceReference, type ResourceReadInput, type ResourceContent, type ResourceMediaContent} from '@itookit/app-contracts';
 import type {ProjectService} from '@itookit/app-contracts/services';
-import {createVFSFileDiscoverySource, discoverFiles, FSError, type IVFSManager} from '@itookit/vfs-core';
+import {createVFSFileDiscoverySource, discoverFiles, FileIgnoreFilter, FSError, type IVFSManager} from '@itookit/vfs-core';
 import type {CommandBus, ISessionRepository} from '@itookit/llm-session';
 import {classifyResourceBytes, decodeResourceText} from './resource-media';
 interface Options {vfs: IVFSManager; projects?: ProjectService; repository: ISessionRepository}
@@ -100,6 +100,7 @@ async function searchProjectResources(options: Options, input: ResourceSearchInp
 async function searchFiles(options: Options, scope: ResourceScope, query: string, prefix?: string, includeIgnored?: boolean) {
     const source = await resolve(options, {root: 'current', path: '/'}, scope);
     try {
+        if (query.includes('/')) return await completeDirectory(source, query, prefix, includeIgnored);
         const entries: Array<{label: string; reference: string}> = [];
         for await (const entry of discoverFiles(createVFSFileDiscoverySource(source.fs), '/', {includeIgnored})) {
             if (!entry.path.toLocaleLowerCase().includes(query.toLocaleLowerCase())) continue;
@@ -109,4 +110,25 @@ async function searchFiles(options: Options, scope: ResourceScope, query: string
         }
         return entries;
     } finally {await source.release();}
+}
+
+/** Explicit path completion lists only the requested directory, respecting discovery policy. */
+async function completeDirectory(source: Awaited<ReturnType<typeof resolve>>, query: string, prefix?: string, includeIgnored?: boolean) {
+    const parts = query.split('/');
+    if (parts.some(part => part === '.' || part === '..')) throw new FSError('EINVAL', 'Resource search path is invalid');
+    const name = parts.pop()!.toLocaleLowerCase(), directory = '/' + parts.filter(Boolean).join('/');
+    const discovery = createVFSFileDiscoverySource(source.fs), filter = includeIgnored ? undefined : new FileIgnoreFilter(discovery);
+    if (filter && !await filter.accepts(directory, true)) return [];
+    if ((await discovery.stat(directory))?.type !== 'directory') return [];
+    const entries: Array<{label: string; reference: string}> = [];
+    for (const entry of await discovery.list(directory)) {
+        if (!entry.name.toLocaleLowerCase().startsWith(name) || !['directory', 'file', 'seqfile'].includes(entry.type)) continue;
+        const isDirectory = entry.type === 'directory';
+        if (filter && !await filter.accepts(entry.path, isDirectory)) continue;
+        const path = entry.path + (isDirectory ? '/' : '');
+        entries.push({label: path, reference: formatResourceReference({navigation: source.scope.navigation === 'projects' ? undefined : source.scope.navigation,
+            root: prefix ? 'navigation' : 'current', path: (prefix ?? '') + path})});
+        if (entries.length >= 30) break;
+    }
+    return entries;
 }

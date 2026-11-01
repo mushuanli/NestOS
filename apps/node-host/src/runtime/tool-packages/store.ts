@@ -1,10 +1,10 @@
-import {mkdir, readFile, rename, rm, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, rename, rm, open} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from '@itookit/common';
 import {packageError, packageIdentity} from './manifest';
 import type {ExecutableBinding} from './files';
 
-export interface RegisteredToolPackage {id: string; version: string; previousVersion?: string; fingerprint: string; bindings: ExecutableBinding[];}
+export interface RegisteredToolPackage {id: string; version: string; previousVersion?: string; activationId?: string; fingerprint: string; bindings: ExecutableBinding[];}
 const updates = new Map<string, Promise<void>>();
 
 /** Serialize in-process hosts sharing one metadata file without dropping sibling records. */
@@ -46,7 +46,7 @@ export async function readToolPackageRegistry(file: string): Promise<RegisteredT
             || item.bindings.some((binding: ExecutableBinding) => !binding || typeof binding.env !== 'string' || typeof binding.path !== 'string'
                 || !path.isAbsolute(binding.path) || !['environment', 'path', 'package'].includes(binding.source)))
             throw packageError('TOOL_PACKAGE_REGISTRY_INVALID', 'Invalid registered tool package metadata');
-        return {id, version, ...(item.previousVersion === undefined ? {} : {previousVersion: packageIdentity(item.previousVersion, 'previous version')}), fingerprint: item.fingerprint as string, bindings: item.bindings as ExecutableBinding[]};
+        return {id, version, ...(item.activationId === undefined ? {} : {activationId: packageIdentity(item.activationId, 'activation id')}), ...(item.previousVersion === undefined ? {} : {previousVersion: packageIdentity(item.previousVersion, 'previous version')}), fingerprint: item.fingerprint as string, bindings: item.bindings as ExecutableBinding[]};
     });
     if (new Set(records.map(record => record.id)).size !== records.length) throw packageError('TOOL_PACKAGE_REGISTRY_INVALID', 'Duplicate registered tool package');
     return records;
@@ -55,6 +55,16 @@ export async function readToolPackageRegistry(file: string): Promise<RegisteredT
 /** Metadata is replaced atomically; package content never enters the configuration directory. */
 export async function writeToolPackageRegistry(file: string, packages: RegisteredToolPackage[]): Promise<void> {
     await mkdir(path.dirname(file), {recursive: true}); const temporary = `${file}.${randomUUID()}.tmp`;
-    try {await writeFile(temporary, JSON.stringify({format: 1, packages}, null, 2) + '\n', {mode: 0o600, flag: 'wx'}); await rename(temporary, file);}
+    try {
+        const handle = await open(temporary, 'wx', 0o600);
+        try {await handle.writeFile(JSON.stringify({format: 1, packages}, null, 2) + '\n'); await handle.sync();} finally {await handle.close();}
+        await rename(temporary, file);
+        await syncToolPackageRegistry(file);
+    }
     finally {await rm(temporary, {force: true});}
+}
+
+export async function syncToolPackageRegistry(file: string): Promise<void> {
+    const handle = await open(file, 'r'); try {await handle.sync();} finally {await handle.close();}
+    const parent = await open(path.dirname(file), 'r'); try {await parent.sync();} finally {await parent.close();}
 }

@@ -26,14 +26,14 @@ export class TwinScans {
     async save(id: string | null, revision: string | null, input: TwinScanPlanInput, sync = true): Promise<string> {
         const result = await this.plans.save(id, revision, input);
         if (id) await this.cancelPlan(id, (await this.store.records.get('scan-plan', id))!.revision);
-        if (sync) await this.index?.sync(); this.changed(); return result;
+        if (sync && input.mode !== 'collect') await this.index?.sync(); this.changed(); return result;
     }
     async enable(id: string, revision: string, enabled: boolean, sync = true): Promise<void> {
         const plan = await this.store.records.get<TwinScanPlan>('scan-plan', id);
         if (!plan || plan.revision !== revision) throw new Error('TWIN_REVIEW_CONFLICT');
         if (enabled) await this.plans.save(id, revision, { ...plan.data, enabled });
         else await this.store.records.save('scan-plan', id, { ...plan.data, enabled }, revision);
-        await this.cancelPlan(id, enabled ? (await this.store.records.get('scan-plan', id))!.revision : undefined); if (sync) await this.index?.sync(); this.changed();
+        await this.cancelPlan(id, enabled ? (await this.store.records.get('scan-plan', id))!.revision : undefined); if (sync && plan.data.mode !== 'collect') await this.index?.sync(); this.changed();
     }
     async remove(id: string, revision: string): Promise<void> {
         await this.store.records.store.startForget({ operationId: `scan-plan-${randomUUID()}`,

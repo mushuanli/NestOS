@@ -105,6 +105,8 @@ export function getFileIcon(mimeType: string | undefined, filename?: string): st
 // ── Common UI actions ─────────────────────────────────────────────────────────
 
 export const ACTION_ICONS = {
+    calendarView: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 11h18M7 15h2M15 15h2M7 18h2"/></svg>',
+    kanbanView: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M5.5 7h1M5.5 10h1M11.5 7h1M11.5 10h1M11.5 13h1M17.5 7h1"/></svg>',
     assistant: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>',
     markRead: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>',
     anki: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="15" height="16" rx="2"/><path d="M7 2h12a2 2 0 0 1 2 2v13M7 16l3-8 3 8M8 13h4"/></svg>',
@@ -154,6 +156,7 @@ export const FEEDBACK_ICONS = {
 // ── Entity shortcuts ──────────────────────────────────────────────────────────
 
 export const ENTITY_ICONS = {
+    calendar:     '📅',
     sync:         '⇄',
     chat:         '💬',
     project:      '▣',

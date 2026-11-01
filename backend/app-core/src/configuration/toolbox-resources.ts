@@ -53,7 +53,7 @@ export class ToolboxResources {
             return { directories, loadedDirectories, descriptions };
         } finally { stop(); await files.dispose(); }
     }
-    subscribe(listener: () => void): () => void { const stops = [this.agents.onChange(listener), this.remoteChanges?.(listener)]; return () => {for (const stop of stops) stop?.();}; }
+    subscribe(listener: () => void): () => void { const stops = [this.agents.onChange(listener), this.remoteChanges?.(listener), this.toolPackages?.onChange?.(listener)]; return () => {for (const stop of stops) stop?.();}; }
     setDefaultConnection(id: string | null): Promise<void> { return this.agents.setDefaultConnection(id); }
     setModelDefault(operation: import('@itookit/kernel-adapters/contracts').ModelOperation, id: string | null): Promise<void> { return this.agents.setModelDefault(operation, id); }
     toolGrant = toolGrant;

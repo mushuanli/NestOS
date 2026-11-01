@@ -34,6 +34,8 @@ export interface ToolConnections {
 }
 /** Trusted tool factories receive this handle, bound by the host to one authenticated user. */
 export interface ToolConnectionAccess extends ToolConnections {
+    /** Host-only transactional publication of validated connection definitions. */
+    prepareRegistration?(types: ToolConnectionType[]): {commit(): void; rollback(): void};
     completeAuthorization?(callback: {state: string; code?: string; error?: string}): Promise<void>;
     accessToken?(id: string, type: string): Promise<string>;
     close?(): Promise<void>;

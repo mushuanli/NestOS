@@ -14,9 +14,10 @@ export class FlowToolPackages implements ToolPackages {
         private readonly restoreFlows?: (templates: import('@itookit/llm-flow/contracts').FlowDraft[]) => Promise<number>) {}
     assertRemovable?: (tools: string[]) => Promise<void>;
     existingFlowIds?: () => Promise<Set<string>>;
-    async switchVersion(id: string, version: string, expectedVersion: string): Promise<void> {
+    onChange(listener: () => void): () => void {return this.resolver?.onChange?.(listener) ?? (() => {});}
+    async switchVersion(id: string, version: string, expectedVersion: string, operationId?: string): Promise<void> {
         if (!this.resolver?.switchVersion) throw Object.assign(new Error('TOOL_PACKAGE_SWITCH_UNAVAILABLE'), {code: 'TOOL_PACKAGE_SWITCH_UNAVAILABLE'});
-        await this.resolver.switchVersion(id, version, expectedVersion);
+        await this.resolver.switchVersion(id, version, expectedVersion, operationId);
     }
     async history(id: string, version: string) {return this.resolver?.history?.(id, version) ?? [];}
     async uninstall(id: string, version: string): Promise<void> {

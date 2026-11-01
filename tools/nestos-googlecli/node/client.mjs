@@ -9,8 +9,6 @@ export const connectionType = {
         authorizationParameters: {access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true'},
     },
     fields: [
-        {name: 'mailDirectory', label: '邮件保存目录', description: '留空使用 imports/mail；目录沿用现有工作区文件授权。每个连接保存到独立账号目录。'},
-        {name: 'calendarDirectory', label: '日历保存目录', description: '留空使用 imports/calendar；目录沿用现有工作区文件授权。'},
         {name: 'clientId', label: 'OAuth Client ID', required: true},
         {name: 'clientSecret', label: 'OAuth Client Secret', secret: true, required: true},
         {name: 'refreshToken', label: 'Refresh Token', secret: true,

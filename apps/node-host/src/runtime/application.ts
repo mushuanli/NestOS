@@ -53,7 +53,7 @@ export async function createNodeRuntime(source: IStorageBackend, root?: string, 
         const runtime = await createApplicationRuntime({remoteSourceProvider: createNestOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
             toolDependencies: options.toolDependencies ?? packages,
             kernelPlatform: { ...options.kernelPlatform, additionalTools, configure: async (kernel, services) => {
-                packages.bind(kernel); await options.kernelPlatform?.configure?.(kernel, services);
+                await packages.bind(kernel); await options.kernelPlatform?.configure?.(kernel, services);
             } } });
         const dispose = runtime.dispose.bind(runtime); runtime.dispose = async () => {try {await dispose();} finally {await packages.close();}};
         return runtime;

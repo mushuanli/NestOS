@@ -47,3 +47,18 @@ it('prepares every driver metadata copy before publishing a batch containing mal
         }
     } finally {await runtime.dispose();}
 });
+
+it('preserves per-scope disables when publishing updated tool metadata', async () => {
+    const original = tool('fixture.replace', 'Original');
+    const runtime = await createKernelAdaptersRuntime({llmDriver: {} as IDeviceDriver, additionalTools: [original]});
+    try {
+        const scope = await runtime.sessions.get('restricted'); scope.toolService.getToolMeta(original.name)!.enabled = false;
+        const next = tool(original.name, 'Updated'), update = await runtime.prepareToolUpdate([next], [original]);
+        update.commit();
+        expect(scope.toolService.getToolMeta(original.name)?.enabled).toBe(false);
+        expect(runtime.toolCatalog.getToolMeta(original.name)?.description).toBe('Updated');
+        update.rollback();
+        expect(runtime.toolCatalog.getToolMeta(original.name)?.description).toBe('Original');
+        expect(scope.toolService.getToolMeta(original.name)?.enabled).toBe(false);
+    } finally {await runtime.dispose();}
+});

@@ -14,6 +14,8 @@ export interface ToolRunRecord {
     collection?: import('../digital-twin/scanner').TwinCollectionProgress;
 }
 export interface ToolPackageInfo {
+    runningVersions?: Array<{version: string; count: number}>;
+    activationId?: string;
     canUninstall?: boolean;
     canSwitch?: boolean;
     pendingVersion?: string;
@@ -37,7 +39,8 @@ export interface ToolPackageInfo {
 }
 export type ToolPackageFlow = import('@itookit/llm-flow/contracts').FlowDraft;
 export interface ToolDependencyResolver {
-    switchVersion?(id: string, version: string, expectedVersion: string): Promise<void>;
+    onChange?(listener: () => void): () => void;
+    switchVersion?(id: string, version: string, expectedVersion: string, operationId?: string): Promise<void>;
     configure?(id: string, version: string, settings: ToolPackageSettings): Promise<void>;
     history?(id: string, version: string): Promise<ToolRunRecord[]>;
     uninstall?(id: string, version: string): Promise<void>;
@@ -46,7 +49,8 @@ export interface ToolDependencyResolver {
     list?(): Promise<ToolPackageInfo[]>;
 }
 export interface ToolPackages {
-    switchVersion?(id: string, version: string, expectedVersion: string): Promise<void>;
+    onChange?(listener: () => void): () => void;
+    switchVersion?(id: string, version: string, expectedVersion: string, operationId?: string): Promise<void>;
     configure?(id: string, version: string, settings: ToolPackageSettings): Promise<void>;
     history?(id: string, version: string): Promise<ToolRunRecord[]>;
     uninstall?(id: string, version: string): Promise<void>;

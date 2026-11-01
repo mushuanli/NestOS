@@ -41,10 +41,10 @@ function mailBody(part, depth = 0) {
     return body.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, '\n')
         .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
 }
-export function eventMaterial(event) {
+export function eventMaterial(event, args = {}) {
     if (!event.id || typeof event.status !== 'string') throw fail('GOOGLE_CALENDAR_INVALID_RESPONSE');
     return {id: event.id, content: event.status === 'cancelled' ? JSON.stringify({source: 'Google Calendar', id: event.id, status: 'cancelled'})
-        : JSON.stringify({source: 'Google Calendar', id: event.id, status: event.status, summary: text(event.summary),
+        : JSON.stringify({source: 'Google Calendar', calendar: {id: args.calendarId ?? 'primary', account: args.connection}, id: event.id, status: event.status, summary: text(event.summary),
             description: text(event.description), location: text(event.location), start: event.start, end: event.end,
             organizer: event.organizer, attendees: event.attendees, recurrence: event.recurrence, updated: event.updated}, null, 2)};
 }
@@ -65,6 +65,9 @@ export async function saveMaterials(items, args, context, service) {
             try {previous = await context.vfs.readFile(path, {maxBytes: 128 * 1024});} catch (error) {if (error?.code !== 'ENOENT') throw error;}
             if (previous !== file.content) await context.vfs.writeFile(path, file.content);
         }
+        if (service === 'calendar') await writeJson(context.vfs, directory + '/.calendar-source.json', {
+            format: 'nestos.calendar-source', version: 1, name: args.calendarId ?? 'primary', account: args.connection, archivedAt: Date.now()});
+        if (service === 'gmail' && context.mailSource) await writeJson(context.vfs, directory + '/.mail-source.json', {...context.mailSource, archivedAt: Date.now()});
     } catch {throw fail(context.signal?.aborted ? 'GOOGLE_CANCELLED' : 'GOOGLE_SOURCE_WRITE_FAILED');}
     for (const item of items) await writeJson(context.vfs, directory + '/.items/' + hash(item.id) + '.json', {id: item.id});
     return {count: files.length, removed: 0, directory,

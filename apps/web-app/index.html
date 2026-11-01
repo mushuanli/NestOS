@@ -82,6 +82,9 @@
                 </button>
             </li>
             <li class="app-nav-item--secondary">
+                <button type="button" class="app-nav-btn" data-target="calendar-workspace" title="日历" aria-label="日历"><span data-calendar-icon aria-hidden="true"></span><span>日历</span></button>
+            </li>
+            <li class="app-nav-item--secondary">
                 <button type="button" class="app-nav-btn" data-target="private-workspace" title="私密笔记" aria-label="私密笔记">
                     <i class="fas fa-lock" aria-hidden="true"></i><span>私密</span>
                 </button>
@@ -109,6 +112,7 @@
     <dialog id="mobile-more-menu" class="mobile-more-menu" aria-label="更多功能">
         <div class="mobile-more-menu__header"><strong>更多功能</strong><button type="button" class="mobile-more-menu__close" aria-label="关闭更多功能">×</button></div>
         <div class="mobile-more-menu__grid">
+            <button type="button" class="app-nav-btn" data-target="calendar-workspace"><span data-calendar-icon aria-hidden="true"></span><span>日历</span></button>
             <button type="button" class="app-nav-btn" data-target="email-workspace"><i class="fas fa-envelope" aria-hidden="true"></i><span>邮件</span></button>
             <button type="button" class="app-nav-btn" data-target="private-workspace"><i class="fas fa-lock" aria-hidden="true"></i><span>私密笔记</span></button>
             <button type="button" class="app-nav-btn" data-target="twin-workspace"><i class="fas fa-user-circle" aria-hidden="true"></i><span>数字分身</span></button>
@@ -143,6 +147,7 @@
 
         <!-- (A) Agent Workspace (默认激活) -->
         <div id="agent-workspace" class="workspace-view"></div>
+        <div id="calendar-workspace" class="workspace-view"></div>
         <div id="twin-workspace" class="workspace-view"></div>
         <div id="kanban-workspace" class="workspace-view"></div>
         <div id="toolbox-workspace" class="workspace-view"></div>

@@ -1,0 +1,18 @@
+.mail__sidebar { display: flex; flex-direction: column; width: clamp(300px, 30vw, 420px); color: var(--text-primary, #1e293b); background: var(--mm-sidebar-bg, #f9f9f9); }
+.mail__sidebar > section { flex: 0 0 auto; min-height: 0; max-height: 38%; }
+.mail__accounts { height: 240px; min-height: 100px; }
+.mail__list { flex: 1; min-height: 0; overflow: hidden; }
+.mail__reader { display: flex; flex-direction: column; overflow: auto; background: var(--mm-bg-color, #fff); color: var(--text-primary, #1e293b); }
+.mail__document { padding: 24px; min-width: 0; overflow-wrap: anywhere; }
+.mail__document.mm-placeholder { flex-direction: column; }
+.mail__document h2 { margin: 0 0 20px; font-size: 22px; line-height: 1.4; }
+.mail__document p { margin: 8px 0; font-size: 13px; color: var(--text-secondary, #64748b); }
+.mail__body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 15px; line-height: 1.8; border-top: 1px solid var(--mm-border-color, #e5e7eb); margin-top: 20px; padding-top: 20px; }
+.mail__alert { margin: 0; padding: 0 20px; font-size: 13px; color: var(--vscode-errorForeground, #dc2626); overflow-wrap: anywhere; }
+.mail__alert:not(:empty) { padding-block: 12px; }
+@media (max-width: 768px) {
+    .mail__sidebar { width: 100%; }
+    .mail__document { padding: 16px; }
+    .mail__document h2 { font-size: 20px; }
+    .mail__accounts { height: 180px; }
+}

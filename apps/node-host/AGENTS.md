@@ -41,3 +41,5 @@ httpd 仅在 http.editorSwap=true 时装配 EditorSwapStore，默认 ~/swap；�
 toolbox.yaml 的普通参数可声明 connectionType；工具包配置投影当前用户同类型连接为可选项，唯一连接提供默认建议，多个连接不猜测账号。UI 保存后才成为用户参数覆盖；参数 Schema 的默认值另行展示，空值继续继承运行时默认。配置字段不投影 Secret。
 
 - terminal/ 只为 HTTP 管理员认证视图提供服务器 Bash PTY，经 ServerTerminals/ServerTerminal 契约开放。每视图最多两个进程，输出有界；视图与编辑器销毁释放 PTY，输入从不自动重放。普通用户不获得此能力；日志不包含命令、输出或环境值。定向回归为 http-app 的 server-terminal 与 view-api 终端场景。
+
+- 工具包显式 switchVersion 为即时切换：按共享注册锁准备所有用户实例、持久入口与同步目录发布；稳定执行代理在业务调用前写入 Task 实现引用，旧调用/重试/核对按原指纹恢复。缺少历史绑定拒绝猜测，提交结果未知时暂停新准入并按 activationId 核对。二进制热升级要求新旧包 executionEnvironment:instance，通过工厂 executables 映射实例隔离；旧进程环境绑定变化明确拒绝。

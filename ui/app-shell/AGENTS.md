@@ -226,3 +226,5 @@ browser/study-sources 将可引用工作区和项目文件视图适配为独立�
 学习生成的 NestOS 错误码只在 study-generation 适配边界映射为 recovery:pending；核心重试通过 generation.resume 观察原操作。AbortSignal 停止观察，generation.cancel 显式取消对应提交；不再传递 STUDY_DRAFT_SUSPENDED 字符串协议。保存后的 Session 标题更新属于宿主 documentSaved，不进入 StudyCreation 契约，失败不改变文件保存结果。笔记工具栏通过 compactLayout:inline、primaryAction:refresh 显式设置布局和主操作，extraItems.after 只表达顺序。
 
 桌面 WorkbenchTabs 激活/重新选择文件及 tab 栏尺寸变化时，由 TabBarViewport 在布局后仅横向滚动标签栏，使当前标签进入可见范围；不得用 scrollIntoView 带动正文或祖先滚动。标题/保存状态等后台刷新不强制拉回用户手动浏览的位置；销毁取消动画帧和尺寸观察。手机保留原窗口图标切换及隐藏 tab 栏规则。
+
+邮件由 mail/ 独立控制器读取授权 emails 工作区，复用 vfs-ui Drawer 与 BrowserSource 提供来源和列表；只按通用 .mail-source.json 分组，不加载供应商 SDK。正文以文本展示，隐藏同步文件不进入列表。手机来源区折叠，来源选择不得触发阅读切换；消息身份保留来源路径。扫描器输出选择工作区或项目及子目录，不在 Tool 参数或连接表单里设置输出位置。

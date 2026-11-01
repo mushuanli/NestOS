@@ -1,4 +1,4 @@
-import {ENTITY_ICONS} from '@itookit/common';
+import {ACTION_ICONS} from '@itookit/common';
 import {studyDraftStore} from './persistence/study-draft-store';
 import {showFlowDependencies} from './configuration/flow-dependencies-dialog';
 import {ShellApplicationEvents, workspaceConsumesEvent} from './lifecycle/application-events';
@@ -30,6 +30,8 @@ import { createOcrControls } from './configuration/ocr-controls';
 import { ConfigurationDeletionDialog } from './configuration/delete-dialog';
 import { createTwinModule } from './digital-twin';
 import {createKanbanWorkspace} from './kanban';
+import {createMailModule} from './mail';
+import {createCalendarModule} from './calendar';
 import { createToolboxModule } from './toolbox';
 import { TOOLBOX_SCOPE } from './toolbox/ToolboxWorkbench';
 import { TOOLBOX_KINDS, legacyToolboxRoute, toolboxSettingsRoute } from './toolbox/routes';
@@ -101,7 +103,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     if (workbench) {routeMap.chat ??= workbench.elementId; routeMap.workbench ??= workbench.elementId;}
     for (const workspace of workspaces) {const root = document.getElementById(workspace.elementId); if (root) root.inert = false;}
     if (options.startPage) { routeMap[START_PAGE_SLUG] = START_PAGE_ID; reverseRouteMap[START_PAGE_ID] = START_PAGE_SLUG; }
-    document.querySelectorAll<HTMLElement>('[data-kanban-icon]').forEach(icon => {icon.textContent = ENTITY_ICONS.project;});
+    document.querySelectorAll<HTMLElement>('[data-kanban-icon]').forEach(icon => {icon.innerHTML = ACTION_ICONS.kanbanView;});
+    document.querySelectorAll<HTMLElement>('[data-calendar-icon]').forEach(icon => {icon.innerHTML = ACTION_ICONS.calendarView;});
     const toolboxId = workspaces.find(ws => ws.type === 'toolbox')?.elementId;
     if (toolboxId) for (const slug of TOOLBOX_KINDS) routeMap[slug] = toolboxId;
 
@@ -322,6 +325,28 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const strategyType = wsConfig.type ?? 'standard';
         const factory = factories[strategyType] ?? defaultEditorFactory;
 
+        if (strategyType === 'mail') {
+            const module = createMailModule({files: await vfs.openFileSystem(workspaceRoot(wsConfig.workspaceName)),
+                sidebar: sidebarEl, editor: editorEl, selected: path => selectionHistory(elementId, path, 'push'),
+                scanners: () => handleNavigationRequest({target: 'twin', resourceId: '/sources'})});
+            own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
+            if (visibleWorkspaceId !== elementId || document.hidden) module.workbench.setVisible?.(false);
+            else options.onWorkspaceReady?.({editor: editorEl});
+            return module.workbench;
+        }
+
+        if (strategyType === 'calendar') {
+            const toolbox = await backend.toolboxView(); own(() => toolbox.dispose());
+            const module = createCalendarModule({files: await vfs.openFileSystem(workspaceRoot(wsConfig.workspaceName)),
+                sidebar: sidebarEl, editor: editorEl, selected: path => selectionHistory(elementId, path, 'replace'),
+                sourceNames: async () => Object.fromEntries((await toolbox.resources.toolPackages?.connections?.snapshot())?.connections.map(connection => [connection.id, connection.name]) ?? []),
+                scanners: () => handleNavigationRequest({target: 'twin', resourceId: '/sources'})});
+            own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
+            if (visibleWorkspaceId !== elementId || document.hidden) module.workbench.setVisible?.(false);
+            else options.onWorkspaceReady?.({editor: editorEl});
+            return module.workbench;
+        }
+
         if (strategyType === 'kanban') {
             const module = createKanbanWorkspace({service: services.kanban, sidebar: sidebarEl, editor: editorEl,
                 selected: path => selectionHistory(elementId, path, 'replace'),
@@ -334,7 +359,10 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         if (strategyType === 'twin') {
             if (!services.digitalTwin) throw new Error('Digital twin is unavailable in this services');
+            const toolbox = await backend.toolboxView(); own(() => toolbox.dispose());
             const module = createTwinModule({ service: services.digitalTwin, sidebar: sidebarEl, editor: editorEl,
+                packages: toolbox.resources.toolPackages,
+                projects: async () => (await services.projects.list()).map(project => ({id: project.project.id, name: project.name})),
                 connections: async () => (await agentService.getConnections()).filter(connection => connection.enabled)
                     .map(connection => ({ id: connection.id, name: connection.name })),
                 selected: path => selectionHistory(elementId, path, 'replace') });

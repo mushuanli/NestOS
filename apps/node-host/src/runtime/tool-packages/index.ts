@@ -1,4 +1,10 @@
 import {ToolHistory} from './history';
+import {activationPlan} from './activation-plan';
+import {disposePackageTools} from './disposal';
+import {deferredConnections} from './deferred-connections';
+import {ImplementationRecords, type ImplementationRef} from './execution-records';
+import {PackageExecutionSlot} from './execution-slot';
+import {joinUpgradeGroup, prepareUpgradeGroup, rollbackActivations, type PreparedActivation} from './upgrade-group';
 import {stageVersionSwitch} from './version-switch';
 import {migratePackageSettings} from './settings-migration';
 import {ToolPreferences, validateSettings} from './preferences';
@@ -15,12 +21,14 @@ import type {ToolMeta} from '@itookit/tools/contracts';
 import {discoverToolPackages, packageError, packageIdentity, toolPackageDirectories, type ToolPackageSource} from './manifest';
 import {packageFiles, packageFingerprint, resolvePackageExecutables} from './files';
 import {restoreToolPackage, stageToolPackage, type InstalledToolPackage} from './install';
-import {readToolPackageRegistry, withToolPackageRegistry, writeToolPackageRegistry, type RegisteredToolPackage} from './store';
+import {readToolPackageRegistry, withToolPackageRegistry, writeToolPackageRegistry, syncToolPackageRegistry, type RegisteredToolPackage} from './store';
 import {activatePackageEnvironment, packageSourceEnvironment} from './environment';
 import {readPackageFlows} from './flows';
 
 const log = createModuleLogger('tool-packages');
-interface Registrar {registerTools(tools: Tool[]): Promise<void>; unregisterTools?(ids: string[]): Promise<void>; toolCatalog: {getToolMeta(id: string): ToolMeta | undefined};}
+interface Registrar {registerTools(tools: Tool[]): Promise<void>; unregisterTools?(ids: string[]): Promise<void>;
+    prepareToolUpdate?(tools: Tool[], expected: Tool[], published?: Tool[]): Promise<{check(): void; commit(): void; rollback(): void}>;
+    toolCatalog: {getToolMeta(id: string): ToolMeta | undefined};}
 export interface NodeToolPackageOptions {
     canManage?: boolean; preferencesFile?: string; connections?: ToolConnectionAccess; env?: NodeJS.ProcessEnv; directories?: string[]; dataDirectory?: string; registryFile?: string;
 }
@@ -43,6 +51,25 @@ export class NodeToolPackages implements ToolDependencyResolver {
     private registrar?: Registrar;
     private readonly environments = new Map<string, () => void>();
     private tail = Promise.resolve();
+    private implementations!: ImplementationRecords;
+    private readonly slots = new Map<string, Map<string, PackageExecutionSlot>>();
+    private readonly historical = new Map<string, Promise<InstalledToolPackage>>();
+    private readonly retiring = new Map<string, Promise<void>>();
+    private readonly blocked = new Set<string>();
+    private leaveGroup?: () => void;
+    private closed = false;
+    private readonly listeners = new Set<() => void>();
+    private notificationQueued = false;
+    onChange(listener: () => void): () => void {this.listeners.add(listener); return () => {this.listeners.delete(listener);};}
+    private notify(): void {
+        if (this.notificationQueued || this.closed) return;
+        this.notificationQueued = true;
+        queueMicrotask(() => {
+            this.notificationQueued = false;
+            if (this.closed) return;
+            for (const listener of this.listeners) try {listener();} catch {log.warn('tool.package.observer', {stage: 'notify', result: 'failure', code: 'TOOL_PACKAGE_OBSERVER_FAILED'});}
+        });
+    }
 
     constructor(private readonly options: NodeToolPackageOptions = {}) {
         this.env = packageSourceEnvironment(options.env ?? process.env);
@@ -57,6 +84,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
         try {
             await this.preferences.initialize(); await this.historyStore.initialize();
             await mkdir(this.dataDirectory, {recursive: true}); this.dataDirectory = await realpath(this.dataDirectory);
+            this.implementations = new ImplementationRecords(this.dataDirectory);
             for (const source of await discoverToolPackages(this.options.directories ?? toolPackageDirectories(this.env))) this.addSource(source);
             this.records = await readToolPackageRegistry(this.registryFile);
             for (const record of this.records) {
@@ -69,6 +97,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
             await this.prepareBundled();
             await this.distributeDeclarations();
             for (const installed of this.installed.values()) await this.bindUserTools(installed);
+            await this.joinGroup();
             this.record(operationId, 'restore', this.failures.size ? 'partial' : 'success', started, this.installed.size);
         } catch (error) {
             const failure = failureReason(error, 'restore'); this.record(operationId, 'restore', 'failure', started, 0, failure.code);
@@ -130,7 +159,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
         installed.tools = installed.tools.map(tool => userTool(tool, this.preferences, key, this.historyStore, declaration.tools[tool.name]?.enableWith));
     }
     configure(id: string, version: string, settings: ToolPackageSettings): Promise<void> {
-        const work = this.tail.then(() => this.configurePackage(id, version, settings));
+        const work = this.tail.then(() => withToolPackageRegistry(this.registryFile, () => this.configurePackage(id, version, settings)));
         this.tail = work.catch(() => {}); return work;
     }
     private async configurePackage(id: string, version: string, settings: ToolPackageSettings): Promise<void> {
@@ -146,6 +175,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
                 validateToolDefaults(tool, fields.map(field => field.name), values);
             }
             stage = 'configure-persist'; await this.preferences.save(`${id}@${version}`, settings);
+            this.notify();
             this.record(operationId, stage, 'success', started, Object.keys(settings.defaults).length);
         } catch (error) {
             const failure = failureReason(error, 'configuration'); this.record(operationId, stage, 'failure', started, 0, failure.code);
@@ -155,17 +185,19 @@ export class NodeToolPackages implements ToolDependencyResolver {
     async history(id: string, version: string) {
         packageIdentity(id, 'id'); packageIdentity(version, 'version'); return this.historyStore.list(`${id}@${version}`);
     }
-    switchVersion(id: string, version: string, expectedVersion: string): Promise<void> {
-        const started = performance.now(), operationId = randomUUID();
+    switchVersion(id: string, version: string, expectedVersion: string, operationId = randomUUID()): Promise<void> {
+        const started = performance.now();
         const work = this.tail.then(async () => {
-            packageIdentity(id, 'id'); packageIdentity(version, 'version'); packageIdentity(expectedVersion, 'expected version');
+            packageIdentity(id, 'id'); packageIdentity(version, 'version'); packageIdentity(expectedVersion, 'expected version'); packageIdentity(operationId, 'operation id');
             if (this.options.canManage === false) throw packageError('TOOL_PACKAGE_SWITCH_DENIED', 'Only the host administrator can switch shared package versions');
+            const receipt = (await readToolPackageRegistry(this.registryFile)).find(row => row.id === id);
+            if (receipt?.activationId === operationId && receipt.version === version) {await this.reconcileRegistry(); return;}
+            await this.refreshCatalog();
             const active = this.installed.get(id), source = this.sources.get(`${id}@${version}`);
             if (!active || active.registration.version !== expectedVersion || version === expectedVersion) throw packageError('TOOL_PACKAGE_VERSION_CONFLICT', 'Refresh the active package version before switching');
             if (!source || !this.registrar) throw packageError('TOOL_PACKAGE_SWITCH_UNAVAILABLE', 'The selected version is unavailable in the trusted host catalog');
-            const selected = await stageVersionSwitch(source, active, this.packageDirectory(source.manifest), this.registryFile, this.env, this.registrar.toolCatalog);
-            this.pendingVersions.set(id, selected.version);
-            log.info('tool.package.version', {operationId, packageId: id, fromVersion: expectedVersion, toVersion: version, stage: 'prepare-version-switch', result: 'success', durationMs: Math.round(performance.now() - started)});
+            await stageVersionSwitch(source, active, this.packageDirectory(source.manifest), this.registryFile, this.env, this.registrar.toolCatalog, this.implementations, operationId);
+            log.info('tool.package.version', {operationId, packageId: id, fromVersion: expectedVersion, toVersion: version, stage: 'activate-version', result: 'success', durationMs: Math.round(performance.now() - started)});
         }).catch(error => {log.warn('tool.package.version', {operationId, packageId: id, fromVersion: expectedVersion, toVersion: version, stage: 'prepare-version-switch', result: 'failure', code: failureReason(error, 'switch').code, durationMs: Math.round(performance.now() - started)}); throw error;});
         this.tail = work.catch(() => {}); return work;
     }
@@ -178,7 +210,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
             if (!installed || installed.registration.version !== version || !this.registrar?.unregisterTools) throw packageError('TOOL_PACKAGE_REMOVE_UNAVAILABLE', 'Package removal is unavailable');
             const settings = {...this.preferences.get(key), enabled: this.preferences.enabled(key, undefined, !this.declarations.has(key))};
             await this.preferences.save(key, {...settings, enabled: false});
-            if (this.historyStore.busy(key)) {await this.preferences.save(key, settings); throw packageError('TOOL_PACKAGE_BUSY', 'Wait for running tools before removing this package');}
+            if (this.historyStore.busy(key) || [...this.slots.get(id)?.values() ?? []].some(slot => slot.counts().length)) {await this.preferences.save(key, settings); throw packageError('TOOL_PACKAGE_BUSY', 'Wait for running tools before removing this package');}
             await withToolPackageRegistry(this.registryFile, async () => {
                 const current = await readToolPackageRegistry(this.registryFile), next = current.filter(row => row.id !== id);
                 if (current.find(row => row.id === id)?.version !== version) throw packageError('TOOL_PACKAGE_VERSION_CONFLICT', 'Registered version changed before uninstall');
@@ -188,6 +220,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
                 this.records = next; this.installed.delete(id); this.environments.get(id)?.(); this.environments.delete(id);
             });
             this.record(operationId, 'uninstall', 'success', started, installed.tools.length);
+            this.notify();
         }).catch(error => {this.record(operationId, 'uninstall', 'failure', started, 0, failureReason(error, 'uninstall').code); throw error;}); this.tail = work.catch(() => {}); return work;
     }
     userTools(tools: Tool[]): Tool[] {
@@ -196,7 +229,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
             return installed && this.declarations.has(packageKey(installed.source)) ? userTool(tool, this.preferences, packageKey(installed.source), this.historyStore, this.declarations.get(packageKey(installed.source))?.tools[tool.name]?.enableWith) : tool;
         });
     }
-    initialTools(): Tool[] {return [...this.installed.values()].flatMap(item => item.tools);}
+    initialTools(): Tool[] {return [...this.installed.values()].flatMap(item => item.tools.map(tool => this.slot(item, tool).tool));}
     async flowTemplates(packageId: string, version: string) {
         packageIdentity(packageId, 'id'); packageIdentity(version, 'version'); await this.tail;
         const installed = this.installed.get(packageId);
@@ -205,21 +238,34 @@ export class NodeToolPackages implements ToolDependencyResolver {
             throw packageError('TOOL_PACKAGE_CONTENT_CONFLICT', 'Installed package resources differ from their registration');
         return readPackageFlows(installed.source);
     }
-    bind(registrar: Registrar): void {
+    async bind(registrar: Registrar): Promise<void> {
         for (const installed of this.installed.values()) this.activate(installed);
         this.registrar = registrar;
+        await withToolPackageRegistry(this.registryFile, async () => {
+            await this.reconcileRecords(await readToolPackageRegistry(this.registryFile));
+            for (const installed of this.installed.values()) {
+                if (!registrar.prepareToolUpdate) continue;
+                const slots = installed.tools.map(tool => this.slot(installed, tool).tool);
+                try {const update = await registrar.prepareToolUpdate(installed.tools, slots, slots); update.check(); update.commit();}
+                catch (error) {if ((error as {code?: string}).code !== 'TOOL_PACKAGE_TOOL_CONFLICT') throw error;}
+            }
+        });
     }
     async close(): Promise<void> {
-        await this.tail; await this.historyStore.close(); for (const release of this.environments.values()) release(); this.environments.clear(); this.registrar = undefined;
+        if (this.closed) return;
+        this.closed = true; this.leaveGroup?.(); this.leaveGroup = undefined;
+        this.listeners.clear();
+        await this.tail; await Promise.allSettled(this.retiring.values());
+        const historical = await Promise.allSettled(this.historical.values());
+        const packages = [...this.installed.values(), ...historical.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])];
+        await disposePackageTools(packages.flatMap(installed => installed.tools), 'runtime-close');
+        await this.historyStore.close(); for (const release of this.environments.values()) release(); this.environments.clear(); this.registrar = undefined;
+        this.historical.clear(); this.slots.clear();
     }
 
     async list(): Promise<ToolPackageInfo[]> {
         await this.tail;
-        this.pendingVersions.clear();
-        for (const record of await readToolPackageRegistry(this.registryFile)) {
-            const active = this.installed.get(record.id);
-            if (active && active.registration.version !== record.version) this.pendingVersions.set(record.id, record.version);
-        }
+        await this.refreshCatalog(); await this.reconcileRegistry();
         const entries = new Map(this.sources);
         for (const installed of this.installed.values()) entries.set(packageKey(installed.source), installed.source);
         const result: ToolPackageInfo[] = [];
@@ -229,6 +275,142 @@ export class NodeToolPackages implements ToolDependencyResolver {
             result.push({id: record.id, version: record.version, tools: [], status: 'failed', ...failure});
         }
         return result.sort((a, b) => a.id.localeCompare(b.id) || a.version.localeCompare(b.version));
+    }
+
+    private async refreshCatalog(): Promise<void> {
+        const sources = await discoverToolPackages(this.options.directories ?? toolPackageDirectories(this.env));
+        const next = new Map<string, ToolPackageSource>();
+        for (const source of sources) {
+            const key = packageKey(source);
+            if (next.has(key)) throw packageError('TOOL_PACKAGE_CATALOG_CONFLICT', 'The trusted catalog contains duplicate package versions');
+            next.set(key, source);
+            const declaration = await readToolbox(source); if (declaration) this.declarations.set(key, declaration);
+        }
+        this.sources.clear(); for (const [key, source] of next) this.sources.set(key, source);
+    }
+    private async joinGroup(): Promise<void> {
+        await withToolPackageRegistry(this.registryFile, async () => {
+            await this.reconcileRecords(await readToolPackageRegistry(this.registryFile));
+            for (const installed of this.installed.values()) await this.implementations.save(installed.registration);
+            this.leaveGroup = joinUpgradeGroup(this.registryFile, this);
+        });
+    }
+    private async reconcileRegistry(): Promise<void> {
+        await withToolPackageRegistry(this.registryFile, async () => {
+            const records = await readToolPackageRegistry(this.registryFile);
+            for (const record of records) {
+                const plans = await prepareUpgradeGroup(this.registryFile, record);
+                try {
+                    for (const plan of plans) plan.check();
+                    if (plans.some(plan => plan.needsSync)) await syncToolPackageRegistry(this.registryFile);
+                    for (const plan of plans) plan.commit();
+                } catch (error) {
+                    for (const plan of plans) plan.block();
+                    await rollbackActivations(plans); throw error;
+                }
+            }
+            this.records = records;
+        });
+    }
+    private async reconcileRecords(records: RegisteredToolPackage[]): Promise<void> {
+        if (this.blocked.size) await syncToolPackageRegistry(this.registryFile);
+        for (const record of records) {
+            const active = this.installed.get(record.id);
+            if (!active || active.registration.version === record.version && active.registration.fingerprint === record.fingerprint && !this.blocked.has(record.id)) continue;
+            const activation = await this.preparePackage(record); activation.check(); activation.commit();
+        }
+        this.records = records;
+    }
+    private slot(installed: InstalledToolPackage, tool: Tool): PackageExecutionSlot {
+        const id = installed.registration.id, slots = this.slots.get(id) ?? new Map<string, PackageExecutionSlot>();
+        this.slots.set(id, slots);
+        if (!slots.has(tool.name)) slots.set(tool.name, new PackageExecutionSlot(tool, () => {
+            if (this.closed || this.blocked.has(id)) throw packageError('TOOL_PACKAGE_UPGRADE_INDETERMINATE', 'Tool admission is waiting for version reconciliation');
+            return this.installed.get(id)?.registration ?? installed.registration;
+        }, reference => this.resolveImplementation(reference), version => this.releaseHistorical(id, version), () => this.notify()));
+        return slots.get(tool.name)!;
+    }
+    private releaseHistorical(id: string, version: string): void {
+        if (this.blocked.has(id) || this.installed.get(id)?.registration.version === version) return;
+        if ([...this.slots.get(id)?.values() ?? []].some(slot => slot.counts().some(row => row.version === version))) return;
+        for (const [key, loading] of this.historical) if (key.startsWith(`${id}@${version}#`)) {
+            this.historical.delete(key);
+            const disposal = loading.then(installed => disposePackageTools(installed.tools, 'retired-instance')).catch(() => {});
+            this.retiring.set(key, disposal);
+            void disposal.finally(() => {if (this.retiring.get(key) === disposal) this.retiring.delete(key);});
+        }
+    }
+    private async resolveImplementation(reference: ImplementationRef): Promise<Tool> {
+        const key = `${reference.packageId}@${reference.version}#${reference.fingerprint}`;
+        await this.retiring.get(key);
+        const active = this.installed.get(reference.packageId);
+        let installed: InstalledToolPackage;
+        if (active?.registration.fingerprint === reference.fingerprint && active.registration.version === reference.version) installed = active;
+        else {
+            let loading = this.historical.get(key);
+            if (!loading) {loading = this.restoreHistorical(reference); this.historical.set(key, loading); void loading.catch(() => this.historical.delete(key));}
+            installed = await loading;
+        }
+        const tool = installed.tools.find(tool => tool.name === reference.toolId && (tool.version ?? '1') === reference.toolVersion);
+        if (!tool) throw packageError('TOOL_PACKAGE_IMPLEMENTATION_UNAVAILABLE', 'The bound implementation no longer provides this tool');
+        return tool;
+    }
+    private async restoreHistorical(reference: ImplementationRef): Promise<InstalledToolPackage> {
+        const record = await this.implementations.read({id: reference.packageId, version: reference.version, fingerprint: reference.fingerprint});
+        const connections = deferredConnections(this.connectionsFor(reference.packageId));
+        const installed = await restoreToolPackage(this.packageDirectory(record), record, connections.access);
+        await this.bindUserTools(installed); connections.activateHistorical(); return installed;
+    }
+    async preparePackage(record: RegisteredToolPackage): Promise<PreparedActivation> {
+        const active = this.installed.get(record.id);
+        if (!active && this.failures.has(record.id) && this.records.some(row => row.id === record.id && row.fingerprint === record.fingerprint))
+            return {check: () => {}, commit: () => {}, rollback: () => {}, block: () => {}, resume: () => {}};
+        if (active?.registration.version === record.version && active.registration.fingerprint === record.fingerprint) {
+            const changed = this.blocked.has(record.id) || active.registration.activationId !== record.activationId;
+            return {needsSync: this.blocked.has(record.id), check: () => {if (this.closed) throw packageError('TOOL_PACKAGE_RUNTIME_UNAVAILABLE', 'User runtime is closing');},
+                commit: () => {active.registration = record; this.blocked.delete(record.id); if (changed) this.notify();}, rollback: () => {},
+                block: () => {this.blocked.add(record.id);}, resume: () => {this.blocked.delete(record.id);}};
+        }
+        const key = `${record.id}@${record.version}`, hadSettings = this.preferences.has(key);
+        const rollbackSettings = async () => {if (!hadSettings && this.preferences.has(key)) await this.preferences.remove(key);};
+        try {return await this.prepareActivation(record, rollbackSettings);}
+        catch (error) {await rollbackSettings(); throw error;}
+    }
+    private async prepareActivation(record: RegisteredToolPackage, rollbackSettings: () => Promise<void>): Promise<PreparedActivation> {
+        await this.retiring.get(`${record.id}@${record.version}#${record.fingerprint}`);
+        const previous = this.installed.get(record.id), connections = deferredConnections(this.connectionsFor(record.id));
+        const next = await restoreToolPackage(this.packageDirectory(record), record, connections.access);
+        await this.bindUserTools(next);
+        if (this.migrationWarnings.has(packageKey(next.source))) throw packageError('TOOL_PACKAGE_DEFAULT_INVALID', 'Saved tool settings need migration before upgrading');
+        const retained = this.historical.get(`${record.id}@${record.version}#${record.fingerprint}`);
+        if (retained) next.tools = (await retained).tools;
+        const connectionPlan = connections.prepare();
+        const published = next.tools.map(tool => this.slot(next, tool).tool), expected = previous?.tools.map(tool => this.slot(previous, tool).tool) ?? [];
+        if (this.registrar && !this.registrar.prepareToolUpdate) throw packageError('TOOL_PACKAGE_SWITCH_UNAVAILABLE', 'The running host does not support atomic tool activation');
+        const catalog = await this.registrar?.prepareToolUpdate?.(next.tools, expected, published);
+        return activationPlan({needsSync: this.blocked.has(record.id),
+            check: () => {if (this.closed) throw packageError('TOOL_PACKAGE_RUNTIME_UNAVAILABLE', 'User runtime is closing');},
+            connections: connectionPlan, catalog, rollbackSettings,
+            publish: () => this.publishPackage(next, previous, connections.types.keys()),
+            block: () => {this.blocked.add(record.id);}, resume: () => {this.blocked.delete(record.id);}});
+    }
+    private publishPackage(next: InstalledToolPackage, previous: InstalledToolPackage | undefined, typeIds: Iterable<string>): () => void {
+        const {id} = next.registration, oldRecords = this.records, oldFailure = this.failures.get(id), oldOwners = this.connectionOwners.get(id);
+        const activated = this.activate(next);
+        if (previous) this.historical.set(`${id}@${previous.registration.version}#${previous.registration.fingerprint}`, Promise.resolve(previous));
+        this.installed.set(id, next); for (const tool of next.tools) this.slot(next, tool).replace(tool);
+        this.records = this.records.filter(row => row.id !== id).concat(next.registration);
+        this.connectionOwners.set(id, new Set([...oldOwners ?? [], ...typeIds]));
+        this.failures.delete(id); this.blocked.delete(id); this.pendingVersions.delete(id); this.notify();
+        if (previous) queueMicrotask(() => this.releaseHistorical(id, previous.registration.version));
+        return () => {
+            if (activated) {this.environments.get(id)?.(); this.environments.delete(id);}
+            if (previous) {this.installed.set(id, previous); for (const tool of previous.tools) this.slot(previous, tool).replace(tool);}
+            else this.installed.delete(id);
+            if (oldFailure) this.failures.set(id, oldFailure);
+            if (oldOwners) this.connectionOwners.set(id, oldOwners); else this.connectionOwners.delete(id);
+            this.records = oldRecords;
+        };
     }
 
     async ensure(dependencies: readonly FlowToolDependency[]): Promise<ToolDependencyResult> {
@@ -290,16 +472,18 @@ export class NodeToolPackages implements ToolDependencyResolver {
             const existing = this.registrar!.toolCatalog.getToolMeta(tool.name);
             if (!existing) return true;
             assertToolVersion({id: tool.name, version: tool.version ?? '1'}, existing.version); return false;
-        });
+        }).map(tool => this.slot(installed, tool).tool);
         if (this.installed.get(installed.registration.id) === installed && !additions.length) return;
         await withToolPackageRegistry(this.registryFile, async () => {
             const current = await readToolPackageRegistry(this.registryFile), previous = current.find(item => item.id === installed.registration.id);
             if (previous && previous.version !== installed.registration.version) throw packageError('TOOL_PACKAGE_VERSION_CONFLICT', `Package ${previous.id}@${previous.version} is already registered`);
             const next = current.filter(item => item.id !== installed.registration.id).concat(installed.registration);
+            await this.implementations.save(installed.registration);
             await writeToolPackageRegistry(this.registryFile, next);
             try {await this.registrar!.registerTools(additions);}
             catch (error) {await writeToolPackageRegistry(this.registryFile, current); throw error;}
             this.records = next; this.installed.set(installed.registration.id, installed); this.failures.delete(installed.registration.id);
+            this.notify();
         });
     }
 
@@ -332,6 +516,10 @@ export class NodeToolPackages implements ToolDependencyResolver {
 
     private packagePresentation(source: ToolPackageSource): Partial<ToolPackageInfo> {
         const {id, version} = source.manifest, result: Partial<ToolPackageInfo> = {};
+        const running = new Map<string, number>();
+        for (const slot of this.slots.get(id)?.values() ?? []) for (const row of slot.counts()) running.set(row.version, (running.get(row.version) ?? 0) + row.count);
+        result.runningVersions = [...running].filter(([runningVersion]) => runningVersion !== this.installed.get(id)?.registration.version).map(([version, count]) => ({version, count}));
+        result.activationId = this.installed.get(id)?.registration.activationId;
         const ui = this.declarations.get(packageKey(source));
         const display = ui?.connections ? ui : [...this.sources.values()].filter(candidate => candidate.manifest.id === id).sort((a, b) => b.manifest.version.localeCompare(a.manifest.version, undefined, {numeric: true}))
             .map(candidate => this.declarations.get(packageKey(candidate))).find(Boolean) ?? ui;
@@ -361,6 +549,7 @@ export class NodeToolPackages implements ToolDependencyResolver {
         }});
     }
     private activate(installed: InstalledToolPackage): boolean {
+        if (installed.source.manifest.executionEnvironment === 'instance') return false;
         if (this.environments.has(installed.registration.id)) return false;
         this.environments.set(installed.registration.id, activatePackageEnvironment(installed.registration.bindings)); return true;
     }

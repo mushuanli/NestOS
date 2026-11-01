@@ -31,7 +31,7 @@ async function fixture() {
 }
 async function kernel(manager: NodeToolPackages) {
     const runtime = await createKernelAdaptersRuntime({llmDriver: {} as IDeviceDriver, additionalTools: manager.initialTools()});
-    cleanup.push(() => runtime.dispose()); manager.bind(runtime); return runtime;
+    cleanup.push(() => runtime.dispose()); await manager.bind(runtime); return runtime;
 }
 const configured = {enabled: true, defaults: {'fixture.convert': {value: 'user-a', count: 2}}};
 
@@ -61,7 +61,7 @@ it('preinstalls shared code once, defaults each user to disabled, and updates ac
 it('does not let Flow dependency preparation activate a disabled tool and exposes inherited scanner defaults without changing target identity', async () => {
     const f = await fixture(), manager = await f.manager('a');
     const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false, toolDependencies: manager,
-        kernelPlatform: {additionalTools: manager.initialTools(), configure: kernel => {manager.bind(kernel);}}}); cleanup.push(() => runtime.dispose());
+        kernelPlatform: {additionalTools: manager.initialTools(), configure: async kernel => {await manager.bind(kernel);}}}); cleanup.push(() => runtime.dispose());
     const flow = {id: 'uses-defaults', name: 'Uses defaults', draftVersion: 1, updatedAt: 0, layout: {}, edges: [], toolDependencies: [{id: 'fixture.convert', version: '1'}],
         nodes: [{id: 'value', name: 'Value', plugin: 'builtin.tool', pluginVersion: '1.0.0', config: {toolId: 'fixture.convert', toolVersion: '1', args: {}}, inputs: {}}]};
     await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
@@ -127,17 +127,18 @@ it('enforces individual tool disablement and records successful invocations priv
     await expect(manager.uninstall('fixture', '1')).rejects.toMatchObject({code: 'TOOL_PACKAGE_REMOVE_DENIED'});
 });
 
-it('keeps incompatible old settings private and leaves a switched package disabled for review', async () => {
+it('keeps incompatible settings private and rejects activation without changing the running version', async () => {
     const f = await fixture(), first = await f.manager('a'); await kernel(first);
     await first.configure('fixture', '1', configured);
     const manifestFile = path.join(f.source, 'nestos-tool.json'), moduleFile = path.join(f.source, 'extension.mjs');
     const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
     await writeFile(manifestFile, JSON.stringify({...manifest, version: '2'}));
     await writeFile(moduleFile, (await readFile(moduleFile, 'utf8')).replace('value:z.string().min(1)', 'value:z.number()'));
-    const pending = await f.manager('a'); await kernel(pending); await pending.switchVersion('fixture', '2', '1');
+    const pending = await f.manager('a'); await kernel(pending); await expect(pending.switchVersion('fixture', '2', '1')).rejects.toMatchObject({code: 'TOOL_PACKAGE_DEFAULT_INVALID'});
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const restarted = await f.manager('a');
-    expect((await restarted.list()).find(item => item.version === '2')).toMatchObject({status: 'registered', configurationWarning: 'TOOL_PACKAGE_DEFAULT_INVALID', configuration: {enabled: false, defaults: {}}});
+    expect((await restarted.list()).find(item => item.version === '1')).toMatchObject({status: 'registered', configuration: configured});
+    expect((await restarted.list()).find(item => item.version === '2')?.status).toBe('available');
     const saved = JSON.parse(await readFile(path.join(f.root, 'a/private/preferences.json'), 'utf8'));
     expect(saved.packages['fixture@1']).toEqual(configured);
     expect(JSON.stringify(warning.mock.calls)).not.toContain('user-a');

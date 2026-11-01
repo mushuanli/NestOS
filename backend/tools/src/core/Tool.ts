@@ -28,6 +28,10 @@ export interface Tool<
   Input extends AnyObject = AnyObject,
   Output = unknown,
 > {
+  /** Host-owned implementation lease, resolved before schemas, defaults or business logic. */
+  acquireExecution?(context: ToolUseContext, phase: 'invoke' | 'reconcile'): Promise<{tool: Tool; release(): void}>;
+  /** Release resources owned by this immutable implementation after its final lease ends. */
+  dispose?(): void | Promise<void>;
   /** Unique tool name (e.g. "Bash", "Read"). */
   readonly name: string;
   readonly version?: string;

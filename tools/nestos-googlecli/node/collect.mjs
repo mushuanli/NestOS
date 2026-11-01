@@ -9,7 +9,7 @@ export async function collectGoogle(service, args, context, connections, fetcher
     const started = Date.now(); let stage = 'authorization', directory;
     const report = async (result, code, count, progress) => {
         const event = {operation: 'google.' + service + '.collect', operationId: context.operationId, stage, result, code, count,
-            mimeType: progress?.mimeType, complete: progress?.complete, processed: progress?.processed, directory, cwd: context.cwd, durationMs: Date.now() - started};
+            diagnostic: progress?.diagnostic, mimeType: progress?.mimeType, complete: progress?.complete, processed: progress?.processed, directory, cwd: context.cwd, durationMs: Date.now() - started};
         try {console[result === 'failure' ? 'warn' : 'info']('[GoogleCollection]', JSON.stringify(event));} catch {}
         try {await context.onProgress?.({message: JSON.stringify(event)});} catch {}
     };
@@ -32,6 +32,6 @@ export async function collectGoogle(service, args, context, connections, fetcher
     } catch (error) {
         const code = context.signal?.aborted ? context.signal.reason?.name === 'TimeoutError' ? 'GOOGLE_COLLECTION_TIMEOUT' : 'GOOGLE_CANCELLED'
             : /^(GOOGLE_|TOOL_CONNECTION_|TOOL_AUTH_|RESOURCE_)[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'GOOGLE_COLLECTION_FAILED';
-        await report('failure', code); throw fail(code);
+        await report('failure', code, undefined, {diagnostic: error.diagnostic, mimeType: error.diagnostic?.mimeType}); throw fail(code);
     }
 }

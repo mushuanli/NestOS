@@ -199,8 +199,9 @@ test('expands a rolling calendar horizon and retains the delta cursor captured b
         assert.ok(checkpoint(f).rangeEnd > oldEnd);
     } finally {Date.now = originalNow;}
 });
-test('freezes inherited connection destinations in Task assets across an unknown result and configuration edits', async () => {
+test('freezes the scanner-mounted directory in Task assets across an unknown result', async () => {
     const f = fixture(() => Response.json({messages: [{id: 'a'}]})), assets = new Map(); let directory = 'first';
+    f.context.cwd = 'first';
     const resolve = f.connections.resolve, write = f.context.vfs.writeFile; let unknown = true;
     f.connections.resolve = async () => ({...await resolve(), mailDirectory: directory});
     f.context.getAssetRecord = async key => assets.get(key);
@@ -208,7 +209,7 @@ test('freezes inherited connection destinations in Task assets across an unknown
     f.context.vfs.writeFile = async (path, content) => {await write(path, content); if (path.endsWith('/.sync.json') && unknown) {unknown = false; throw new Error('Unknown result');}};
     const {directory: _directory, ...args} = input;
     await assert.rejects(f.run('one', args), /GOOGLE_SYNC_STATE_WRITE_FAILED/);
-    directory = 'second'; assert.equal((await f.run('one', args)).complete, true);
+    directory = 'second'; f.context.cwd = 'second'; assert.equal((await f.run('one', args)).complete, true);
     assert.ok([...f.files.keys()].every(path => path.startsWith('first/')));
 });
 test('yields a batch after its time budget instead of starting more provider work', async () => {

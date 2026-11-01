@@ -2,6 +2,7 @@ import {readFile, readdir, realpath, stat} from 'node:fs/promises';
 import path from 'node:path';
 
 export interface ToolPackageManifest {
+    executionEnvironment?: 'instance';
     flows?: string[];
     format: 1; id: string; version: string; name?: string; description?: string;
     module: string; files: string[]; tools: Array<{id: string; version?: string}>;
@@ -27,8 +28,10 @@ export async function readToolPackage(root: string): Promise<ToolPackageSource> 
     try {data = JSON.parse(raw);} catch {throw packageError('TOOL_PACKAGE_MANIFEST_INVALID', 'Tool package manifest contains invalid JSON');}
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw packageError('TOOL_PACKAGE_MANIFEST_INVALID', 'Expected a tool package manifest');
     const item = data as Record<string, unknown>;
+    if (item.executionEnvironment !== undefined && item.executionEnvironment !== 'instance') throw packageError('TOOL_PACKAGE_MANIFEST_INVALID', 'Unsupported executable binding mode');
     if (item.format !== 1 || !Array.isArray(item.tools) || !item.tools.length) throw packageError('TOOL_PACKAGE_MANIFEST_INVALID', 'Unsupported or empty tool package manifest');
     const manifest: ToolPackageManifest = {format: 1, id: packageIdentity(item.id, 'id'), version: packageIdentity(item.version, 'version'),
+        ...(item.executionEnvironment === 'instance' ? {executionEnvironment: 'instance'} : {}),
         ...(item.flows === undefined ? {} : {flows: relativeEntries(item.flows)}),
         module: packageRelative(item.module), files: relativeEntries(item.files), tools: toolEntries(item.tools), executables: executableEntries(item.executables),
         ...(typeof item.name === 'string' ? {name: item.name} : {}), ...(typeof item.description === 'string' ? {description: item.description} : {})};

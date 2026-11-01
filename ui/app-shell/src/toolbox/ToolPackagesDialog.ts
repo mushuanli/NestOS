@@ -33,6 +33,7 @@ class ToolPackagesDialog {
     private readonly connectionDrafts = new Map<string, string>();
     private readonly connectionNotices = new Map<string, ConnectionNotice>();
     private connectionToReveal?: string;
+    private formEdited = false;
     constructor(private readonly controls: PackageControls, private readonly changed: () => Promise<void>) {}
 
     open(signal?: AbortSignal): Promise<void> {
@@ -44,6 +45,13 @@ class ToolPackagesDialog {
         const close = document.createElement('button'); close.type = 'button'; close.textContent = t('action.close'); close.onclick = () => this.dialog.close();
         header.append(title, close); this.dialog.append(header, this.body); document.body.append(this.dialog);
         this.body.onclick = event => this.click(event); this.dialog.showModal(); void this.refresh();
+        this.body.addEventListener('input', event => {if ((event.target as Element).closest('form')) this.formEdited = true;});
+        const stopPackages = this.controls.toolPackages?.onChange?.(() => {
+            if (this.disposed || this.busy) return;
+            if (this.formEdited) {const notice = this.body.querySelector('[data-package-version-notice]'); if (notice) notice.textContent = label('changedWhileEditing');}
+            else void this.refresh();
+        });
+        this.dialog.addEventListener('close', () => stopPackages?.(), {once: true});
         this.body.onsubmit = event => {
             event.preventDefault(); const form = event.target as HTMLFormElement;
             if (form.dataset.form === 'sourceConnection') void this.saveConnection(form);
@@ -107,10 +115,10 @@ class ToolPackagesDialog {
         await this.run('tool.packages.check', () => this.readState());
     }
     private async switchPackageVersion(active: ToolPackageInfo, selected: ToolPackageInfo): Promise<void> {
-        await this.run('tool.package.version.switch', async () => {
+        await this.run('tool.package.version.switch', async operationId => {
             const port = this.controls.toolPackages;
             if (!port?.switchVersion) throw new Error(t('toolbox.packages.switchUnavailable'));
-            try {await port.switchVersion(active.id, selected.version, active.version);}
+            try {await port.switchVersion(active.id, selected.version, active.version, operationId);}
             finally {await this.readState();}
             if (!this.disposed) await this.changed();
         });
@@ -284,7 +292,7 @@ class ToolPackagesDialog {
         this.body.innerHTML = `<p>${escapeHTML(label('help'))}</p><div class="tool-packages-dialog__actions">
             <button type="button" data-packages-refresh ${this.busy ? 'disabled' : ''}>${escapeHTML(t('action.refresh'))}</button>
             <span role="status">${this.busy ? escapeHTML(label('loading')) : ''}</span></div>
-            <p class="tool-packages-dialog__error" role="alert">${escapeHTML(this.error)}</p>
+            <p role="status" data-package-version-notice></p><p class="tool-packages-dialog__error" role="alert">${escapeHTML(this.error)}</p>
             <section class="tool-packages-dialog__section">${this.packages.length ? primaryPackages(this.packages).map(item => packageRow(item, this.busy, this.connectionState, this.histories.get(item.id), this.packages.filter(version => version.id === item.id), packageFlows(item, this.busy, this.installingFlows === packageFlowKey(item), this.addedFlows.get(packageFlowKey(item))))).join('') : `<p>${escapeHTML(label('empty'))}</p>`}</section>
             ${this.controls.toolPackages?.connections && this.connectionState.types.some(type => !this.packages.some(item => packageConnectionTypes(item).includes(type.id))) ? sourceConnectionSettings({...this.connectionState, types: this.connectionState.types.filter(type => !this.packages.some(item => packageConnectionTypes(item).includes(type.id)))}, true) : ''}`;
         for (const node of this.body.querySelectorAll<HTMLDetailsElement>('[data-package-guide], [data-package-preferences]')) node.open = expanded.has(node.hasAttribute('data-package-guide') ? 'guide:' + node.dataset.packageGuide : 'preferences:' + node.dataset.packagePreferences);

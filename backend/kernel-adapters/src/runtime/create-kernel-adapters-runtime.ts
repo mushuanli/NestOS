@@ -79,6 +79,7 @@ export interface KernelAdaptersRuntime {
     sessions: SessionCapabilityRegistry;
     plugin: KernelAdaptersPlugin;
     registerTools(tools: Tool[]): Promise<void>;
+    prepareToolUpdate(tools: Tool[], expected: Tool[], published?: Tool[]): Promise<{check(): void; commit(): void; rollback(): void}>;
     unregisterTools(ids: string[]): Promise<void>;
     disposeSession(sessionId: string): Promise<void>;
     disposeScope(sessionId: string, scopeId: string): Promise<void>;
@@ -112,6 +113,7 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
     return {
         llmService,
         registerTools: tools => liveTools.register(tools),
+        prepareToolUpdate: (tools, expected, published) => liveTools.prepareUpdate(tools, expected, published),
         unregisterTools: ids => liveTools.unregister(ids),
         toolCatalog: {
             getToolDefaults: id => catalogTools.getToolDefaults(id),

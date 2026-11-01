@@ -5,7 +5,11 @@ const label = (key: string) => t(`toolbox.packages.${key}` as LocaleKey);
 export function versionAction(item: ToolPackageInfo, versions: ToolPackageInfo[], busy: boolean): string {
     if (item.pendingVersion) return `<p role="status">${escapeHTML(label('versionPending').replace('{version}', item.pendingVersion))}</p>`;
     const target = versions.filter(version => version.canSwitch).sort((a, b) => b.version.localeCompare(a.version, undefined, {numeric: true}))[0];
-    return target ? switchButton(item, target, busy) : '';
+    return `${item.activationId ? `<p role="status">${escapeHTML(label('upgraded').replace('{version}', item.version))}</p>` : ''}${target ? switchButton(item, target, busy) : ''}${runningVersions(item)}`;
+}
+
+export function runningVersions(item: ToolPackageInfo): string {
+    return (item.runningVersions ?? []).map(row => `<p role="status">${escapeHTML(label('drainingVersion').replace('{version}', row.version).replace('{count}', String(row.count)))}</p>`).join('');
 }
 
 export function packageVersions(item: ToolPackageInfo, versions: ToolPackageInfo[], busy: boolean): string {

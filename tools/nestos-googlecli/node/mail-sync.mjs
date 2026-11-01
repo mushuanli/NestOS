@@ -3,6 +3,7 @@ import {mailMaterial, archived} from './materials.mjs';
 import {pageState, nextPage} from './sync-batch.mjs';
 import {digest} from './sync-store.mjs';
 import {resolveMailBody} from './mail-body.mjs';
+import {bodyDiagnostic} from './body-diagnostics.mjs';
 const base = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
 export async function mailSync(client, args, context, directory, saved) {
@@ -11,6 +12,8 @@ export async function mailSync(client, args, context, directory, saved) {
         throw fail('GOOGLE_MAIL_INVALID_RESPONSE');
     const account = digest(profile.emailAddress.toLowerCase());
     if (saved?.account && saved.account !== account) throw fail('GOOGLE_CONNECTION_ACCOUNT_CHANGED');
+    context.mailSource = {format: 'nestos.mail-source', version: 1, provider: {id: 'google', name: 'Google'},
+        account: {id: args.connection, name: profile.emailAddress}, name: 'Gmail'};
     return {
         async start() {
             return {mode: 'full', account, historyId: profile.historyId, pending: [], processed: 0, pageSize: Math.min(100, args.maxItems)};
@@ -41,7 +44,7 @@ async function mailEntry(client, args, context, directory, entry, state) {
     if (state.mode === 'history' && !await archived(context.vfs, directory, entry.id) && !await matches(client, args.query, message)) return null;
     try {return mailMaterial(await resolveMailBody(client, message));}
     catch (error) {
-        await context.report?.('failure', /^(GOOGLE_)[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'GOOGLE_MAIL_BODY_FAILED', undefined, {mimeType: /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(message.payload?.mimeType ?? '') ? message.payload.mimeType : 'unknown'});
+        error.diagnostic ??= bodyDiagnostic(message, message.payload, '0', 'materialize');
         throw error;
     }
 }

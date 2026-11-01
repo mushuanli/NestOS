@@ -16,7 +16,7 @@ export function calendarSync(client, args, context, directory) {
             }
             state.rangeEnd = state.range.max; state.mode = 'delta'; return true;
         },
-        read: entry => calendarEntry(client, base, context, directory, entry, range),
+        read: entry => calendarEntry(client, base, context, directory, entry, range, args),
         expired: (error, state) => state.mode === 'delta' && error.code === 'GOOGLE_CALENDAR_LIST_HTTP_410' || !!state.pageToken && error.code === 'GOOGLE_CALENDAR_LIST_HTTP_400',
     };
 }
@@ -30,13 +30,13 @@ async function calendarPage(client, base, state) {
     pageState(state, result, (result.items ?? []).map(item => ({id: item?.id, removed: item?.status === 'cancelled'})));
     if (!result.nextPageToken && !result.nextSyncToken) throw fail('GOOGLE_CALENDAR_INVALID_RESPONSE');
 }
-async function calendarEntry(client, base, context, directory, entry, range) {
-    if (entry.removed) return await archived(context.vfs, directory, entry.id) ? eventMaterial({id: entry.id, status: 'cancelled'}) : null;
+async function calendarEntry(client, base, context, directory, entry, range, args) {
+    if (entry.removed) return await archived(context.vfs, directory, entry.id) ? eventMaterial({id: entry.id, status: 'cancelled'}, args) : null;
     let event;
     try {event = await client(base + '/' + encodeURIComponent(entry.id), 'CALENDAR_READ');}
     catch (error) {if (error.code === 'GOOGLE_CALENDAR_READ_NOT_FOUND') return null; throw error;}
     if (!await archived(context.vfs, directory, entry.id) && !inRange(event, range)) return null;
-    return eventMaterial(event);
+    return eventMaterial(event, args);
 }
 function calendarRange(args) {
     const now = Date.now(), from = new Date(args.timeMin ?? now - (args.pastDays ?? 7) * 86400000), to = new Date(args.timeMax ?? now + (args.futureDays ?? 30) * 86400000);

@@ -1,3 +1,4 @@
+import type {CollectionProject} from './collection-destination';
 import {t} from '@itookit/common';
 import {scannerHistory, scanCollectionSummary, scanRunState} from './scan-history';
 import {collectionFields} from './collection-fields';
@@ -15,13 +16,13 @@ import { scanListFilters, scanListPagination } from './scan-list';
 export {scanRunState} from './scan-history';
 
 export type TwinSourcesTab = 'sources' | 'plans' | 'runs';
-export function scanPage(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, tab: TwinSourcesTab, targets: RootCallTarget[] = [], tools: TwinScannerTool[] = []): string {
+export function scanPage(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, tab: TwinSourcesTab, targets: RootCallTarget[] = [], tools: TwinScannerTool[] = [], projects: CollectionProject[] = []): string {
     const tabs = [['plans', 'scanPlans', snapshot.scans.plans.length], ['sources', 'scanTargets', snapshot.sources.length], ['runs', 'scanRuns', snapshot.scans.runs.length]] as const;
     const configured = connections.some(connection => connection.id === snapshot.settings.data.connectionId);
     return scanSummary(snapshot)
         + `<details class="twin__panel" data-scan-settings data-configured="${configured}"${configured ? '' : ' open'}><summary>${escapeHTML(label('updateSettings'))}</summary>${updateSettings(snapshot, connections)}</details>`
         + `<nav class="twin__scan-tabs" role="tablist" aria-label="${escapeAttr(label('sources'))}">${tabs.map(([id, title, count]) => `<button type="button" role="tab" id="twin-scan-tab-${id}" data-action="scanTab" data-id="${id}" aria-controls="twin-scan-panel-${id}" aria-selected="${tab === id}" tabindex="${tab === id ? 0 : -1}">${escapeHTML(label(title))}<span class="twin__count">${count}</span></button>`).join('')}</nav>`
-        + `<section class="twin__scan-panel" id="twin-scan-panel-plans" role="tabpanel" aria-labelledby="twin-scan-tab-plans"${tab !== 'plans' ? ' hidden' : ''}>${plans(snapshot, connections, targets, tools)}</section>`
+        + `<section class="twin__scan-panel" id="twin-scan-panel-plans" role="tabpanel" aria-labelledby="twin-scan-tab-plans"${tab !== 'plans' ? ' hidden' : ''}>${plans(snapshot, connections, targets, tools, projects)}</section>`
         + `<section class="twin__scan-panel" id="twin-scan-panel-sources" role="tabpanel" aria-labelledby="twin-scan-tab-sources"${tab !== 'sources' ? ' hidden' : ''}><h3>${escapeHTML(label('scanTargets'))}</h3><p class="twin__help">${escapeHTML(label('scanTargetsHelp'))}</p>${sources(snapshot, connections)}</section>`
         + `<section class="twin__scan-panel" id="twin-scan-panel-runs" role="tabpanel" aria-labelledby="twin-scan-tab-runs"${tab !== 'runs' ? ' hidden' : ''}>${scanRunPage(snapshot)}</section>`;
 }
@@ -35,16 +36,16 @@ function scanSummary(snapshot: TwinSnapshot): string {
         <div class="twin__metrics">${metrics.map(([key, value]) => `<div class="twin__metric"><strong>${value}</strong><span>${escapeHTML(label(key))}</span></div>`).join('')}</div>`;
 }
 
-function plans(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, targets: RootCallTarget[], tools: TwinScannerTool[]): string {
+function plans(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, targets: RootCallTarget[], tools: TwinScannerTool[], projects: CollectionProject[] = []): string {
     return `<section class="twin__rules" data-scan-list="plans"><header class="twin__section-header"><div><h3>${escapeHTML(label('updateRules'))}</h3><p>${escapeHTML(label('scanRulesHelp'))}</p></div></header>
         <p class="twin__help">${escapeHTML(label('updateAvailability'))}</p>
 
-        <details class="twin__panel"><summary>${escapeHTML(label('addScanPlan'))}</summary><p class="twin__help">${escapeHTML(label('scanPlanHelp'))}</p>${planForm(snapshot, connections, undefined, targets, tools)}</details>
+        <details class="twin__panel"><summary>${escapeHTML(label('addScanPlan'))}</summary><p class="twin__help">${escapeHTML(label('scanPlanHelp'))}</p>${planForm(snapshot, connections, undefined, targets, tools, projects)}</details>
         ${scanListFilters('plans')}
-        ${snapshot.scans.plans.length ? snapshot.scans.plans.map(plan => planCard(snapshot, connections, plan, targets, tools)).join('')
+        ${snapshot.scans.plans.length ? snapshot.scans.plans.map(plan => planCard(snapshot, connections, plan, targets, tools, projects)).join('')
             : `<div class="twin__empty"><strong>${escapeHTML(label('rulesEmpty'))}</strong><p>${escapeHTML(label('rulesEmptyHelp'))}</p></div>`}${scanListPagination()}</section>`;
 }
-function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, plan: TwinDataRecord<TwinScanPlan>, targets: RootCallTarget[], tools: TwinScannerTool[]): string {
+function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, plan: TwinDataRecord<TwinScanPlan>, targets: RootCallTarget[], tools: TwinScannerTool[], projects: CollectionProject[] = []): string {
     const latest = snapshot.scans.runs.filter(run => run.data.planId === plan.id).sort((a, b) => b.data.createdAt - a.data.createdAt)[0];
     const next = snapshot.scans.schedules.find(schedule => schedule.planId === plan.id)?.nextAt ?? 0;
     const query = [plan.data.name, plan.data.focus, ...(plan.data.rules?.include ?? []), ...(plan.data.rules?.exclude ?? []), ...plan.data.kinds].join(' ').toLocaleLowerCase();
@@ -60,19 +61,19 @@ function planCard(snapshot: TwinSnapshot, connections: Array<{ id: string; name:
         ${latest && plan.data.mode !== 'collect' ? `<p>${escapeHTML(label('updatedSources'))}: ${latest.data.completedSourceIds.length} · ${escapeHTML(label('newMemories'))}: ${snapshot.jobs.filter(job => job.data.scanScope?.runId === latest.id).reduce((sum, job) => sum + (job.data.addedMemories ?? 0), 0)}</p>` : ''}
         ${plan.data.enabled ? button('runScanPlan', 'scanNow', plan.id) + button('pauseScanPlan', 'pauseScanPlan', plan.id) : button('enableScanPlan', 'enableScanPlan', plan.id)}
         <button type="button" data-action="addShortcut" data-id="${escapeAttr(plan.id)}">${escapeHTML(t('assistant.addToShortcuts'))}</button>
-        ${button('removeScanPlan', 'removeScanPlan', plan.id)}<details><summary>${escapeHTML(label('editScanPlan'))}</summary>${planForm(snapshot, connections, plan, targets, tools)}</details></article>`;
+        ${button('removeScanPlan', 'removeScanPlan', plan.id)}<details><summary>${escapeHTML(label('editScanPlan'))}</summary>${planForm(snapshot, connections, plan, targets, tools, projects)}</details></article>`;
 }
 
-function planForm(_snapshot: TwinSnapshot, _connections: Array<{ id: string; name: string }>, plan?: TwinDataRecord<TwinScanPlan>, targets: RootCallTarget[] = [], tools: TwinScannerTool[] = []): string {
+function planForm(_snapshot: TwinSnapshot, _connections: Array<{ id: string; name: string }>, plan?: TwinDataRecord<TwinScanPlan>, targets: RootCallTarget[] = [], tools: TwinScannerTool[] = [], projects: CollectionProject[] = []): string {
     const data = plan?.data;
     return `<form class="twin__form" data-form="scanPlan" data-id="${escapeAttr(plan?.id ?? '')}">
-        ${input('name', 'scanName', data?.name ?? '')}${triggerFields(data)}${materialFields(data, targets, tools)}${knowledgeFields(data, targets)}${scheduleFields(data)}
+        ${input('name', 'scanName', data?.name ?? '')}${triggerFields(data)}${materialFields(data, targets, tools, projects)}${knowledgeFields(data, targets)}${scheduleFields(data)}
         <button type="submit">${escapeHTML(label('save'))}</button>
         <button type="submit" data-run-scanner>${escapeHTML(label('saveAndRunScanner'))}</button></form>`;
 }
-function materialFields(data: TwinScanPlan | undefined, targets: RootCallTarget[], tools: TwinScannerTool[]): string {
+function materialFields(data: TwinScanPlan | undefined, targets: RootCallTarget[], tools: TwinScannerTool[], projects: CollectionProject[] = []): string {
     return `<fieldset class="twin__step"><legend>${escapeHTML(label('scannerStepSource'))}</legend>
-        ${collectionFields(targets, tools, data?.collection)}
+        ${collectionFields(targets, tools, data?.collection, projects)}
         ${select('mode', [{id: 'analyze', name: label('operation.analyze')}, {id: 'collect', name: label('operation.collect')}], data?.mode ?? 'analyze')}
         <div data-source-scope>
         ${select('inputMode', [...(data && !data.rules ? [{id: 'existing', name: label('scannerKeepInput')}] : []),

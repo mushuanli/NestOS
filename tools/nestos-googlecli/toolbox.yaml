@@ -5,10 +5,9 @@ connections:
 tools:
   google.collect:
     label: 邮件与日历采集
-    advanced: [directory, maxItems, sourceKey, timeMin, timeMax]
+    advanced: [ maxItems, sourceKey, timeMin, timeMax]
     parameters:
       - {name: connection, label: 我的 Google 连接, connectionType: google-workspace}
-      - {name: directory, label: 保存目录, description: 留空使用所选连接的保存目录；未设置时邮件为 imports/mail，日历为 imports/calendar。}
       - {name: resource, label: 采集内容, optionLabels: {mail: 邮件, calendar: 日历}}
       - {name: query, label: 邮件范围, description: 使用 Gmail 搜索语法；完整范围分批采集，无需为数量上限缩小范围。}
       - {name: calendarId, label: 日历}

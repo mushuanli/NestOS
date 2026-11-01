@@ -19,8 +19,9 @@ export function createTools({buildTool, z, connections}) {
         async reconcile(args, context) {const parsed = inputSchema.parse(args); return {status: 'completed', data: await serial(() => collectGoogle(service ?? (parsed.resource === 'mail' ? 'gmail' : 'calendar'), parsed, context, connections))};},
         mapToolResultToToolResultBlockParam(data, id) {return {type: 'tool_result', tool_use_id: id, content: JSON.stringify(data)};},
     });
-    return [make('google.collect', z.discriminatedUnion('resource', [z.object({...common, ...mail, resource: z.literal('mail')}),
-        z.object({...common, ...calendar, resource: z.literal('calendar')})])),
+    const {directory: _legacyDirectory, ...source} = common;
+    return [make('google.collect', z.discriminatedUnion('resource', [z.object({...source, ...mail, resource: z.literal('mail')}),
+        z.object({...source, ...calendar, resource: z.literal('calendar')})])),
         // Existing published workflows keep their tool identities and explicit directories.
         make('google.gmail.collect', z.object({...common, ...mail}), 'gmail'),
         make('google.calendar.collect', z.object({...common, ...calendar}), 'calendar')];

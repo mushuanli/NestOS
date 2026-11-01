@@ -233,3 +233,5 @@ configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、�
 configuration/text-generation 校验连接、模型及上下文预算，再由 text-session 走正式 Session Submit；按 submission ID 观察持久轮次结果。同一文档草稿复用 Session，多次生成追加轮次，不自动保存笔记。取消按该提交的队列项和 Task 定位，不中断同 Session 的其他任务；视图关闭等待取消清理。日志仅保留 operationId、sessionId、阶段及安全错误码。学习预设由 presets/study-files 初始化，YAML 提示词在显式恢复时完整覆盖。
 
 projects/personal-project 用 /etc/system-personal-project.json 保存保留项目身份，与 /etc/personal-project.json 的用户默认项目选择独立。启动确保保留项目存在；项目来源删除、Session 文件夹删除和浏览器删除在副作用前校验。导航 protected 标记隐藏删除入口，后端仍强制保护。
+
+直接 Tool 扫描器的 collection.destination 或 projectId 与 directory 在 Run 内冻结，由宿主将授权目标挂载为 /workspace。项目来源通过 ProjectService 获取并逐文件操作复验，不按工具/供应商/账号参数推导目录。拒绝父目录、隐藏路径和宿主绝对路径；纯采集规则保存/启停不等待无关来源索引。

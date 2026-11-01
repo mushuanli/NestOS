@@ -64,7 +64,7 @@ node tools/nestos-googlecli/node/authorize.mjs --client "$HOME/Downloads/实际�
 
 ## 升级与 OAuth 复用
 
-升级 NestOS CLI、httpd 或 Google 工具包时，保留同一用户的数据目录、账号连接和 OAuth 客户端即可沿用授权；连接类型仍为 `google-workspace`，不按软件或工具包版本保存凭据。访问令牌到期后，宿主使用已保存的 refresh token 刷新。工具包升级仍需按宿主提示切换版本并重启，不能把旧运行实例当成新版。
+升级 NestOS CLI、httpd 或 Google 工具包时，保留同一用户的数据目录、账号连接和 OAuth 客户端即可沿用授权；连接类型仍为 `google-workspace`，不按软件或工具包版本保存凭据。访问令牌到期后，宿主使用已保存的 refresh token 刷新。支持即时升级的新宿主在显式切换成功后，让新执行立即使用新版；在途执行及核对保留旧版。旧宿主仍按自身提示重启。
 
 0.3.0 将数量上限改为每批预算，并加入续传与增量同步；已有 Tool ID、参数 Schema 和连接类型不变，OAuth 无需新增权限。宿主与前端也需更新，才能显示待续传状态并提前调度下一批。仅升级工具包时仍可按原计划间隔续传，但旧界面无法区分单批成功与整轮完成。
 
@@ -107,3 +107,24 @@ Google 官方契约：[Gmail 列表](https://developers.google.com/workspace/gma
 增量与查询：[Gmail history 同步](https://developers.google.com/workspace/gmail/api/guides/sync)、[Gmail 搜索](https://developers.google.com/workspace/gmail/api/guides/filtering)、[Calendar 增量同步](https://developers.google.com/workspace/calendar/api/guides/sync)。
 
 统一接入边界见 [外部功能扩展](../../doc/design/function-extensions.md)。当前文件输出仍受原工作区授权约束；若将邮件目标改到邮件工作区，需要已有文件授权，不会自动扩大执行范围。统一 OAuth 已由宿主提供；完整的 ResourceTarget 绑定和邮箱模型仍待实现。包 0.2.0 不会静默覆盖已注册的 0.1.0，升级仍受宿主现有版本冲突策略约束。
+
+### 只读诊断采集失败
+
+在实际运行主机执行（可传入轮转文件以比较多次执行）：
+
+```bash
+node tools/nestos-googlecli/node/diagnose.mjs /var/log/nestos/httpd.runtime.log /var/log/nestos/httpd.runtime.log.1
+```
+
+旧服务仍写入旧目录时，将路径替换为实际的 `/var/log/mindos/httpd.runtime.log`。该命令仅流式读取既有日志，不打开 profile，不触发采集或修改同步游标。读取失败返回非零退出码和具体文件错误分类。
+
+输出按错误码与邮件哈希聚合，区分失败事件数量与不同 operationId 数量；`repeatedMessage: true` 表示同一邮件哈希跨多次操作失败。旧日志缺少邮件哈希时输出 `insufficient-message-diagnostics`，不能据此认定是同一封邮件。正文解析的缺失数据错误新增 `diagnostic`，包含邮件哈希、MIME 子部分路径、阶段、类型、正文/数据/独立正文引用存在标记和声明字节数；不记录正文、邮件头、附件标识或凭据。部署新版工具后重新执行才能产生这些证据，历史记录不会补齐。
+
+缺失正文仍明确失败，不以 snippet 替代全文，也不跳过邮件推进游标；需根据真实结构证据修复解析或上游读取问题后重试。
+
+`0.3.2` 补读通过 `attachmentId` 分离存储的文本正文，并为确实为空或仅含具名附件的邮件保存带 `Body-Status` 的快照。声明非零大小却缺少数据的正文仍按读取失败处理，不能当作空邮件提交。失败事件仅在采集边界记录一次，并携带具体 MIME 子部分、读取或解析阶段的脱敏诊断。旧包 `0.3.1` 会将没有内联文本的邮件统一判为正文不可用；已安装旧版时，需在工具包中切换到 `0.3.2` ；旧宿主还需重启，支持即时升级的新宿主会立即切换新执行入口。单独更新源码不会替换运行中的工具实例。版本切换沿用账号、保存目录与同步检查点，无需重新授权。
+
+`0.3.3` 在日历归档中附加账号与日历身份，并在各自目录保存 `.calendar-source.json`（`format: nestos.calendar-source`、`version: 1`、`name`、`account`、`archivedAt`）。即使日历暂无事件，独立日历视图也可展示该来源。来源描述不含授权材料；归档时间不等同于整个同步操作提交成功。多个账号及同一账号的多个日历保持独立目录、检查点与取消记录。为每个日历创建独立采集规则，保存位置选择“日历”，邮件规则和原目录保持独立。
+
+
+`0.3.5` 将直接采集的输出位置交回扫描器。新建规则在扫描器里选择工作区或项目及子目录，工具向宿主提供的 `/workspace` 输出，不使用 `google.collect` 的目录参数或账号连接保存目录。邮件和日历应分别配置规则与目录；邮件建议按服务商/邮箱分组。邮件来源通过通用 `.mail-source.json` 描述，读取账号身份仍由只读 API profile 核验。旧 `google.gmail.collect` / `google.calendar.collect` 保留目录参数兼容已发布流程。升级时需复核新 Schema 并更新规则目标摘要；迁移目录须同时保留 .sync.json、.items 及 .operations，避免重新全量采集。

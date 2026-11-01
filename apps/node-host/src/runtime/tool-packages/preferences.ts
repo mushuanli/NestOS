@@ -9,9 +9,11 @@ const code = (value: string) => packageError(`TOOL_PACKAGE_PREFERENCES_${value}`
 /** The authenticated runtime chooses the path; requests never carry a user ID or filename. */
 export class ToolPreferences {
     private values: Record<string, ToolPackageSettings> = {};
+    private migrations: Record<string, string> = {};
     private tail = Promise.resolve();
     constructor(private readonly file: string) {}
     has(key: string): boolean {return Object.hasOwn(this.values, key);}
+    migratedFrom(key: string, version: string): boolean {return this.migrations[key] === version;}
     async initialize(): Promise<void> {
         try {
             await this.check(path.dirname(this.file), true); await this.check(this.file);
@@ -20,6 +22,9 @@ export class ToolPreferences {
             if (data?.version !== 1 || !data.packages || typeof data.packages !== 'object' || Array.isArray(data.packages)) throw code('INVALID');
             for (const value of Object.values(data.packages)) validateSettings(value);
             this.values = data.packages;
+            if (data.migrations !== undefined && (!data.migrations || typeof data.migrations !== 'object' || Array.isArray(data.migrations)
+                || Object.values(data.migrations).some(value => typeof value !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,127}$/.test(value)))) throw code('INVALID');
+            this.migrations = data.migrations ?? {};
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
             if (error instanceof SyntaxError) throw code('INVALID');
@@ -30,10 +35,18 @@ export class ToolPreferences {
     defaults(key: string, toolId: string): Record<string, unknown> {return structuredClone(this.values[key]?.defaults[toolId] ?? {});}
     get(key: string): ToolPackageSettings {return structuredClone(Object.hasOwn(this.values, key) ? this.values[key] : {enabled: false, defaults: {}});}
     save(key: string, settings: ToolPackageSettings): Promise<void> {
+        return this.saveValue(key, settings);
+    }
+    saveMigrated(key: string, version: string, settings: ToolPackageSettings): Promise<void> {
+        return this.saveValue(key, settings, version);
+    }
+    private saveValue(key: string, settings: ToolPackageSettings, migratedFrom?: string): Promise<void> {
         validateSettings(settings); const copy = structuredClone(settings), operationId = randomUUID(), started = Date.now();
         const work = this.tail.then(async () => {
             try {
-                await this.persist({...this.values, [key]: copy}); this.values[key] = copy;
+                const migrations = {...this.migrations};
+                if (migratedFrom) migrations[key] = migratedFrom; else delete migrations[key];
+                await this.persist({...this.values, [key]: copy}, migrations); this.values[key] = copy; this.migrations = migrations;
                 log.info('tool.preferences.save', {operationId, stage: 'persist', result: 'success', durationMs: Date.now() - started});
             } catch (error) {
                 const failure = (error as {code?: string}).code?.startsWith('TOOL_PACKAGE_PREFERENCES_') ? error : code('WRITE_FAILED');
@@ -41,11 +54,17 @@ export class ToolPreferences {
             }
         }); this.tail = work.catch(() => {}); return work;
     }
-    private async persist(packages: Record<string, ToolPackageSettings>): Promise<void> {
+    remove(key: string): Promise<void> {
+        const work = this.tail.then(async () => {
+            const next = {...this.values}, migrations = {...this.migrations}; delete next[key]; delete migrations[key];
+            await this.persist(next, migrations); this.values = next; this.migrations = migrations;
+        }); this.tail = work.catch(() => {}); return work;
+    }
+    private async persist(packages: Record<string, ToolPackageSettings>, migrations = this.migrations): Promise<void> {
         const directory = path.dirname(this.file), temporary = path.join(directory, `${randomUUID()}.tmp`);
         await mkdir(directory, {recursive: true, mode: 0o700}); await this.check(directory, true);
         try {await this.check(this.file);} catch (error) {if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;}
-        const data = JSON.stringify({version: 1, packages}); if (Buffer.byteLength(data) > 1024 * 1024) throw code('TOO_LARGE');
+        const data = JSON.stringify({version: 1, packages, ...(Object.keys(migrations).length ? {migrations} : {})}); if (Buffer.byteLength(data) > 1024 * 1024) throw code('TOO_LARGE');
         try {
             const file = await open(temporary, 'wx', 0o600);
             try {await file.writeFile(data); await file.sync();} finally {await file.close();}

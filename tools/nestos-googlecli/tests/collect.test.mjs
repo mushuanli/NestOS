@@ -70,6 +70,21 @@ test('collects dated and all-day calendar events including cancellations, and va
     assert.equal((await collectGoogle('calendar', input, f.context, f.connections, f.fetcher)).count, 1);
     await assert.rejects(collectGoogle('calendar', {...input, timeMax: input.timeMin}, f.context, f.connections, f.fetcher), /GOOGLE_CALENDAR_RANGE_INVALID/);
 });
+
+test('records empty calendar sources in isolated directories', async () => {
+    const f = fixture(() => Response.json({items: [], nextSyncToken: 'sync'}));
+    const first = await collectGoogle('calendar', {...args, calendarId: 'primary'}, f.context, f.connections, f.fetcher);
+    const second = await collectGoogle('calendar', {...args, calendarId: 'work'}, f.context, f.connections, f.fetcher);
+    assert.notEqual(first.directory, second.directory);
+    for (const directory of [first.directory, second.directory]) {
+        const source = JSON.parse(f.files.get(directory + '/.calendar-source.json'));
+        assert.equal(source.format, 'nestos.calendar-source');
+        assert.equal(source.account, 'personal');
+        assert.ok(Number.isSafeInteger(source.archivedAt));
+        assert.doesNotMatch(JSON.stringify(source), /private-|newer_than/);
+    }
+    assert.equal(first.count, 0); assert.equal(second.count, 0);
+});
 test('rejects unsupported encoding and handles multipart alternatives without attachment content', () => {
     const plain = message('a').payload;
     const material = mailMaterial({id: 'a', payload: {mimeType: 'multipart/alternative', parts: [plain,
@@ -110,9 +125,9 @@ test('refuses to publish fetched evidence if the user changes the connection dur
 test('publishes mail as account-scoped email files and leaves calendar material as separate files', async () => {
     const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]}) : Response.json(message('a')));
     const result = await collectGoogle('gmail', {...args, resource: 'mail'}, f.context, f.connections, f.fetcher);
-    assert.equal(result.directory, 'evidence/google/personal/mail/default');
+    assert.equal(result.directory, '/workspace');
     assert.ok([...f.files.keys()].some(file => file.endsWith('.email')));
-    assert.equal(result.include[0], 'file:evidence/google/personal/mail/default/*.email');
+    assert.equal(result.include[0], 'file:/workspace/*.email');
 });
 test('advertises direct collection without installing single-node workflows and retains old templates for compatibility', async () => {
     const {readFile} = await import('node:fs/promises');
@@ -180,4 +195,59 @@ test('refuses oversized detached text before fetching and does not advance the c
     await assert.rejects(collectGoogle('gmail', args, f.context, f.connections, f.fetcher), /GOOGLE_MATERIAL_LIMIT/);
     assert.ok(!f.calls.some(url => url.includes('/attachments/')));
     assert.ok(![...f.files.keys()].some(key => key.endsWith('.sync.json')));
+});
+
+test('reports a stable safe identity and MIME part for missing body data without advancing the batch', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]})
+        : Response.json({id: 'a', payload: {mimeType: 'multipart/alternative', parts: [
+            {mimeType: 'text/plain', body: {size: 42}}]}}));
+    await assert.rejects(collectGoogle('gmail', {...args, resource: 'mail'}, f.context, f.connections, f.fetcher), /GOOGLE_MAIL_BODY_UNAVAILABLE/);
+    const event = f.logs.map(JSON.parse).find(item => item.diagnostic);
+    assert.match(event.diagnostic.messageKey, /^[a-f0-9]{64}$/);
+    assert.equal(event.diagnostic.partPath, '0.0');
+    assert.equal(event.diagnostic.declaredBytes, 42);
+    assert.equal(event.diagnostic.dataPresent, false);
+    assert.equal(f.logs.map(JSON.parse).filter(item => item.result === 'failure').length, 1);
+    assert.equal([...f.files.keys()].some(file => file.endsWith('.sync.json')), false);
+    assert.ok(!f.logs.join('').includes('private-secret'));
+});
+
+test('rejects a nonempty declared body with empty data instead of archiving it as empty', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]})
+        : Response.json({id: 'a', payload: {mimeType: 'text/plain', body: {data: '', size: 42}}}));
+    await assert.rejects(collectGoogle('gmail', {...args, resource: 'mail'}, f.context, f.connections, f.fetcher), /GOOGLE_MAIL_BODY_UNAVAILABLE/);
+    assert.equal(f.files.size, 0);
+    const event = f.logs.map(JSON.parse).find(item => item.result === 'failure');
+    assert.equal(event.diagnostic.phase, 'body-resolve');
+    assert.equal(event.diagnostic.declaredBytes, 42);
+});
+
+test('retains safe part diagnostics for detached body read and validation failures', async () => {
+    for (const response of [() => new Response('private upstream error', {status: 403}), () => Response.json({size: 42})]) {
+        const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: [{id: 'a'}]})
+            : url.pathname.includes('/attachments/') ? response()
+            : Response.json({id: 'a', payload: {mimeType: 'multipart/mixed', parts: [
+                {mimeType: 'text/plain', body: {attachmentId: 'private-attachment', size: 42}}]}}));
+        await assert.rejects(collectGoogle('gmail', {...args, resource: 'mail'}, f.context, f.connections, f.fetcher),
+            /GOOGLE_MAIL_BODY_(READ_PERMISSION_DENIED|INVALID_RESPONSE)/);
+        assert.equal(f.files.size, 0);
+        const events = f.logs.map(JSON.parse).filter(item => item.result === 'failure');
+        assert.equal(events.length, 1);
+        assert.equal(events[0].diagnostic.partPath, '0.0');
+        assert.equal(events[0].diagnostic.phase, 'body-read');
+        assert.doesNotMatch(f.logs.join(''), /private-|private upstream/);
+    }
+});
+
+
+test('uses only the scanner-mounted output for modern collection and publishes a generic mailbox descriptor', async () => {
+    const f = fixture(url => url.pathname.endsWith('/messages') ? Response.json({messages: []}) : Response.json(message('a')));
+    const resolve = f.connections.resolve;
+    f.connections.resolve = async (...parameters) => ({...await resolve(...parameters), mailDirectory: 'ignored-connection-path'});
+    const result = await collectGoogle('gmail', {...args, directory: 'ignored-argument-path', resource: 'mail'}, {...f.context, cwd: '/workspace'}, f.connections, f.fetcher);
+    assert.equal(result.directory, '/workspace');
+    assert.ok([...f.files.keys()].every(path => path.startsWith('/workspace/')));
+    const source = JSON.parse(f.files.get('/workspace/.mail-source.json'));
+    assert.equal(source.format, 'nestos.mail-source'); assert.equal(source.provider.id, 'google'); assert.equal(source.account.id, 'personal');
+    assert.doesNotMatch(f.logs.join(''), /ignored-connection-path|ignored-argument-path|Private subject|private-secret/);
 });

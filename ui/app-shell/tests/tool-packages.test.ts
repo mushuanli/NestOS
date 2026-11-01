@@ -232,9 +232,9 @@ it('refreshes actual library presence after a partially failed install and allow
     expect(f.dialog.querySelector<HTMLButtonElement>('[data-package-flows]')!.disabled).toBe(false);
 });
 
-it('offers an explicit version switch, shows the pending restart and keeps OAuth settings inside the active package', async () => {
-    let pending = false;
-    const switchVersion = vi.fn(async () => {pending = true;});
+it('activates a version immediately and keeps OAuth settings inside the active package', async () => {
+    let activationId = '';
+    const switchVersion = vi.fn(async (_id, _version, _expected, operationId) => {activationId = operationId;});
     const type: ToolConnectionType = {id: 'external-account', name: 'External account', description: '',
         fields: [{name: 'client', label: 'Client', required: true}, {name: 'secret', label: 'Secret', secret: true, required: true}, {name: 'refresh', label: 'Refresh', secret: true}],
         authorization: {kind: 'oauth2', authorizationEndpoint: 'https://fixture.invalid/authorize', tokenEndpoint: 'https://fixture.invalid/token',
@@ -242,8 +242,8 @@ it('offers an explicit version switch, shows the pending restart and keeps OAuth
         application: {configured: false, canManage: true}};
     const save = vi.fn();
     const controls = {toolPackages: {list: async () => [
-        {...available, version: '0.2.0', status: 'registered' as const, ...(pending ? {pendingVersion: '0.2.1'} : {})},
-        {...available, version: '0.2.1', status: 'available' as const, canSwitch: !pending, connectionTypes: [type.id], connectionMethods: {[type.id]: ['browser', 'import'] as Array<'browser' | 'import'>}}],
+        ...(activationId ? [] : [{...available, version: '0.2.0', status: 'registered' as const}]),
+        {...available, version: '0.2.1', status: activationId ? 'registered' as const : 'available' as const, canSwitch: !activationId, ...(activationId ? {activationId} : {}), connectionTypes: [type.id], connectionMethods: {[type.id]: ['browser', 'import'] as Array<'browser' | 'import'>}}],
         ensure: vi.fn(), switchVersion, connections: {snapshot: async () => ({types: [type], connections: []}), save, remove: vi.fn()}}};
     const f = setup(controls);
     await vi.waitFor(() => expect(f.dialog.querySelector('[data-package-switch]')).not.toBeNull());
@@ -252,12 +252,12 @@ it('offers an explicit version switch, shows the pending restart and keeps OAuth
     expect(settings.querySelector('[data-form=oauthApplication]')).not.toBeNull();
     expect(f.dialog.querySelectorAll('[data-connection-details=connections]')).toHaveLength(1);
     f.dialog.querySelector<HTMLButtonElement>('[data-package-switch]')!.click();
-    await vi.waitFor(() => expect(switchVersion).toHaveBeenCalledWith(available.id, '0.2.1', '0.2.0'));
-    await vi.waitFor(() => expect(f.dialog.textContent).toContain('已准备 0.2.1'));
-    expect(f.dialog.textContent).toContain('重启 NestOS 宿主后生效'); expect(f.dialog.querySelector('[data-package-switch]')).toBeNull();
+    await vi.waitFor(() => expect(switchVersion).toHaveBeenCalledWith(available.id, '0.2.1', '0.2.0', expect.any(String)));
+    await vi.waitFor(() => expect(f.dialog.textContent).toContain('已升级至 0.2.1'));
+    expect(f.dialog.textContent).not.toContain('重启'); expect(f.dialog.querySelector('[data-package-switch]')).toBeNull();
     expect(save).not.toHaveBeenCalled();
     f.dialog.close(); const reopened = setup(controls);
-    await vi.waitFor(() => expect(reopened.dialog.textContent).toContain('已准备 0.2.1'));
+    await vi.waitFor(() => expect(reopened.dialog.textContent).toContain('已升级至 0.2.1'));
 });
 
 it('keeps factory-owned account settings visible even when an older package has no guide or connection YAML', async () => {

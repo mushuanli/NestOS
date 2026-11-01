@@ -121,8 +121,27 @@ body {
     color: #3730a3;
 }
 
-.app-nav-btn i {
+.app-nav-btn i,
+.app-nav-btn [data-calendar-icon],
+.app-nav-btn [data-kanban-icon] {
     font-size: 19px;
+}
+
+.app-nav-btn [data-calendar-icon],
+.app-nav-btn [data-kanban-icon] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.app-nav-btn [data-calendar-icon] svg,
+.app-nav-btn [data-kanban-icon] svg {
+    width: 100%;
+    height: 100%;
 }
 
 .app-nav-btn:focus-visible,
@@ -248,7 +267,9 @@ body {
         border-radius: 12px;
     }
 
-    .app-nav-btn i {
+    .app-nav-btn i,
+    .app-nav-btn [data-calendar-icon],
+    .app-nav-btn [data-kanban-icon] {
         font-size: 20px;
     }
 

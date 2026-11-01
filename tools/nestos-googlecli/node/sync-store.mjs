@@ -8,17 +8,18 @@ export async function freezeDestination(service, args, client, context) {
     const previous = await context.getAssetRecord?.(key);
     if (previous) {
         if (previous.version !== 1 || typeof previous.directory !== 'string') throw fail('GOOGLE_SYNC_STATE_INVALID');
-        return {...args, directory: previous.directory};
+        return {...args, directory: previous.directory, ...(args.resource ? {_scannerOutput: true} : {})};
     }
-    const directory = args.directory || client.destinations[service === 'gmail' ? 'mail' : 'calendar'];
+    const directory = args.resource ? context.cwd || '/workspace' : args.directory || client.destinations[service === 'gmail' ? 'mail' : 'calendar'];
     collectionDirectory(service, {...args, directory});
     await context.putAssetRecord?.(key, {version: 1, directory});
-    return {...args, directory};
+    return {...args, directory, ...(args.resource ? {_scannerOutput: true} : {})};
 }
 
 export function collectionDirectory(service, args) {
     const root = args.directory?.replace(/\/$/, '');
     if (!root || root.split('/').some(part => part === '..' || part.startsWith('.')) || root.includes('\\')) throw fail('GOOGLE_DIRECTORY_INVALID');
+    if (args._scannerOutput) return root;
     const scope = digest(JSON.stringify([service, args.connection, args.sourceKey ?? 'default', service === 'gmail' ? '' : args.calendarId])).slice(0, 24);
     return args.resource ? root + '/' + args.connection + '/' + args.resource + '/' + (args.sourceKey ?? 'default') + (service === 'calendar' ? '-' + scope : '')
         : root + '/' + service + '-' + scope;

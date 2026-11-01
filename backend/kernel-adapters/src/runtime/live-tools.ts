@@ -16,6 +16,44 @@ export class LiveTools {
         this.tail = work.catch(() => {}); return work;
     }
 
+    /** Prepare all fallible metadata before a host commits its durable version pointer. */
+    async prepareUpdate(tools: Tool[], expected: Tool[], published = tools): Promise<{check(): void; commit(): void; rollback(): void}> {
+        if (new Set(tools.map(tool => tool.name)).size !== tools.length || tools.length !== published.length
+            || tools.some((tool, index) => published[index]?.name !== tool.name))
+            throw Object.assign(new Error('Invalid tool update identities'), {code: 'TOOL_PACKAGE_TOOL_INVALID'});
+        const prior = new Map(expected.map(tool => [tool.name, tool]));
+        const check = () => {
+            if (this.closed) throw new Error('Tool registration runtime is closed');
+            for (const tool of tools) if (this.tools.get(tool.name) !== prior.get(tool.name))
+                throw Object.assign(new Error('Tool registration changed before activation'), {code: 'TOOL_PACKAGE_TOOL_CONFLICT'});
+        };
+        check();
+        const staged = new ToolDeviceDriver(tools), previous = new ToolDeviceDriver(expected);
+        try {
+            await Promise.all([staged.init(), previous.init()]); check();
+            const entries = published.map(tool => ({tool, meta: structuredClone(staged.getToolMeta(tool.name)!), definition: structuredClone(staged.getToolDefinition(tool.name)!)}));
+            let committed = false;
+            return {check, commit: () => {
+                check();
+                for (const entry of entries) {
+                    for (const driver of this.drivers) driver.replaceToolInstance(entry.tool, {meta: structuredClone(entry.meta), definition: structuredClone(entry.definition)});
+                    this.tools.set(entry.tool.name, entry.tool);
+                }
+                committed = true;
+            }, rollback: () => {
+                if (!committed) return;
+                for (const tool of published.filter(tool => !prior.has(tool.name))) {
+                    for (const driver of this.drivers) driver.unregisterTool(tool.name); this.tools.delete(tool.name);
+                }
+                for (const tool of expected) {
+                    for (const driver of this.drivers) driver.replaceToolInstance(tool, {meta: structuredClone(previous.getToolMeta(tool.name)!), definition: structuredClone(previous.getToolDefinition(tool.name)!)});
+                    this.tools.set(tool.name, tool);
+                }
+                committed = false;
+            }};
+        } finally {await staged.dispose();}
+    }
+
     unregister(ids: string[]): Promise<void> {
         const work = this.tail.then(() => {
             if (this.closed) throw new Error('Tool registration runtime is closed');

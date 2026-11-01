@@ -90,12 +90,18 @@ export const WS_EMAILS: WorkspaceConfig = {
     elementId: 'email-workspace',
     workspaceName: 'emails',
     slug: 'emails',
-    type: 'standard',
-    title: 'Email Drafts',
+    type: 'mail',
+    title: 'Mail',
     supportedFileTypes: ['email'],
     syncEnabled: true,
     mentionAble: true,
     aiEnabled: true,
+};
+
+/** Calendar has its own views; event archives remain ordinary workspace files. */
+export const WS_CALENDAR: WorkspaceConfig = {
+    elementId: 'calendar-workspace', workspaceName: 'calendar', slug: 'calendar', type: 'calendar',
+    title: 'Calendar', supportedFileTypes: [], syncEnabled: true, mentionAble: false, aiEnabled: false,
 };
 
 /** Skills workspace — VFSUIShell list backed by SkillsEngine + SkillSettingsEditor (form-only). */

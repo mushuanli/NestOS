@@ -24,7 +24,7 @@ export async function restoreToolPackage(directory: string, registration: Regist
         || await packageFingerprint(source, files) !== registration.fingerprint)
         throw packageError('TOOL_PACKAGE_CONTENT_CONFLICT', `Installed package ${registration.id}@${registration.version} differs from its registration`);
     const environment = registration.bindings.map(binding => factoryBindings?.find(previous => previous.env === binding.env) ?? binding);
-    return {source, registration, tools: await packageTools(source, environment, connections)};
+    return {source, registration, tools: await packageTools(source, environment, connections, registration.bindings)};
 }
 
 export async function stageToolPackage(source: ToolPackageSource, directory: string, env: NodeJS.ProcessEnv, connections?: ToolConnectionAccess, factoryBindings?: ExecutableBinding[]): Promise<InstalledToolPackage> {
@@ -57,9 +57,10 @@ function validateBindings(source: ToolPackageSource, bindings: ExecutableBinding
     }
 }
 
-async function packageTools(source: ToolPackageSource, bindings: ExecutableBinding[], connections?: ToolConnectionAccess): Promise<Tool[]> {
-    return withPackageEnvironment(bindings, async () => {
-        const tools = await loadNodeToolModules(JSON.stringify([path.join(source.root, source.manifest.module)]), connections);
+async function packageTools(source: ToolPackageSource, bindings: ExecutableBinding[], connections?: ToolConnectionAccess, executableBindings = bindings): Promise<Tool[]> {
+    return withPackageEnvironment(source.manifest.executionEnvironment === 'instance' ? [] : bindings, async () => {
+        const tools = await loadNodeToolModules(JSON.stringify([path.join(source.root, source.manifest.module)]), connections,
+            Object.freeze(Object.fromEntries(executableBindings.map(binding => [binding.env, binding.path]))));
         if (tools.length !== source.manifest.tools.length || tools.some(tool => !source.manifest.tools.some(expected => expected.id === tool.name
             && (expected.version === undefined || expected.version === (tool.version ?? '1')))))
             throw packageError('TOOL_PACKAGE_EXPORT_MISMATCH', `Package ${source.manifest.id}@${source.manifest.version} exports tools that differ from its manifest`);

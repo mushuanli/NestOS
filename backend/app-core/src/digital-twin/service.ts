@@ -40,6 +40,7 @@ export interface TwinWorkspaceBinding {
     authorize(access?: 'read' | 'write'): Promise<void>;
 }
 export interface DigitalTwinDependencies {
+    openCollectionProject?(id: string): Promise<{fs: IFileSystem; dispose(): Promise<void>; authorize(): Promise<void>}>;
     workspace?: TwinWorkspaceBinding;
     fs: IFileSystem; reader: TwinSourceReader; extractor: TwinExtractionPort;
     deleteSession(sessionId: string): Promise<void>;
@@ -79,8 +80,18 @@ export class DigitalTwinService {
         const bound = await records.get<{runId: string}>('checkpoint', 'collection-binding:' + sessionId);
         if (!bound) return;
         const run = await records.get<import('./scan-domain').TwinScanRun>('scan-run', bound.data.runId);
-        if (!run?.data.collection?.destination) return;
+        if (!run?.data.collection?.destination && !run?.data.collection?.projectId) return;
         await this.authorizeCollection(run.id);
+        if (run.data.collection.projectId) {
+            const project = await this.deps.openCollectionProject?.(run.data.collection.projectId);
+            if (!project) throw new Error('TWIN_COLLECTION_PROJECT_UNAVAILABLE');
+            try {
+                await project.authorize();
+                const context = acquireCollectionFiles(project.fs, sessionId, run.data.collection,
+                    async () => {await this.authorizeCollection(run.id); await project.authorize();}, '/');
+                return {...context, release: async () => {try {await context.release();} finally {await project.dispose();}}};
+            } catch (error) {await project.dispose(); throw error;}
+        }
         return acquireCollectionFiles(this.deps.fs, sessionId, run.data.collection, () => this.authorizeCollection(run.id));
     }
     private sourceConnections?: import('@itookit/app-contracts/services').ToolConnections;
@@ -360,6 +371,11 @@ export class DigitalTwinService {
         if (input.collection?.target.kind === 'tool') {
             if (!this.collector?.validate) throw new Error('TWIN_SCANNER_EXECUTOR_UNAVAILABLE');
             this.collector.validate(input.collection);
+        }
+        if (input.collection?.projectId) {
+            const project = await this.deps.openCollectionProject?.(input.collection.projectId);
+            if (!project) throw new Error('TWIN_COLLECTION_PROJECT_UNAVAILABLE');
+            try {await project.authorize();} finally {await project.dispose();}
         }
         const result = await (await this.services()).scans.save(id, revision, input);
         if (this.scanTimer) void this.scanOnce().catch(() => {});

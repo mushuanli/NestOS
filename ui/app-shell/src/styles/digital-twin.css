@@ -170,3 +170,5 @@
 .twin__scan-history ol { padding-inline-start: 24px; }
 .twin__scan-history li { padding-block: 12px; overflow-wrap: anywhere; }
 .twin__scan-history li + li { border-top: 1px solid var(--llm-border-color, #dce1e8); }
+.twin__package-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 0; }
+.twin__package-upgrades { margin-bottom: 16px; }

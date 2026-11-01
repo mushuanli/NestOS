@@ -13,6 +13,14 @@ interface Models { getConnection(id: string): Promise<ConnectionMeta | undefined
 /** The model destination binding excludes mutable accounting and all credentials. */
 export function createNativeDigitalTwin(fs: IFileSystem, repository: SessionRepository, kernel: Kernel, models: Models, hostKind = 'local', projects?: ProjectService, workspace?: TwinWorkspaceBinding): DigitalTwinService {
     return new DigitalTwinService({ fs, workspace, scanHost: { kind: hostKind }, defaultConnection: async () => (await models.getDefaultConnection?.())?.id ?? '', reader: new NestosTwinSourceReader(fs, repository, projects), extractor: new KernelTwinExtractor(kernel),
+        openCollectionProject: projects ? async id => {
+            const project = await projects.get(id), source = await projects.openFiles(project.path);
+            return {...source, authorize: async () => {
+                const current = await projects.get(id);
+                if (current.path !== project.path || projects.workspaceAccess(current) !== 'rw'
+                    || (await source.fs.capabilitiesAt('/')).readonly) throw new Error('TWIN_COLLECTION_PROJECT_READ_ONLY');
+            }};
+        } : undefined,
         executionExists: async (sessionId, taskId) => {
             const task = await kernel.task(sessionId, taskId);
             return task.id === taskId && task.sessionId === sessionId;

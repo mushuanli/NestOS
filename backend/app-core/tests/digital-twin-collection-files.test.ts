@@ -9,6 +9,32 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close();});
 const target = {kind: 'tool' as const, id: 'fixture.collect', version: '1', digest: 'fixed'};
 
+it('scopes scanner output to a subdirectory and rejects sibling and parent access', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); cleanup.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/');
+    const files = acquireCollectionFiles(fs, 'scoped', {target, destination: 'emails', directory: 'provider/account'}, async () => {});
+    cleanup.push(files.release);
+    await files.vfs.writeFile('message.email', 'fixture');
+    expect(await fs.driver.readContent('/home/admin/emails/provider/account/message.email', {encoding: 'utf-8'})).toBe('fixture');
+    await expect(files.vfs.writeFile('../other/message.email', 'denied')).rejects.toThrow();
+    await expect(files.vfs.readFile('/home/admin/emails/provider/other/message.email')).rejects.toThrow();
+    for (const directory of ['../escape', '/absolute', 'a/../b', 'a\\b', '.private', 'a//b', 'a/'])
+        expect(() => collectionExecutor({target, destination: 'emails', directory})).toThrow('TWIN_COLLECTION_DIRECTORY_INVALID');
+});
+
+it('uses an explicitly authorized project source without exposing another project or folder', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); cleanup.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/project-files'); let allowed = true;
+    const files = acquireCollectionFiles(fs, 'project-scoped', {target, projectId: 'sample', directory: 'reports'}, async () => {
+        if (!allowed) throw new Error('TWIN_COLLECTION_PROJECT_READ_ONLY');
+    }, '/'); cleanup.push(files.release);
+    await files.vfs.writeFile('result.md', 'fixture');
+    expect(await fs.driver.readContent('/reports/result.md', {encoding: 'utf-8'})).toBe('fixture');
+    await expect(files.vfs.writeFile('../elsewhere/result.md', 'denied')).rejects.toThrow();
+    allowed = false; await expect(files.vfs.writeFile('late.md', 'denied')).rejects.toThrow('TWIN_COLLECTION_PROJECT_READ_ONLY');
+    expect(() => collectionExecutor({target, projectId: 'sample', destination: 'emails'})).toThrow('TWIN_COLLECTION_DESTINATION_INVALID');
+});
+
 it.each(['/profiles/first', '/data/second'])('maps only the selected logical workspace beneath a variable data root: %s', async root => {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); cleanup.push(() => manager.dispose());
     const fs = await manager.openFileSystem(root);
@@ -24,6 +50,17 @@ it.each(['/profiles/first', '/data/second'])('maps only the selected logical wor
     allowed = false;
     await expect(files.vfs.writeFile('later.email', 'denied')).rejects.toThrow('TWIN_SCAN_PLAN_STALE');
     await expect(files.vfs.readFile('imports/mail/account/mail/default/item.email')).rejects.toThrow('TWIN_SCAN_PLAN_STALE');
+});
+
+it('isolates calendar collection from mail and other accounts', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); cleanup.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/');
+    const files = acquireCollectionFiles(fs, 'calendar-collector', {target, destination: 'calendar'}, async () => {});
+    cleanup.push(files.release);
+    await files.vfs.writeFile('imports/calendar/account-a/calendar/primary/event.md', 'calendar material');
+    expect(await fs.driver.readContent('/home/admin/calendar/imports/calendar/account-a/calendar/primary/event.md', {encoding: 'utf-8'})).toBe('calendar material');
+    expect(await fs.driver.exists('/home/admin/emails/imports/calendar/account-a/calendar/primary/event.md')).toBe(false);
+    await expect(files.vfs.writeFile('../emails/escape.md', 'denied')).rejects.toThrow();
 });
 
 it('rejects arbitrary host paths and Flow destinations instead of broadening a saved grant', () => {

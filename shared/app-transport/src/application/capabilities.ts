@@ -99,7 +99,7 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
         methods: {"list": "query", "check": "query", "ensure": "async"} },
     "ToolConnections": {invalidates: ['configuration', 'twin'], domain: 'configuration', markers: ["snapshot", "save", "remove"], fields: [],
         methods: {"snapshot": "query", "save": "async", "remove": "async", "verify": "async", "saveApplication": "async", "removeApplication": "async", "beginAuthorization": "async", "authorizationStatus": "query", "cancelAuthorization": "async", "revokeAuthorization": "async"} },
-    "ToolPackages": { invalidates: ['configuration', 'twin'], domain: 'configuration', markers: ["ensure", "list"], fields: ['connections'],
+    "ToolPackages": { observer: 'onChange', invalidates: ['configuration', 'twin'], domain: 'configuration', markers: ["ensure", "list"], fields: ['connections'],
         methods: {"list": "query", "ensure": "async", "installFlows": "async", "configure": "async", "history": "query", "uninstall": "async", "switchVersion": "async"} },
     "ToolboxDrawers": { domain: 'configuration', markers: ["snapshot", "assign"], fields: [],
         methods: {"snapshot": "snapshot", "get": "lookup", "list": "lookup", "forPath": "lookup", "assign": "async", "relocate": "async", "create": "async", "rename": "async", "remove": "async"} },

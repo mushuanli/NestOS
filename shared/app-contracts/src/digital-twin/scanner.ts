@@ -19,9 +19,11 @@ export type TwinScannerInput = {kind: 'text'; text: string} | {kind: 'file'; pat
 export interface TwinWorkspaceView {id: string; name: string; kind: 'personal' | 'organization'; readOnly: boolean}
 
 export interface TwinToolTarget {kind: 'tool'; id: string; version: string; digest: string}
-export const TWIN_COLLECTION_WORKSPACES = ['emails', 'notes', 'home'] as const;
+export const TWIN_COLLECTION_WORKSPACES = ['emails', 'calendar', 'notes', 'home'] as const;
 export type TwinCollectionWorkspace = typeof TWIN_COLLECTION_WORKSPACES[number];
-export type TwinCollectionExecutor = (TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>}) & {destination?: TwinCollectionWorkspace};
+export type TwinCollectionExecutor = (TwinScannerExecutor | {target: TwinToolTarget; values?: Record<string, JsonValue>}) & {
+    destination?: TwinCollectionWorkspace; projectId?: string; directory?: string;
+};
 /** Tool-owned cursors stay private; the platform only observes batch completion and work counts. */
 export interface TwinCollectionProgress {version: 1; complete: boolean; processed: number; batchCount?: number}
 export interface TwinScannerTool {
@@ -33,6 +35,13 @@ export interface TwinScannerTool {
 }
 export function collectionExecutor(value: TwinCollectionExecutor | undefined): TwinCollectionExecutor | undefined {
     if (value === undefined) return;
+    if (value.projectId !== undefined && (value.target?.kind !== 'tool' || value.destination !== undefined
+        || typeof value.projectId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(value.projectId)))
+        throw new Error('TWIN_COLLECTION_DESTINATION_INVALID');
+    if (value.directory !== undefined && (value.target?.kind !== 'tool' || !value.destination && !value.projectId
+        || typeof value.directory !== 'string' || value.directory.length > 512 || !value.directory
+        || value.directory.split('/').some(part => !part || part === '..' || part.startsWith('.') || /[\\\x00-\x1f:]/.test(part))))
+        throw new Error('TWIN_COLLECTION_DIRECTORY_INVALID');
     if (value.destination !== undefined && (value.target?.kind !== 'tool' || !TWIN_COLLECTION_WORKSPACES.includes(value.destination)))
         throw new Error('TWIN_COLLECTION_DESTINATION_INVALID');
     if (value.target?.kind !== 'tool') {

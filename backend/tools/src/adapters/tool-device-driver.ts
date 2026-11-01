@@ -23,6 +23,11 @@ import { ToolInputError } from '../core/tool-error';
 import { invocationSignal, prepareToolInput, prepareToolReconciliation, toolFailure, toolSuccess } from './tool-invocation';
 import { createBashTool } from '../tools/Bash/BashTool';
 
+function assertImplementationIdentity(tool: Tool, meta: ToolMeta): void {
+  if (tool.name !== meta.id || (tool.version ?? '1') !== (meta.version ?? '1'))
+    throw Object.assign(new Error('Bound implementation does not match the authorized logical tool'), {code: 'TOOL_IMPLEMENTATION_IDENTITY_MISMATCH'});
+}
+
 // ── Registry entry ──
 
 interface RegisteredTool {
@@ -30,6 +35,7 @@ interface RegisteredTool {
   definition: ToolDefinition;
   tool: Tool;
 }
+const admission = new WeakMap<ToolMeta, {allowed: boolean}>();
 
 // ── Meta/Definition builders ──
 
@@ -49,9 +55,9 @@ function toolMetaFromTool(tool: Tool): ToolMeta {
 
 /** Preserve explicit catalog disables while observing the host gate on every read. */
 function liveToolMeta(meta: ToolMeta, tool: Tool): ToolMeta {
-  let allowed = true;
+  const state = {allowed: true}; admission.set(meta, state);
   Object.defineProperty(meta, 'enabled', {enumerable: true, configurable: true,
-    get: () => allowed && tool.isEnabled(), set: (value: boolean) => {allowed = value;}});
+    get: () => state.allowed && tool.isEnabled(), set: (value: boolean) => {state.allowed = value;}});
   return meta;
 }
 
@@ -143,6 +149,12 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
     const definition = prepared?.definition ?? toolDefinitionFromTool(tool);
     this.registry.set(meta.id, { meta, definition, tool });
   }
+  /** Metadata refresh cannot lift an explicit, scope-local disable. */
+  replaceToolInstance(tool: Tool, prepared: {meta: ToolMeta; definition: ToolDefinition}): void {
+    const previous = this.registry.get(tool.name), allowed = previous && admission.get(previous.meta)?.allowed;
+    this.registerToolInstance(tool, prepared);
+    if (allowed === false) this.registry.get(tool.name)!.meta.enabled = false;
+  }
 
   async init(): Promise<void> {
     for (const entry of this.registry.values()) {
@@ -206,20 +218,25 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
       return toolFailure(request.toolId, new ToolInputError('INVALID_ARGUMENTS', 'Invalid tool timeout'), started);
     }
     const signal = invocationSignal(request.signal, timeoutMs);
+    let lease: {tool: Tool; release(): void} | undefined;
     try {
       const context = this.invocationContext(request, timeoutMs, signal.controller);
-      const args = await prepareToolInput(entry.tool, request.args, context);
-      if (!entry.meta.enabled || !entry.tool.isEnabled() || this.registry.get(request.toolId) !== entry) {
+      lease = await entry.tool.acquireExecution?.(context, 'invoke');
+      const tool = lease?.tool ?? entry.tool;
+      assertImplementationIdentity(tool, entry.meta);
+      const args = await prepareToolInput(tool, request.args, context);
+      if (!entry.meta.enabled || !this.registry.get(request.toolId)?.meta.enabled || !entry.tool.isEnabled() || !tool.isEnabled() || this.registry.get(request.toolId)?.tool !== entry.tool) {
         throw new ToolInputError('TOOL_DISABLED', 'Tool was disabled or replaced before execution');
       }
-      const activity = entry.tool.getActivityDescription?.(args);
+      const activity = tool.getActivityDescription?.(args);
       if (activity) await context.onProgress?.({ message: activity });
-      const result = await entry.tool.call(args, context);
-      return await toolSuccess(entry.tool, result.data, started, request.admitOutput, request.resultMode === 'structured');
+      const result = await tool.call(args, context);
+      return await toolSuccess(tool, result.data, started, request.admitOutput, request.resultMode === 'structured');
     } catch (error) {
       const result = toolFailure(request.toolId, error, started);
       return signal.controller.signal.aborted ? { ...result, errorCode: 'CANCELLED', recoverable: false } : result;
     } finally {
+      lease?.release();
       signal.dispose();
     }
   }
@@ -231,19 +248,23 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
     const timeoutMs = request.timeoutMs ?? entry.meta.timeoutMs;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new ToolInputError('INVALID_ARGUMENTS', 'Invalid tool timeout');
     const signal = invocationSignal(request.signal, timeoutMs);
+    let lease: {tool: Tool; release(): void} | undefined;
     try {
       const { operationId, sessionId, taskId, effectId } = request;
       const context = this.invocationContext({ ...request, executionIdentity: { operationId, sessionId, taskId, effectId } }, timeoutMs, signal.controller);
-      const args = await prepareToolReconciliation(entry.tool, request.args, context);
-      if (!entry.meta.enabled || !entry.tool.isEnabled() || this.registry.get(request.toolId) !== entry) throw new Error('Tool was disabled or replaced before reconciliation');
-      if (!entry.tool.reconcile) return entry.meta.sideEffect === 'none' && entry.tool.isReadOnly() ? { status: 'retry' }
+      lease = await entry.tool.acquireExecution?.(context, 'reconcile');
+      const tool = lease?.tool ?? entry.tool;
+      assertImplementationIdentity(tool, entry.meta);
+      const args = await prepareToolReconciliation(tool, request.args, context);
+      if (!entry.meta.enabled || !this.registry.get(request.toolId)?.meta.enabled || !entry.tool.isEnabled() || !tool.isEnabled() || this.registry.get(request.toolId)?.tool !== entry.tool) throw new Error('Tool was disabled or replaced before reconciliation');
+      if (!tool.reconcile) return entry.meta.sideEffect === 'none' && tool.isReadOnly() ? { status: 'retry' }
         : { status: 'indeterminate', error: { message: 'Tool outcome cannot be reconciled', code: 'TOOL_INDETERMINATE' } };
-      const result = await entry.tool.reconcile(args, context);
+      const result = await tool.reconcile(args, context);
       signal.controller.signal.throwIfAborted();
       if (result.status === 'indeterminate') return { ...result, error: result.error ?? { message: 'Tool outcome cannot be reconciled', code: 'TOOL_INDETERMINATE' } };
       if (result.status !== 'completed') return result;
-      return { status: 'completed', result: await toolSuccess(entry.tool, result.data, started, undefined, request.resultMode === 'structured') };
-    } finally { signal.dispose(); }
+      return { status: 'completed', result: await toolSuccess(tool, result.data, started, undefined, request.resultMode === 'structured') };
+    } finally { lease?.release(); signal.dispose(); }
   }
 
   private invocationContext(request: ToolInvokeRequest, timeoutMs: number, controller: AbortController): ToolUseContext {

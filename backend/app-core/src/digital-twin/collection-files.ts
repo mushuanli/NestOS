@@ -5,11 +5,12 @@ import {createVFSToolContext} from '../vfs/tool-context';
 const log = createModuleLogger('twin-scanner');
 
 /** A saved scanner grants one application workspace, without exposing its project or the host root. */
-export function acquireCollectionFiles(fs: IFileSystem, sessionId: string, executor: TwinCollectionExecutor, authorize: () => Promise<void>) {
+export function acquireCollectionFiles(fs: IFileSystem, sessionId: string, executor: TwinCollectionExecutor, authorize: () => Promise<void>, projectRoot?: string) {
     const started = Date.now();
-    const destination = collectionExecutor(executor)?.destination;
-    if (!destination) throw new Error('TWIN_COLLECTION_DESTINATION_INVALID');
-    const directory = workspaceRoot(destination), view = createFileSystemView({viewId: `collection:${sessionId}`, mounts: [
+    const selected = collectionExecutor(executor), destination = selected?.destination;
+    if (!destination && !(selected?.projectId && projectRoot)) throw new Error('TWIN_COLLECTION_DESTINATION_INVALID');
+    const root = destination ? workspaceRoot(destination) : projectRoot!;
+    const directory = selected?.directory ? root.replace(/\/$/, '') + '/' + selected.directory : root, view = createFileSystemView({viewId: `collection:${sessionId}`, mounts: [
         {mountId: 'destination', at: '/workspace', fs, root: directory, access: 'rw'},
     ]});
     const files = createVFSToolContext({fs: view, cwd: '/workspace', sessionId});

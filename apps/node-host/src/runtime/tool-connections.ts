@@ -64,6 +64,12 @@ export class NodeToolConnections implements ToolConnectionAccess {
     register(type: ToolConnectionType): void {
         validateToolConnectionDefinition(type); this.types.set(type.id, structuredClone(type));
     }
+    prepareRegistration(types: ToolConnectionType[]) {
+        for (const type of types) validateToolConnectionDefinition(type);
+        const previous = new Map(this.types), next = types.map(type => structuredClone(type)); let committed = false;
+        return {commit: () => {for (const type of next) this.types.set(type.id, type); committed = true;},
+            rollback: () => {if (committed) {this.types.clear(); for (const [id, type] of previous) this.types.set(id, type); committed = false;}}};
+    }
     async snapshot() {
         const records = await this.read();
         const applications = new Map(await Promise.all([...this.types.keys()].map(async id => [id, await this.applications?.get(id)] as const)));

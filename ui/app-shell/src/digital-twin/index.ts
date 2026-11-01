@@ -16,17 +16,23 @@ import { scanPage, scanRunPage, type TwinSourcesTab } from './scan-view';
 import { TwinSettingsAutosave } from './settings-autosave';
 import { TwinNavigation } from './navigation';
 import { TwinScanLists } from './scan-list';
+import {scannerPackages, upgradeScannerPackage} from './package-upgrades';
+import type {ToolPackageInfo, ToolPackages} from '@itookit/app-contracts/services';
 
 export interface TwinWorkbenchOptions {
     service: DigitalTwinService; sidebar: HTMLElement; editor: HTMLElement;
     connections(): Promise<Array<{ id: string; name: string }>>;
+    packages?: ToolPackages;
+    projects?(): Promise<Array<{id: string; name: string}>>;
     selected(path: string): void;
 }
 export class TwinWorkbench {
     private workspaces: import('@itookit/app-contracts').TwinWorkspaceView[] = [];
     private sourceConnections: SourceConnections = {types: [], connections: []};
     private targets: RootCallTarget[] = [];
+    private projects: Array<{id: string; name: string}> = [];
     private tools: import('@itookit/app-contracts').TwinScannerTool[] = [];
+    private packages: ToolPackageInfo[] = [];
     private page: TwinPage = 'overview';
     private selectedSession = '';
     private workspaceRoute = false;
@@ -38,6 +44,7 @@ export class TwinWorkbench {
     private connections: Array<{ id: string; name: string }> = [];
     private abort = new AbortController();
     private unsubscribe?: () => void;
+    private unsubscribePackages?: () => void;
     private generation = 0;
     private busy = false;
     private loading = false;
@@ -67,6 +74,8 @@ export class TwinWorkbench {
         editor.addEventListener('input', event => this.search(event), { signal });
         editor.addEventListener('change', event => { if (event.target instanceof HTMLSelectElement && event.target.hasAttribute('data-twin-workspace')) {void this.switchWorkspace(event.target); return;} if (event.target instanceof HTMLInputElement && event.target.name === 'connectionImport') {this.dirty = true; void importConnection(event.target).catch(error => {this.options.editor.querySelector('[role=alert]')!.textContent = error instanceof SyntaxError ? label('connectionImportInvalid') : errorText(error);}); return;} if (event.target instanceof HTMLInputElement && event.target.name === 'inputUpload') {void this.loadScannerUpload(event.target); return;} if (scannerFieldChange(event, this.targets, this.tools)) {this.dirty = true; return;} if (!this.scanLists.handle(event)) this.settingsChanged(event, true); }, { signal });
         this.unsubscribe = this.options.service.onChange(() => this.serviceChanged());
+        this.unsubscribePackages = this.options.packages?.onChange?.(() => this.serviceChanged());
+        signal.addEventListener('abort', () => this.unsubscribePackages?.(), {once: true});
         await Promise.all([this.navigation.start(), this.refresh()]);
         await this.navigation.sync('/' + this.page);
     }
@@ -104,7 +113,7 @@ export class TwinWorkbench {
     async destroy(): Promise<void> {
         await this.autosave.flush();
         if (this.autosave.pending) throw new Error(this.autosave.error || 'TWIN_SETTINGS_UNSAVED');
-        this.generation++; this.abort.abort(); this.unsubscribe?.(); this.navigation.destroy();
+        this.generation++; this.abort.abort(); this.unsubscribe?.(); this.unsubscribePackages?.(); this.navigation.destroy();
     }
 
     private serviceChanged(): void {
@@ -125,9 +134,9 @@ export class TwinWorkbench {
         this.loading = true; this.refreshQueued = false;
         if (!this.snapshot) this.render();
         try {
-            const [snapshot, connections, targets, workspaces, tools, sourceConnections] = await loadOverview(this.options, this.abort.signal);
+            const [snapshot, connections, targets, workspaces, tools, sourceConnections, packages, projects] = await loadOverview(this.options, this.abort.signal);
             if (generation !== this.generation || this.abort.signal.aborted) return;
-            this.tools = tools; this.sourceConnections = sourceConnections; this.snapshot = snapshot; this.connections = connections; this.targets = targets; this.workspaces = workspaces; this.error = ''; this.loading = false; this.render();
+            this.projects = projects; this.packages = packages; this.tools = tools; this.sourceConnections = sourceConnections; this.snapshot = snapshot; this.connections = connections; this.targets = targets; this.workspaces = workspaces; this.error = ''; this.loading = false; this.render();
             if (this.refreshQueued && !this.dirty) void this.refreshDraft();
         } catch (error) {
             if (generation !== this.generation || this.abort.signal.aborted) return;
@@ -142,7 +151,7 @@ export class TwinWorkbench {
         const previousSettings = this.options.editor.querySelector<HTMLDetailsElement>('[data-scan-settings]');
         const snapshot = this.snapshot;
         const body = !snapshot ? '' : this.page === 'overview' ? overview(snapshot)
-            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot, this.selectedSession) : this.page === 'sources' ? scanPage(snapshot, this.connections, this.sourcesTab, this.targets, this.tools) + sourceConnectionSettings(this.sourceConnections) : memories(snapshot, this.page, this.selectedSession.startsWith('scan:') ? this.selectedSession.slice(5) : undefined);
+            : this.page === 'profile' ? graphView(snapshot, this.selectedSession) : this.page === 'runs' ? scanRunPage(snapshot, this.selectedSession) : this.page === 'sources' ? scannerPackages(this.packages, this.tools) + scanPage(snapshot, this.connections, this.sourcesTab, this.targets, this.tools, this.projects) + sourceConnectionSettings(this.sourceConnections) : memories(snapshot, this.page, this.selectedSession.startsWith('scan:') ? this.selectedSession.slice(5) : undefined);
         this.options.editor.innerHTML = `<div class="twin__body">${this.workspaces.length ? `<label>${escapeHTML(label('workspace'))}<select data-twin-workspace ${this.busy ? 'disabled' : ''}>${this.workspaces.map(space => `<option value="${escapeAttr(space.id)}" ${space.id === snapshot?.workspace?.id ? 'selected' : ''}>${escapeHTML(space.name)} · ${escapeHTML(label('workspaceKind.' + space.kind))}</option>`).join('')}</select></label>` : ''}${snapshot?.workspace?.readOnly ? `<p>${escapeHTML(label('workspaceReadOnly'))}</p>` : ''}<h2>${escapeHTML(label(this.page))}</h2>
             <p class="twin__status" role="status">${escapeHTML(this.loading ? t('status.loading') : this.busy ? label('busy') : this.message)}</p>
             <p class="twin__error" role="alert">${escapeHTML(this.error)}</p>${this.error ? `<button type="button" data-action="refresh">${escapeHTML(label('refresh'))}</button>` : ''}${body}</div>`;
@@ -236,6 +245,9 @@ export class TwinWorkbench {
         }
         if (action === 'retrySettings') return this.autosave.flush();
         if (action === 'refresh') return this.refreshDraft();
+        if (action === 'upgradeScannerPackage' && this.options.packages) {
+            return this.act(() => upgradeScannerPackage(this.options.packages!, id, target.dataset.version!, target.dataset.expected!), true);
+        }
         if (!this.snapshot) return;
         if (action === 'openEntity') { event.preventDefault(); return this.openResource('/profile/' + id); }
         if (action === 'openMemories') return this.openResource('/memories/' + id);
@@ -483,6 +495,6 @@ function errorText(error: unknown): string {
 function errorDetail(error: unknown): string {
     const code = error instanceof Error ? error.message : String(error);
     const known = /^TWIN_[A-Z_]+$|^Twin |^Unsupported Twin (?:schema|layout)$/.test(code);
-    return known ? ' (' + code + ')' : '';
+    return known || /^TOOL_PACKAGE_[A-Z_]+$/.test(code) ? ' (' + code + ')' : '';
 }
 export function createTwinModule(options: TwinWorkbenchOptions) { return createWorkspaceModule(new TwinWorkbench(options)); }

@@ -69,7 +69,7 @@ export function runtimePaths(mode, env = process.env) {
     const base = env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
     const current = path.join(base, 'nestos'), previous = path.join(base, 'mindos');
     const config = !existsSync(path.join(current, 'nestos.json')) && existsSync(path.join(previous, 'mindos.json')) ? previous : current;
-    const logs = path.resolve(env.NESTOS_HTTPD_LOG_DIR || (!existsSync('/var/log/nestos') && existsSync('/var/log/mindos') ? '/var/log/mindos' : '/var/log/nestos')), prefix = mode === 'dev' ? 'httpd.debug' : 'httpd';
+    const logs = path.resolve(env.NESTOS_HTTPD_LOG_DIR || '/var/log/nestos'), prefix = mode === 'dev' ? 'httpd.debug' : 'httpd';
     return { config, logs, audit: path.join(logs, `${prefix}.audit.jsonl`), runtime: path.join(logs, `${prefix}.runtime.log`),
         auth: path.join(config, 'http-auth', mode), developmentRoot: path.join(config, 'http-dev', 'data') };
 }

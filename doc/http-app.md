@@ -396,7 +396,7 @@ sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /var/log/nestos
 pnpm httpd
 ```
 
-目录不可写时启动失败。可用 `NESTOS_HTTPD_LOG_DIR=/path/to/logs pnpm httpd` 同时覆盖运行与审计日志目录，`--audit-file` 单独覆盖审计文件；配置、凭据和数据路径仍按原规则解析。相对日志目录按启动工作目录解析。
+目录不可写时启动失败。默认固定使用 `/var/log/nestos`，不会因旧 `/var/log/mindos` 目录存在而回退；旧日志需在原目录查询。可用 `NESTOS_HTTPD_LOG_DIR=/path/to/logs pnpm httpd` 同时覆盖运行与审计日志目录，`--audit-file` 单独覆盖审计文件；配置、凭据和数据路径仍按原规则解析。相对日志目录按启动工作目录解析。
 
 查询当前运行版本需要使用已登记的客户端证书，访问证书覆盖的实际主机地址：
 

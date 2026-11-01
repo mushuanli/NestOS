@@ -6,9 +6,9 @@ import {readToolPackage} from '../src/runtime/tool-packages/manifest';
 import {readToolbox, toolboxParameters, toolboxOptionLabels} from '../src/runtime/tool-packages/toolbox';
 
 it('projects the actual Google collector branches and account settings without a Flow or credential fields', async () => {
-    const root = fileURLToPath(new URL('../../../tools/nestos-googlecli/', import.meta.url));
+    const root = fileURLToPath(new URL('../../../tools/googlecli/', import.meta.url));
     const source = await readToolPackage(root), declaration = await readToolbox(source);
-    const tools = await loadNodeToolModules(JSON.stringify([fileURLToPath(new URL('../../../tools/nestos-googlecli/node/extension.mjs', import.meta.url))]));
+    const tools = await loadNodeToolModules(JSON.stringify([fileURLToPath(new URL('../../../tools/googlecli/node/extension.mjs', import.meta.url))]));
     const collector = tools.find(tool => tool.name === 'google.collect')!;
     const schema = z.toJSONSchema(collector.inputSchema) as {anyOf?: Array<{properties: Record<string, unknown>}>; oneOf?: Array<{properties: Record<string, unknown>}>};
     const branches = schema.oneOf ?? schema.anyOf!;

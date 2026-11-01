@@ -252,7 +252,7 @@ it('rejects symbolic links for package documentation and validates all bundled p
     await symlink(path.join(f.root, 'external.yaml'), path.join(f.packageRoot, 'guide.yaml'));
     await expect(readPackageGuide(f.packageRoot)).rejects.toMatchObject({code: 'TOOL_PACKAGE_GUIDE_PATH_INVALID'});
     const catalog = fileURLToPath(new URL('../../../tools/', import.meta.url));
-    for (const name of ['nestos-googlecli', 'anki-cli']) {
+    for (const name of ['googlecli', 'anki-cli']) {
         const guide = await readPackageGuide(path.join(catalog, name)); expect(guide?.steps.length).toBeGreaterThan(0);
     }
 });

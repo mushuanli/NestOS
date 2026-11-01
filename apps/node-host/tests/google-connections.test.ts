@@ -8,7 +8,7 @@ import {loadNodeToolModules} from '../src/runtime/tool-modules';
 
 it('binds shared Google tool code to each user’s private connection and workspace', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'google-users-'));
-    const module = fileURLToPath(new URL('../../../tools/nestos-googlecli/node/extension.mjs', import.meta.url));
+    const module = fileURLToPath(new URL('../../../tools/googlecli/node/extension.mjs', import.meta.url));
     const logs: string[] = [];
     const fetcher = vi.fn(async (url: string | URL, init: RequestInit) => {
         if (String(url).includes('oauth2')) return Response.json({access_token: new URLSearchParams(init.body as URLSearchParams).get('refresh_token')});

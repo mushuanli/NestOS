@@ -1,17 +1,17 @@
 
 ## Workspace Structure
 
-pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `nestos-web`）。十二个独立库（包括 llm-ui、mdxeditor、vfs-ui）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
+pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `nestos-web`）。十三个独立库（包括 llm-ui、mdxeditor、vfs-ui、kanban）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
 
 | 目录 | 模块 |
 |---|---|
 | `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common |
 | `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters |
 | `shared/` | app-contracts、common、app-transport |
-| `libraries/` | driver-llm、nestos-node-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser、durable-kernel、device-tty |
+| `libraries/` | driver-llm、nestos-node-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser、durable-kernel、device-tty、kanban |
 | `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
 
-19 个业务/共享包 + 12 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/nestos-node 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
+19 个业务/共享包 + 13 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/nestos-node 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -50,6 +50,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/mdx-adapter` | NestOS 编辑器适配：VFS/namespace/Session 校验、文件格式、插件元数据、笔记挖空复习状态的共享 seqfile（路径作用域、评分时按卡写入）、附件管理 UI、文件聊天引用及会话打印。 |
 | `@itookit/ui-common` | 共享 UI 组件、契约、浏览器工具。 |
 | `@itookit/app-settings` | 设置 UI 与导航投影：SettingsEngine；技能文件系统、持久化、标签和维护用例归 app-core，Web 快照归宿主。 |
+| `@itookit/kanban` | 独立协调库，仅依赖 vfs-core：责任、计划 DAG、产物引用、派发意图、验收、SeqFile 原子事件与回执；Session/Flow/Kernel/notify 接入归 app-core。 |
 | `@itookit/app-contracts` | 共享应用 DTO、事件、设置端口、身份与纯变换；不加载后端执行或 UI 实现。 |
 | `@itookit/app-transport` | 平台中立的 HTTP/SSE 与能力 RPC，应用描述/selector 注入机制，不加载 Node 或 UI。 |
 | `@itookit/app-core` | 无 UI 应用核心：NestOS profile、RunDefinition、共享 Session 文件/目录服务，以及统一装配 `createApplicationRuntime`（VFS/LLM/Session/Flow）与 headless `createKernelRuntime`（durable-kernel + kernel-adapters + Flow programs）。Web/Tauri/CLI 共用。 |
@@ -68,14 +69,14 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 
 ### 独立 npm 库与同步接入
 
-独立库均位于 `libraries/`，参与 pnpm workspace；全部以 Git 子模块固定提交，包括 [durable-kernel](https://github.com/mushuanli/durable-kernel)、[llm-ui](https://github.com/mushuanli/llm-ui) 与 [device-tty](https://github.com/mushuanli/device-tty)。libraries 下的目录就是唯一开发工作树；先向各自远端提交，再由主仓库记录子模块提交；npm 发布独立进行。日常开发通过源码 exports 联调；`pnpm lib:build [库名]` 增量准备本地 tarball 快照，供 `pnpm httpd:build` 在隔离目录消费。`pnpm libraries:use <ID>` 可显式将整个工作区切到制品验收模式，`pnpm libraries:source` 恢复源码。各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 nestos-node-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
+独立库均位于 `libraries/`，参与 pnpm workspace；既有库以 Git 子模块固定提交，包括 [durable-kernel](https://github.com/mushuanli/durable-kernel)、[llm-ui](https://github.com/mushuanli/llm-ui) 与 [device-tty](https://github.com/mushuanli/device-tty)。新拆出的 kanban 目前为本仓库源码工作区，尚未创建外部仓库或发布。libraries 下的目录就是唯一开发工作树；子模块先向各自远端提交，再由主仓库记录子模块提交；npm 发布独立进行。日常开发通过源码 exports 联调；`pnpm lib:build [库名]` 增量准备本地 tarball 快照，供 `pnpm httpd:build` 在隔离目录消费。`pnpm libraries:use <ID>` 可显式将整个工作区切到制品验收模式，`pnpm libraries:source` 恢复源码。各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 nestos-node-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
 
 VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依赖 better-sqlite3。vfs-sync、driver-llm 没有运行时包依赖。`backend/sync-adapters` 负责宿主同步接入，调用 vfs-sync 与驱动公共端口；同步范围和项目绑定由应用决定。
 
 VFS `IPlugin` 可以提供变更提示，但不能替代跨窗口扫描、恢复日志与条件提交。core 不内置同步业务。
 
-可选协作看板由 `@itookit/app-core/kanban` 显式装配；纯契约在 app-contracts，事务存储、监控调度与身份授权由宿主注入。项目/系统看板及相关 Session 登记独立于聊天 Session 生命周期，运行时装配用户个人看板，Web/桌面通过共享看板工作区和 RPC 访问，不自动启动 Agent。见[Kanban 协调模块](design/kanban-coordination.md)。
+协作看板核心位于独立库 `@itookit/kanban`，仅依赖 vfs-core；app-contracts 兼容转出契约，`@itookit/app-core/kanban` 显式装配 Session/Flow/Kernel、远程存储、调度与 notify，身份授权由宿主注入。项目/系统看板及相关 Session 登记独立于聊天 Session 生命周期，运行时装配用户个人看板，Web/桌面通过共享看板工作区和 RPC 访问，不自动启动 Agent。见[Kanban 协调模块](design/kanban-coordination.md)。
 
 数字分身的领域服务与 SeqFile 布局归 app-core 的 `digital-twin/`，五页工作台归 app-shell 的 `digital-twin/`。kernel-adapters 仅注入通用发送前钩子，vfsdrivers 的 IndexedDB/SQLite schema 不加入分身表或业务字段；固定槽分页与版本链由 SeqTwinStore 管理。见[数字分身实施边界](design/digital-twin.md#实现与边界)。
 
-`tools/image-tools` 是参与 pnpm 工作区的通用外部 Tool 包；核心工厂与 Node 引擎位于该包，Canvas 装配在 Web 宿主，Tauri 复用公开宿主入口。Rust `tools/anki-cli` 仍独立管理，未加入 pnpm 包工作区。
+`tools/image-tools` 是参与 pnpm 工作区的通用外部 Tool 包；核心工厂与 Node 引擎位于该包，Canvas 装配在 Web 宿主，Tauri 复用公开宿主入口。Rust `tools/anki-cli` 与 Node `tools/googlecli` 均为独立 Git 子模块，未加入 pnpm 包工作区；各自的提交先推送到外部仓库，再由主仓库记录子模块提交。

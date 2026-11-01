@@ -49,3 +49,6 @@
 [submodule "tools/firecracker-virtiofs"]
 	path = tools/firecracker-virtiofs
 	url = https://github.com/mushuanli/firecracker-virtiofs.git
+[submodule "tools/googlecli"]
+	path = tools/googlecli
+	url = https://github.com/mushuanli/googlecli.git

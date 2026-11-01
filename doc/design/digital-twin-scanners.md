@@ -54,7 +54,7 @@ Agent 默认读取 message.content，Flow 默认读取标准返回节点的 resu
 
 Node 应用宿主提供 `ToolConnections`：外部包声明连接字段，界面根据字段生成表单，可导入本地授权 JSON；秘密字段只写入，不回传，编辑留空保留。宿主在每个用户的私有 authDir 下创建 `NodeToolConnections`，通过 Tool 工厂 API 注入用户绑定的 `resolve(id,type)`，不开放该方法的 RPC，也不接受模型提供的用户 ID 或凭据路径。共享工具代码和 Flow 定义不共享连接、来源或记忆。组织空间切换不改变认证主体的凭据归属。
 
-已提供独立 [Google 工具包](../../tools/nestos-googlecli/README.md) 及其包内采集 Flow 资源（不再作为 NestOS 内置预设）。账号只读授权和每用户导入说明见工具包文档。每次有界完整核对，超过数量限制不发布不完整快照；当前不使用远端增量游标。OAuth 端点与权限由外部包声明，通用宿主提供每用户授权交互；平台边界及尚未实现的 ResourceTarget 见[外部功能扩展](function-extensions.md)。
+已提供独立 [Google 工具包](../../tools/googlecli/README.md) 及其包内采集 Flow 资源（不再作为 NestOS 内置预设）。账号只读授权和每用户导入说明见工具包文档。每次有界完整核对，超过数量限制不发布不完整快照；当前不使用远端增量游标。OAuth 端点与权限由外部包声明，通用宿主提供每用户授权交互；平台边界及尚未实现的 ResourceTarget 见[外部功能扩展](function-extensions.md)。
 
 界面将触发、动作与来源、结果与知识接纳分开；Tool 参数按其 Schema 生成，Flow 参数复用公开表单，模型预算放入折叠项。连接、工具与密钥不作为模型普通参数。采集失败区分授权、API 权限、数量/格式、传输与文件写入阶段，日志只保存关联身份、阶段、分类、数量及耗时。
 

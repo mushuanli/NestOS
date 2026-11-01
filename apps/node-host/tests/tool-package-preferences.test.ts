@@ -100,7 +100,7 @@ it('rejects corrupt or non-private preference storage without leaking its conten
 
 it('validates bundled YAML declarations without requiring business code or special tool names in the host', async () => {
     const catalog = fileURLToPath(new URL('../../../tools/', import.meta.url));
-    for (const name of ['nestos-googlecli', 'anki-cli']) expect((await readToolbox(await readToolPackage(path.join(catalog, name))))?.preinstall).toBe(true);
+    for (const name of ['googlecli', 'anki-cli']) expect((await readToolbox(await readToolPackage(path.join(catalog, name))))?.preinstall).toBe(true);
 });
 
 it('distributes new YAML to an existing shared installation so non-admin users cannot bypass the default-disabled gate', async () => {

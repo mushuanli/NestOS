@@ -604,3 +604,5 @@ composer draft，不消费文字、参数或附件，也不以循环取消后代
 当前 Markdown 输入按用户最新范围落地：独立行 ::@ 显示目标、提示词与附件；提交通过稳定 Session/branch 身份及宿主上下文进入原持久队列，确认后切换到普通 user/LLM 会话继续聊天。::> 折叠结果及文档内回复暂缓。实现与诊断见 [Markdown 聊天输入](../ai-chat.md)。本轮按用户要求不追加功能测试或重复浏览器验收；必要发布构建和健康就绪不作为全部迁移验收。
 
 工作台的公开 URL 使用 `#/workbench/<resource>`，旧 `#/chat` 作为别名保留；`WS_WORKBENCH` 是新装配名，`WS_CHAT` 仅为兼容导出，持久 workspace 身份与会话协议不因路由改名迁移。项目目录单击后打开右侧目录页，展开箭头仅控制树展开。共享输入按钮由宿主 `submissionMode` 投影：空闲为发送箭头，执行中为队列图标，停止保留独立方块；title/aria-label 明确队列语义，不能仅按通用库的 running 状态推断宿主支持排队。
+
+已明确拒绝的提交预览在后续输入被接纳后自动撤下，同时清理旧拒绝提示；原 OperationLedger 拒绝事实继续保留。未知回执与当前失败仍显示，不能因新输入或渲染刷新伪造接纳。原生 reasoning 使用 assistant.reasoning 展示来源，投影为默认折叠的 reasoning part。

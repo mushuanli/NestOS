@@ -2,7 +2,7 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {WorkbenchTabs} from '../src/workbench/tabs';
 import {WorkbenchWindows} from '../src/workbench/windows';
-import {t} from '@itookit/common';
+import {t, getLogger} from '@itookit/common';
 
 afterEach(() => {document.body.replaceChildren(); vi.restoreAllMocks();});
 function fixture() {
@@ -45,4 +45,40 @@ it('retains a failed window when closing selected windows across workspaces', as
     expect(chat.tabs.opened.querySelector('.workbench-tabs__opened-label')?.textContent).toContain('Draft');
     expect(chat.container.querySelector('.workbench-tabs__state')?.getAttribute('aria-label')).toBe(t('workbench.saveFailed'));
     await chat.tabs.destroy(); await toolbox.tabs.destroy();
+});
+it('navigates home and to the current parent without closing windows, and hides up on the root page', async () => {
+    const container = document.createElement('section'); document.body.append(container);
+    const activate = vi.fn(async (id: string) => {tabs.activate(id);});
+    const tabs = new WorkbenchTabs(container, {activate, dispose: async () => {}, empty() {}, error: vi.fn()});
+    const header = document.createElement('div'); container.append(header);
+    const release = tabs.mountWindowList(header);
+    await tabs.open('/', 'Home', false); const file = await tabs.open('/notes/draft.md', 'Draft', false);
+    const input = document.createElement('textarea'); input.value = 'unsaved'; file.panel.append(input);
+    const up = header.querySelector<HTMLButtonElement>('[data-window-navigation=parent]')!;
+    expect(up.hidden).toBe(false); up.click();
+    await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('/notes'));
+    tabs.activate('/notes/draft.md'); tabs.rename('/notes/draft.md', '/moved/draft.md', 'Draft'); up.click();
+    await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('/moved'));
+    expect(header.querySelector('[data-window-navigation=home]')).toBeNull();
+    const home = tabs.opened.querySelector<HTMLButtonElement>('[data-window-navigation=home]')!;
+    expect(home.parentElement?.nextElementSibling?.matches('input[type=search]')).toBe(true); home.click();
+    await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('/'));
+    expect(up.hidden).toBe(true); expect(file.panel.querySelector('textarea')).toBe(input); expect(input.value).toBe('unsaved');
+    expect(tabs.values()).toHaveLength(2);
+    release(); expect(header.children).toHaveLength(0); await tabs.destroy();
+});
+it('reports a parent navigation failure with a specific diagnostic and keeps the current window', async () => {
+    const container = document.createElement('section'); document.body.append(container);
+    const error = vi.fn(); getLogger().clear();
+    const parent = vi.fn(async () => {throw Object.assign(new Error('Directory unavailable'), {code: 'ENOENT'});});
+    const tabs = new WorkbenchTabs(container, {activate: async () => {}, parent, canGoUp: () => true, dispose: async () => {}, empty() {}, error});
+    const tab = await tabs.open('/private/file.md', 'File', false);
+    const release = tabs.mountWindowList(container);
+    container.querySelector<HTMLButtonElement>('[data-window-navigation=parent]')!.click();
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.objectContaining({code: 'ENOENT'})));
+    expect(tabs.current).toBe(tab);
+    const logs = getLogger().query({modules: ['window-navigation']});
+    expect(logs).toEqual(expect.arrayContaining([expect.objectContaining({data: expect.objectContaining({code: 'ENOENT', result: 'failure', operationId: expect.any(String)})})]));
+    expect(JSON.stringify(logs)).not.toContain('/private');
+    release(); await tabs.destroy();
 });

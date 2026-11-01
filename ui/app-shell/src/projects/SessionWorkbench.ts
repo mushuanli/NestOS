@@ -311,12 +311,14 @@ export class SessionWorkbench implements WorkspaceController {
         this.tabs = new WorkbenchTabs(this.container, {
             navigation: t('project.workspace'),
             describe: tab => this.describeOpenTab(tab.id),
+            canGoUp: tab => tab.id !== '/' && !tab.id.startsWith('@agent/'),
+            parent: tab => this.openParentDirectory(tab.id),
             activate: id => this.openResource(id), dispose: tab => this.disposeTab(tab),
             empty: () => { this.clearEditorFields(); this.showWelcome(); this.onSelect('', 'replace'); },
             error: error => this.report(error), changed: () => this.sidebarLayout?.save(this.tabs.snapshot()),
         }, options.workbenchState?.load()?.tabs, options.windows);
         this.sidebarLayout = new WorkbenchSidebar(this.sidebar, this.tabs.opened, options.workbenchState, undefined,
-            container => this.tabs.mountWindowList(container));
+            container => this.tabs.mountWindowList(container, false));
         if (options.agents && this.projects) {
             this.agentDrawer = new AgentDrawer({backend: this.backend, resourceId: options.agents.resourceId,
                 usage: options.agents.usage, rename: options.agents.rename, remove: options.agents.remove, navigate: request => this.hostContext?.navigate(request) ?? Promise.resolve(),
@@ -1527,6 +1529,20 @@ export class SessionWorkbench implements WorkspaceController {
             const next = remapProjectPath(this.active, from, to);
             if (next !== this.active) { this.active = next; this.onSelect(this.getActiveResourceId() ?? '', 'replace'); }
         }
+    }
+
+    private async openParentDirectory(id: string): Promise<void> {
+        if (id.startsWith('draft:')) {
+            const project = await this.projects!.get(id.slice(6));
+            const folder = await this.projects!.sessionFolder(project);
+            await this.openResource(folderBrowserPath(folder) || '/', {directory: true});
+            return;
+        }
+        const path = parseSessionRoute(id).path, target = resolveBrowserTarget(path);
+        const parent = target.kind === 'session'
+            ? folderBrowserPath((await this.sessions.get(target.sessionId)).folder) || '/'
+            : parentBrowserPath(path);
+        await this.openResource(parent, {directory: true});
     }
 
     private async describeOpenTab(id: string): Promise<{ context?: string; location?: string }> {

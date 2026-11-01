@@ -28,6 +28,7 @@ class AssistantMenu {
     private editing?: AssistantShortcut; private choices: AssistantChoices = {projects: [], sessions: [], scanners: []};
     private origin?: HTMLElement; private query = '';
     private stateLoaded?: Promise<void>;
+    private readonly selectedEvents = new Map<string, string>();
     private readonly missingIcons = new Set<string>();
     constructor(private readonly options: Options) {}
     install(): void {
@@ -37,7 +38,7 @@ class AssistantMenu {
         this.dialog.addEventListener('click', event => {if (event.target === this.dialog) this.dialog.close();}, {signal});
         this.body.addEventListener('click', event => this.click(event), {signal});
         this.body.addEventListener('submit', event => {event.preventDefault(); void this.saveShortcut(event.target as HTMLFormElement);}, {signal});
-        this.body.addEventListener('change', event => this.formChange(event), {signal});
+        this.body.addEventListener('change', event => {this.selectEvents(event); this.formChange(event);}, {signal});
         this.body.addEventListener('input', event => this.filter(event), {signal});
         this.body.addEventListener('keydown', event => this.searchKey(event), {signal});
         document.addEventListener(ASSISTANT_ADD_EVENT, event => {void this.addFromNavigation((event as CustomEvent<ShortcutRequest>).detail);}, {signal});
@@ -107,12 +108,14 @@ class AssistantMenu {
     }
     private render(): void {
         if (this.closed || this.editing && this.body.querySelector('form')) return;
+        this.pruneEventSelection();
         const events = this.events(), shown = this.all ? events : events.slice(0, 3), disabled = this.busy ? 'disabled' : '';
         const scroll = this.body.scrollTop, searching = document.activeElement === this.body.querySelector('[data-assistant-search]');
         const caret = searching ? (document.activeElement as HTMLInputElement).selectionStart : null;
         this.body.innerHTML = `<header class="assistant-menu__header"><h2>${escape(label('title'))}</h2><button type="button" data-assistant-action="close" ${disabled}>${escape(t('action.close'))}</button></header>
             <p class="assistant-menu__error" role="alert">${escape(this.storageError || this.error)}</p>
             <section><div class="assistant-menu__heading"><h3>${escape(label('events'))}</h3><span>${escape(label('eventCount', {count: events.length}))}</span></div>
+            ${events.some(item => !item.requiresAction) ? `<div class="assistant-menu__actions"><label class="assistant-menu__selection"><input type="checkbox" data-assistant-select-all ${disabled}>${escape(label('selectShownEvents'))}</label><button type="button" data-assistant-action="clearSelected">${escape(label('clearSelected', {count: this.selectedEvents.size}))}</button></div>` : ''}
             ${shown.length ? shown.map(item => this.eventRow(item)).join('') : `<p class="assistant-menu__empty">${escape(label(this.reading || !this.ready ? 'loading' : 'noEvents'))}</p>`}
             ${events.length > 3 ? `<button type="button" data-assistant-action="all">${escape(this.all ? label('collapse') : label('allEvents', {count: events.length - 3}))}</button>` : ''}</section>
             <section><div class="assistant-menu__heading"><h3>${escape(label('shortcuts'))}</h3><div class="assistant-menu__actions"><button type="button" data-assistant-action="add" ${!this.ready || this.storageError || this.busy ? 'disabled' : ''}>${escape(label('add'))}</button>
@@ -122,7 +125,7 @@ class AssistantMenu {
             ${this.editing ? shortcutEditor(this.editing, this.choices, this.busy) : ''}</section>
             <footer class="assistant-menu__actions"><button type="button" data-assistant-action="refresh" ${disabled}>${escape(t('action.refresh'))}</button>${this.options.home ? `<button type="button" data-assistant-action="home">${escape(label('home'))}</button>` : ''}</footer>`;
         this.body.querySelectorAll<HTMLTimeElement>('[data-assistant-time]').forEach(time => setTimePresentation(time, Number(time.dataset.assistantTime), ''));
-        this.renderShortcuts();
+        this.updateEventSelection(); this.renderShortcuts();
         const form = this.body.querySelector<HTMLFormElement>('form'); if (form) updateShortcutFields(form);
         this.body.scrollTop = scroll;
         if (searching) {const search = this.body.querySelector<HTMLInputElement>('[data-assistant-search]')!; search.focus({preventScroll: true}); if (caret !== null) search.setSelectionRange(caret, caret);}
@@ -161,8 +164,41 @@ class AssistantMenu {
         this.body.querySelector<HTMLInputElement>('[name=title]')?.focus();
     }
     private eventRow(item: AssistantEvent): string {
-        return `<article class="assistant-menu__event"><button type="button" data-assistant-event="${escape(item.id)}"><strong>${escape(label('event.' + item.kind))}</strong><span>${escape(item.title)}</span><time data-assistant-time="${item.at}"></time></button>
+        return `<article class="assistant-menu__event">${item.requiresAction ? '' : `<label class="assistant-menu__selection"><input type="checkbox" data-assistant-select="${escape(item.id)}" aria-label="${escape(label('selectEvent', {title: item.title}))}" ${this.selectedEvents.get(item.id) === item.revision ? 'checked' : ''} ${this.busy || !this.ready || this.storageError ? 'disabled' : ''}></label>`}<button type="button" data-assistant-event="${escape(item.id)}"><strong>${escape(label('event.' + item.kind))}</strong><span>${escape(item.title)}</span><time data-assistant-time="${item.at}"></time></button>
             ${item.requiresAction ? '' : `<button type="button" data-assistant-read="${escape(item.id)}" aria-label="${escape(label('markRead'))}">${this.icon('markRead', 'markRead')}</button>`}</article>`;
+    }
+    private pruneEventSelection(): void {
+        const events = new Map(this.events().filter(item => !item.requiresAction).map(item => [item.id, item.revision]));
+        for (const [id, revision] of this.selectedEvents) if (events.get(id) !== revision) this.selectedEvents.delete(id);
+    }
+    private updateEventSelection(): void {
+        const inputs = [...this.body.querySelectorAll<HTMLInputElement>('[data-assistant-select]')];
+        const selected = inputs.filter(input => input.checked).length;
+        const all = this.body.querySelector<HTMLInputElement>('[data-assistant-select-all]');
+        if (all) {all.checked = inputs.length > 0 && selected === inputs.length; all.indeterminate = selected > 0 && selected < inputs.length;
+            all.disabled = !inputs.length || this.busy || !this.ready || !!this.storageError;}
+        const clear = this.body.querySelector<HTMLButtonElement>('[data-assistant-action=clearSelected]');
+        if (clear) {clear.textContent = label('clearSelected', {count: this.selectedEvents.size});
+            clear.disabled = !this.selectedEvents.size || this.busy || !this.ready || !!this.storageError;}
+    }
+    private selectEvents(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        if (this.busy || !this.ready || this.storageError) return;
+        const all = input.hasAttribute('data-assistant-select-all');
+        if (!all && !input.hasAttribute('data-assistant-select')) return;
+        const inputs = all ? [...this.body.querySelectorAll<HTMLInputElement>('[data-assistant-select]')] : [input];
+        for (const checkbox of inputs) {
+            const item = this.events().find(item => item.id === checkbox.dataset.assistantSelect && !item.requiresAction);
+            if (!item) continue;
+            checkbox.checked = input.checked;
+            if (input.checked) this.selectedEvents.set(item.id, item.revision); else this.selectedEvents.delete(item.id);
+        }
+        this.updateEventSelection();
+    }
+    private async clearSelectedEvents(): Promise<void> {
+        const items = this.events().filter(item => !item.requiresAction && this.selectedEvents.get(item.id) === item.revision);
+        if (!items.length) return;
+        await this.markEventsRead(items);
     }
     private shortcutRow(item: AssistantShortcut): string {
         return `<div class="assistant-menu__shortcut"><button type="button" data-assistant-shortcut="${escape(item.id)}"><span>${escape(item.title)}</span>${item.context ? `<small>${escape(item.context)}</small>` : ''}</button>${this.managing ? `<div class="assistant-menu__actions">
@@ -175,6 +211,7 @@ class AssistantMenu {
         if (button.dataset.assistantShortcut) {const item = this.state.shortcuts.find(item => item.id === button.dataset.assistantShortcut); if (item) void this.openShortcut(item); return;}
         const action = button.dataset.assistantAction, id = button.dataset.assistantId;
         if (action === 'close') this.dialog.close();
+        if (action === 'clearSelected') void this.clearSelectedEvents();
         if (action === 'all') {this.all = !this.all; this.render();}
         if (action === 'refresh') {this.schedule(); if (this.storageError) void this.loadState();}
         if (action === 'home') void this.navigate(this.options.home!);
@@ -221,10 +258,22 @@ class AssistantMenu {
         } catch {this.report('settings-write', 'ASSISTANT_SETTINGS_WRITE_FAILED', operationId, performance.now() - started); throw new Error(label('saveFailed'));}
         finally {this.busy = false;}
     }
-    private async markRead(item: AssistantEvent): Promise<boolean> {
-        if (item.requiresAction) return true;
-        const seen = Object.fromEntries([...Object.entries(this.state.seen), [item.id, item.revision]].slice(-2000));
-        try {await this.persist({...this.state, seen}); this.updateCount(); this.render(); return true;} catch {this.error = label('saveFailed'); this.render(); return false;}
+    private async markRead(item: AssistantEvent): Promise<boolean> {return this.markEventsRead([item]);}
+    private async markEventsRead(items: AssistantEvent[]): Promise<boolean> {
+        const clearable = items.filter(item => !item.requiresAction);
+        if (!clearable.length) return true;
+        const seen = Object.fromEntries([...Object.entries(this.state.seen), ...clearable.map(item => [item.id, item.revision])].slice(-2000));
+        const operationId = randomUUID(), started = performance.now(); this.busy = true; this.render();
+        try {
+            await this.persist({...this.state, seen});
+            for (const item of clearable) this.selectedEvents.delete(item.id);
+            this.error = ''; this.updateCount();
+            log.info('assistant.events.clear', {operationId, stage: 'persist', result: 'success', count: clearable.length, durationMs: Math.round(performance.now() - started)});
+            return true;
+        } catch {
+            this.error = this.storageError || label('saveFailed');
+            this.report('events-clear', 'ASSISTANT_EVENTS_CLEAR_FAILED', operationId, performance.now() - started); return false;
+        } finally {this.busy = false; this.render();}
     }
     private async openEvent(item: AssistantEvent): Promise<void> {await this.navigate(async () => {await this.options.navigate(item.target); return item.requiresAction ? undefined : this.markRead(item);});}
     private async openShortcut(item: AssistantShortcut): Promise<void> {await this.navigate(async () => this.options.navigate(await shortcutNavigation(item.target, this.options.services.projects)));}

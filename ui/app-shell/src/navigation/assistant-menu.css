@@ -17,7 +17,7 @@
 .assistant-menu button:disabled { opacity: .55; cursor: wait; }
 .assistant-menu button:focus-visible, .assistant-menu input:focus-visible, .assistant-menu select:focus-visible { outline: 2px solid var(--primary-color, #5b66f5); outline-offset: 2px; }
 .assistant-menu__event { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 10px; }
-.assistant-menu__event > button:first-child { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; border: 0; text-align: left; }
+.assistant-menu__event > button[data-assistant-event] { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; border: 0; text-align: left; }
 .assistant-menu__event strong { color: var(--primary-color, #5b66f5); font-size: 12px; }
 .assistant-menu__event span { overflow-wrap: anywhere; }
 .assistant-menu__event time { color: var(--text-secondary, #64748b); font-size: 11px; }
@@ -46,3 +46,6 @@
 
 
 .assistant-launcher .assistant-launcher__count[hidden] { display: none; }
+
+.assistant-menu__selection { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; cursor: pointer; font-size: 13px; }
+.assistant-menu__selection input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary-color, #5b66f5); }

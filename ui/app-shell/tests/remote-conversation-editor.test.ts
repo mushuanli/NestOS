@@ -390,10 +390,13 @@ it.each(['missing', 'throwing'])('submits native conversations when randomUUID i
     try {await editor.commands.sendMessage({text: 'HTTP compatible'}); expect(peer.send).toHaveBeenCalledWith('HTTP compatible');}
     finally {await editor.destroy();}
 });
-it.each([['codex', 'Codex'], ['dsht', 'DSHT'], ['claudecode', 'Claude Code']])('shows %s beside the editable conversation name', async (kind, label) => {
+it.each([['codex', 'Codex', 'CX'], ['dsht', 'DSHT', 'DS'], ['claudecode', 'Claude Code', 'CC']])('shows only the %s mark beside the editable conversation name', async (kind, label, mark) => {
     const {editor, host} = setup({conversationSource: {kind}}); await editor.init(host);
     try {
-        expect(host.querySelector(`[data-conversation-source="${kind}"]`)?.textContent).toContain(label);
+        const badge = host.querySelector<HTMLElement>(`[data-conversation-source="${kind}"]`)!;
+        expect(badge.title).toBe(label); expect(badge.getAttribute('aria-label')).toBe(label);
+        expect(badge.querySelector('svg text')?.textContent).toBe(mark);
+        expect([...badge.childNodes].filter(node => node.nodeType === Node.TEXT_NODE)).toHaveLength(0);
         expect(host.querySelector<HTMLInputElement>('#llm-title-input')?.value).toBe('remote');
     } finally {await editor.destroy();}
 });

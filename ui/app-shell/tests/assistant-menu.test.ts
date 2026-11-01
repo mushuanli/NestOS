@@ -168,3 +168,56 @@ it('renders actionable text instead of undefined when a loaded icon catalog lack
         await vi.waitFor(() => expect(document.querySelector('[data-assistant-count]')!.textContent).toBe('0'));
     } finally {Object.assign(icons, saved);}
 });
+
+function selectEvent(id: string, checked = true): void {
+    const checkbox = document.querySelector<HTMLInputElement>(`[data-assistant-select="${id}"]`)!;
+    checkbox.checked = checked; checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+}
+it('clears multiple selected events in one write, preserving approvals and unselected events', async () => {
+    const f = setup(); await vi.waitFor(() => expect(f.assistantOverview).toHaveBeenCalledOnce()); f.open();
+    expect(document.querySelector('[data-assistant-select=approval]')).toBeNull();
+    selectEvent('done'); selectEvent('failed');
+    expect(document.querySelector<HTMLInputElement>('[data-assistant-select-all]')!.checked).toBe(true);
+    document.querySelector<HTMLButtonElement>('[data-assistant-action=clearSelected]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-assistant-count]')!.textContent).toBe('2'));
+    expect(f.write).toHaveBeenCalledOnce(); expect(f.flush).toHaveBeenCalledOnce();
+    expect(f.write).toHaveBeenCalledWith(ASSISTANT_MENU_DOCUMENT, expect.objectContaining({seen: {done: 'v1', failed: 'v1'}}));
+    expect(document.querySelector('[data-assistant-event=approval]')).not.toBeNull();
+    expect(document.querySelector('[data-assistant-event=older]')).not.toBeNull(); expect(f.navigate).not.toHaveBeenCalled();
+});
+it('selects only visible clearable events and keeps selection when expanding the list', async () => {
+    const f = setup(); await vi.waitFor(() => expect(f.assistantOverview).toHaveBeenCalledOnce()); f.open();
+    const all = document.querySelector<HTMLInputElement>('[data-assistant-select-all]')!;
+    all.checked = true; all.dispatchEvent(new Event('change', {bubbles: true}));
+    document.querySelector<HTMLButtonElement>('[data-assistant-action=all]')!.click();
+    expect(document.querySelector<HTMLInputElement>('[data-assistant-select=older]')!.checked).toBe(false);
+    expect(document.querySelector<HTMLInputElement>('[data-assistant-select-all]')!.indeterminate).toBe(true);
+    const expanded = document.querySelector<HTMLInputElement>('[data-assistant-select-all]')!;
+    expanded.checked = true; expanded.dispatchEvent(new Event('change', {bubbles: true}));
+    selectEvent('done', false);
+    document.querySelector<HTMLButtonElement>('[data-assistant-action=clearSelected]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-assistant-count]')!.textContent).toBe('2'));
+    expect(f.write.mock.calls[0][1].seen).toEqual({failed: 'v1', older: 'v1'});
+});
+it('retains bulk selection on storage failure and disables duplicate submissions while saving', async () => {
+    const f = setup(); await vi.waitFor(() => expect(f.assistantOverview).toHaveBeenCalledOnce()); f.open();
+    selectEvent('done'); selectEvent('failed'); f.flush.mockRejectedValueOnce(new Error('PRIVATE_STORAGE_BODY'));
+    document.querySelector<HTMLButtonElement>('[data-assistant-action=clearSelected]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[role=alert]')!.textContent).toContain('保存失败'));
+    expect(document.querySelector<HTMLInputElement>('[data-assistant-select=done]')!.checked).toBe(true);
+    expect(document.querySelector('[data-assistant-count]')!.textContent).toBe('4');
+    expect(document.body.textContent).not.toContain('PRIVATE_STORAGE_BODY');
+    let finish!: () => void; f.flush.mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve;}));
+    document.querySelector<HTMLButtonElement>('[data-assistant-action=clearSelected]')!.click();
+    const clearing = document.querySelector<HTMLButtonElement>('[data-assistant-action=clearSelected]')!;
+    expect(clearing.disabled).toBe(true); clearing.click(); expect(f.flush).toHaveBeenCalledTimes(2);
+    finish(); await vi.waitFor(() => expect(document.querySelector('[data-assistant-count]')!.textContent).toBe('2'));
+});
+it('drops a selection when refresh changes its event revision', async () => {
+    const f = setup([event('done')]); await vi.waitFor(() => expect(f.assistantOverview).toHaveBeenCalledOnce()); f.open();
+    selectEvent('done'); f.overview.events[0].revision = 'v2'; f.changed();
+    await vi.waitFor(() => expect(f.assistantOverview).toHaveBeenCalledTimes(2));
+    expect(document.querySelector<HTMLInputElement>('[data-assistant-select=done]')!.checked).toBe(false);
+    expect(document.querySelector<HTMLButtonElement>('[data-assistant-action=clearSelected]')!.disabled).toBe(true);
+    expect(f.write).not.toHaveBeenCalled();
+});

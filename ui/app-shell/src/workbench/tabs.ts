@@ -4,11 +4,15 @@ import { decorateButton, decorateResourceButton } from './controls';
 import type { IEditor } from '@itookit/ui-common';
 import type { WorkbenchSnapshot } from './state';
 import {backToPreviousPage} from '../navigation/page-history';
+import {createModuleLogger, randomUUID} from '@itookit/common';
+import {windowNavigation} from './window-navigation';
 import {openedButton} from './opened-button';
 import {compactNavigation} from './compact-navigation';
 import { Drawer } from '@itookit/vfs-ui';
 import type { WorkbenchWindowBinding, WorkbenchWindow } from './windows';
 import {captureEditor, restoreEditor, type EditorRecoveryState} from './recovery';
+
+const navigationLog = createModuleLogger('window-navigation');
 
 interface TabsRecovery {
     tabs: NonNullable<WorkbenchSnapshot['tabs']>;
@@ -28,6 +32,8 @@ export interface WorkbenchTab<T> {
 }
 interface TabActions<T> {
     navigation?: string;
+    parent?(tab: WorkbenchTab<T>): Promise<void>;
+    canGoUp?(tab: WorkbenchTab<T>): boolean;
     describe?(tab: WorkbenchTab<T>): Promise<{ context?: string; location?: string }>;
     activate(id: string): Promise<void>;
     dispose(tab: WorkbenchTab<T>): Promise<void>;
@@ -40,7 +46,10 @@ interface TabActions<T> {
 export class WorkbenchTabs<T> {
     readonly opened = document.createElement('div');
     private readonly openedDrawer = new Drawer({title: t('workbench.opened'), showHeader: false, collapsible: false,
-        search: {label: t('workbench.findOpened'), onChange: query => {if (this.windows) this.windows.registry.setQuery(query); else {this.openedQuery = query; this.render();}}}});
+        search: {label: t('workbench.findOpened'), mountLeading: container => {
+            const home = windowNavigation({home: () => {this.openedDialog?.close(); this.runNavigation('home');}});
+            container.append(...home.buttons); return () => home.destroy();
+        }, onChange: query => {if (this.windows) this.windows.registry.setQuery(query); else {this.openedQuery = query; this.render();}}}});
     private readonly bar = document.createElement('div');
     private readonly tabViewport = new TabBarViewport(this.bar);
     private readonly body = document.createElement('div');
@@ -60,6 +69,7 @@ export class WorkbenchTabs<T> {
     private readonly compactViews = new Set<ReturnType<typeof compactNavigation>>();
     private openedDialog?: HTMLDialogElement;
     private readonly windowButtons = new Set<ReturnType<typeof openedButton>>();
+    private readonly navigationViews = new Set<ReturnType<typeof windowNavigation>>();
     private openedQuery = '';
     private describing?: Promise<void>;
     private readonly editors = new Map<WorkbenchTab<T>, IEditor>();
@@ -76,7 +86,7 @@ export class WorkbenchTabs<T> {
         this.standalone = compactNavigation(this.navigation, '', () => {
             const layout = container.closest<HTMLElement>('.mm-layout');
             if (layout) backToPreviousPage(() => { layout.dataset.mobileView = 'list'; });
-        }, origin => this.showOpened(origin));
+        }, origin => this.showOpened(origin), this.navigationActions());
         container.append(this.navigation, this.bar, this.body);
         for (const tab of restored ?? []) {
             const entry = this.create(tab.id, tab.title, false); entry.pinned = tab.pinned;
@@ -89,14 +99,41 @@ export class WorkbenchTabs<T> {
     }
     get current(): WorkbenchTab<T> | undefined { return this.currentId ? this.entries.get(this.currentId) : undefined; }
     mountCompactNavigation(container: HTMLElement, context: string, back: () => void): () => void {
-        const view = compactNavigation(container, context, back, origin => this.showOpened(origin));
-        this.compactViews.add(view); view.update(this.current?.title ?? '', this.windowCount());
+        const view = compactNavigation(container, context, back, origin => this.showOpened(origin), this.navigationActions());
+        this.compactViews.add(view); view.update(this.current?.title ?? '', this.windowCount(), undefined, undefined, this.canGoUp());
         return () => { this.compactViews.delete(view); view.destroy(); };
     }
-    mountWindowList(container: HTMLElement): () => void {
+    mountWindowList(container: HTMLElement, withNavigation = true): () => void {
+        const navigation = withNavigation ? windowNavigation(this.navigationActions()) : undefined;
+        if (navigation) {this.navigationViews.add(navigation); navigation.update(this.canGoUp()); container.append(...navigation.buttons);}
         const view = openedButton(origin => this.showOpened(origin)); container.append(view.button);
         this.windowButtons.add(view); view.update(this.windowCount());
-        return () => {this.windowButtons.delete(view); view.button.remove();};
+        return () => {this.windowButtons.delete(view); view.button.remove(); if (navigation) {this.navigationViews.delete(navigation); navigation.destroy();}};
+    }
+    private canGoUp(): boolean {
+        const tab = this.current;
+        return !!tab && (this.actions.canGoUp?.(tab) ?? (tab.id.startsWith('/') && tab.id !== '/'));
+    }
+    private navigationActions() {
+        return {parent: () => this.runNavigation('parent')};
+    }
+    private runNavigation(kind: 'home' | 'parent'): void {
+        const tab = this.current;
+        if (kind === 'parent' && (!tab || !this.canGoUp())) return;
+        const operationId = randomUUID(), started = performance.now();
+        const task = async () => {
+            try {
+                if (kind === 'home') await this.actions.activate('/');
+                else if (this.actions.parent) await this.actions.parent(tab!);
+                else await this.actions.activate(tab!.id.slice(0, tab!.id.lastIndexOf('/')) || '/');
+                navigationLog.debug('window.navigate', {operationId, operation: kind, stage: 'navigate', result: 'success', durationMs: Math.round(performance.now() - started)});
+            } catch (error) {
+                navigationLog.warn('window.navigate', {operationId, operation: kind, stage: 'navigate', result: 'failure',
+                    code: String((error as {code?: string})?.code ?? 'WINDOW_NAVIGATION_FAILED'), durationMs: Math.round(performance.now() - started)});
+                throw error;
+            }
+        };
+        this.run(task());
     }
     private showOpened(origin?: HTMLElement): void {
         if (this.openedDialog?.open) return;
@@ -268,9 +305,10 @@ export class WorkbenchTabs<T> {
     }
     private renderShared(): void {
         this.syncViewState();
-        this.standalone.update(this.current?.title ?? '', this.windowCount(), this.current?.context, this.current?.navigationLabel);
+        this.standalone.update(this.current?.title ?? '', this.windowCount(), this.current?.context, this.current?.navigationLabel, this.canGoUp());
+        for (const view of this.navigationViews) view.update(this.canGoUp());
         for (const view of this.windowButtons) view.update(this.windowCount());
-        for (const view of this.compactViews) view.update(this.current?.title ?? '', this.windowCount());
+        for (const view of this.compactViews) view.update(this.current?.title ?? '', this.windowCount(), undefined, undefined, this.canGoUp());
         this.bar.replaceChildren(); this.openedDrawer.content.replaceChildren();
         if (this.windows?.registry.error) {
             const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.className = 'workbench-tabs__error';
@@ -438,6 +476,7 @@ export class WorkbenchTabs<T> {
         this.disposing = true; this.tabViewport.destroy();
         for (const tab of this.values()) await this.close(tab.id, false);
         for (const view of this.windowButtons) view.button.remove(); this.windowButtons.clear();
+        for (const view of this.navigationViews) view.destroy(); this.navigationViews.clear();
         this.abort.abort(); this.openedDrawer.destroy(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
         delete this.container.dataset.workbenchView;
         delete this.container.dataset.workbenchActivation;

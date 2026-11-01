@@ -75,7 +75,7 @@ it('switches opened documents from the compact header without replacing retained
     const release = f.tabs.mountCompactNavigation(slot, 'Project', back);
     const buttons = slot.querySelectorAll<HTMLButtonElement>('button'); buttons[0].click(); expect(back).toHaveBeenCalledOnce();
     expect(slot.textContent).toContain('First'); expect(slot.textContent).toContain('Project');
-    buttons[1].click(); const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+    slot.querySelector<HTMLButtonElement>('[aria-haspopup]')!.click(); const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
     expect(dialog.open).toBe(true); expect(dialog.contains(f.tabs.opened)).toBe(true);
     dialog.querySelector<HTMLButtonElement>('[data-opened-id="b"] .workbench-tabs__opened-label')!.click();
     await vi.waitFor(() => expect(f.tabs.current?.id).toBe('b'));
@@ -124,7 +124,7 @@ it('lists windows immediately and closes a filtered multi-selection while retain
     }
     tabs.pin('pinned'); const release = tabs.mountWindowList(slot);
     try {
-        slot.querySelector<HTMLButtonElement>('button')!.click();
+        slot.querySelector<HTMLButtonElement>('[aria-haspopup]')!.click();
         const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
         expect(dialog.querySelectorAll('[data-opened-id]')).toHaveLength(4);
         expect([...dialog.querySelectorAll<HTMLElement>('[data-opened-id]')].every(row => !row.hidden)).toBe(true);
@@ -253,7 +253,7 @@ it('shares the same search input and query between the sidebar and the window di
     const search = sidebar.querySelector<HTMLInputElement>('input[type="search"]')!;
     search.value = 'First'; search.dispatchEvent(new Event('input'));
     expect(sidebar.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(true);
-    const release = f.tabs.mountWindowList(slot); slot.querySelector<HTMLButtonElement>('button')!.click();
+    const release = f.tabs.mountWindowList(slot); slot.querySelector<HTMLButtonElement>('[aria-haspopup]')!.click();
     const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
     expect(dialog.querySelector('input[type="search"]')).toBe(search);
     dialog.close(); expect(sidebar.querySelector('input[type="search"]')).toBe(search); expect(search.value).toBe('First');

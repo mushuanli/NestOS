@@ -228,7 +228,7 @@ it('replaces only the preview and protects pinned tabs during close-saved', asyn
     const f = tabsFixture(); await f.tabs.open('/a', 'a'); await f.tabs.open('/b', 'b');
     expect(f.tabs.get('/a')).toBeUndefined(); f.tabs.pin('/b');
     await f.tabs.open('/c', 'c');
-    [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith('关闭已保存'))!.click();
+    [...f.tabs.opened.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.startsWith('关闭已保存'))!.click();
     await vi.waitFor(() => expect(f.tabs.get('/c')).toBeUndefined()); expect(f.tabs.get('/b')?.pinned).toBe(true);
     await f.tabs.destroy();
 });

@@ -17,7 +17,13 @@ it('places one sidebar control at the left of the tab bar and marks page navigat
         const bar = main.querySelector('.workbench-tabs__bar')!;
         expect(bar.firstElementChild?.classList.contains('workbench-tabs__sidebar-toggle')).toBe(true);
         expect(main.querySelectorAll('.workbench-tabs__sidebar-toggle')).toHaveLength(1);
+        expect(bar.querySelector('details')).toBeNull();
+        expect(main.dataset.sidebarVisible).toBe('true');
         (bar.firstElementChild as HTMLButtonElement).click(); expect(sidebar.classList.contains('is-collapsed')).toBe(true);
+        await vi.waitFor(() => expect(main.dataset.sidebarVisible).toBe('false'));
+        expect(bar.querySelector('.workbench-tabs__bar-windows')).not.toBeNull();
+        expect(bar.querySelector('[data-window-navigation="parent"]')).toBeNull();
+        sidebar.classList.remove('is-collapsed'); await vi.waitFor(() => expect(main.dataset.sidebarVisible).toBe('true'));
         expect(slot.querySelector('.workbench-content-back')).not.toBeNull();
     } finally {release(); await tabs.destroy();}
 });
@@ -39,6 +45,11 @@ it('uses the existing file title bar for windows and overflow actions while reta
         expect(tab.panel.querySelectorAll('.mdx-editor-titlebar')).toHaveLength(1);
         expect(tab.panel.querySelectorAll('.ui-content-titlebar')).toHaveLength(1);
         expect(tab.panel.querySelectorAll('.workbench-window-list')).toHaveLength(1);
+        const mode = tab.panel.querySelector<HTMLButtonElement>('[data-button-id="toggle-edit-mode"]')!;
+        expect(tab.panel.querySelectorAll('[data-button-id="toggle-edit-mode"]')).toHaveLength(1);
+        expect(mode.closest('.ui-content-titlebar__identity')).not.toBeNull();
+        mode.click(); await vi.waitFor(() => expect(editor.getMode()).toBe('render'));
+        mode.click(); await vi.waitFor(() => expect(editor.getMode()).toBe('edit'));
         expect(tab.panel.querySelector('[data-button-id="toggle-sidebar"]')?.getAttribute('aria-label')).toBe('返回上一页');
         const title = tab.panel.querySelector<HTMLInputElement>('.mdx-editor-titlebar__title')!; expect(title.value).toBe('note.md');
         const menu = tab.panel.querySelector<HTMLDetailsElement>('.mdx-editor-titlebar__menu')!;

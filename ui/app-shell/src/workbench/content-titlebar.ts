@@ -1,7 +1,7 @@
 import {mountTitleBar as mountSharedTitleBar, navigationButton,
     MOBILE_NAVIGATION_QUERY, type ContentTitleBarParts, type ContentTitleBarState} from '@itookit/ui-common';
 import {installNavigationButtonPresentation} from '@itookit/ui-common-adapter';
-import {ACTION_ICONS, CHAT_ICONS, t} from '@itookit/common';
+import {ACTION_ICONS, t} from '@itookit/common';
 import {backToPreviousPage} from '../navigation/page-history';
 const mounted = new WeakMap<HTMLElement, () => void>();
 
@@ -17,7 +17,7 @@ export function mountContentTitleBar(container: HTMLElement, parts: ContentTitle
     const summary = parts.menu?.querySelector('summary');
     summary?.classList.add('ui-nav-button');
     const view = mountSharedTitleBar(container, {...parts, back, trailing: [...(parts.trailing ?? []), slot], statePresentation: {
-        editableIcon: CHAT_ICONS.edit, editableLabel: t('workspace.titlebar.editable'), dirtyLabel: t('workspace.titlebar.unsaved'),
+        dirtyLabel: t('workspace.titlebar.unsaved'),
     }});
     const previous = container.dataset.editorMobileNavigation; container.dataset.editorMobileNavigation = 'embedded';
     let closed = false;

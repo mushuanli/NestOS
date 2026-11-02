@@ -24,11 +24,11 @@ it('moves the original secondary controls into More on mobile without losing han
     view.destroy(); expect(media.listeners.size).toBe(0); expect(window.matchMedia).toHaveBeenCalledWith(MOBILE_NAVIGATION_QUERY);
 });
 it('separates editable and dirty presentation and hides redundant or absent context', () => {
-    const view = contentTitleBar({statePresentation: {editableIcon: '<svg></svg>', editableLabel: 'Editable', dirtyLabel: 'Unsaved'}});
+    const view = contentTitleBar({statePresentation: {dirtyLabel: 'Unsaved'}});
     view.update({title: 'Project · Conversation', context: 'Project', editable: true});
     const context = view.element.querySelector<HTMLElement>('.ui-content-titlebar__context')!;
     const state = view.element.querySelector<HTMLElement>('.ui-content-titlebar__state')!;
-    expect(context.hidden).toBe(true); expect(state.getAttribute('aria-label')).toBe('Editable'); expect(state.querySelector('svg')).not.toBeNull();
+    expect(context.hidden).toBe(true); expect(state.hidden).toBe(true); expect(state.querySelector('svg')).toBeNull();
     view.update({title: 'Conversation', context: 'Project', dirty: true});
     expect(context.hidden).toBe(false); expect(state.dataset.state).toBe('dirty'); expect(state.getAttribute('aria-label')).toBe('Unsaved');
     view.update({title: 'Conversation'}); expect(context.hidden).toBe(true); expect(state.hidden).toBe(true); view.destroy();

@@ -75,6 +75,8 @@ export class WorkbenchTabs<T> {
     private readonly compactViews = new Map<ReturnType<typeof compactNavigation>, HTMLElement | undefined>();
     private openedDialog?: HTMLDialogElement;
     private readonly windowButtons = new Set<ReturnType<typeof openedButton>>();
+    private readonly barWindows = openedButton(origin => this.showOpened(origin));
+    private sidebarObserver?: MutationObserver;
     private readonly windowSubscribers = new Set<() => void>();
     private readonly navigationViews = new Set<ReturnType<typeof windowNavigation>>();
     private readonly titleBars = new Set<ReturnType<typeof mountContentTitleBar>>();
@@ -96,6 +98,7 @@ export class WorkbenchTabs<T> {
             if (layout) backToPreviousPage(() => { layout.dataset.mobileView = 'list'; });
         }, origin => this.showOpened(origin), this.navigationActions());
         container.append(this.navigation, this.bar, this.body);
+        this.observeSidebar();
         for (const tab of restored ?? []) {
             const entry = this.create(tab.id, tab.title, false); entry.pinned = tab.pinned;
             entry.context = tab.context; entry.location = tab.location; entry.conversationId = tab.conversationId;
@@ -106,6 +109,13 @@ export class WorkbenchTabs<T> {
         this.render();
     }
     get current(): WorkbenchTab<T> | undefined { return this.currentId ? this.entries.get(this.currentId) : undefined; }
+    private observeSidebar(): void {
+        const sidebar = this.container.closest('.mm-layout')?.querySelector<HTMLElement>('.mm-sidebar');
+        const update = () => {this.container.dataset.sidebarVisible = String(!!sidebar && !sidebar.hidden && !sidebar.classList.contains('is-collapsed'));};
+        update(); if (!sidebar) return;
+        this.sidebarObserver = new MutationObserver(update);
+        this.sidebarObserver.observe(sidebar, {attributes: true, attributeFilter: ['class', 'hidden']});
+    }
     get windowManagement(): WindowManagementOptions {
         return {open: origin => this.showOpened(origin), count: () => this.windowCount(),
             subscribe: changed => {this.windowSubscribers.add(changed); return () => {this.windowSubscribers.delete(changed);};}};
@@ -350,21 +360,19 @@ export class WorkbenchTabs<T> {
             notice.textContent = this.windows.registry.error; notice.append(this.button(t('action.close'), () => this.windows?.registry.clearError()));
             this.openedDrawer.content.append(notice);
         }
-        this.openedDrawer.content.append(this.openedToolbar());
+        const toolbar = this.openedToolbar();
+        toolbar.append(this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved())),
+            this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen())));
+        this.openedDrawer.content.append(toolbar);
         if (this.windows) this.renderWindows();
         else {
             const tabs = this.values().sort((a, b) => Number(b.pinned) - Number(a.pinned));
             for (const tab of tabs) { this.bar.append(this.tabHeader(tab)); this.openedDrawer.content.append(this.openedRow(tab)); }
             this.filterOpened();
         }
-        const menu = document.createElement('details'); menu.className = 'workbench-tabs__menu';
-        const summary = document.createElement('summary'); summary.innerHTML = FILE_BROWSER_ICONS.more; summary.title = t('workbench.tabActions'); summary.setAttribute('aria-label', summary.title); menu.append(summary);
-        const popup = document.createElement('div'); popup.className = 'workbench-tabs__menu-panel';
-        popup.append(this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved())),
-            this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen())));
-        menu.append(popup); menu.ontoggle = () => { popup.style.top = `${summary.getBoundingClientRect().bottom + 6}px`; };
-        popup.onclick = () => { menu.open = false; };
-        this.bar.append(menu); this.tabViewport.update();
+        this.barWindows.button.classList.add('workbench-tabs__bar-windows');
+        this.barWindows.update(this.windowCount()); this.bar.append(this.barWindows.button);
+        this.tabViewport.update();
     }
     private windowCount(): number { return this.windows?.registry.items().length ?? this.entries.size; }
     private isCurrent(id: string): boolean { return id === this.currentId && (!this.windows || this.windows.isActive()); }
@@ -490,10 +498,6 @@ export class WorkbenchTabs<T> {
         await this.requestActivate(tab.id); this.keep(tab.id);
     }
     private keydown(event: KeyboardEvent): void {
-        if (event.key === 'Escape') {
-            const menu = this.bar.querySelector<HTMLDetailsElement>('details[open]');
-            if (menu) { menu.open = false; menu.querySelector('summary')?.focus(); event.preventDefault(); }
-        }
         if (!(event.ctrlKey || event.metaKey)) return;
         if (event.key === 'Tab') {
             event.preventDefault();
@@ -506,6 +510,7 @@ export class WorkbenchTabs<T> {
         }
     }
     async destroy(): Promise<void> {
+        this.sidebarObserver?.disconnect(); this.barWindows.destroy();
         this.openedDialog?.close();
         this.unregisterWindows?.(); this.unregisterWindows = undefined;
         this.disposing = true; this.tabViewport.destroy();
@@ -516,5 +521,6 @@ export class WorkbenchTabs<T> {
         this.abort.abort(); this.openedDrawer.destroy(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
         delete this.container.dataset.workbenchView;
         delete this.container.dataset.workbenchActivation;
+        delete this.container.dataset.sidebarVisible;
     }
 }

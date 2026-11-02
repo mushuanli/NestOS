@@ -1,3 +1,4 @@
+import {navigateWorkspaceBack} from '../navigation/page-history';
 import {createRecoverableFileEditor} from './file-recovery';
 import { showNameDialog } from '../files/project-dialog';
 import { t, FILE_BROWSER_ICONS, FILE_ICONS, randomUUID, type NavigationRequest } from '@itookit/common';
@@ -82,7 +83,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 let revision: string | undefined;
                 const bytes = await engine.driver.readContent(path, {encoding: 'binary', onRevision: value => {revision = value;}});
                 if (await accept(new TextDecoder().decode(bytes))) revisions.set(path, revision);
-            }, chatFromFile: external?.chatFromFile, toggleSidebar: () => external?.toggleSidebar ? external.toggleSidebar() : vfs.toggleSidebar(),
+            }, chatFromFile: external?.chatFromFile, toggleSidebar: () => navigateWorkspaceBack(container, () => external?.toggleSidebar ? external.toggleSidebar() : vfs.toggleSidebar()),
             navigate: async (request: NavigationRequest) => { await external?.navigate?.(request); }, saveContent: persist };
     }
     async function persist(path: string, content: string): Promise<void> {

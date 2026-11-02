@@ -1,15 +1,15 @@
 import {mountTitleBar as mountSharedTitleBar, navigationButton,
-    MOBILE_NAVIGATION_QUERY, type ContentTitleBarParts, type ContentTitleBarState} from '@itookit/ui-common';
+    type ContentTitleBarParts, type ContentTitleBarState} from '@itookit/ui-common';
 import {installNavigationButtonPresentation} from '@itookit/ui-common-adapter';
 import {ACTION_ICONS, t} from '@itookit/common';
-import {backToPreviousPage} from '../navigation/page-history';
+import {navigateWorkspaceBack} from '../navigation/page-history';
 const mounted = new WeakMap<HTMLElement, () => void>();
 
 /** The shell supplies navigation policy; ui-common owns the complete visual layout. */
 export function mountContentTitleBar(container: HTMLElement, parts: ContentTitleBarParts, windows: (at: HTMLElement) => () => void, navigate?: () => void) {
     mounted.get(container)?.();
     const releases: Array<() => void> = [];
-    const back = parts.back ?? navigationButton({icon: ACTION_ICONS.back, label: t('workspace.mobile.back'), run: () => navigate ? navigate() : navigateBack(container)});
+    const back = parts.back ?? navigationButton({icon: ACTION_ICONS.back, label: t('workspace.mobile.back'), run: () => navigate ? navigate() : navigateWorkspaceBack(container)});
     back.classList.add('ui-nav-button');
     back.classList.add('workbench-content-back');
     if (!parts.back) releases.push(installNavigationButtonPresentation(back as HTMLButtonElement));
@@ -29,9 +29,4 @@ export function mountContentTitleBar(container: HTMLElement, parts: ContentTitle
     };
     mounted.set(container, destroy);
     return {update(state: ContentTitleBarState) {if (!closed) view.update(state);}, destroy};
-}
-function navigateBack(container: HTMLElement): void {
-    const layout = container.closest<HTMLElement>('.mm-layout'); if (!layout) return;
-    if (window.matchMedia?.(MOBILE_NAVIGATION_QUERY).matches) backToPreviousPage(() => {layout.dataset.mobileView = 'list';});
-    else layout.querySelector('.mm-sidebar')?.classList.toggle('is-collapsed');
 }

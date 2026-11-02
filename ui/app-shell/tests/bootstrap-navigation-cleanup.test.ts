@@ -404,3 +404,39 @@ it('wires durable event replay and focus catch-up without reopening resources, a
         expect(invalidateEvents).toHaveBeenCalledTimes(2);
     } finally {await app.destroy(); events.journal.close(); await manager.dispose();}
 });
+
+it('ignores intermediate selection notifications while replaying the previous page',async()=>{
+    navigationDOM();const app=await initTestApp({services:makeRuntime(),workspaces:[workspace],ui:testUI()});
+    try {
+        await app.navigate('settings','one');await app.navigate('settings','two');
+        lifecycle.open.mockImplementation(async id=>{lifecycle.selection?.('intermediate');await Promise.resolve();lifecycle.selection?.(id);});
+        const replace=vi.spyOn(history,'replaceState'),push=vi.spyOn(history,'pushState');
+        history.back();await vi.waitFor(()=>expect(lifecycle.open).toHaveBeenLastCalledWith('one'));
+        expect(location.hash).toBe('#/settings/one');expect(history.state.resourceId).toBe('one');
+        expect(push).not.toHaveBeenCalled();expect(replace).not.toHaveBeenCalled();
+        history.forward();await vi.waitFor(()=>expect(lifecycle.open).toHaveBeenLastCalledWith('two'));
+        expect(location.hash).toBe('#/settings/two');expect(history.state.resourceId).toBe('two');
+    }finally{await app.destroy();}
+});
+it('keeps an explicit navigation target when retained UI emits an obsolete selection during mounting',async()=>{
+    navigationDOM();const app=await initTestApp({services:makeRuntime(),workspaces:[workspace],ui:testUI()});
+    try {
+        await app.navigate('settings','previous');
+        lifecycle.open.mockImplementation(async()=>{lifecycle.selection?.('obsolete');});
+        await app.navigate('settings','requested');
+        expect(location.hash).toBe('#/settings/requested');expect(history.state.resourceId).toBe('requested');
+    }finally{await app.destroy();}
+});
+
+it('ends obsolete replay mode when a new explicit navigation supersedes a pending Back',async()=>{
+    navigationDOM();const app=await initTestApp({services:makeRuntime(),workspaces:[workspace],ui:testUI()});
+    let finish!:()=>void;const slow=new Promise<void>(resolve=>{finish=resolve;});
+    lifecycle.open.mockImplementation(async id=>{if(id==='slow-back')await slow;});
+    try {
+        const state={workspaceId:workspace.elementId,resourceId:'slow-back',nestosPage:1};
+        history.replaceState(state,'','#/settings/slow-back');window.dispatchEvent(new PopStateEvent('popstate',{state}));
+        await vi.waitFor(()=>expect(lifecycle.open).toHaveBeenCalledWith('slow-back'));
+        await app.navigate('settings','new-page');const push=vi.spyOn(history,'pushState');
+        lifecycle.selection?.('user-selected');expect(push).toHaveBeenCalledOnce();expect(history.state.resourceId).toBe('user-selected');
+    }finally{finish();await app.destroy();}
+});

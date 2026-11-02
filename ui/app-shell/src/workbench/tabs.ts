@@ -3,7 +3,7 @@ import { ACTION_ICONS, FILE_ICONS, FILE_BROWSER_ICONS, fileTypeIcon, t } from '@
 import { decorateButton, decorateResourceButton } from './controls';
 import type { IEditor } from '@itookit/ui-common-adapter';
 import type { WorkbenchSnapshot } from './state';
-import {backToPreviousPage} from '../navigation/page-history';
+import {navigateWorkspaceBack} from '../navigation/page-history';
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import {windowNavigation} from './window-navigation';
 import {openedButton} from './opened-button';
@@ -94,8 +94,7 @@ export class WorkbenchTabs<T> {
         this.opened.className = 'workbench-tabs__opened'; this.opened.append(this.openedDrawer.element); this.body.append(this.emptyPanel);
         this.navigation.className = 'workbench-tabs__navigation';
         this.standalone = compactNavigation(this.navigation, '', () => {
-            const layout = container.closest<HTMLElement>('.mm-layout');
-            if (layout) backToPreviousPage(() => { layout.dataset.mobileView = 'list'; });
+            navigateWorkspaceBack(container);
         }, origin => this.showOpened(origin), this.navigationActions());
         container.append(this.navigation, this.bar, this.body);
         this.observeSidebar();

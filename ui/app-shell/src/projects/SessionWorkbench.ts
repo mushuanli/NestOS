@@ -6,7 +6,7 @@ import {showProjectSettings} from './project-settings';
 import {showDiagnostics} from '../diagnostics/dialog';
 import {withAssistantShortcut} from '../navigation/assistant-actions';
 import {projectAssistantShortcut} from './project-assistant-shortcut';
-import {backToPreviousPage} from '../navigation/page-history';
+import {navigateWorkspaceBack} from '../navigation/page-history';
 import { SessionTaskView } from './SessionTaskView';
 import { AgentDrawer } from './agent-drawer';
 import type {ProjectDraftPromotion} from '@itookit/app-contracts/services';
@@ -1575,9 +1575,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.projectNavigation?.selectScope(scope); this.sidebarUI?.setSelection([]);
     }
     private toggleSidebar(): void {
-        const layout = this.sidebar.closest<HTMLElement>('.mm-layout');
-        if (layout && window.matchMedia('(max-width: 768px)').matches) backToPreviousPage(() => { layout.dataset.mobileView = 'list'; });
-        else this.sidebarUI?.toggleSidebar();
+        navigateWorkspaceBack(this.sidebar, () => this.sidebarUI?.toggleSidebar());
     }
     private installProjectNavigation(): void {
         this.sidebar.classList.add('project-workbench');

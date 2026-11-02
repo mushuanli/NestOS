@@ -1,4 +1,4 @@
-import {backToPreviousPage} from '../navigation/page-history';
+import {navigateWorkspaceBack} from '../navigation/page-history';
 import { createNestOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { connectEditorLifecycle } from '../browser/editor-connector';
 import { resolveFileEditor } from '../browser/types';
@@ -93,11 +93,7 @@ export class Workbench {
 
         const sharedHostContext: EditorHostContext = {
             chatFromFile: config.chatFromFile,
-            toggleSidebar: (_collapsed?: boolean) => {
-                const layout = config.editorContainer.closest<HTMLElement>('.mm-layout');
-                if (layout && window.matchMedia?.('(max-width: 768px)').matches) backToPreviousPage(() => {layout.dataset.mobileView = 'list';});
-                else this.vfsUI.toggleSidebar();
-            },
+            toggleSidebar: (_collapsed?: boolean) => navigateWorkspaceBack(config.editorContainer, () => this.vfsUI.toggleSidebar()),
             saveContent: async (nodeId: string, content: string) => {
                 await this.engine.driver.writeContent(nodeId, content);
             },

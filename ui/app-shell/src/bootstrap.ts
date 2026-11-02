@@ -1,4 +1,4 @@
-import {ACTION_ICONS} from '@itookit/common';
+import {ACTION_ICONS, randomUUID} from '@itookit/common';
 import {studyDraftStore} from './persistence/study-draft-store';
 import {showFlowDependencies} from './configuration/flow-dependencies-dialog';
 import {ShellApplicationEvents, workspaceConsumesEvent} from './lifecycle/application-events';
@@ -342,7 +342,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const files = await vfs.openFileSystem(workspaceRoot(wsConfig.workspaceName));
             const module = createPageWindows({sidebar: sidebarEl, editor: editorEl, title: translate('calendar.title'), windows: windowBinding, initialResource,
                 titleFor: path => `${translate('calendar.title')}${path.split('/')[1] ? ' · ' + path.split('/')[1] : ''}`,
-                selected: path => selectionHistory(elementId, path, 'replace'), create: host => new CalendarWorkbench({...host, files, showNavigationTitle: false,
+                selected: path => selectionHistory(elementId, path, 'push'), create: host => new CalendarWorkbench({...host, files, showNavigationTitle: false,
                 sourceNames: async () => Object.fromEntries((await toolbox.resources.toolPackages?.connections?.snapshot())?.connections.map(connection => [connection.id, connection.name]) ?? []),
                 scanners: () => handleNavigationRequest({target: 'twin', resourceId: '/sources'})})});
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
@@ -354,7 +354,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (strategyType === 'kanban') {
             const module = createKanbanWorkspace({service: services.kanban, sidebar: sidebarEl, editor: editorEl,
                 windows: windowBinding, initialResource, sessionUrl, referenceLink: kanbanReferenceLink(services.projects),
-                selected: path => selectionHistory(elementId, path, 'replace'),
+                selected: path => selectionHistory(elementId, path, 'push'),
                 openSession: id => handleNavigationRequest({target: 'chat', resourceId: id})});
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
             if (visibleWorkspaceId !== elementId || document.hidden) await module.workbench.setVisible?.(false);
@@ -367,7 +367,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const service = services.digitalTwin;
             const toolbox = await backend.toolboxView(); own(() => toolbox.dispose());
             const module = createPageWindows({sidebar: sidebarEl, editor: editorEl, title: translate('twin.title'), windows: windowBinding, initialResource,
-                selected: path => selectionHistory(elementId, path, 'replace'), create: host => new TwinWorkbench({...host, service, showNavigationTitle: false,
+                selected: path => selectionHistory(elementId, path, 'push'), create: host => new TwinWorkbench({...host, service, showNavigationTitle: false,
                 packages: toolbox.resources.toolPackages,
                 projects: async () => (await services.projects.list()).map(project => ({id: project.project.id, name: project.name})),
                 connections: async () => (await agentService.getConnections()).filter(connection => connection.enabled)
@@ -388,7 +388,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 uiPersistence, workbenchState, executorUsage, windows: windowBinding,
                 agentsInWorkbench: workspaces.some(workspace => workspace.type === 'chat'),
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
-                navigate: handleNavigationRequest, selected: path => selectionHistory(elementId, path, 'replace') });
+                navigate: handleNavigationRequest, selected: path => selectionHistory(elementId, path, 'push') });
             const toolbox = module.workbench;
             own(module.dispose); await toolbox.start(); managerCache.set(elementId, toolbox);
             // The toolbox renders inside the editor area, so both stages are already painted.
@@ -584,6 +584,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     };
 
     let replayingHistory: symbol | undefined;
+    let routingRevision: number | undefined;
     const rememberCurrentPage = (): void => {
         if (closed || replayingHistory || !visibleWorkspaceId) return;
         const layout = document.getElementById(visibleWorkspaceId)?.querySelector<HTMLElement>('.mm-layout');
@@ -591,10 +592,11 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             navigationScope: managerCache.get(visibleWorkspaceId)?.getNavigationScope?.()});
     };
     const selectionHistory = (id: string, resource: string | null, mode: 'push' | 'replace'): void => {
-        if (!closed && visibleWorkspaceId === id) updateHistory(id, resource, replayingHistory ? 'replace' : mode);
+        if (!closed && !replayingHistory && routingRevision === undefined && visibleWorkspaceId === id) updateHistory(id, resource, mode);
     };
 
-    const performNavigation = async (workspaceId: string, resourceId?: string, sourceSlug?: string): Promise<void> => {
+    const performNavigation = async (workspaceId: string, resourceId?: string, sourceSlug?: string, historyReplay?: symbol): Promise<void> => {
+        if (replayingHistory !== historyReplay) replayingHistory = undefined;
         const revision = ++navigationRevision;
         if (closed) return;
         let projectRouteError: FSError | undefined;
@@ -603,6 +605,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const legacyToolbox = toolboxId ? legacyToolboxRoute(sourceSlug ?? workspaceId, resourceId) : undefined;
         if (legacyToolbox) { workspaceId = toolboxId!; resourceId = legacyToolbox.path ?? '/' + legacyToolbox.kind; }
         if (closed || revision !== navigationRevision) return;
+        routingRevision = revision;
         visibleWorkspaceId = workspaceId; windows.changed();
         for (const [id, workbench] of managerCache) {
             void Promise.resolve(workbench.setVisible?.(id === workspaceId && !document.hidden)).catch(error => console.error('[Shell] Workspace save failed', error));
@@ -662,6 +665,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 workspaceStatus(container, error, () => { void performNavigation(workspaceId, resourceId, sourceSlug); });
             }
         } finally {
+            if (routingRevision === revision) routingRevision = undefined;
             dismissLoading();
             const manager = managerCache.get(workspaceId), layout = container?.querySelector<HTMLElement>('.mm-layout');
             if (!closed && revision === navigationRevision) {
@@ -785,13 +789,16 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const state = e.state as ({ workspaceId: string; resourceId?: string } & PagePresentation) | null;
         const expectedHash = location.hash;
         const {slug, resource} = parseWorkspaceHash(location.hash, resolvedDefault);
-        const replay = Symbol(); replayingHistory = replay;
-        void performNavigation(state?.workspaceId ?? resolveTarget(slug, resource), state?.resourceId ?? resource, state ? undefined : slug)
+        const replay = Symbol(), operationId = randomUUID(), started = performance.now(); replayingHistory = replay;
+        void performNavigation(state?.workspaceId ?? resolveTarget(slug, resource), state?.resourceId ?? resource, state ? undefined : slug, replay)
             .then(async () => {
                 if (closed || replayingHistory !== replay || location.hash !== expectedHash) return;
                 if (state?.mobileView === 'list') await managerCache.get(state.workspaceId)?.restoreNavigationScope?.(state.navigationScope ?? '/');
                 const layout = visibleWorkspaceId && document.getElementById(visibleWorkspaceId)?.querySelector<HTMLElement>('.mm-layout');
                 if (!closed && replayingHistory === replay && layout && location.hash === expectedHash && ['list', 'detail'].includes(state?.mobileView ?? '')) layout.dataset.mobileView = state!.mobileView;
+            }).catch(error => {
+                console.error('[Navigation]', {operation: 'navigation.replay', operationId, stage: 'restore', result: 'failure',
+                    code: 'HISTORY_REPLAY_FAILED', errorType: error instanceof Error ? error.name : 'unknown', durationMs: Math.round(performance.now() - started)});
             }).finally(() => {if (replayingHistory === replay) replayingHistory = undefined;});
     }, { signal: navigationSignal });
 
@@ -866,6 +873,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         },
 
         async navigate(slug: string, resourceId?: string): Promise<void> {
+            rememberCurrentPage();
             const wsId = resolveTarget(slug, resourceId);
             resourceId ??= isProjectWorkspace(wsId) ? '/' : undefined;
             updateHistory(wsId, resourceId ?? null, 'push');

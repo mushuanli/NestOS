@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
-import {backToPreviousPage, rememberPagePresentation, writePageHistory} from '../src/navigation/page-history';
+import {backToPreviousPage, navigateWorkspaceBack, rememberPagePresentation, writePageHistory} from '../src/navigation/page-history';
 import {installNavigationButtonPresentation} from '@itookit/ui-common-adapter';
 import {ACTION_ICONS, t} from '@itookit/common';
 
@@ -39,4 +39,25 @@ it('remembers the sidebar page before a file changes its project scope', async (
     const forward = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), {once: true}));
     history.forward(); await forward;
     expect(history.state).toMatchObject({resourceId: '/folder:personal/@files/note.md', mobileView: 'detail'});
+});
+
+it('records mobile list and detail as separate pages even when their resource URL is the same',async()=>{
+    writePageHistory('notes','/same.md','#/notes/same','replace','list');
+    writePageHistory('notes','/same.md','#/notes/same','push','detail');
+    expect(history.state.nestosPage).toBe(1);
+    const previous=new Promise<void>(resolve=>window.addEventListener('popstate',()=>resolve(),{once:true}));
+    backToPreviousPage(()=>{throw new Error('Unexpected fallback');});await previous;
+    expect(history.state).toMatchObject({resourceId:'/same.md',mobileView:'list',nestosPage:0});
+});
+
+it('uses actual page history for mobile titles and toggles the sidebar only on desktop',async()=>{
+    const layout=document.createElement('div'),editor=document.createElement('div'),sidebar=document.createElement('aside');
+    layout.className='mm-layout';sidebar.className='mm-sidebar';layout.append(sidebar,editor);
+    const toggle=vi.fn();vi.stubGlobal('matchMedia',()=>({matches:true}));
+    writePageHistory('settings','model-defaults','#/settings/model-defaults','replace','detail');
+    writePageHistory('toolbox','/providers/openai','#/toolbox/provider','push','detail');
+    const previous=new Promise<void>(resolve=>window.addEventListener('popstate',()=>resolve(),{once:true}));
+    navigateWorkspaceBack(editor,toggle);await previous;
+    expect(history.state.workspaceId).toBe('settings');expect(toggle).not.toHaveBeenCalled();
+    vi.stubGlobal('matchMedia',()=>({matches:false}));navigateWorkspaceBack(editor,toggle);expect(toggle).toHaveBeenCalledOnce();
 });

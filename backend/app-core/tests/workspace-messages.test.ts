@@ -37,3 +37,12 @@ it('retries delivery with the same stable message after an interrupted handler',
     await consumeWorkspaceMessages(f.fs, directory, scope, f.journal, deliver);
     expect(deliver.mock.calls[0][0]).toEqual(deliver.mock.calls[1][0]);
 });
+
+it('documents the message fields and accepts the original body spelling without ambiguity', async () => {
+    const f = await fixture();
+    const protocol = JSON.parse(await f.fs.driver.readContent(directory + '/protocol.json', {encoding: 'utf-8'}));
+    expect(protocol.message).toMatchObject({schema: 'work-message/1', ...scope, type: 'progress'});
+    const {content, ...message} = f.message;
+    expect(parseWorkspaceMessage(JSON.stringify({...message, body: content}), scope).content).toBe(content);
+    expect(() => parseWorkspaceMessage(JSON.stringify({...f.message, body: content}), scope)).toThrow('both');
+});

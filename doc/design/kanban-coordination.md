@@ -340,7 +340,7 @@ suggest 是已授权看板上的只读元数据查询，支持 item/parent/depen
 工作树内使用 `_nestos/kanban/`，不使用 Cells 内部保留的 `.nestos`：
 
 - `protocol.json`：work-message/1、runId、itemId、attemptId 和容量规则。
-- `inbox/<id>.json`：Agent 向宿主发布的不可变 progress、clarification、error、result 消息；临时文件写完后原子重命名。每条消息使用不同 id，正文最多 8000 字符、单文件最多 64 KiB、目录最多 200 项。
+- `inbox/<id>.json`：Agent 向宿主发布的不可变 progress、clarification、error、result 消息；临时文件写完后原子重命名。protocol.json 提供完整消息示例，正文使用 content；兼容初版未声明正文字段时写入的 body，但两者不能同时出现。每条消息使用不同 id，正文最多 8000 字符、单文件最多 64 KiB、目录最多 200 项。
 - `outbox/`：预留宿主回复目录，当前尚不自动将回复续发到原生会话。
 - `artifacts/`：开发产物位置；result 只是交付申请，完成仍需真实执行终态、产物核验与独立 accept-execution。
 

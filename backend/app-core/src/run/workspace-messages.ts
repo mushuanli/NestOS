@@ -13,10 +13,13 @@ export async function initializeWorkspaceMessages(fs: IFileSystem, directory: st
         try {await fs.driver.createDirectory({parentPath: directory, name, recursive: true});}
         catch (error) {if ((error as {code?: string}).code !== 'EEXIST') throw error;}
     }
-    const protocol = JSON.stringify({schema: 'work-message/1', ...scope, types: ['progress', 'clarification', 'error', 'result'],
-        publication: 'Write a temporary file, then atomically rename to inbox/<id>.json. Published messages are immutable.', maxBytes: 65536});
+    const base = {schema: 'work-message/1', ...scope, types: ['progress', 'clarification', 'error', 'result'],
+        publication: 'Write a temporary file, then atomically rename to inbox/<id>.json. Published messages are immutable.', maxBytes: 65536};
+    const protocol = JSON.stringify({...base, message: {schema: 'work-message/1', ...scope, id: '<unique-id>',
+        type: 'progress', content: '<message text, at most 8000 characters>'}, bodyAlias: 'Legacy body is accepted only when content is absent.'});
     if (await fs.driver.exists(directory + '/protocol.json')) {
-        if (await fs.driver.readContent(directory + '/protocol.json', {encoding: 'utf-8', length: 65537}) !== protocol) throw new FSError('ECONFLICT', 'Workspace protocol identity changed');
+        const existing = await fs.driver.readContent(directory + '/protocol.json', {encoding: 'utf-8', length: 65537});
+        if (existing !== protocol && existing !== JSON.stringify(base)) throw new FSError('ECONFLICT', 'Workspace protocol identity changed');
     } else await fs.driver.createFile({parentPath: directory, name: 'protocol.json', content: protocol});
 }
 
@@ -49,6 +52,10 @@ export async function consumeWorkspaceMessages(fs: IFileSystem, directory: strin
 export function parseWorkspaceMessage(text: string, scope: WorkspaceMessageScope): WorkspaceMessage {
     let value: WorkspaceMessage;
     try {value = JSON.parse(text) as WorkspaceMessage;} catch {throw new FSError('EINVAL', 'Workspace message is not valid JSON');}
+    if (value && typeof value === 'object' && 'body' in value) {
+        if (Object.hasOwn(value, 'content')) throw new FSError('EINVAL', 'Workspace message must not contain both body and content');
+        value = {...value, content: (value as WorkspaceMessage & {body: string}).body};
+    }
     if (!value || value.schema !== 'work-message/1' || typeof value.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(value.id)
         || !['progress', 'clarification', 'error', 'result'].includes(value.type)
         || typeof value.content !== 'string' || !value.content.trim() || value.content.length > 8000

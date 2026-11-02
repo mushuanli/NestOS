@@ -7,7 +7,7 @@ import {MemoryBackend} from '@itookit/vfs-core';
 import {createApplicationRuntime} from '@itookit/app-core';
 import {bindLocalApplicationServices, createApplicationClient} from '@itookit/app-core/host';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
-import {IndependentCallCommand, type IndependentCallInput, type IndependentCallReceipt} from '@itookit/llm-session/contracts';
+import {IndependentCallCommand, type IndependentCallInput, type IndependentCallReceipt, type IndependentCallView} from '@itookit/llm-session/contracts';
 import {RpcPeer} from '@itookit/app-transport/application';
 import {executeApplicationCommand} from '../src/application-command';
 import {parseArgs} from '../src/cli';
@@ -56,6 +56,11 @@ it.each([false, true])('prepares, queries and submits an independent Flow throug
     expect(await f.call('call-receipt', f.file)).toMatchObject({status: 'accepted', executionSessionId: result.executionSessionId});
     expect(open).not.toHaveBeenCalled();
     expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toEqual([]);
+    const calls = await f.call('calls', undefined, {branch: 'main'}) as IndependentCallView[];
+    expect(calls).toHaveLength(1); expect(calls[0].receipt.operationId).toBe(prepared.operationId);
+    expect(calls[0].executionState?.exitStatus).toBe('succeeded'); expect(open).not.toHaveBeenCalled();
+    await expect(f.call('calls', undefined, {callTitle: 'Unsupported'})).rejects.toMatchObject({code: 'CLI_CALL_OPTIONS_CONFLICT'});
+    if (rpc) expect(f.calls).toContainEqual({name: IndependentCallCommand.List, query: true});
     if (rpc) expect(f.calls).toContainEqual({name: IndependentCallCommand.Inspect, query: true});
 }, 15000);
 

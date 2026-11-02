@@ -1,3 +1,4 @@
+import {workLogSnapshots} from './work-log-snapshots';
 import {sha256HexSync, randomUUID} from '@itookit/common';
 import {KanbanError} from '@itookit/kanban';
 import type {IFileSystem} from '@itookit/vfs-core';
@@ -37,7 +38,7 @@ export class KanbanWorkLog {
                 if (events.length < 500) break;
                 events = await source.events(boardId, after, 500);
             }
-            if (snapshot) await this.store.snapshot(boardId, bindingSnapshots(boardId, items, seenReferences));
+            if (snapshot) await this.store.snapshot(boardId, await workLogSnapshots(boardId, source, items, seenReferences));
             this.log({operationId, boardId, stage: 'work-log.project', result: 'success', durationMs: Date.now() - started});
         } catch (error) {
             const code = (error as {code?: string})?.code;
@@ -96,14 +97,4 @@ function factKey(activity: KanbanRecordActivity, refs: KanbanExternalReference[]
     if (activity.dispatchId) return `${activity.dispatchId}:${activity.stage}:${activity.code ?? ''}`;
     const ref = refs.find(ref => ['nestos-native-session', 'nestos-execution-session'].includes(ref.system));
     return ref ? JSON.stringify([itemId, activity.stage, ref.system, ref.id]) : fallback;
-}
-
-function bindingSnapshots(board: string, items: KanbanItemSummary[], seen: Set<string>) {
-    const at = Date.now();
-    return items.flatMap(item => {
-        const refs = lifecycleReferences(item.externalRefs).filter(ref => !seen.has(JSON.stringify([item.id, ref.system, ref.id])));
-        if (!refs.length) return [];
-        return [activityRecord({id: board}, item, 'snapshot:' + item.id, at,
-            {stage: 'association.observed', result: 'success', fields: {evidence: 'existing-reference'}}, refs, undefined, ancestorIds(item, items))];
-    });
 }

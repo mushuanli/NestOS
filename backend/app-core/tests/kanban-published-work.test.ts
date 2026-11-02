@@ -29,7 +29,9 @@ it('does not treat a missing receipt, pending effects or failed child result as 
     expect(await f.executor.inspect(f.frozen)).toMatchObject({outcome:'unknown',code:'WORK_ADMISSION_UNKNOWN'});
     f.record.effects={pending:{status:'indeterminate'}} as TaskRecord['effects'];
     expect(await f.executor.inspect(f.frozen)).toMatchObject({outcome:'unknown',code:'WORK_CALLER_UNSETTLED'});
-    f.record.effects={};f.record.exit={status:'succeeded',output:{exit:{status:'failed'}}};
+    f.record.effects={};f.record.exit={status:'failed',error:{code:'EFFECT_TIMEOUT',message:'private failure detail'}};
+    expect(await f.executor.inspect(f.frozen)).toMatchObject({outcome:'failed',code:'EFFECT_TIMEOUT'});
+    f.record.exit={status:'succeeded',output:{exit:{status:'failed'}}};
     expect(await f.executor.inspect(f.frozen)).toMatchObject({outcome:'failed',code:'WORK_EXECUTION_FAILED'});
 });
 it('prepares before submission and propagates response loss for unknown reconciliation',async()=>{

@@ -158,7 +158,7 @@ function required(value: string | undefined, label: string): string {
 function help(): string {
     return `NestOS CLI\n\n` +
         `  nestos project list|create [name] [--profile data-root] [--json]\n` +
-        `  nestos session list | create <project-id> <title> | show <session-id>\n` +
+        `  nestos session list | create <project-id> <title> | show <session-id> | calls <session-id> [--branch name]\n` +
         `  nestos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
         `  nestos flow-run show|reattach <session-id> <root-task-id>\n` +
         `  nestos flow-run pause|resume|withdraw-pause|cancel <session-id> <root-task-id> <request-id> <observed-epoch>\n` +

@@ -122,3 +122,25 @@ it('backfills old bindings as an observed snapshot instead of inventing a histor
     expect(snapshot.createdAt).toBeGreaterThanOrEqual(before); expect(snapshot.externalRefs?.[0].id).toBe('historical');
     expect((await f.logs.records(legacy, 'board', {kind: 'log'})).total).toBe(page.total);
 });
+
+it('repairs a legacy completion projection once without changing board state or dispatching work',async()=>{
+    const f=await fixture();await f.create('task');
+    await f.command({type:'publish-plan',plan:{schema:'kanban.plan/1',id:'plan',revision:1,sealed:true,items:[{id:'task',title:'task',responsibility:'Work',acceptance:'Verified',expectedRevision:1,
+        assignee:{kind:'human',id:'admin'},dependsOn:[],outputs:[]}]}});
+    await f.command({type:'prepare-dispatch',itemId:'task',dispatchId:'dispatch',estimate:{complexity:1,workUnits:1,durationMs:60000,confidence:'high'}});
+    const dispatch=(await f.service.workflow('board')).dispatches.dispatch;
+    await f.command({type:'observe-execution',dispatchId:dispatch.id,fence:dispatch.fence,outcome:'succeeded',outputs:[]});
+    await f.reviewer.execute('board',{operationId:'accept',expectedRevision:(await f.service.read('board')).revision,command:{type:'accept-execution',dispatchId:dispatch.id,accept:true}});
+    const legacy={...f.service,events:async(...args:Parameters<typeof f.service.events>)=>(await f.service.events(...args)).map(event=>({...event,data:{...event.data,reason:undefined,status:undefined}}))};
+    const path='/var/lib/kanban/work-log.seq',key='snapshot/board/';
+    await f.fs.meta.seq!.setEntry(path,key,'2');
+    const before=await f.logs.records(legacy,'board',{kind:'log'});expect(before.items.some(row=>row.activity?.stage==='task.completed')).toBe(false);
+    await f.fs.meta.seq!.setEntry(path,key,'1');
+    const board=await f.service.read('board'),workflow=await f.service.workflow('board'),execute=vi.spyOn(f.service,'execute');
+    const reopened=new KanbanWorkLog(f.fs);await reopened.open();
+    const after=await reopened.records(legacy,'board',{kind:'log'}),completed=after.items.filter(row=>row.activity?.stage==='task.completed');
+    expect(after.total).toBe(before.total+1);expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({createdAt:board.items[0].closedAt,activity:{dispatchId:'dispatch',fields:{evidence:'accepted-dispatch'}}});
+    expect((await reopened.records(legacy,'board',{kind:'log'})).total).toBe(after.total);expect(execute).not.toHaveBeenCalled();
+    expect(await f.service.read('board')).toEqual(board);expect(await f.service.workflow('board')).toEqual(workflow);
+});

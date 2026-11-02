@@ -150,3 +150,18 @@ it('runs the default runtime integration through real published Flows, Session l
     expect(Object.values(workflow.dispatches)[0]).toMatchObject({outcome: 'accepted', outputs: [{name: 'result'}]});
     expect((await service.executionSession!('automatic', 'work')).current?.sessionId).toBeTruthy();
 }, 15000);
+
+it('never resubmits successful or accepted work during polling and host recovery',async()=>{
+    const f=await fixture();await f.item('first');await f.service.scan();const dispatch=f.executions()[0][0];
+    f.completed.add(dispatch);await f.service.scan();
+    expect((await f.service.item('board','first')).item.status).toBe('review');
+    const submissions=f.calls.submitPreparedTaskCall.mock.calls.length;
+    for(let index=0;index<3;index++)await f.service.scan();
+    expect(f.calls.submitPreparedTaskCall).toHaveBeenCalledTimes(submissions);
+    await f.command({type:'accept-execution',dispatchId:dispatch,accept:true});
+    expect((await f.service.item('board','first')).item.status).toBe('completed');
+    const workflow=await f.service.workflow('board');expect(workflow.ready).toEqual([]);
+    await f.service.dispose();const reopened=await f.open();disposers.push(()=>reopened.dispose());
+    for(let index=0;index<3;index++)await reopened.scan();
+    expect(await reopened.workflow('board')).toEqual(workflow);expect(f.calls.submitPreparedTaskCall).toHaveBeenCalledTimes(submissions);
+});

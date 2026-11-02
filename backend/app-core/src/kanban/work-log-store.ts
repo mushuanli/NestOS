@@ -2,6 +2,7 @@ import {FSError, type IFileSystem, type ISeqFileTransaction} from '@itookit/vfs-
 import type {KanbanProjectRecord, KanbanRecordSummary} from '@itookit/kanban/contracts';
 
 const path = '/var/lib/kanban/work-log.seq';
+const snapshotVersion = '2';
 const prefix = (board: string) => encodeURIComponent(board) + '/';
 const rowKey = (board: string, id: string) => 'row/' + prefix(board) + encodeURIComponent(id);
 
@@ -26,12 +27,12 @@ export class KanbanWorkLogStore {
             await tx.setEntry(path, 'checkpoint/' + prefix(board), String(through));
         });
     }
-    async needsSnapshot(board: string): Promise<boolean> {return !await this.fs.meta.seq!.getEntry(path, 'snapshot/' + prefix(board));}
+    async needsSnapshot(board: string): Promise<boolean> {return await this.fs.meta.seq!.getEntry(path, 'snapshot/' + prefix(board)) !== snapshotVersion;}
     async snapshot(board: string, records: KanbanProjectRecord[]): Promise<void> {
         await this.fs.meta.seq!.transaction!(async tx => {
-            const key = 'snapshot/' + prefix(board); if (await tx.getEntry(path, key)) return;
+            const key = 'snapshot/' + prefix(board); if (await tx.getEntry(path, key) === snapshotVersion) return;
             for (const record of records) await this.appendTx(tx, board, record);
-            await tx.setEntry(path, key, '1');
+            await tx.setEntry(path, key, snapshotVersion);
         });
     }
     async page(board: string, itemId: string | undefined, offset: number, limit: number) {

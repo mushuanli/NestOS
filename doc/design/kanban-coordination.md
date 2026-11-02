@@ -463,3 +463,7 @@ NestOS 将已提交的看板事件投影到独立的 `/var/lib/kanban/work-log.s
 执行会话入口使用真实锚点：普通点击沿用应用工作台路由，Ctrl/Cmd 点击及“新标签页打开”使用浏览器标准行为，保留原任务与看板窗口。详情和日志可经宿主 referenceLink 解析原生会话引用；宿主按引用内的 projectId/profileId/sessionId 解析项目路径，不依赖当前选中的项目。父项的子事项列表显示各子项实际执行会话，不为父项虚构一个执行会话。独立 Kanban 库只消费 sessionUrl/referenceLink 端口，不解释 NestOS 会话命名空间。
 
 前端非预期异常记录操作阶段、标准异常类型与脚本文件行列，不记录异常正文、完整堆栈或任务内容。Safari 的 `KANBAN_OPERATION_FAILED` 仍需依据实际设备的诊断定位；WebKit 18 的手机尺寸回归不等同于真机 iOS 18.6 验收。
+
+旧版完成事件缺少结果字段时，工作日志按版本升级已有快照：仅当正式 workflow 的派发已 accepted 且事项已 completed，才以批次与阶段的稳定身份补齐完成记录；优先使用 closedAt，未保存历史时间时只记录当前观测时间。修复不重放执行、不提交协调命令、不更改事项状态，与新事件生成的完成日志共用身份而不重复计数。
+
+排查执行使用 CLI 的 `session calls <caller-session-id> [--branch name]` 查看 caller、执行会话与执行树的正式回执，再用 `task show <session-id> <task-id>` 查看具体退出错误。阶段操作成功、执行成功待验收与事项验收完成分别展示，不能从准备成功或历史 unknown 记录判断当前任务需重派。

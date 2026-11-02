@@ -2,7 +2,7 @@ import {independentSessionCall} from './independent-session-call';
 import {randomUUID} from '@itookit/common';
 import {recordRuntimeDiagnostic} from './diagnostics';
 import type {ApplicationClient} from '@itookit/app-contracts/services';
-import {SessionCommand, assertContextBindingQuery, type ContextBindingQuery, type SubmissionRequest, type SessionSnapshot} from '@itookit/llm-session/contracts';
+import {IndependentCallCommand, SessionCommand, assertContextBindingQuery, type ContextBindingQuery, type SubmissionRequest, type SessionSnapshot} from '@itookit/llm-session/contracts';
 import type {CommandOptions} from './commands';
 import {assertFrozenCallOptions, dispatchSessionSubmission, inspectSessionSubmission, prepareSessionSubmission, readSubmissionFile} from './application-submission';
 import {watchSubmissionExecution} from './submission-execution';
@@ -23,6 +23,7 @@ export async function sessionCommand(client: ApplicationClient, args: string[], 
     if (['call-prepare', 'call-submit', 'call-receipt'].includes(action)) return independentSessionCall(client, action, sessionId, value, options);
     if (options.callTitle !== undefined || options.transferFile !== undefined)
         throw Object.assign(new Error('Independent title and materials require session call-prepare'), {code: 'CLI_CALL_OPTIONS_CONFLICT'});
+    if (action === 'calls') return bus.execute(IndependentCallCommand.List, {sessionId, ...(options.branch ? {branchId: options.branch} : {})});
     if (action === 'contexts') return contextBindings(client, sessionId, value, options);
     if (action === 'receipt') {assertFrozenCallOptions(options); return inspectSessionSubmission(client, await readSubmissionFile(required(value, 'submission file'), sessionId));}
     if (action === 'prepare') return prepareOnly(client, sessionId, value, options);
@@ -70,7 +71,7 @@ async function branchCommand(client: ApplicationClient, action: string, value: s
     if (action === 'branches') return bus.execute('vcs.branch.list');
     if (action === 'branch') return bus.execute('vcs.branch.create', {branchNodeId: required(head ?? undefined, 'branch point'), options: {name: required(value, 'branch name'), copyContent: true}});
     if (action === 'delete-branch') return bus.execute('vcs.branch.delete', {branchName: required(value, 'branch name')});
-    throw new Error('session requires list/targets/create/show/send/prepare/submit/receipt/call-prepare/call-submit/call-receipt/contexts/branches/branch/delete-branch');
+    throw new Error('session requires list/targets/create/show/calls/send/prepare/submit/receipt/call-prepare/call-submit/call-receipt/contexts/branches/branch/delete-branch');
 }
 
 async function prepareOnly(client: ApplicationClient, id: string, text: string | undefined, options: CommandOptions) {

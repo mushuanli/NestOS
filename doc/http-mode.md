@@ -166,6 +166,7 @@ pnpm cli session call-prepare <caller-session-id> --flow <flow-id> --params inpu
 pnpm cli session call-prepare <caller-session-id> '本次任务' --agent <agent-id> --call-title '独立任务' --submission-file agent-call.json
 pnpm cli session call-submit <caller-session-id> call.json
 pnpm cli session call-receipt <caller-session-id> call.json
+pnpm cli session calls <caller-session-id> --branch main
 ```
 
 call-prepare 不执行调用，call.json 保存完整 IndependentCallInput（request/title/可选 transfer），不能与普通 session prepare 的文件混用。可选 --transfer reference.json 指定显式材料引用 `{sessionId,id}`；参数、标题及材料引用在准备时冻结，后续编辑来源文件不影响原请求。文件按 0600 独占创建并同步，不能覆盖；默认参数和执行策略仍由宿主在接纳时冻结。
@@ -174,4 +175,4 @@ call-submit 明确提交原文件身份，由宿主创建独立子 Session。调
 
 本地提交默认等待该子调用完成或进入人工交互/待派发/待核对状态；失败/取消沿用 CLI 退出码 2，等待输入为 3。远程 --connect 默认返回接纳及 executionSessionId；添加 --follow 在 CLI 自身观察作用域打开该子 Session，等待其真实执行，不以父级状态判断。回执查询不打开视图，--follow 仅适用于 call-submit。CLI 本地进程退出不承诺继续后台调度，需要后台执行时使用持续运行的远程宿主。
 
-独立调用的执行观察与 Web 调用卡片共用 `session.calls.list`：接纳回执、目标 Task、交互、子树清理、调用方结算和历史提交分别核对。`session.call.inspect` 只核对原始接纳，不等待目标派发；不能通过普通指令队列中没有记录推断独立执行未知或完成。本地 CLI 与 `--connect --follow` 使用同一投影，只有传输与宿主生命周期不同。
+`session calls` 是只读查询，不准备或提交新调用，也不打开会话视图。独立调用的执行观察与 Web 调用卡片共用 `session.calls.list`：接纳回执、目标 Task、交互、子树清理、调用方结算和历史提交分别核对。`session.call.inspect` 只核对原始接纳，不等待目标派发；不能通过普通指令队列中没有记录推断独立执行未知或完成。本地 CLI 与 `--connect --follow` 使用同一投影，只有传输与宿主生命周期不同。

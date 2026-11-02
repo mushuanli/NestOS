@@ -475,3 +475,9 @@ NestOS 将已提交的看板事件投影到独立的 `/var/lib/kanban/work-log.s
 默认层级包含 goal、group、task、subtask。复杂任务的分析结果可返回 2–16 个 subtasks，各项包含局部 key、title、responsibility、acceptance、dependsOn 和可选 estimate；估算策略启用时每项均须估算。宿主校验依赖闭环，生成稳定子任务身份，继承项目并原子发布计划。模型不能为子任务指定其他项目。父任务持久保存 `planning.execution: children`，不再领取或执行；只对依赖满足的叶子任务创建 Agent、worktree 和 Session。所有子任务独立验收完成后自动汇总关闭父任务；失败、取消、待验收均不冒充完成，重启不重新执行父任务。
 
 新的执行尝试使用更新后的内置默认提示词；仅识别原始内置内容摘要，保留用户和项目覆盖及已冻结尝试。支持条件替换的存储通过 revision 安全升级原文件；旧存储只冻结有效的新默认内容，不覆盖原文件。通信继续使用工作树下 `_nestos/kanban`，实际路径写入 protocol 与 manifest。
+
+### Session 文件交付边界（迁移中）
+
+Agent 不直接调用 Kanban 命令或承担协调职责。宿主通过 Session prompt 指定授权工作区、输入、输出路径和协议；规划交付读取 `_nestos/kanban/analysis.yaml`，信封为 `schema: nestos.file-result/1`、`operationId` 和 `payload`。Session 终态只证明执行结束，聊天正文不再作为规划结果。缺少文件保留 pending；格式、范围和不可变摘要分别校验，拒绝异任务结果及发布后改写。平台通用读取位于 `run/session-file-result.ts`，不认识 Agent、Kanban 任务或具体工具。
+
+规划 payload 的业务校验与原子 publish-plan 仍归 Kanban 宿主；文件可由 Agent、CLI 或其他已授权进程生成。当前迁移已替换规划正文解析；执行产物取值、提示词与部署验收尚需统一到同一文件边界，不能将此阶段视为整体迁移完成。

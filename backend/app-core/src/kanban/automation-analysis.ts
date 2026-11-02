@@ -17,6 +17,7 @@ interface Job {
     phase: 'prepared' | 'submitting' | 'settled'; status: KanbanAnalysisStatus; result?: AnalysisResult;
 }
 export interface AnalysisOptions {
+    readAnalysisOutput?(id:string):Promise<unknown|undefined>;
     onAnalysis?: import('./personal-automation').PersonalKanbanAutomationOptions['onAnalysis'];
     prepareAnalysis?: import('./personal-automation').PersonalKanbanAutomationOptions['prepareAnalysis'];
     journal: KanbanAutomationJournal; calls: IndependentCallService; kernel: Pick<Kernel, 'task'>;
@@ -109,16 +110,16 @@ async function observeAnalysis(options: AnalysisOptions, key: string, job: Job):
     const result = record.exit?.output as TaskCallResult | undefined;
     if (record.exit?.status !== 'succeeded' || result?.exit.status !== 'succeeded') return saveFailure(options, key, job, 'AUTOMATION_ANALYSIS_FAILED', record.exit?.status === 'cancelled' || result?.exit.status === 'cancelled' ? 'cancelled' : 'failed');
     try {
-        const analysis = parseAnalysis(result.exit.output);
+        requireValue(options.readAnalysisOutput,'SESSION_FILE_RESULT_UNAVAILABLE');
+        const output=await options.readAnalysisOutput(job.id);
+        if(output===undefined)return options.journal.update<Job>(key,current=>({...current!,status:{...current!.status,state:'unknown',code:'SESSION_FILE_RESULT_PENDING'}}));
+        const analysis = parseAnalysis(output);
         return options.journal.update<Job>(key, current => ({...current!, phase: 'settled', result: analysis,
             status: {itemId: job.status.itemId, state: analysis.ready ? 'ready' : 'clarification', reason: analysis.reason, dependencies: analysis.dependencies}}));
     } catch (error) {return saveFailure(options, key, job, safeCode(error, 'AUTOMATION_ANALYSIS_INVALID'));}
 }
 export function parseAnalysis(output: unknown): AnalysisResult {
-    const value = output as {message?: {content?: unknown}; nodes?: Record<string, {outputs?: Record<string, unknown>}>};
-    let text = value?.message?.content ?? value?.nodes?.__flow_return?.outputs?.analysis ?? value?.nodes?.__flow_return?.outputs?.result ?? output;
-    if (text && typeof text === 'object' && 'content' in text) text = text.content;
-    const result = (typeof text === 'string' ? JSON.parse(text) : text) as AnalysisResult;
+    const result = output as AnalysisResult;
     requireValue(result && typeof result.ready === 'boolean' && typeof result.reason === 'string' && result.reason.length > 0 && result.reason.length <= 8000, 'AUTOMATION_ANALYSIS_INVALID');
     requireValue(Array.isArray(result.dependencies) && result.dependencies.length <= 100 && result.dependencies.every(id => typeof id === 'string' && id.length > 0 && id.length <= 256), 'AUTOMATION_DEPENDENCIES_INVALID');
     if (result.estimate) requireValue(['low', 'medium', 'high'].includes(result.estimate.confidence)

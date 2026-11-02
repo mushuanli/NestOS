@@ -16,6 +16,7 @@ import {requireValue} from './validation';
 
 export interface PersonalKanbanAutomationOptions {
     requiresItemResource?(board:KanbanBoard):boolean;
+    readAnalysisOutput?(id:string):Promise<unknown|undefined>;
     onAnalysis?(input: {boardId: string; id: string; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef; outcome: 'succeeded' | 'failed' | 'cancelled'; code?: string}): Promise<void>;
     prepareAnalysis?(input: {reportActivity?(fact: WorkLogFact): Promise<void>; id: string; board: KanbanBoard; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<{target: import('@itookit/llm-flow/contracts').TargetRef; instruction: string}>;
     validatePreparation?(reference: import('@itookit/kanban/contracts').KanbanExternalReference, options?: Record<string, string>): void;

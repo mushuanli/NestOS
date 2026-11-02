@@ -1,3 +1,5 @@
+import {readSessionFileResult} from '../src/run/session-file-result';
+import {KanbanAutomationJournal} from '../src/kanban/automation-journal';
 import {afterEach, expect, it, vi} from 'vitest';
 import {randomUUID} from '@itookit/common';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
@@ -23,6 +25,11 @@ async function fixture(autoAccept = false, analysis?:unknown) {
     const calls = {prepareTaskCall: vi.fn(async () => ({})),
         submitPreparedTaskCall: vi.fn(async (input: IndependentCallInput) => {
             submitted.set(input.request.submission!.id, input);
+            if(input.request.expectedTarget!.id==='planner') {
+                const item=JSON.parse(input.request.source.text).snapshot.item,id=input.request.submission!.id;
+                const payload=invalid?{}:analysis??{ready:true,dependencies:item.id==='second'?['first']:[],reason:'Uses the prerequisite result',estimate:{complexity:1,workUnits:1,durationMs:60000,confidence:'high'}};
+                await fs.driver.createFile({parentPath:'/results',name:id+'.yaml',recursive:true,content:JSON.stringify({schema:'nestos.file-result/1',operationId:id,payload})});
+            }
             if (loseReply) {loseReply = false; throw new Error('reply lost PRIVATE');}
             return {};
         }),
@@ -38,7 +45,8 @@ async function fixture(autoAccept = false, analysis?:unknown) {
             estimate: {complexity: 1, workUnits: 1, durationMs: 60000, confidence: 'high'}})}} : {message: {content: 'Verified result'}};
         return {id, sessionId: _session, version: 1, effects: {}, exit: {status: 'succeeded', output: {exit: {status: 'succeeded', output}}}} as unknown as TaskRecord;
     })} as unknown as PersonalKanbanAutomationOptions['kernel'];
-    const options: PersonalKanbanAutomationOptions = {calls, kernel, sessions: {ensureSession: vi.fn(async id => id), getManifest: vi.fn(async id => ({id, title: id})), listSummaries: async () => []} as unknown as PersonalKanbanAutomationOptions['sessions'],
+    const fileJournal=new KanbanAutomationJournal(fs);await fileJournal.open();
+    const options: PersonalKanbanAutomationOptions = {readAnalysisOutput:id=>readSessionFileResult(fs,'/results/'+id+'.yaml',id,fileJournal),calls, kernel, sessions: {ensureSession: vi.fn(async id => id), getManifest: vi.fn(async id => ({id, title: id})), listSummaries: async () => []} as unknown as PersonalKanbanAutomationOptions['sessions'],
         prepareSession: vi.fn(async () => true), catalog: vi.fn(async () => targets)};
     const diagnostics = new DiagnosticJournal();
     const open = () => createPersonalKanban(fs, events, diagnostics, options.sessions, kernel, options);
@@ -123,7 +131,7 @@ it('admits one planning call when two observers reconcile the same durable item 
     expect(await f.service.analysisStatus!('board', 'first')).toMatchObject({state: 'ready'});
 });
 
-it('runs the default runtime integration through real published Flows, Session leases and Kernel receipts', async () => {
+it('rejects a chat-only planning Flow without an authorized file result', async () => {
     const {createApplicationRuntime} = await import('../src/runtime/create-application-runtime');
     const {FlowLibraryCommand} = await import('@itookit/app-contracts');
     const runtime = await createApplicationRuntime({backend: new MemoryBackend(), startupMode: 'interactive', digitalTwinAutoStart: false});
@@ -141,14 +149,11 @@ it('runs the default runtime integration through real published Flows, Session l
     await execute({type: 'configure-automation', settings: {enabled: true, autoAccept: true, planner: reference('planning'), executor: reference('execution'), coordinator: catalog.coordinator, worker: catalog.worker}});
     await execute({type: 'create-item', item: {id: 'work', title: 'Work', responsibility: 'Produce result', acceptance: 'Execution completes'}});
     await vi.waitFor(async () => {
-        await service.scan(); const status = await service.analysisStatus!('automatic', 'work');
-        if (status?.state === 'failed' || status?.state === 'unknown') throw new Error(JSON.stringify(status));
-        expect((await service.item('automatic', 'work')).item.status).toBe('completed');
-    }, {timeout: 10000, interval: 50});
-    const workflow = await service.workflow('automatic');
-    expect(Object.values(workflow.dispatches)).toHaveLength(1);
-    expect(Object.values(workflow.dispatches)[0]).toMatchObject({outcome: 'accepted', outputs: [{name: 'result'}]});
-    expect((await service.executionSession!('automatic', 'work')).current?.sessionId).toBeTruthy();
+        await service.scan();
+        expect((await service.analysisStatus!('automatic','work'))?.state).toBe('failed');
+    },{timeout:10000,interval:50});
+    expect(Object.values((await service.workflow('automatic')).dispatches)).toHaveLength(0);
+    expect((await service.item('automatic','work')).item.status).toBe('backlog');
 }, 15000);
 
 it('never resubmits successful or accepted work during polling and host recovery',async()=>{

@@ -51,7 +51,12 @@ export function developmentObserver(options: Options) {
                 await close(input.dispatch.id);
             }
             if (input.observation.outcome !== 'succeeded') return input.observation;
-            if (messages.some(message => ['clarification', 'error'].includes(message.type))) return {...input.observation, outcome: 'running', outputs: undefined, code: 'WORKSPACE_INPUT_REQUIRED'};
+            if (messages.some(message => message.type === 'error')) {
+                const failed = {...input.observation, outcome: 'failed' as const, outputs: undefined, code: 'WORKSPACE_ERROR_REPORTED'};
+                await options.lifecycle?.enqueue(input.boardId, input.dispatch, item, failed);
+                await close(input.dispatch.id); return failed;
+            }
+            if (messages.some(message => message.type === 'clarification')) return {...input.observation, outcome: 'running', outputs: undefined, code: 'WORKSPACE_INPUT_REQUIRED'};
             if (!messages.some(message => message.type === 'result')) return {...input.observation, outcome: 'unknown', outputs: undefined, code: 'WORKSPACE_RESULT_MISSING'};
             try {await options.verifyDelivery?.(input.dispatch.id);}
             catch (error) {

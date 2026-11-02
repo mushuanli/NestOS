@@ -29,7 +29,7 @@ async function prepareModule(journal: PromptJournal, tree: PreparedWorktree, pat
         saved = await journal.update<Entry>(key, old => old ?? {path, branch: tree.branch, baseCommit: match[1], phase: 'prepared'});
     }
     if (saved.phase === 'prepared') {
-        await gitWorkspace(process, tree.directory, ['submodule', 'update', '--init', '--', path]);
+        await initializeModule(process, tree.directory, path, saved.baseCommit);
         const state = await gitWorkspace(process, tree.directory + '/' + path, ['status', '--porcelain']);
         if (state.stdout.trim()) throw failure('MODULE_WORKTREE_DIRTY');
         const claim = randomUUID();
@@ -101,4 +101,16 @@ async function changesDigest(process: RemoteProcessHandle, cwd: string): Promise
     const hashes = paths.length ? (await gitWorkspace(process, cwd, ['hash-object', '--', ...paths])).stdout : '';
     const delta = (await gitWorkspace(process, cwd, ['diff', '--raw', '-z', 'HEAD', '--'])).stdout;
     return sha256HexSync(JSON.stringify({paths, hashes, delta}));
+}
+
+/** Clone local objects independently so native namespaces never depend on absolute alternates. */
+async function initializeModule(process:RemoteProcessHandle,directory:string,path:string,commit:string):Promise<void> {
+    const source='/workspace/'+path;
+    const available=await gitWorkspace(process,source,['cat-file','-e',commit+'^{commit}'],true);
+    if(available.code!==0) {await gitWorkspace(process,directory,['submodule','update','--init','--',path]);return;}
+    const config=await gitWorkspace(process,directory,['config','--file','.gitmodules','--get-regexp','^submodule\\..*\\.path$']);
+    const key=config.stdout.split('\n').find(line=>line.slice(line.indexOf(' ')+1)===path)?.split(' ')[0];
+    if(!key)throw failure('MODULE_NOT_REGISTERED');
+    await gitWorkspace(process,directory,['-c','protocol.file.allow=always','-c',key.slice(0,-5)+'.url='+source,
+        'submodule','update','--init','--',path]);
 }

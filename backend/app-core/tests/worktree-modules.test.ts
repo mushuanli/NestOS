@@ -88,3 +88,15 @@ it('registers module candidates without cloning and verifies lazily prepared bra
     const evidence = await verifyWorktreeDelivery(f.process, f.tree.directory, prepared, 'changes', available);
     expect(evidence).toHaveLength(2); expect(evidence[1].branch).toBe('work/attempt');
 });
+
+it('initializes a pinned unpublished module commit from the original project checkout', async () => {
+    const f = await fixture();
+    await writeFile(join(f.root, 'module', 'unpublished.txt'), 'local-only');
+    await f.git(join(f.root, 'module'), ['add', '.']);
+    await f.git(join(f.root, 'module'), ['commit', '-qm', 'unpublished']);
+    await f.git(f.root, ['add', 'module']);await f.git(f.root, ['commit', '-qm', 'pin unpublished']);
+    const tree=await prepareWorktree(f.journal,'local-pin','/workspace/_nestos/worktrees/local-pin',f.process);
+    await expect(prepareWorktreeModules(f.journal,tree,['module'],f.process)).rejects.toThrow('Response lost');
+    const rows=await prepareWorktreeModules(f.journal,tree,['module'],f.process);
+    expect(await f.git(join(f.root,'_nestos/worktrees/local-pin/module'),['rev-parse','HEAD'])).toBe(rows[1].baseCommit);
+});

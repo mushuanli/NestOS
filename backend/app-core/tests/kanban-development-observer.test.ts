@@ -75,3 +75,11 @@ it('waits for declared terminal finalization before reporting successful deliver
     settled = true;
     expect(await f.observe('succeeded')).toMatchObject({outcome: 'succeeded'});
 });
+
+it('settles a reported error only after native completion and notifies once',async()=>{
+    const f=await fixture();await f.publish('failure','error');
+    expect(await f.observe('running')).toMatchObject({outcome:'running'});
+    expect(await f.observe('succeeded')).toMatchObject({outcome:'failed',code:'WORKSPACE_ERROR_REPORTED'});
+    expect(await f.observe('succeeded')).toMatchObject({outcome:'failed'});
+    expect((await f.events.listNotifications()).items.filter(row=>row.event.value.type==='kanban.workspace.error')).toHaveLength(1);
+});

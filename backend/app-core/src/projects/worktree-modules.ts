@@ -76,7 +76,13 @@ async function changedModules(process: RemoteProcessHandle, directory: string, b
     return [...new Set(paths)];
 }
 export async function availableWorktreeModules(process: RemoteProcessHandle, tree: PreparedWorktree): Promise<WorktreeRepository[]> {
-    const entries = (await gitWorkspace(process, tree.directory, ['ls-tree', '-r', '-z', tree.baseCommit])).stdout.split('\0');
+    const configured = await gitWorkspace(process, tree.directory, ['config', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'], true);
+    if (configured.code === 1) return [];
+    if (configured.code !== 0) throw failure('MODULE_BASE_READ_FAILED');
+    const paths = configured.stdout.split('\n').filter(Boolean).map(line => line.slice(line.indexOf(' ') + 1));
+    if (paths.length > 256) throw failure('WORKSPACE_MODULE_LIMIT');
+    if (!paths.length) return [];
+    const entries = (await gitWorkspace(process, tree.directory, ['ls-tree', '-z', tree.baseCommit, '--', ...paths])).stdout.split('\0');
     const modules = entries.flatMap(entry => {
         const match = /^160000 commit ([a-f0-9]{40,64})\t(.+)$/.exec(entry);
         return match ? [{path: match[2], baseCommit: match[1], branch: tree.branch}] : [];

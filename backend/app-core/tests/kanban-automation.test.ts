@@ -194,3 +194,18 @@ it('rejects cyclic model decomposition before creating any children or starting 
     await f.item('parent');await f.service.scan();expect((await f.service.read('board')).items).toHaveLength(1);expect(f.executions()).toHaveLength(0);
     expect(await f.service.analysisStatus!('board','parent')).toMatchObject({state:'failed',code:'DEPENDENCY_CYCLE'});
 });
+
+it('executes manually created subtasks and aggregates their accepted results without executing the parent',async()=>{
+    const f=await fixture();await f.item('parent');
+    await f.command({type:'create-item',item:{id:'child',title:'Child scope',responsibility:'Only child work',acceptance:'Child evidence'},
+        planning:{kind:'subtask',parentId:'parent',priority:2,dependencies:[],references:[]}});
+    await f.service.scan();expect(f.executions()).toHaveLength(1);
+    const [dispatch,input]=f.executions()[0];
+    expect(input.request.source.text).toContain('Only child work');
+    f.completed.add(dispatch);await f.service.scan();
+    expect((await f.service.item('board','parent')).item.status).toBe('backlog');
+    await f.command({type:'accept-execution',dispatchId:dispatch,accept:true});
+    await f.command({type:'archive-items',itemIds:['child'],reason:'Verified'});
+    await f.service.scan();expect((await f.service.item('board','parent')).item.status).toBe('completed');
+    expect(f.executions()).toHaveLength(1);
+});

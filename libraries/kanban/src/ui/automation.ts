@@ -7,12 +7,12 @@ import {button} from './view';
 export function automationForm(ui: KanbanPresentation, board: KanbanBoardSummary, catalog: KanbanAutomationCatalog): string {
     const settings = board.automation;
     const select = (name: 'planner' | 'executor' | 'preparation', label: string) => {
-        const selected = JSON.stringify(settings?.[name]), targets = [...(name === 'preparation' ? catalog.preparations ?? [] : catalog.targets)];
-        if (settings?.[name] && !targets.some(entry => JSON.stringify(entry.reference) === selected))
+        const selected = settings?.[name], targets = [...(name === 'preparation' ? catalog.preparations ?? [] : catalog.targets)];
+        if (settings?.[name] && !targets.some(entry => sameReference(entry.reference, selected)))
             targets.push({reference: settings[name], label: ui.text('automationTargetUnavailable')});
         return `<label>${escapeHTML(ui.text(label))}<select name="${name}" ${name === 'preparation' ? '' : 'required'}><option value="">${escapeHTML(ui.text('automationChoose'))}</option>${targets.map(entry => {
             const value = JSON.stringify(entry.reference);
-            return `<option value="${escapeAttr(value)}" ${value === selected ? 'selected' : ''}>${escapeHTML(entry.label)}</option>`;
+            return `<option value="${escapeAttr(value)}" ${sameReference(entry.reference, selected) ? 'selected' : ''}>${escapeHTML(entry.label)}</option>`;
         }).join('')}</select></label>`;
     };
     return `${panelHeader(ui, ui.text('automationTitle'))}<form data-form="automation">
@@ -31,8 +31,8 @@ export function analysisView(ui: KanbanPresentation, status: KanbanAnalysisStatu
 }
 
 export function preparationFields(board: KanbanBoardSummary, catalog: KanbanAutomationCatalog, reference: unknown = board.automation?.preparation): string {
-    const selected = JSON.stringify(reference);
-    const entries = catalog.preparations?.filter(entry => JSON.stringify(entry.reference) === selected) ?? [];
+    const selected = reference;
+    const entries = catalog.preparations?.filter(entry => sameReference(entry.reference, selected)) ?? [];
     return entries.flatMap(entry => (entry.options ?? []).map(option => {
         const value = board.automation?.preparationOptions?.[option.name] ?? option.defaultValue ?? '';
         const name = 'preparation-option-' + option.name;
@@ -41,4 +41,10 @@ export function preparationFields(board: KanbanBoardSummary, catalog: KanbanAuto
             : `<input name="${escapeAttr(name)}" value="${escapeAttr(value)}" maxlength="4096">`;
         return `<label>${escapeHTML(option.label)}${control}</label>`;
     })).join('');
+}
+
+function sameReference(left: unknown, right: unknown): boolean {
+    const a = left as {system?: string; id?: string; revision?: string} | null;
+    const b = right as typeof a;
+    return !!a && !!b && a.system === b.system && a.id === b.id && a.revision === b.revision;
 }

@@ -108,4 +108,13 @@ it('shows host preparation choices when selected and persists explicit commit po
     fill(root, 'planner', JSON.stringify(catalog.targets[0].reference)); fill(root, 'executor', JSON.stringify(catalog.targets[0].reference));
     await submit(root, 'automation');
     expect((await service.list())[0].automation).toMatchObject({preparation: reference, preparationOptions: {commit: 'worktree'}});
+    const board = (await service.list())[0];
+    await service.execute(board.id, {operationId: 'reorder-reference', expectedRevision: board.revision, command: {
+        type: 'configure-automation', settings: {...board.automation!, preparation: {id: reference.id, revision: reference.revision, system: reference.system}}}});
+    await viewRefresh();
+    async function viewRefresh() {
+        await click(root, '[data-action=refresh]'); await click(root, '[data-action=automation]');
+        expect(root.querySelector<HTMLSelectElement>('[name=preparation-option-commit]')?.value).toBe('worktree');
+    }
+
 });

@@ -1,6 +1,6 @@
 import {ACTION_ICONS, FILE_BROWSER_ICONS, createModuleLogger, randomUUID, t} from '@itookit/common';
 import {kanbanReference, type KanbanBoardSummary, type KanbanClient} from '@itookit/kanban/contracts';
-import {createVFSBrowser, type BrowserNode, type VFSBrowser} from '@itookit/vfs-ui';
+import {createVFSBrowser, type BrowserNode, type VFSBrowser, type WindowManagementOptions} from '@itookit/vfs-ui';
 import {nestOSVFSPresentation} from '../browser/vfs-presentation';
 import {ViewRefresh} from '../lifecycle/view-refresh';
 
@@ -9,6 +9,7 @@ interface Options {
     navigate(path: string): Promise<void>;
     create(): Promise<void>;
     report(error: unknown): void;
+    windowManagement?: WindowManagementOptions;
 }
 const log = createModuleLogger('kanban-sidebar');
 
@@ -27,8 +28,7 @@ export class KanbanSidebar {
         this.list.className = 'kanban-sidebar__list'; this.status.setAttribute('role', 'alert'); this.status.hidden = true;
         options.container.classList.add('kanban-sidebar'); options.container.append(this.status, this.list);
         this.browser = createVFSBrowser({container: this.list, title: t('kanban.title'), searchPlaceholder: t('kanban.search'),
-            presentation: nestOSVFSPresentation, appearance: {showTimestamp: false}, selection: false, navigationHeader: {layout: 'inline'},
-            toolbarOptions: {variant: 'plain', iconOnlyActions: ['create', 'refresh']},
+            presentation: nestOSVFSPresentation, appearance: {showTimestamp: false}, selection: false, windowManagement: options.windowManagement,
             source: {get: async id => this.nodes.find(node => node.id === id), children: async parent => parent === null ? this.nodes : [], subscribe: () => () => {}},
             onActivate: node => {void options.navigate(node.id).catch(error => this.failure(error));}, onError: error => this.failure(error),
             actions: [

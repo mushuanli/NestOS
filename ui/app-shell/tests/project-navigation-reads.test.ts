@@ -119,7 +119,7 @@ it('boots when the persisted selection names a route this build no longer serves
         fileFactory: factory as never, directoryMounts: mounts, projects: projects, uiPersistence: { load: () => restored } });
     try {
         await workbench.start();
-        expect(sidebar.querySelector('.workbench-sidebar__navigation')).toBeTruthy();
+        expect(sidebar.querySelector('.vfs-sidebar__navigation')).toBeTruthy();
         expect(sidebar.querySelector('.vfs-columns')).toBeNull();
         expect(workbench.getActiveResourceId()).not.toBe('/@flows');
     } finally {

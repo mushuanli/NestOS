@@ -214,7 +214,7 @@ LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原�
 
 - ToolPackagesDialog 通过通用 ToolPackageInfo.guide 展示包自带的 YAML 指南，注册前后均保留入口；文本/命令转义且不执行，链接仅使用宿主已校验的 HTTPS 地址，刷新保留展开状态。工具详情在父挂载高度内独立滚动，长参数和长指南不得撑出手机视口。
 
-笔记侧栏刷新后的纯图标通过通用 toolbar extraItems 打开 `@study` 学习页。Workbench 根据 cloze 工作区配置注入通用 virtualViews，编辑器连接器为虚拟页复用标签与生命周期；虚拟身份不传给 VFS 文件读取；学习页通过通用 virtualViews.preview:false 打开为保留标签，打开原文不会替换学习页，用户仍可主动关闭。StudyView 及队列位于 mdxeditor，NestOS 只装配文档/存储端口。
+笔记侧栏更多菜单通过通用 toolbar extraItems 打开 `@study` 学习页。Workbench 根据 cloze 工作区配置注入通用 virtualViews，编辑器连接器为虚拟页复用标签与生命周期；虚拟身份不传给 VFS 文件读取；学习页通过通用 virtualViews.preview:false 打开为保留标签，打开原文不会替换学习页，用户仍可主动关闭。StudyView 及队列位于 mdxeditor，NestOS 只装配文档/存储端口。
 
 文件工作台消费 VFS 已提交的移动与重命名事件，按目录前缀同步已打开及待恢复标签的身份、位置、编辑器保存目标和当前路由。目录页原地更新面包屑、条目与刷新目标，保留筛选和滚动；跨移动返回的旧刷新结果或 ENOENT 必须丢弃并读取新路径。当前资源迁移使用 replace 更新历史，不新增导航步骤。
 
@@ -229,7 +229,7 @@ LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原�
 browser/study-sources 将可引用工作区和项目文件视图适配为独立编辑器的通用来源能力：空范围只投影项目/nav 位置，不打开文件空间；选定来源后才列目录，无关键词仅当前层，有关键词最多两级子目录、20 个目录、50 个结果。多关键词在空间名和路径共同匹配；读取时重验来源、文件类型、隐藏路径和 8 MiB 限制，项目视图用后释放。配置、权限与正文不进入日志。
 
 
-学习生成的 NestOS 错误码只在 study-generation 适配边界映射为 recovery:pending；核心重试通过 generation.resume 观察原操作。AbortSignal 停止观察，generation.cancel 显式取消对应提交；不再传递 STUDY_DRAFT_SUSPENDED 字符串协议。保存后的 Session 标题更新属于宿主 documentSaved，不进入 StudyCreation 契约，失败不改变文件保存结果。笔记工具栏通过 compactLayout:inline、primaryAction:refresh 显式设置布局和主操作，extraItems.after 只表达顺序。
+学习生成的 NestOS 错误码只在 study-generation 适配边界映射为 recovery:pending；核心重试通过 generation.resume 观察原操作。AbortSignal 停止观察，generation.cancel 显式取消对应提交；不再传递 STUDY_DRAFT_SUSPENDED 字符串协议。保存后的 Session 标题更新属于宿主 documentSaved，不进入 StudyCreation 契约，失败不改变文件保存结果。笔记、私密和设置工具栏显式声明三个常用入口，其余动作进入公共更多菜单；extraItems.after 只表达顺序。
 
 桌面 WorkbenchTabs 激活/重新选择文件及 tab 栏尺寸变化时，由 TabBarViewport 在布局后仅横向滚动标签栏，使当前标签进入可见范围；不得用 scrollIntoView 带动正文或祖先滚动。标题/保存状态等后台刷新不强制拉回用户手动浏览的位置；销毁取消动画帧和尺寸观察。手机保留原窗口图标切换及隐藏 tab 栏规则。
 
@@ -247,4 +247,10 @@ browser/study-sources 将可引用工作区和项目文件视图适配为独立�
 
 非侧栏内容标题栏优先通过 WorkbenchTabs.mountTitleBar 接入 ui-common.contentTitleBar，顺序为返回、编辑/未保存状态、可选项目与标题、向上、窗口列表和更多。ui-common 只拥有 DOM、样式和响应式规则；路由、上下层、窗口管理与资源菜单归 app-shell。独立库通过可选插槽接受完整标题栏，不新增应用依赖；提供完整端口时禁止重复挂载 compact/window 局部标题。保留原输入和菜单节点，重绑定先释放旧租约，迟到销毁不得移走新标题栏的控件。应用手机 JS 使用 MOBILE_NAVIGATION_QUERY，底部导航显隐只由 mobile-shell-state 统一决定。
 
-看板侧栏通过 vfs-ui BrowserOptions.navigationHeader:inline 与 toolbarOptions 的公开能力将搜索、新建、刷新放在同一行，不挂按编号打开入口。会话链接由 kanban/links 适配 NestOS 路由：执行会话用稳定 ID，原生会话按引用所属 projectId/profileId 解析；普通点击保留应用路由，浏览器修饰键及显式新标签入口不被 click 委托拦截。
+普通侧栏复用 vfs-ui 默认搜索与图标动作同行布局，不在各业务模块重复配置。windowManagement 将 WorkbenchTabs 的打开回调、数量和订阅交给 vfs-ui；外围 WorkbenchSidebar 也复用同一窗口按钮。日历与数字分身通过 workspaces/page-windows 接入共享窗口注册、状态保留和关闭检查。智能体移除常驻多选按钮，保留 Ctrl/Cmd、Shift 范围选择及条目菜单的触屏多选入口。
+
+文件工作区（笔记、私密、设置）通过 toolbarOptions 只将新建文件、新建目录及 `/` 设为 inlineActions，刷新、Anki 与传输进入更多菜单。只读设置导航隐藏创建和导入，保留 `/` 与更多菜单，不提供无效写入动作。
+
+WorkbenchSidebar 只适配 WorkbenchSnapshot 与 vfs-ui SidebarState，页签 DOM、宽度拖拽和对应样式归 vfs-ui.Sidebar。NavigationFilters 只注入文案、图标与业务 content 槽样式，弹窗和筛选标签交互归 vfs-ui.FilterPanel；不在宿主复制公共控件样式。
+
+看板侧栏不挂按编号打开入口。会话链接由 kanban/links 适配 NestOS 路由：执行会话用稳定 ID，原生会话按引用所属 projectId/profileId 解析；普通点击保留应用路由，浏览器修饰键及显式新标签入口不被 click 委托拦截。

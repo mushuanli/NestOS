@@ -327,7 +327,7 @@ export class SessionWorkbench implements WorkspaceController {
             error: error => this.report(error), changed: () => this.sidebarLayout?.save(this.tabs.snapshot()),
         }, options.workbenchState?.load()?.tabs, options.windows);
         this.sidebarLayout = new WorkbenchSidebar(this.sidebar, this.tabs.opened, options.workbenchState, undefined,
-            container => this.tabs.mountWindowList(container, false));
+            this.tabs.windowManagement);
         if (options.agents && this.projects) {
             this.agentDrawer = new AgentDrawer({backend: this.backend, resourceId: options.agents.resourceId,
                 usage: options.agents.usage, rename: options.agents.rename, remove: options.agents.remove, navigate: request => this.hostContext?.navigate(request) ?? Promise.resolve(),

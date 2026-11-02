@@ -28,6 +28,7 @@ it('shares real opened windows with the shell and navigates item, board and cata
     const f = await fixture();
     await f.workbench.openResource('/board/b/card'); expect(f.queries).toHaveBeenCalledTimes(1);
     expect(f.registry.items().map(item => item.id)).toEqual(['/board/b/card']);
+    expect(f.sidebar.querySelector('.vfs-window-management')).not.toBeNull();
     expect(f.active().querySelector('[data-panel] .kanban__panel-header .workbench-window-list')).not.toBeNull();
     f.active().querySelector<HTMLButtonElement>('[data-panel] [data-window-navigation=parent]')!.click();
     await vi.waitFor(() => expect(f.workbench.getActiveResourceId()).toBe('/board/b')); await idle(f.active);
@@ -97,5 +98,6 @@ it('keeps search, create and refresh in the shared browser header without a refe
     const refresh = f.sidebar.querySelector<HTMLButtonElement>('button[aria-label="' + t('kanban.refresh') + '"]')!;
     expect(search.closest('.vfs-node-list__header')?.contains(create)).toBe(true);
     expect(search.closest('.vfs-node-list__header')?.contains(refresh)).toBe(true);
+    expect(create.closest('details')).toBeNull(); expect(refresh.closest('details')).toBeNull();
     expect(f.sidebar.querySelector('button[aria-label="' + t('kanban.openReference') + '"]')).toBeNull();
 });

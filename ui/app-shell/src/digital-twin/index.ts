@@ -23,6 +23,7 @@ export interface TwinWorkbenchOptions {
     service: DigitalTwinService; sidebar: HTMLElement; editor: HTMLElement;
     connections(): Promise<Array<{ id: string; name: string }>>;
     packages?: ToolPackages;
+    showNavigationTitle?: boolean;
     projects?(): Promise<Array<{id: string; name: string}>>;
     selected(path: string): void;
 }
@@ -62,7 +63,7 @@ export class TwinWorkbench {
         this.navigation = new TwinNavigation(options.sidebar, path => this.openResource(path), error => {
             if (this.abort.signal.aborted) return;
             this.error = label('loadError') + errorDetail(error); this.render();
-        }, path => this.snapshot ? `/workspace/${encodeURIComponent(this.snapshot.workspace.id)}${path}` : path);
+        }, path => this.snapshot ? `/workspace/${encodeURIComponent(this.snapshot.workspace.id)}${path}` : path, options.showNavigationTitle);
     }
 
     async start(): Promise<void> {

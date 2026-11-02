@@ -24,7 +24,7 @@ export class KanbanWindowWorkbench {
             dispose: tab => this.disposePage(tab), empty: () => this.showList(),
             error: error => this.report(error), changed: () => this.syncVisibility(),
         }, undefined, options.windows);
-        this.navigation = new KanbanSidebar({container: options.sidebar, service: options.service, navigate: path => this.navigate(path),
+        this.navigation = new KanbanSidebar({container: options.sidebar, service: options.service, navigate: path => this.navigate(path), windowManagement: this.tabs.windowManagement,
             create: () => this.openBoardCreation(), report: error => this.report(error)});
         const host = document.createElement('div'); host.hidden = true; host.append(this.tabs.opened); options.sidebar.append(host);
     }

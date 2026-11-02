@@ -62,7 +62,7 @@ it('creates project Sessions from the selected project and edits its files in th
         selector.value = projectPath; selector.dispatchEvent(new Event('change', { bubbles: true }));
         await vi.waitFor(() => expect(selector.value).toBe(projectPath));
         await workbench.openResource(projectPath);
-        const navigation = sidebar.querySelector('.workbench-sidebar__navigation')!;
+        const navigation = sidebar.querySelector('.vfs-sidebar__navigation')!;
         expect(navigation.textContent).toContain('Research');
         for (const [segment, title] of [['@files', t('project.files')], ['@favorites', t('project.favorites')]]) {
             const row = navigation.querySelector(`[data-item-id="${projectPath}/${segment}"]`)!;

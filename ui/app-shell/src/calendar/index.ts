@@ -8,6 +8,7 @@ interface Options {
     files: IFileSystem; sidebar: HTMLElement; editor: HTMLElement;
     selected(path: string): void; scanners(): Promise<void>;
     sourceNames?(): Promise<Record<string, string>>;
+    showNavigationTitle?: boolean;
 }
 
 export class CalendarWorkbench {
@@ -87,7 +88,7 @@ export class CalendarWorkbench {
         }
     }
     private renderSidebar(): void {
-        this.options.sidebar.innerHTML = calendarSidebar(this.snapshot.sources, this.disabled);
+        this.options.sidebar.innerHTML = calendarSidebar(this.snapshot.sources, this.disabled, this.options.showNavigationTitle);
         this.options.sidebar.querySelector<HTMLInputElement>('[data-calendar-search]')!.value = this.query;
     }
     private renderMain(): void {

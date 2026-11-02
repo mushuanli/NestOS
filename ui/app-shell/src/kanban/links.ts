@@ -13,7 +13,7 @@ export function kanbanReferenceLink(projects: Pick<ProjectService, 'get'>) {
         try {scope = JSON.parse(reference.revision ?? '{}');} catch {return;}
         if (typeof scope.projectId !== 'string' || typeof scope.profileId !== 'string') return;
         const project = await projects.get(scope.projectId);
-        return {href: workbenchUrl(remoteSessionPath(project.path, scope.profileId, reference.id)), label: t('kanban.nativeSession')};
+        return {href: workbenchUrl(remoteSessionPath(project.path, scope.profileId, reference.id)), label: `${t('kanban.nativeSession')} · ${scope.profileId} · ${reference.id}`};
     };
 }
 function workbenchUrl(resource: string): string {return `${location.href.split('#')[0]}#/workbench/${encodeURIComponent(resource)}`;}

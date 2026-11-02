@@ -14,11 +14,12 @@ it('keeps the shared sidebar file and directory creation actions usable', async 
         editorFactory: async () => ({ destroy() {} }) as never });
     try {
         await workbench.start();
-        expect(sidebar.querySelector('.workbench-sidebar__title')?.textContent).toBe('Minds');
+        expect(sidebar.querySelector('.vfs-sidebar__title')?.textContent).toBe('Minds');
         expect(sidebar.querySelector('.vfs-node-list--hide-title')).not.toBeNull();
         const root = sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!;
         expect(root.textContent).toBe('/');
-        expect(root.nextElementSibling?.getAttribute('data-action')).toBe('refresh');
+        expect(root.closest('details')).toBeNull();
+        expect(sidebar.querySelector('[data-action="refresh"]')!.closest('details')).not.toBeNull();
         sidebar.querySelector<HTMLButtonElement>('[data-action="create-directory"]')!.click();
         await vi.waitFor(() => expect(sidebar.querySelector('.vfs-node-list__item-creator-input')).not.toBeNull());
         const input = sidebar.querySelector<HTMLInputElement>('.vfs-node-list__item-creator-input')!;
@@ -47,6 +48,19 @@ it.each(['create-file', 'create-directory'] as const)('respects an explicit host
         const visible = action === 'create-file' ? 'create-directory' : 'create-file';
         expect(sidebar.querySelector(`[data-action="${visible}"]`)).not.toBeNull();
     } finally { await workbench.destroy(); sidebar.remove(); main.remove(); await manager.dispose(); }
+});
+
+it('keeps read-only settings navigation free of creation controls with refresh in the menu', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}), fs = await manager.openFileSystem('/');
+    const sidebar = document.createElement('aside'), main = document.createElement('main'); document.body.append(sidebar, main);
+    const workbench = new Workbench({files: {fs, cwd: '/'}, sidebarContainer: sidebar, editorContainer: main, uiOptions: {readOnly: true, title: 'Settings'}});
+    try {
+        await workbench.start();
+        for (const action of ['create-file', 'create-directory', 'import']) expect(sidebar.querySelector(`[data-action="${action}"]`)).toBeNull();
+        expect(sidebar.querySelector('[data-action="open-root"]')!.closest('details')).toBeNull();
+        expect(sidebar.querySelector('[data-action="refresh"]')!.closest('details')).not.toBeNull();
+        expect(sidebar.querySelector('.vfs-window-management')).not.toBeNull();
+    } finally {await workbench.destroy(); sidebar.remove(); main.remove(); await manager.dispose();}
 });
 
 it('keeps file-page select-all and sidebar checkbox toggles in sync', async () => {

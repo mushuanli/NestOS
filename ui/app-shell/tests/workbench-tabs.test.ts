@@ -281,7 +281,7 @@ it('restores sidebar width while ignoring obsolete collapsed sections', () => {
     expect(state.width).toBe(336); expect(host.querySelector('[data-section="opened"]')).toBeNull();
     expect(host.querySelector<HTMLElement>('[data-section="navigation"]')!.hidden).toBe(false);
     sidebar.destroy(); const restored = new WorkbenchSidebar(host, document.createElement('div'), port);
-    expect(host.style.getPropertyValue('--workbench-sidebar-width')).toBe('336px'); restored.destroy();
+    expect(host.style.getPropertyValue('--vfs-sidebar-width')).toBe('336px'); restored.destroy();
 });
 it('filters full filenames and preserves its query across a metadata refresh', async () => {
     const open = vi.fn();
@@ -354,7 +354,7 @@ it('opens files from the root details, filters ignored files and returns to the 
         expect(factory).not.toHaveBeenCalled();
         sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!.click();
         await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/完整文件名称.md"]'), main.innerHTML).not.toBeNull());
-        const refresh = sidebar.querySelector<HTMLButtonElement>('.workbench-sidebar__navigation [data-action="refresh"]')!;
+        const refresh = sidebar.querySelector<HTMLButtonElement>('.vfs-sidebar__navigation [data-action="refresh"]')!;
         expect(refresh).not.toBeNull(); expect(refresh.hidden).toBe(false);
         expect(refresh.closest('[hidden]')).toBeNull(); expect(refresh.disabled).toBe(false);
         expect(refresh.title).toBe('刷新'); expect(refresh.querySelector('svg')).not.toBeNull();

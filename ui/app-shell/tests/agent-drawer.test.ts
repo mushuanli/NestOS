@@ -116,9 +116,10 @@ function openMenu(drawer: AgentDrawer, id: string): void {
     drawer.element.querySelector<HTMLElement>(`[data-item-id="${id}"] [data-action="item-menu"]`)!.click();
 }
 async function selectAgents(f: ReturnType<typeof setup>, ids: string[]): Promise<void> {
-    f.drawer.element.querySelector<HTMLButtonElement>('[data-action="select-items"]')!.click();
+    openMenu(f.drawer, ids[0]);
+    document.querySelector<HTMLButtonElement>('.vfs-context-menu [data-action="select-agents"]')!.click();
     await vi.waitFor(() => expect(f.drawer.element.querySelector('[data-action="toggle-selection"]')).not.toBeNull());
-    for (const id of ids) f.drawer.element.querySelector<HTMLElement>(`[data-item-id="${id}"]`)!.click();
+    for (const id of ids.slice(1)) f.drawer.element.querySelector<HTMLElement>(`[data-item-id="${id}"]`)!.click();
 }
 it('selects multiple agents by touch and deletes them after one confirmation without launching', async () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
@@ -202,4 +203,20 @@ it('does not continue a batch or restore UI after destruction during a deletion'
     await vi.waitFor(() => expect(f.remove).toHaveBeenCalledOnce());
     await f.drawer.destroy(); finish(); await new Promise(resolve => setTimeout(resolve, 0));
     expect(f.remove).toHaveBeenCalledOnce(); expect(f.drawer.element.isConnected).toBe(false);
+});
+
+it('keeps actions beside search without a multi-select button and supports Shift and Ctrl selection', async () => {
+    const f = setup(); f.drawer.setExpanded(true);
+    await vi.waitFor(() => expect(f.drawer.element.querySelector('[data-item-id="writer"]')).not.toBeNull());
+    expect(f.drawer.element.querySelector('[data-action="select-items"]')).toBeNull();
+    const search = f.drawer.element.querySelector('input')!, header = search.closest('.vfs-node-list__header')!;
+    for (const action of ['create-agent', 'refresh-agents']) {
+        const button = header.querySelector(`[data-action="${action}"]`)!;
+        expect(button.closest('details')).toBeNull(); expect(button.querySelector('svg')).not.toBeNull();
+    }
+    const row = (id: string) => f.drawer.element.querySelector<HTMLElement>(`[data-item-id="${id}"]`)!;
+    row('writer').dispatchEvent(new MouseEvent('click', {bubbles: true, ctrlKey: true}));
+    row('coder').dispatchEvent(new MouseEvent('click', {bubbles: true, shiftKey: true}));
+    expect(f.drawer.element.querySelectorAll('input[data-action="toggle-selection"]:checked')).toHaveLength(2);
+    expect(f.start).not.toHaveBeenCalled();
 });

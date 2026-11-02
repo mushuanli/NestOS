@@ -58,7 +58,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         empty: () => { placeholder(); onEditorCreated?.(null); }, error: report,
         changed: () => sidebar?.save(tabs.snapshot()),
     }, workbenchState?.load()?.tabs, windows);
-    if (sidebarContainer) sidebar = new WorkbenchSidebar(sidebarContainer, tabs.opened, workbenchState, navigationLabel, container => tabs.mountWindowList(container, false));
+    if (sidebarContainer) sidebar = new WorkbenchSidebar(sidebarContainer, tabs.opened, workbenchState, navigationLabel, tabs.windowManagement);
     async function flush(editor?: IEditor): Promise<void> {
         if (editor?.flushPendingSave) await editor.flushPendingSave();
         else if (editor?.isDirty?.()) throw new Error('Dirty editor does not support flushing');

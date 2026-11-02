@@ -1049,9 +1049,9 @@ it('combines capability chips with search, keeps provider groups, and never labe
     for (const model of ['picture', 'speech', 'ordinary']) await runtime.agentService.saveConnection({id: 'media-' + model, name: 'Media ' + model, providerId: 'media-filter', tiers: {optimal: model}});
     await vi.waitFor(() => expect(f.inventory.connections.get('media-speech')?.capabilityTags).toContain('speech.synthesize'));
     f.workbench.setFilter('models');
-    const trigger = f.sidebar.querySelector<HTMLButtonElement>('.workbench-filters__trigger')!;
+    const trigger = f.sidebar.querySelector<HTMLButtonElement>('.vfs-filter-panel__trigger')!;
     expect(trigger.hidden).toBe(false); trigger.click();
-    const details = document.querySelector<HTMLElement>('.workbench-filters .toolbox-capabilities')!;
+    const details = document.querySelector<HTMLElement>('.vfs-filter-panel .toolbox-capabilities')!;
     expect(details.hidden).toBe(false);
     document.querySelector<HTMLButtonElement>('[data-capability="image.generate"]')!.click();
     expect(f.sidebar.querySelector('[data-item-id="/connections/media-picture"]')).not.toBeNull();
@@ -1059,7 +1059,7 @@ it('combines capability chips with search, keeps provider groups, and never labe
     const search = f.sidebar.querySelector<HTMLInputElement>('input[type=search]')!;
     search.value = 'Media ' + search.value; search.dispatchEvent(new Event('input', {bubbles: true}));
     await vi.waitFor(() => expect(search.value).toContain('Media'));
-    document.querySelector<HTMLButtonElement>('.workbench-filters .toolbox-capabilities > button')!.click();
+    document.querySelector<HTMLButtonElement>('.vfs-filter-panel .toolbox-capabilities > button')!.click();
     expect(search.value).toBe('Media');
     document.querySelector<HTMLButtonElement>('[data-capability="speech.synthesize"]')!.click();
     expect(search.value).toBe('Media tag:speech.synthesize');

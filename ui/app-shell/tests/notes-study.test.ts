@@ -5,7 +5,7 @@ import { Workbench } from '../src/core/Workbench';
 import {registerStudyDocument, createAdapterStore} from '@itookit/mdx-adapter';
 import {studyIndex} from '../../mdx-adapter/src/study-index';
 afterEach(() => { vi.unstubAllGlobals(); document.body.replaceChildren(); });
-it.each(['full', 'compact'] as const)('opens study after refresh in the %s sidebar and keeps transfers in the menu', async toolbar => {
+it.each(['full', 'compact'] as const)('opens study from the %s sidebar menu and keeps only file, directory and root inline', async toolbar => {
  vi.stubGlobal('matchMedia', () => ({ matches:false, addEventListener(){}, removeEventListener(){} }));
  const { manager } = await createVFS({rootBackend:new MemoryBackend()}); const fs = await manager.openFileSystem('/');
  await fs.driver.createFile({parentPath:'/',name:'a.mind',content:'A --alpha--.'});
@@ -16,11 +16,12 @@ it.each(['full', 'compact'] as const)('opens study after refresh in the %s sideb
  try {
   await workbench.start();
   const button = sidebar.querySelector<HTMLButtonElement>('[data-action="study"]'); expect(button).not.toBeNull();
-  expect(button!.closest('details')).toBeNull();
-  const refresh = sidebar.querySelector('[data-action=refresh]')!; expect(refresh.nextElementSibling).toBe(button);
+  expect(button!.closest('details')).not.toBeNull();
+  const refresh = sidebar.querySelector('[data-action=refresh]')!; expect(refresh.closest('details')).not.toBeNull();
+  for (const id of ['create-file', 'create-directory', 'open-root']) expect(sidebar.querySelector(`[data-action="${id}"]`)!.closest('details')).toBeNull();
   const menu = sidebar.querySelector<HTMLDetailsElement>('.vfs-toolbar-overflow')!; expect(menu.open).toBe(false);
   expect(menu.querySelector('[data-action=import]')).not.toBeNull(); expect(menu.querySelector('[data-action=export]')).not.toBeNull();
-  expect(button!.querySelector('svg')).not.toBeNull(); expect(button!.textContent).toBe('');
+  expect(button!.querySelector('svg')).not.toBeNull(); expect(button!.textContent).toContain('Anki');
   expect(button!.getAttribute('aria-label')).toBe('Anki 学习管理');
   button!.click();
   await vi.waitFor(()=>expect(content.querySelector('.mdx-study')).not.toBeNull(), {timeout:5000});

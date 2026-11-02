@@ -196,7 +196,8 @@ export class KanbanWorkbench {
         const started = Date.now();
         const results = await Promise.allSettled(references.filter(ref => !skip.has(ref.id)).map(ref => this.options.referenceLink!(ref)));
         if (!this.alive(generation)) return;
-        const links = results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
+        const resolved = results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
+        const links = [...new Map(resolved.map(link => [link.href, link])).values()];
         const slot = this.panel().querySelector('[data-reference-links]');
         if (slot) slot.innerHTML = links.map(link => linkPair(this.options.presentation, link.href, link.label, link.sessionId)).join('');
         const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');

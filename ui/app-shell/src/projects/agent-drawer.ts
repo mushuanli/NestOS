@@ -88,7 +88,7 @@ export class AgentDrawer {
         this.browser = createVFSBrowser({container: this.rows, title: t('toolbox.agents'), presentation: nestOSVFSPresentation,
             searchPlaceholder: t('workbench.findAgents'),
             appearance: {showTitle: false, showTimestamp: false, menuVisibility: 'always'},
-            sort: {by: 'lastModified', direction: 'desc'}, selection: true,
+            sort: {by: 'lastModified', direction: 'desc'}, selection: false,
             source: {children: async parent => parent === null ? this.entries.map(agent => this.node(agent)) : [],
                 get: async id => {const agent = this.entries.find(entry => entry.id === id); return agent ? this.node(agent) : undefined;},
                 subscribe: () => () => {}}, actions: this.actions(), onError: error => this.report(error),
@@ -100,8 +100,10 @@ export class AgentDrawer {
     private actions(): BrowserAction[] {
         const toolbar = (id: string, label: string, run: () => Promise<void>, iconHTML?: string): BrowserAction =>
             ({id, label, iconHTML, placements: ['toolbar'], run});
-        return [toolbar('create-agent', t('workbench.createAgent'), () => this.create()),
+        return [toolbar('create-agent', t('workbench.createAgent'), () => this.create(), FILE_BROWSER_ICONS.addFile),
             toolbar('refresh-agents', t('workbench.refresh'), async () => {this.dirty = true; await this.refresh();}, FILE_BROWSER_ICONS.refresh),
+            {id: 'select-agents', label: t('vfs.toolbar.select'), placements: ['menu'],
+                run: async ({target}) => {this.browser?.setSelectionMode(true); if (target) this.browser?.select([target.id]);}},
             this.menu('assistant-add-shortcut', t('assistant.addToShortcuts'), async agent => {if (agent.path) requestAssistantShortcut({title: agent.name, context: t('toolbox.agents'), target: {kind: 'resource', workspace: 'toolbox', resource: agent.path}});}),
             this.menu('configure-agent', t('workbench.configureAgent'), agent => this.configure(agent)),
             ...(this.options.rename ? [this.menu('rename-agent', t('action.rename'), agent => this.rename(agent), true)] : []),

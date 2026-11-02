@@ -19,5 +19,5 @@ export function compactNavigation(container: HTMLElement, context: string, back:
             view.element.classList.add('workbench-compact-navigation'); container.append(view.element);
         }
         view.update({title: name, context: currentContext});
-    }, destroy() {cleanup(); navigation?.destroy(); view.destroy();}};
+    }, destroy() {cleanup(); navigation?.destroy(); opened.destroy(); view.destroy();}};
 }

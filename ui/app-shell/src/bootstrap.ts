@@ -28,11 +28,12 @@ import { FSError } from '@itookit/vfs-core';
 import { createFileChatHandler } from './projects/file-chat';
 import { createOcrControls } from './configuration/ocr-controls';
 import { ConfigurationDeletionDialog } from './configuration/delete-dialog';
-import { createTwinModule } from './digital-twin';
+import { TwinWorkbench } from './digital-twin';
+import {createPageWindows} from './workspaces/page-windows';
 import {sessionUrl, kanbanReferenceLink} from './kanban/links';
 import {createKanbanWorkspace} from './kanban';
 import {createMailModule} from './mail';
-import {createCalendarModule} from './calendar';
+import {CalendarWorkbench} from './calendar';
 import { createToolboxModule } from './toolbox';
 import { TOOLBOX_SCOPE } from './toolbox/ToolboxWorkbench';
 import { TOOLBOX_KINDS, legacyToolboxRoute, toolboxSettingsRoute } from './toolbox/routes';
@@ -338,10 +339,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         if (strategyType === 'calendar') {
             const toolbox = await backend.toolboxView(); own(() => toolbox.dispose());
-            const module = createCalendarModule({files: await vfs.openFileSystem(workspaceRoot(wsConfig.workspaceName)),
-                sidebar: sidebarEl, editor: editorEl, selected: path => selectionHistory(elementId, path, 'replace'),
+            const files = await vfs.openFileSystem(workspaceRoot(wsConfig.workspaceName));
+            const module = createPageWindows({sidebar: sidebarEl, editor: editorEl, title: translate('calendar.title'), windows: windowBinding, initialResource,
+                titleFor: path => `${translate('calendar.title')}${path.split('/')[1] ? ' · ' + path.split('/')[1] : ''}`,
+                selected: path => selectionHistory(elementId, path, 'replace'), create: host => new CalendarWorkbench({...host, files, showNavigationTitle: false,
                 sourceNames: async () => Object.fromEntries((await toolbox.resources.toolPackages?.connections?.snapshot())?.connections.map(connection => [connection.id, connection.name]) ?? []),
-                scanners: () => handleNavigationRequest({target: 'twin', resourceId: '/sources'})});
+                scanners: () => handleNavigationRequest({target: 'twin', resourceId: '/sources'})})});
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
             if (visibleWorkspaceId !== elementId || document.hidden) module.workbench.setVisible?.(false);
             else options.onWorkspaceReady?.({editor: editorEl});
@@ -361,13 +364,14 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         if (strategyType === 'twin') {
             if (!services.digitalTwin) throw new Error('Digital twin is unavailable in this services');
+            const service = services.digitalTwin;
             const toolbox = await backend.toolboxView(); own(() => toolbox.dispose());
-            const module = createTwinModule({ service: services.digitalTwin, sidebar: sidebarEl, editor: editorEl,
+            const module = createPageWindows({sidebar: sidebarEl, editor: editorEl, title: translate('twin.title'), windows: windowBinding, initialResource,
+                selected: path => selectionHistory(elementId, path, 'replace'), create: host => new TwinWorkbench({...host, service, showNavigationTitle: false,
                 packages: toolbox.resources.toolPackages,
                 projects: async () => (await services.projects.list()).map(project => ({id: project.project.id, name: project.name})),
                 connections: async () => (await agentService.getConnections()).filter(connection => connection.enabled)
-                    .map(connection => ({ id: connection.id, name: connection.name })),
-                selected: path => selectionHistory(elementId, path, 'replace') });
+                    .map(connection => ({ id: connection.id, name: connection.name }))})});
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
             if (visibleWorkspaceId !== elementId || document.hidden) await module.workbench.setVisible?.(false);
             else options.onWorkspaceReady?.({ editor: editorEl });

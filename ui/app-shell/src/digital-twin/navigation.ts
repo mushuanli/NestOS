@@ -25,14 +25,14 @@ export class TwinNavigation {
     private stopped = false;
     private pending = Promise.resolve();
 
-    constructor(container: HTMLElement, navigate: (path: string) => Promise<void>, report: (error: unknown) => void, resource: (path: string) => string = path => path) {
+    constructor(container: HTMLElement, navigate: (path: string) => Promise<void>, report: (error: unknown) => void, resource: (path: string) => string = path => path, showTitle = true) {
         const rank = (id: string) => TWIN_PAGES.indexOf(id.slice(1) as typeof TWIN_PAGES[number]);
         this.list = new VFSUIShell({
             sessionListContainer: container, source: twinNavigationSource(), title: t('twin.title'),
             searchPlaceholder: t('twin.navigationSearch'),
             presentation: nestOSVFSPresentation, readOnly: true, autoSelectFirst: false,
             persistence: false, hideGitignored: false, toolbar: 'hidden',
-            appearance: { showTimestamp: false }, defaultUiSettings: { showSummary: false, showTags: false, showBadges: false },
+            appearance: { showTitle, showTimestamp: false }, defaultUiSettings: { showSummary: false, showTags: false, showBadges: false },
             sort: { by: 'title', direction: 'asc' }, compareItems: (a, b) => rank(a.id) - rank(b.id),
             listItems: items => items.map(item => ({ ...item, metadata: { ...item.metadata,
                 custom: { ...item.metadata.custom, navigationMenu: true } } })),

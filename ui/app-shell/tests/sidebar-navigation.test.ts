@@ -49,7 +49,7 @@ it('defers resource navigation for a restored agent view and refreshes changes o
     await (f.workbench as unknown as {refresh(): Promise<void>}).refresh();
     expect(f.navigation).not.toHaveBeenCalled();
     await f.select('navigation'); expect(f.navigation).toHaveBeenCalled();
-    expect(f.sidebar.querySelector('.workbench-sidebar__navigation')?.textContent).toContain(project.name);
+    expect(f.sidebar.querySelector('.vfs-sidebar__navigation')?.textContent).toContain(project.name);
 });
 
 it('does not read agents before selection or change the active draft and project when switching views', async () => {

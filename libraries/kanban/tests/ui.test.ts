@@ -169,7 +169,7 @@ it('renders real Session anchors and preserves modified clicks for browser tabs'
 it('shows projected activity as a read-only record with independently resolved Session links', async () => {
     const f = await fixture(); const board = await f.service.create({id: 'logs', title: 'Logs', scope: {kind: 'system'}, members: [{kind: 'human', id: 'person', responsibility: 'Manage'}]});
     const record = {id: 'activity-one', title: 'Completed', kind: 'log', content: 'Verified', status: 'confirmed', origin: 'flow', author: {kind: 'service', id: 'system'}, createdAt: 1, updatedAt: 1,
-        itemIds: [], sources: [], revision: 1, activity: {stage: 'execution.succeeded', result: 'success'}, externalRefs: [{system: 'opaque', id: 'session'}]};
+        itemIds: [], sources: [], revision: 1, activity: {stage: 'execution.succeeded', result: 'success'}, externalRefs: [{system: 'opaque', id: 'session'}, {system: 'opaque', id: 'alias'}]};
     const executions = vi.fn(async () => {throw new Error('Must not query a log as a decision');});
     Object.assign(f.service, {record: async () => record, recordExecutions: executions});
     const {KanbanWorkbench} = await import('../src/ui'); const editor = document.createElement('main'); document.body.append(editor);
@@ -177,6 +177,7 @@ it('shows projected activity as a read-only record with independently resolved S
         referenceLink: async () => ({href: '#/workbench/session', label: 'Execution', sessionId: 'session'})}); closes.push(() => view.destroy()); await view.start();
     expect(editor.querySelector('[data-form=record-link]')).toBeNull(); expect(executions).not.toHaveBeenCalled();
     expect(editor.querySelector<HTMLAnchorElement>('[data-reference-links] a')!.href).toContain('#/workbench/session');
+    expect(editor.querySelectorAll('[data-reference-links] a[target=_blank]')).toHaveLength(1);
 });
 it('returns an updated log view to the first page when background activity invalidates its cursor', async () => {
     const f = await fixture();

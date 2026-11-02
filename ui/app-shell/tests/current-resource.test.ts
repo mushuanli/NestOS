@@ -89,7 +89,7 @@ it('reports navigation visibility only for visible surfaces and releases observe
     const layout = document.querySelector<HTMLElement>('.mm-layout')!, sidebar = document.querySelector<HTMLElement>('.mm-sidebar')!, changed = vi.fn();
     const close = observeNavigationVisibility(layout, sidebar, changed); expect(changed).toHaveBeenLastCalledWith(false);
     layout.dataset.mobileView = 'list'; await vi.waitFor(() => expect(changed).toHaveBeenLastCalledWith(true));
-    const resourcePane = document.createElement('section'); resourcePane.className = 'workbench-sidebar__section';
+    const resourcePane = document.createElement('section'); resourcePane.className = 'vfs-sidebar__section';
     resourcePane.dataset.section = 'navigation'; sidebar.append(resourcePane); resourcePane.hidden = true;
     await Promise.resolve(); expect(changed).toHaveBeenLastCalledWith(true);
     sidebar.classList.add('is-collapsed'); await vi.waitFor(() => expect(changed).toHaveBeenLastCalledWith(false));
@@ -115,8 +115,8 @@ it('shows another browser\'s persisted Sessions on a cold project listing and af
         factory: factory as never, fileFactory: factory as never, onSelect() {}, hostContext: undefined});
     releases.push(() => workbench.destroy()); await workbench.start();
     const path = '/folder:Personal'; await workbench.openResource(path);
-    await vi.waitFor(() => expect(sidebar.querySelector('.workbench-sidebar__navigation')?.textContent).toContain('Created on phone'));
+    await vi.waitFor(() => expect(sidebar.querySelector('.vfs-sidebar__navigation')?.textContent).toContain('Created on phone'));
     await writer.createSession('Created on second browser', folder);
     sidebar.querySelector<HTMLButtonElement>('.workbench-project-navigation [data-action="refresh"]')!.click();
-    await vi.waitFor(() => expect(sidebar.querySelector('.workbench-sidebar__navigation')?.textContent).toContain('Created on second browser'));
+    await vi.waitFor(() => expect(sidebar.querySelector('.vfs-sidebar__navigation')?.textContent).toContain('Created on second browser'));
 });

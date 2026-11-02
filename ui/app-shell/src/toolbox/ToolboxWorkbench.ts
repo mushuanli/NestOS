@@ -193,7 +193,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.ui?.refreshList(); this.updateToolbar(); this.persist();
     }
     private updateToolbar(): void {
-        this.ui?.setToolbar({ fileLabel: t('toolbox.new'), fileTitle: t('toolbox.create'), iconOnlyActions: ['create-file'],
+        this.ui?.setToolbar({ fileLabel: t('toolbox.new'), fileTitle: t('toolbox.create'),
             secondary: this.prefs.filter === 'tools' && this.options.resources.toolPackages
                 ? {label: t('toolbox.packages.title'), run: () => {void showToolPackages(this.options.resources, this.abort.signal, () => this.refresh());}}
                 : this.prefs.filter === 'models' ? { label: t('modelDefaults.button'), run: () => { void this.options.navigate({ target: 'settings', resourceId: 'model-defaults' }); } } : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();

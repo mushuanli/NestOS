@@ -6,8 +6,8 @@ export const button = (action: string, title: string) => `<button type="button" 
 const hue = (index: number) => `hsl(${index * 137.5 % 360} 60% 42%)`;
 const color = (event: CalendarEvent, sources: CalendarSource[]) => hue(sources.findIndex(source => source.id === event.sourceId));
 
-export function calendarSidebar(sources: CalendarSource[], disabled: Set<string>): string {
-    return `<h2>${esc(label('title'))}</h2><p>${esc(label('sourcesHelp'))}</p>
+export function calendarSidebar(sources: CalendarSource[], disabled: Set<string>, showTitle = true): string {
+    return `${showTitle ? `<h2>${esc(label('title'))}</h2>` : ''}<p>${esc(label('sourcesHelp'))}</p>
         <label>${esc(label('search'))}<input type="search" data-calendar-search></label>
         <fieldset><legend>${esc(label('sources'))}</legend>${sources.map((source, index) => `<label class="calendar__source"><input type="checkbox" data-calendar-source="${escapeAttr(source.id)}"${disabled.has(source.id) ? '' : ' checked'}><span class="calendar__source-color" style="background:${hue(index)}"></span><span>${esc(source.name)}${source.archivedAt ? `<small>${esc(label('archivedAt'))}: ${esc(new Date(source.archivedAt).toLocaleString(getLocale()))}</small>` : ''}</span></label>`).join('') || `<p>${esc(label('noSources'))}</p>`}</fieldset>
         <button type="button" data-calendar-action="scanners">${esc(label('manageSources'))}</button>

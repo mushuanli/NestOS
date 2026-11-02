@@ -98,7 +98,7 @@ describe('saved project routes at bootstrap', () => {
             app = await f.start();
             expect(location.hash).toBe('#/chat');
             expect(document.body.textContent).toContain('此地址无效或内容已不存在');
-            expect(document.querySelector('.workbench-sidebar__navigation select option[value="@new-project"]')).not.toBeNull();
+            expect(document.querySelector('.vfs-sidebar__navigation select option[value="@new-project"]')).not.toBeNull();
         } finally { await app?.destroy(); await f.dispose(); }
     });
     it('reports the workspace shell before the editor so a host can reveal nav, sidebar, then content', async () => {

@@ -48,11 +48,11 @@ it('opens windows from a single-view sidebar, returns the drawer to its hidden h
     HTMLDialogElement.prototype.close ??= function () {this.open = false; this.dispatchEvent(new Event('close'));};
     const main = document.createElement('main'), host = document.createElement('aside'); document.body.append(host, main);
     const tabs = new WorkbenchTabs(main, {activate: async () => {}, dispose: async () => {}, empty() {}, error(error) {throw error;}});
-    const sidebar = new WorkbenchSidebar(host, tabs.opened, undefined, 'Files', slot => tabs.mountWindowList(slot));
+    const sidebar = new WorkbenchSidebar(host, tabs.opened, undefined, 'Files', tabs.windowManagement);
     cleanup.push(() => sidebar.destroy(), () => tabs.destroy());
     expect(host.querySelector<HTMLElement>('[role="tablist"]')!.hidden).toBe(true);
     expect(host.querySelector('[data-section="opened"]')).toBeNull(); expect(tabs.opened.parentElement!.hidden).toBe(true);
-    const trigger = host.querySelector<HTMLButtonElement>('.workbench-window-list')!; trigger.click();
+    const trigger = host.querySelector<HTMLButtonElement>('.vfs-window-management')!; trigger.click();
     const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
     expect(dialog.open).toBe(true); expect(dialog.contains(tabs.opened)).toBe(true);
     dialog.close();

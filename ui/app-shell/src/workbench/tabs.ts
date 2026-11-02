@@ -12,6 +12,7 @@ import {mountContentTitleBar} from './content-titlebar';
 import type {ContentTitleBarParts} from '@itookit/ui-common-adapter';
 import {MOBILE_NAVIGATION_QUERY} from '@itookit/ui-common-adapter';
 import { Drawer } from '@itookit/vfs-ui';
+import type {WindowManagementOptions} from '@itookit/vfs-ui';
 import type { WorkbenchWindowBinding, WorkbenchWindow } from './windows';
 import {captureEditor, restoreEditor, type EditorRecoveryState} from './recovery';
 
@@ -72,6 +73,7 @@ export class WorkbenchTabs<T> {
     private readonly compactViews = new Map<ReturnType<typeof compactNavigation>, HTMLElement | undefined>();
     private openedDialog?: HTMLDialogElement;
     private readonly windowButtons = new Set<ReturnType<typeof openedButton>>();
+    private readonly windowSubscribers = new Set<() => void>();
     private readonly navigationViews = new Set<ReturnType<typeof windowNavigation>>();
     private readonly titleBars = new Set<ReturnType<typeof mountContentTitleBar>>();
     private openedQuery = '';
@@ -102,6 +104,10 @@ export class WorkbenchTabs<T> {
         this.render();
     }
     get current(): WorkbenchTab<T> | undefined { return this.currentId ? this.entries.get(this.currentId) : undefined; }
+    get windowManagement(): WindowManagementOptions {
+        return {open: origin => this.showOpened(origin), count: () => this.windowCount(),
+            subscribe: changed => {this.windowSubscribers.add(changed); return () => {this.windowSubscribers.delete(changed);};}};
+    }
     mountTitleBar(container: HTMLElement, parts: ContentTitleBarParts = {}, back?: () => void): () => void {
         const view = mountContentTitleBar(container, parts, at => this.mountWindowList(at), back); this.titleBars.add(view);
         view.update({title: this.current?.title ?? '', context: this.current?.context, dirty: this.current?.dirty});
@@ -125,7 +131,7 @@ export class WorkbenchTabs<T> {
         if (navigation) {this.navigationViews.add(navigation); navigation.update(this.canGoUp()); container.append(...navigation.buttons);}
         const view = openedButton(origin => this.showOpened(origin)); container.append(view.button);
         this.windowButtons.add(view); view.update(this.windowCount());
-        return () => {this.windowButtons.delete(view); view.button.remove(); if (navigation) {this.navigationViews.delete(navigation); navigation.destroy();}};
+        return () => {this.windowButtons.delete(view); view.destroy(); if (navigation) {this.navigationViews.delete(navigation); navigation.destroy();}};
     }
     private canGoUp(): boolean {
         const tab = this.current;
@@ -326,6 +332,7 @@ export class WorkbenchTabs<T> {
         for (const view of this.titleBars) view.update({title: this.current?.title ?? '', context: this.current?.context, dirty: this.current?.dirty});
         for (const view of this.navigationViews) view.update(this.canGoUp());
         for (const view of this.windowButtons) view.update(this.windowCount());
+        for (const changed of this.windowSubscribers) changed();
         for (const [view, label] of this.compactViews) view.update(this.current?.title ?? '', this.windowCount(), undefined, label, this.canGoUp());
         this.bar.replaceChildren(); this.openedDrawer.content.replaceChildren();
         if (this.windows?.registry.error) {
@@ -493,7 +500,7 @@ export class WorkbenchTabs<T> {
         this.unregisterWindows?.(); this.unregisterWindows = undefined;
         this.disposing = true; this.tabViewport.destroy();
         for (const tab of this.values()) await this.close(tab.id, false);
-        for (const view of this.windowButtons) view.button.remove(); this.windowButtons.clear();
+        for (const view of this.windowButtons) view.destroy(); this.windowButtons.clear(); this.windowSubscribers.clear();
         for (const view of this.navigationViews) view.destroy(); this.navigationViews.clear();
         for (const view of this.titleBars) view.destroy(); this.titleBars.clear();
         this.abort.abort(); this.openedDrawer.destroy(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');

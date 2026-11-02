@@ -4,15 +4,17 @@ import {ACTION_ICONS, createModuleLogger, randomUUID, t} from '@itookit/common';
 import {WorkbenchTabs, type WorkbenchTab} from '../workbench/tabs';
 import type {WorkbenchWindowBinding} from '../workbench/windows';
 import {kanbanPresentation} from './host';
-import {mountNavigation} from './navigation';
+import {KanbanSidebar} from './sidebar';
+import {VFS_DOM_EVENTS} from '@itookit/vfs-ui';
 
 const log = createModuleLogger('kanban-windows');
-export type KanbanWorkspaceOptions = Omit<KanbanUIOptions, 'presentation'> & {windows?: WorkbenchWindowBinding};
-interface Page {view: KanbanView; sidebar: HTMLElement; ready: Promise<void>; visible?: boolean}
+export type KanbanWorkspaceOptions = Omit<KanbanUIOptions, 'presentation' | 'sidebar'> & {sidebar: HTMLElement; windows?: WorkbenchWindowBinding};
+interface Page {view: KanbanView; ready: Promise<void>; visible?: boolean}
 
 /** Each opened resource keeps its view, inspector, drafts and scroll in its own tab. */
 export class KanbanWindowWorkbench {
     private readonly tabs: WorkbenchTabs<Page>;
+    private readonly navigation: KanbanSidebar;
     private visible = true;
     private disposing = false;
     constructor(private readonly options: KanbanWorkspaceOptions) {
@@ -22,9 +24,11 @@ export class KanbanWindowWorkbench {
             dispose: tab => this.disposePage(tab), empty: () => this.showList(),
             error: error => this.report(error), changed: () => this.syncVisibility(),
         }, undefined, options.windows);
+        this.navigation = new KanbanSidebar({container: options.sidebar, service: options.service, navigate: path => this.navigate(path),
+            create: () => this.openAction('createBoard'), lookup: () => this.openAction('lookupReference'), report: error => this.report(error)});
         const host = document.createElement('div'); host.hidden = true; host.append(this.tabs.opened); options.sidebar.append(host);
     }
-    async start(): Promise<void> {await this.openResource(this.options.initialResource ?? '/');}
+    async start(): Promise<void> {await Promise.all([this.navigation.start(), this.openResource(this.options.initialResource ?? '/')]);}
     async openResource(path: string): Promise<void> {
         if (this.disposing) return;
         const operationId = randomUUID(), started = performance.now();
@@ -44,30 +48,27 @@ export class KanbanWindowWorkbench {
         }
     }
     getActiveResourceId(): string {return this.tabs.current?.id ?? '/';}
-    invalidateFromEvents(): void {for (const tab of this.tabs.values()) tab.value?.view.invalidateFromEvents();}
-    setVisible(visible: boolean): void {this.visible = visible; this.syncVisibility();}
+    invalidateFromEvents(): void {this.navigation.invalidate(); for (const tab of this.tabs.values()) tab.value?.view.invalidateFromEvents();}
+    setVisible(visible: boolean): void {this.visible = visible; this.navigation.setVisible(visible); this.syncVisibility();}
     captureRecovery(): unknown {
         for (const tab of this.tabs.values()) tab.value?.view.captureRecovery();
         return this.tabs.captureRecovery();
     }
     restoreRecovery(state: unknown): void {if (state) this.tabs.restoreRecovery(state);}
     suspendForRecovery(): void {
-        this.tabs.suspendForRecovery();
+        this.navigation.setVisible(false); this.tabs.suspendForRecovery();
         for (const tab of this.tabs.values()) tab.value?.view.suspendForRecovery();
     }
-    async destroy(): Promise<void> {this.disposing = true; await this.tabs.destroy(); this.options.sidebar.replaceChildren();}
+    async destroy(): Promise<void> {this.disposing = true; this.navigation.destroy(); await this.tabs.destroy(); this.options.sidebar.replaceChildren();}
     private createPage(tab: WorkbenchTab<Page>): void {
-        const sidebar = document.createElement('div'), editor = document.createElement('div');
-        this.options.sidebar.append(sidebar); tab.panel.append(editor);
-        const view = new KanbanView({...this.options, sidebar, editor, initialResource: tab.id,
+        const editor = document.createElement('div'); tab.panel.append(editor);
+        const view = new KanbanView({...this.options, sidebar: undefined, editor, initialResource: tab.id,
             presentation: kanbanPresentation, executionReference: executionSessionReference,
             navigate: path => this.navigate(path), changed: () => this.updatePage(tab),
-            selected: () => this.updatePage(tab),
-            mountNavigation: container => mountNavigation(container, sidebar, tab.panel),
-            mountWindowList: container => this.tabs.mountWindowList(container),
+            selected: () => this.updatePage(tab), committed: () => this.navigation.invalidate(),
             mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts),
         });
-        tab.value = {view, sidebar, ready: Promise.resolve()}; this.tabs.setIcon(tab.id, ACTION_ICONS.kanbanView);
+        tab.value = {view, ready: Promise.resolve()}; this.tabs.setIcon(tab.id, ACTION_ICONS.kanbanView);
         this.tabs.location(tab.id, tab.id); this.syncVisibility();
         tab.value.ready = view.start().then(() => this.updatePage(tab)).catch(error => {tab.failed = true; throw error;});
     }
@@ -79,20 +80,26 @@ export class KanbanWindowWorkbench {
         if (renamed) this.tabs.rename(tab.id, path, state.title ?? t('kanban.title'));
         this.tabs.title(tab.id, state.title ?? t('kanban.title')); this.tabs.context(tab.id, state.context); this.tabs.location(tab.id, path);
         if (dirtyChanged) this.tabs.keep(tab.id);
-        if (renamed && this.tabs.current === tab) this.options.selected(tab.id);
+        if (this.tabs.current === tab) {this.navigation.select(tab.id); if (renamed) this.options.selected(tab.id);}
     }
     private syncVisibility(): void {
         if (!this.tabs) return;
+        this.navigation?.select(this.tabs.current?.id ?? '/');
         for (const tab of this.tabs.values()) {
             const page = tab.value; if (!page) continue;
             const visible = this.visible && this.tabs.current === tab;
-            page.sidebar.hidden = this.tabs.current !== tab;
             if (page.visible !== visible) {page.visible = visible; page.view.setVisible(visible);}
         }
     }
     private async disposePage(tab: WorkbenchTab<Page>): Promise<void> {
         if (!this.disposing) tab.value?.view.captureRecovery();
-        await tab.value?.view.destroy(); tab.value?.sidebar.remove();
+        await tab.value?.view.destroy();
+    }
+    private async openAction(action: 'createBoard' | 'lookupReference'): Promise<void> {
+        await this.navigate('/');
+        const page = this.tabs.current?.value; if (!page || this.disposing) return;
+        await page.ready; await page.view[action]();
+        this.options.sidebar.dispatchEvent(new CustomEvent(VFS_DOM_EVENTS.resourceActivated, {bubbles: true}));
     }
     private navigate(path: string): Promise<void> {return this.options.windows?.navigate(path) ?? this.openResource(path);}
     private showList(): void {

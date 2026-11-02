@@ -3,6 +3,9 @@ import {KanbanSuggestions} from './suggestions';
 import {mountTitleBar as mountSharedTitleBar} from '@itookit/ui-common';
 import {KanbanDrawer, drawerMarkup, preserveBoardScroll} from './drawer';
 import {escapeHTML} from './html';
+import {panelHeader} from './panel-header';
+import {childrenView, childType} from './children';
+import {referenceLookup} from './view';
 import {randomUUID} from '../utils';
 import type {KanbanUIOptions} from './ports';
 import {createRenderer} from './renderer';
@@ -39,7 +42,7 @@ export class KanbanWorkbench {
     constructor(private readonly options: KanbanUIOptions, private readonly container?: HTMLElement) {this.ui = createRenderer(options.presentation);}
     async start(): Promise<void> {
         const {sidebar, editor} = this.options, signal = this.abort.signal;
-        sidebar.classList.add('kanban__sidebar'); editor.classList.add('kanban');
+        sidebar?.classList.add('kanban__sidebar'); editor.classList.add('kanban');
         editor.innerHTML = `<p data-status role="status"></p><p data-error role="alert"></p><div data-retry hidden>${this.ui.button('refresh', 'retry')}</div><div data-content class="kanban__content"></div>${drawerMarkup(this.options.presentation)}`;
         this.drawer = new KanbanDrawer(editor, sidebar);
         this.suggestions = new KanbanSuggestions(editor, this.options.service, () => this.boardId, this.options.presentation);
@@ -58,14 +61,14 @@ export class KanbanWorkbench {
             this.drawer.keydown(event);
             if (event.key === 'Escape' && this.drawer.open) {event.preventDefault(); void this.run(() => this.requestClose(false));}
         }, {signal});
-        for (const element of [sidebar, editor]) element.addEventListener('click', event => {
+        for (const element of sidebar ? [sidebar, editor] : [editor]) element.addEventListener('click', event => {
             if (!(event.target as HTMLElement).closest('[data-action], [data-board], [data-item], [data-session], [data-record], [data-context]')) return;
             void this.run(async () => {
                 await this.click(event);
                 if (element === sidebar) this.options.activated?.();
             });
         }, {signal});
-        sidebar.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
+        sidebar?.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
         editor.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
         editor.addEventListener('change', event => {
             const target = event.target as HTMLSelectElement;
@@ -74,7 +77,7 @@ export class KanbanWorkbench {
                 if (container) container.innerHTML = preparationFields(this.board, this.automationCatalog, target.value ? JSON.parse(target.value) : null);
             }
         }, {signal});
-        editor.addEventListener('input', event => {if ((event.target as HTMLElement).closest('[data-panel]')) {this.dirty = true; this.options.changed?.();}}, {signal});
+        editor.addEventListener('input', event => {if ((event.target as HTMLElement).closest('[data-panel]') && !(event.target as HTMLElement).closest('[data-form=reference]')) {this.dirty = true; this.options.changed?.();}}, {signal});
         if (this.options.service?.queryActivity) this.activityTimer=setInterval(()=>{if(this.visible&&!document.hidden&&!this.busy&&!this.dirty&&(this.board?.automation?.enabled||this.page?.items.some(item=>item.execution)||this.query.execution&&this.query.execution!=='all')) this.invalidateFromEvents();},15000);
         if (this.options.initialResource !== undefined) await this.openResource(this.options.initialResource);
         else await this.run(() => this.refresh());
@@ -95,6 +98,15 @@ export class KanbanWorkbench {
         this.recordCursor = undefined;
         this.query = {view: 'all', limit: 50}; await this.run(() => this.refresh());
     }
+    createBoard(): Promise<void> {return this.run(async () => {
+        if (this.dirty) throw new Error(this.ui.label('unsaved'));
+        this.showBoardForm();
+    });}
+    lookupReference(): Promise<void> {return this.run(async () => {
+        if (this.dirty) throw new Error(this.ui.label('unsaved'));
+        this.drawer.show(panelHeader(this.options.presentation, this.ui.label('openReference')) + referenceLookup(this.options.presentation), 'reference');
+    });}
+    private showBoardForm(): void {this.itemId = ''; this.drawer.show(this.ui.newBoardForm(), 'new-board'); this.dirty = true;}
     getActiveResourceId(): string {return this.boardId ? `/board/${encodeURIComponent(this.boardId)}${this.recordId ? '/@record/' + encodeURIComponent(this.recordId) : this.itemId ? '/' + encodeURIComponent(this.itemId) : this.recordKind ? '/@' + this.recordKind : ''}` : '/';}
     getViewState() {
         return {title: this.drawer?.open ? this.panel().querySelector('h3')?.textContent ?? this.board?.title : this.board?.title ?? this.ui.label('title'),
@@ -105,8 +117,8 @@ export class KanbanWorkbench {
     suspendForRecovery(): void {this.generation++; this.abort.abort(); this.suggestions?.destroy();if(this.activityTimer) clearInterval(this.activityTimer);}
     async destroy(): Promise<void> {
         for (const release of this.windowMounts.values()) release(); this.windowMounts.clear();
-        this.suspendForRecovery(); this.releaseNavigation?.(); this.releaseNavigation = undefined; this.suggestions?.destroy(); this.drawer?.destroy(); this.options.sidebar.replaceChildren(); this.options.editor.replaceChildren(); this.options.editor.inert = false;
-        this.options.editor.classList.remove('kanban'); this.options.sidebar.classList.remove('kanban__sidebar');
+        this.suspendForRecovery(); this.releaseNavigation?.(); this.releaseNavigation = undefined; this.suggestions?.destroy(); this.drawer?.destroy(); this.options.sidebar?.replaceChildren(); this.options.editor.replaceChildren(); this.options.editor.inert = false;
+        this.options.editor.classList.remove('kanban'); this.options.sidebar?.classList.remove('kanban__sidebar');
         this.container?.replaceChildren(); this.container?.classList.remove('kanban-layout');
     }
     invalidateFromEvents(): void {
@@ -127,7 +139,7 @@ export class KanbanWorkbench {
         const page = this.board ? await (service.queryActivity?.(this.boardId,this.query) ?? service.query(this.boardId, this.query)) : undefined;
         if (!this.alive(generation)) return;
         this.page = page; this.invalid = events !== this.eventGeneration;
-        this.options.sidebar.innerHTML = this.ui.navigation(boards, this.boardId);
+        if (this.options.sidebar) this.options.sidebar.innerHTML = this.ui.navigation(boards, this.boardId);
         preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity, !!service.automationCatalog) : this.ui.catalogView(boards);});
         if (this.recordKind) await this.showRecords(generation);
         if (!this.alive(generation)) return;
@@ -147,7 +159,15 @@ export class KanbanWorkbench {
         if (this.board.automation) this.panel().querySelector('[data-analysis]')!.innerHTML = analysisView(this.options.presentation, analysis ?? null);
         if(execution) this.panel().querySelector('[data-execution-session]')!.innerHTML=this.ui.executionSessionView(execution,!!this.options.executionReference&&!archive&&!['completed','cancelled'].includes(item.status));
         this.panel().querySelector('[data-related-records]')!.innerHTML = `<h4>${escapeHTML(this.ui.label('relatedRecords'))} (${records.total})</h4>${this.ui.recordLinks(records, this.board)}<div class="kanban__actions">${this.ui.button('new-log', 'newLog')}${this.ui.button('new-decision', 'newDecision')}</div>`;
+        await this.showChildren(generation);
         this.options.selected(this.getActiveResourceId());
+    }
+    private async showChildren(generation: number, cursor?: string): Promise<void> {
+        const {service} = this.options, item = this.item, board = this.board;
+        if (!service || !item || !board || !childType(board, item)) return;
+        const page = await service.query(board.id, {parentId: item.id, view: 'all', limit: 50, ...(cursor ? {cursor} : {})});
+        if (!this.alive(generation)) return;
+        this.panel().querySelector('[data-children]')!.innerHTML = childrenView(this.options.presentation, page, cursor, !['completed', 'cancelled'].includes(item.status) && !item.closedAt);
     }
     private async showRecords(generation: number): Promise<void> {
         if (!this.recordKind || !this.options.service) return;
@@ -181,17 +201,21 @@ export class KanbanWorkbench {
             this.itemId = ''; this.drawer.show(automationForm(this.options.presentation, this.board, this.automationCatalog), 'automation'); this.dirty = true; return;
         }
         if (action === 'reanalyze' && this.item?.planning) {await this.execute({type: 'plan-item', itemId: this.item.id, planning: this.item.planning}); return;}
-        if (action === 'new-board') {this.itemId = ''; this.drawer.show(this.ui.newBoardForm(), 'new-board'); this.dirty = true; return;}
+        if (action === 'new-board') {this.showBoardForm(); return;}
+        if (action === 'children-next' || action === 'children-first') {await this.showChildren(this.generation, action === 'children-next' ? target.dataset.cursor : undefined); return;}
+        if (action === 'new-child' && this.board && this.item && childType(this.board, this.item)) {
+            const parent = this.item; this.itemId = ''; this.drawer.show(this.ui.newItemForm(this.board, parent), 'new-child'); this.dirty = true; return;
+        }
         if (action === 'new-item' && this.board) {this.itemId = ''; this.drawer.show(this.ui.newItemForm(this.board), 'new-item'); this.dirty = true; return;}
         if (action === 'new-log' || action === 'new-decision') {
             const resources = action === 'new-decision' ? await this.options.service?.recordResources?.() : [];
             this.recordId = ''; this.drawer.show(this.ui.recordForm(action === 'new-log' ? 'log' : 'decision', this.board!, this.itemId, resources), action); this.dirty = true; return;
         }
-        if (action === 'run-record' && this.options.service?.runRecord) {
+        if ((action === 'run-record' || action === 'run-record-separate') && this.options.service?.runRecord) {
             const record = await this.options.service.record(this.boardId, this.recordId);
             target.dataset.operationId ??= randomUUID();
-            await this.options.service.runRecord(this.boardId, {operationId: target.dataset.operationId, recordId: record.id, expectedRevision: record.revision});
-            await this.showRecord(record.id); return;
+            await this.options.service.runRecord(this.boardId, {operationId: target.dataset.operationId, recordId: record.id, expectedRevision: record.revision, placement: action === 'run-record-separate' ? 'new-board' : 'current-board'});
+            this.options.committed?.(); await this.refresh(); return;
         }
         if (action === 'scroll-left' || action === 'scroll-right') {const board = this.content().querySelector<HTMLElement>('.kanban__columns'); if (board) board.scrollLeft += board.clientWidth * (action === 'scroll-left' ? -0.8 : 0.8); return;}
         if (action === 'records-next' || action === 'records-first') {this.recordCursor = action === 'records-next' ? this.recordPage?.nextCursor : undefined; await this.refresh(); return;}
@@ -227,7 +251,7 @@ export class KanbanWorkbench {
         }
         if (kind === 'board' && this.actor && this.options.service) {
             const created = await this.options.service.create(boardInput(data, this.actor, form.dataset.resourceId));
-            this.dirty = false; await this.navigate(created.id); return;
+            this.options.committed?.(); this.dirty = false; await this.navigate(created.id); return;
         }
         if (kind === 'automation' && this.automationCatalog) {
             await this.execute({type: 'configure-automation', settings: {enabled: data.has('enabled'), autoAccept: data.has('autoAccept'),
@@ -261,7 +285,7 @@ export class KanbanWorkbench {
             if ((error as Error)?.name === 'KanbanError' || (error as {outcome?: string})?.outcome === 'not-committed') this.pending = undefined;
             throw error;
         }
-        this.pending = undefined;
+        this.pending = undefined; this.options.committed?.();
         if (command.type === 'configure-automation') this.closePanel();
         this.dirty = false; this.query.cursor = undefined; this.recordCursor = undefined;
         if (command.type === 'create-item') this.itemId = command.item.id;

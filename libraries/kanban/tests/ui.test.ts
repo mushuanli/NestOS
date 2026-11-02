@@ -118,3 +118,36 @@ it('shows host preparation choices when selected and persists explicit commit po
     }
 
 });
+
+it('lists children on a feature, prefills its parent when creating work, and opens the parent from a task', async () => {
+    const f = await fixture();
+    const board = await f.service.create({id: 'hierarchy', title: 'Project', scope: {kind: 'system'}, members: [{kind: 'human', id: 'person', responsibility: 'Manage'}]});
+    await f.service.execute(board.id, {operationId: 'feature', expectedRevision: board.revision, command: {type: 'create-item',
+        item: {id: 'feature', title: 'Cloze modes', responsibility: 'Support modes', acceptance: 'Verified'}, planning: {kind: 'feature', priority: 2, dependencies: [], references: []}}});
+    await f.view.openResource('/board/hierarchy/feature');
+    expect(f.root.querySelector('[data-children]')?.textContent).toContain('one:children (0)');
+    await click(f.root, '[data-action=new-child]');
+    expect(new FormData(f.root.querySelector('[data-form=item]')!).get('parentId')).toBe('feature');
+    expect(new FormData(f.root.querySelector('[data-form=item]')!).get('kind')).toBe('task');
+    fill(f.root, 'title', 'Implement'); fill(f.root, 'responsibility', 'Code'); fill(f.root, 'acceptance', 'Tests'); await submit(f.root, 'item');
+    const child = (await f.service.read(board.id)).items.find(item => item.title === 'Implement')!;
+    expect(child.planning?.parentId).toBe('feature');
+    await click(f.root, '[data-panel] [data-item=feature]');
+    expect(f.root.querySelector('[data-children]')?.textContent).toContain('Implement');
+    await click(f.root, '[data-children] [data-item]'); expect(f.view.getActiveResourceId()).toBe('/board/hierarchy/' + child.id);
+});
+it('runs a decision on its current board by default and requires an explicit action for a new board', async () => {
+    const f = await fixture();
+    const board = await f.service.create({id: 'development', title: 'Development', scope: {kind: 'system'}, members: [{kind: 'human', id: 'person', responsibility: 'Manage', roles: ['worker', 'reviewer', 'coordinator']}]});
+    let state = await f.service.execute(board.id, {operationId: 'decision', expectedRevision: board.revision, command: {type: 'append-record',
+        record: {id: 'cloze', kind: 'decision', title: 'Cloze', content: 'Add modes', rationale: 'Tested', itemIds: [], sources: []}}});
+    await f.service.execute(board.id, {operationId: 'approve', expectedRevision: state.revision, command: {type: 'review-record', recordId: 'cloze', accept: true}});
+    const runRecord = vi.fn(async () => ({id: 'run', recordId: 'cloze', recordRevision: 2, boardId: board.id, state: 'running', createdAt: 1, updatedAt: 1}));
+    Object.assign(f.service, {recordExecutions: async () => [], runRecord});
+    await f.view.openResource('/board/development/@record/cloze');
+    await click(f.root, '[data-action=run-record]');
+    expect(runRecord).toHaveBeenLastCalledWith(board.id, expect.objectContaining({placement: 'current-board'}));
+    const separate = f.root.querySelector<HTMLButtonElement>('[data-action=run-record-separate]')!;
+    separate.closest('details')!.open = true; await click(f.root, '[data-action=run-record-separate]');
+    expect(runRecord).toHaveBeenLastCalledWith(board.id, expect.objectContaining({placement: 'new-board'}));
+});

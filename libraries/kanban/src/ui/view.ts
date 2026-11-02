@@ -25,8 +25,11 @@ export function navigation(ui: KanbanPresentation, boards: KanbanBoardSummary[],
     return `<header class="kanban__sidebar-header"><h2>${escapeHTML(ui.text('title'))}</h2>${button(ui, 'new-board', 'createShort')}</header>
         <section class="kanban__board-list"><p class="kanban__caption">${escapeHTML(ui.text('scope'))}</p><nav aria-label="${escapeAttr(ui.text('title'))}">${boards.map(board =>
             `<button type="button" data-board="${escapeAttr(board.id)}" ${board.id === selected ? 'aria-current="page"' : ''}><small>${escapeHTML(kanbanReference(board))}</small><span>${escapeHTML(board.title)}</span></button>`).join('')}</nav></section>
-        <footer class="kanban__sidebar-tools"><details class="kanban__reference-lookup"><summary>${escapeHTML(ui.text('openReference'))}</summary><form data-form="reference"><input name="reference" aria-label="${escapeAttr(ui.text('reference'))}" placeholder="${escapeAttr(ui.text('referencePlaceholder'))}" required><button>${escapeHTML(ui.text('openShort'))}</button></form></details>
+        <footer class="kanban__sidebar-tools"><details class="kanban__reference-lookup"><summary>${escapeHTML(ui.text('openReference'))}</summary>${referenceLookup(ui)}</details>
         <details class="kanban__scope-note"><summary>${escapeHTML(ui.text('scopeInfo'))}</summary><p>${escapeHTML(ui.text('scopeHelp'))}</p></details></footer>`;
+}
+export function referenceLookup(ui: KanbanPresentation): string {
+    return `<form data-form="reference"><input name="reference" aria-label="${escapeAttr(ui.text('reference'))}" placeholder="${escapeAttr(ui.text('referencePlaceholder'))}" required><button>${escapeHTML(ui.text('openShort'))}</button></form>`;
 }
 export function boardHeader(ui: KanbanPresentation, board: KanbanBoardSummary, active = 'board', automation = false): string {
     const [action, key] = active === 'log' ? ['new-log', 'newLog'] : active === 'decision' ? ['new-decision', 'newDecision'] : ['new-item', 'newItem'];

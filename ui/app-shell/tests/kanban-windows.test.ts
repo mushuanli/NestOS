@@ -66,3 +66,37 @@ it('marks hidden windows dirty without querying them until activated, and unregi
     f.workbench.setVisible(true); await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(1)); await idle(f.active);
     await f.workbench.destroy(); expect(f.registry.items()).toHaveLength(0);
 });
+
+it('keeps one VFS sidebar while switching and closing editors, including a dirty inspector', async () => {
+    const f = await fixture('/board/b');
+    const list = f.sidebar.querySelector('.vfs-node-list')!; expect(list).not.toBeNull();
+    expect(f.sidebar.querySelector('.kanban__sidebar')).toBeNull(); expect(f.sidebar.textContent).toContain('Board');
+    f.active().querySelector<HTMLButtonElement>('[data-action=new-item]')!.click(); await idle(f.active);
+    const field = f.active().querySelector<HTMLInputElement>('[name=title]')!; field.value = 'Draft'; field.dispatchEvent(new Event('input', {bubbles: true}));
+    expect(f.sidebar.inert).not.toBe(true);
+    await f.workbench.openResource('/board/b/card'); await f.workbench.openResource('/');
+    expect(f.sidebar.querySelectorAll('.vfs-node-list')).toHaveLength(1); expect(f.sidebar.querySelector('.vfs-node-list')).toBe(list);
+    await f.workbench.openResource('/board/b'); expect(f.active().querySelector<HTMLInputElement>('[name=title]')!.value).toBe('Draft');
+    f.active().querySelector<HTMLButtonElement>('[data-action=close-panel]')!.click(); await idle(f.active);
+    await f.registry.items().find(item => item.id === '/board/b')!.close(); expect(f.sidebar.textContent).toContain('Board');
+});
+it('updates shared navigation after creating a board through its toolbar', async () => {
+    const f = await fixture('/');
+    f.sidebar.querySelector<HTMLButtonElement>('button[aria-label="' + t('kanban.newBoard') + '"]')!.click();
+    await vi.waitFor(() => expect(f.active().querySelector('[data-form=board]')).not.toBeNull()); await idle(f.active);
+    const input = f.active().querySelector<HTMLInputElement>('[name=title]')!; input.value = 'New board'; input.dispatchEvent(new Event('input', {bubbles: true}));
+    f.active().querySelector<HTMLButtonElement>('[data-form=board] button:not([type])')!.click(); await idle(f.active);
+    await vi.waitFor(() => expect(f.sidebar.textContent).toContain('New board'));
+    expect(f.sidebar.querySelectorAll('.vfs-node-list')).toHaveLength(1); expect(f.sidebar.textContent).toContain('Board');
+});
+
+it('opens an item by reference from the shared sidebar without treating its lookup as a draft', async () => {
+    const f = await fixture('/board/b'); const board = (await f.service.catalog())[0];
+    f.sidebar.querySelector<HTMLButtonElement>('button[aria-label="' + t('kanban.openReference') + '"]')!.click();
+    await vi.waitFor(() => expect(f.active().querySelector('[data-form=reference]')).not.toBeNull()); await idle(f.active);
+    const field = f.active().querySelector<HTMLInputElement>('[name=reference]')!;
+    field.value = 'KB-' + board.number + '#' + board.items[0].number; field.dispatchEvent(new Event('input', {bubbles: true}));
+    f.active().querySelector<HTMLButtonElement>('[data-form=reference] button')!.click();
+    await vi.waitFor(() => expect(f.workbench.getActiveResourceId()).toBe('/board/b/card')); await idle(f.active);
+    expect(f.active().querySelector('[data-panel] h3')?.textContent).toBe('A long item title');
+});

@@ -3,7 +3,9 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {createNestOSKanban} from '@itookit/app-core/kanban';
 import {SeqKanbanStore} from '@itookit/kanban/storage';
-import {KanbanWorkbench} from '../src/kanban';
+import {KanbanWorkbench} from '@itookit/kanban/ui';
+import {executionSessionReference} from '@itookit/app-contracts';
+import {kanbanPresentation} from '../src/kanban/host';
 import {t} from '@itookit/common';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -13,7 +15,7 @@ async function fixture(source?: import('@itookit/app-core/kanban').KanbanSession
     const store = await SeqKanbanStore.open(await manager.openFileSystem('/'));
     const service = createNestOSKanban({store, actor: {kind: 'human', id: 'admin'}, authorize: async () => {}, log: vi.fn(),executionSessions:source?{source}:undefined});
     const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
-    const selected = vi.fn(), openSession = vi.fn(async () => {}), workbench = new KanbanWorkbench({service, sidebar, editor, selected, openSession});
+    const selected = vi.fn(), openSession = vi.fn(async () => {}), workbench = new KanbanWorkbench({presentation: kanbanPresentation, executionReference: executionSessionReference, service, sidebar, editor, selected, openSession});
     cleanups.push(async () => {await workbench.destroy(); await manager.dispose();}); await workbench.start();
     return {service, sidebar, editor, workbench, selected, openSession};
 }
@@ -63,7 +65,7 @@ it('links a Session and routes the existing identity without opening a second co
 });
 it('shows an actionable unavailable state when the host has not been updated', async () => {
     const sidebar = document.createElement('aside'), editor = document.createElement('main'); document.body.append(sidebar, editor);
-    const workbench = new KanbanWorkbench({sidebar, editor, selected: vi.fn(), openSession: vi.fn()}); await workbench.start();
+    const workbench = new KanbanWorkbench({presentation: kanbanPresentation, executionReference: executionSessionReference, sidebar, editor, selected: vi.fn(), openSession: vi.fn()}); await workbench.start();
     expect(editor.textContent).toContain(t('kanban.unavailable')); await workbench.destroy();
 });
 it('binds an execution Session through the inspector, shows session-only activity and filters the board',async()=>{

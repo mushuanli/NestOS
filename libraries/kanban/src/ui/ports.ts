@@ -8,7 +8,8 @@ export interface KanbanPresentation {
 }
 export interface KanbanUIOptions {
     service?: KanbanClient;
-    sidebar: HTMLElement;
+    /** Omit when the host owns shared workspace navigation. */
+    sidebar?: HTMLElement;
     editor: HTMLElement;
     presentation: KanbanPresentation;
     selected(path: string): void;
@@ -20,5 +21,6 @@ export interface KanbanUIOptions {
     initialResource?: string;
     navigate?(path: string): Promise<void>;
     changed?(): void;
+    committed?(): void;
     executionReference?(sessionId: string, bindingId: string): KanbanExternalReference;
 }

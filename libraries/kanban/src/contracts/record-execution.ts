@@ -4,7 +4,11 @@ import type {KanbanExternalReference} from './configuration';
 export interface KanbanRecordResource {reference: KanbanExternalReference; label: string}
 export interface KanbanRecordExecution {
     id: string; recordId: string; recordRevision: number; boardId: string;
+    rootItemId?: string; itemIds?: string[];
     state: 'preparing' | 'running' | 'blocked' | 'review' | 'completed' | 'failed';
     createdAt: number; updatedAt: number; code?: string;
 }
-export interface KanbanRecordRunRequest {operationId: string; recordId: string; expectedRevision: number}
+export interface KanbanRecordRunRequest {
+    operationId: string; recordId: string; expectedRevision: number;
+    placement?: 'current-board' | 'new-board';
+}

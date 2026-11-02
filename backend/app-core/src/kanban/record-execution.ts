@@ -1,19 +1,22 @@
+import {DEFAULT_KANBAN_WORK_TYPES} from '@itookit/kanban/contracts';
 import {journalCommand} from './journal-command';
 import {sha256HexSync} from '@itookit/common';
 import type {ProjectService} from '@itookit/app-contracts/services';
-import type {KanbanBoard, KanbanClient, KanbanCommand, KanbanProjectRecord, KanbanRecordExecution, KanbanRecordRunRequest} from '@itookit/kanban/contracts';
+import type {KanbanBoard, KanbanClient, KanbanCommand, KanbanProjectRecord, KanbanRecordExecution, KanbanRecordRunRequest, KanbanItem} from '@itookit/kanban/contracts';
 import {KanbanAutomationJournal} from './automation-journal';
 import {requireValue} from './validation';
 import {safeCode} from './automation-analysis';
 
 export const REMOTE_PROJECT_REFERENCE = 'nestos-remote-project';
-interface SavedRun extends KanbanRecordExecution {sourceBoardId: string; record: KanbanProjectRecord; automation: NonNullable<KanbanBoard['automation']>}
+interface SavedRun extends KanbanRecordExecution {
+    placement?: KanbanRecordRunRequest['placement']; requestRevision?: number; taskKind?: string; parentKind?: string;
+    sourceBoardId: string; record: KanbanProjectRecord; automation: NonNullable<KanbanBoard['automation']>}
 interface Options {
     service: KanbanClient; journal: KanbanAutomationJournal; projects: Pick<ProjectService, 'list' | 'get'>;
     log(input: {operationId: string; boardId: string; stage: string; result: 'success' | 'failure'; code?: string; durationMs: number}): void;
 }
 
-/** A restartable projection from an approved record into an independently reviewable board. */
+/** A restartable projection from an approved decision into work on its chosen board. */
 export function createRecordExecution(options: Options) {
     const pending = new Map<string, Promise<KanbanRecordExecution>>();
     const resume = (run: SavedRun) => {
@@ -24,7 +27,18 @@ export function createRecordExecution(options: Options) {
     return {
         recordResources: async () => (await options.projects.list()).filter(row => row.project?.source?.kind === 'remote')
             .map(row => ({reference: {system: REMOTE_PROJECT_REFERENCE, id: row.project!.id}, label: row.displayName ?? row.name})),
-        runRecord: async (boardId: string, request: KanbanRecordRunRequest) => resume(await prepare(options, boardId, request)),
+        runRecord: async (boardId: string, request: KanbanRecordRunRequest) => {
+            const started = Date.now(), operationId = sha256HexSync(JSON.stringify([boardId, request.operationId]));
+            let run: SavedRun;
+            try {
+                run = await prepare(options, boardId, request);
+                options.log({operationId, boardId, stage: 'record.prepare', result: 'success', durationMs: Date.now() - started});
+            } catch (error) {
+                options.log({operationId, boardId, stage: 'record.prepare', result: 'failure', code: safeCode(error, 'RECORD_PREPARATION_FAILED'), durationMs: Date.now() - started});
+                throw error;
+            }
+            return resume(run);
+        },
         recordExecutions: async (boardId: string, recordId: string) => {
             await options.service.record(boardId, recordId);
             const runs = await options.journal.get<SavedRun[]>('record-runs:' + boardId) ?? [];
@@ -34,7 +48,7 @@ export function createRecordExecution(options: Options) {
             const errors: unknown[] = [];
             for (const board of await options.service.catalog()) {
                 for (const run of await options.journal.get<SavedRun[]>('record-runs:' + board.id) ?? []) {
-                    if (run.state !== 'completed') {try {await resume(run);} catch (error) {errors.push(error);}}
+                    if (!['completed', 'failed'].includes(run.state)) {try {await resume(run);} catch (error) {errors.push(error);}}
                 }
             }
             if (errors.length) throw new AggregateError(errors, 'RECORD_EXECUTION_SCAN_FAILED');
@@ -54,7 +68,8 @@ async function prepare(options: Options, boardId: string, request: KanbanRecordR
     const record = await options.service.record(boardId, request.recordId);
     const frozen = await options.journal.get<SavedRun>('record-operation:' + request.operationId);
     if (frozen) {
-        requireValue(frozen.sourceBoardId === boardId && frozen.recordId === request.recordId && frozen.recordRevision === request.expectedRevision, 'IDEMPOTENCY_CONFLICT');
+        requireValue(frozen.sourceBoardId === boardId && frozen.recordId === request.recordId && (frozen.requestRevision ?? frozen.recordRevision) === request.expectedRevision
+            && (!frozen.placement || frozen.placement === (request.placement ?? 'current-board')), 'IDEMPOTENCY_CONFLICT');
         return frozen;
     }
     requireValue(record.kind === 'decision' && record.status === 'confirmed', 'DECISION_NOT_CONFIRMED');
@@ -64,17 +79,23 @@ async function prepare(options: Options, boardId: string, request: KanbanRecordR
     await validateRemoteReferences(options.projects, record);
     requireValue(record.externalRefs?.some(ref => ref.system === REMOTE_PROJECT_REFERENCE), 'REMOTE_PROJECT_REQUIRED');
     const id = sha256HexSync(JSON.stringify([boardId, record.id, record.revision]));
-    const run: SavedRun = {id, sourceBoardId: boardId, recordId: record.id, recordRevision: record.revision, boardId: 'run-' + id,
-        state: 'preparing', createdAt: Date.now(), updatedAt: Date.now(), record, automation: structuredClone(board.automation)};
+    const placement = request.placement ?? 'current-board';
+    requireValue(['current-board', 'new-board'].includes(placement), 'INVALID_EXECUTION_PLACEMENT');
     const saved = await options.journal.update<SavedRun[]>('record-runs:' + boardId, previous => {
-        if (previous?.some(row => row.id === id)) return previous;
+        const same = previous?.find(row => row.id === id || row.recordId === record.id && decisionSignature(row.record) === decisionSignature(record));
+        if (same) {requireValue(!same.placement || same.placement === placement, 'DECISION_EXECUTION_PLACEMENT_CONFLICT'); return previous!;}
         requireValue(!previous?.some(row => row.recordId === record.id && !['completed', 'failed'].includes(row.state)), 'DECISION_EXECUTION_UNSETTLED');
         requireValue((previous?.length ?? 0) < 100, 'RECORD_EXECUTION_LIMIT');
-        return [...previous ?? [], run];
+        return [...previous ?? [], newRun(board, record, request, id)];
     });
-    const original = saved.find(row => row.id === id)!;
+    const original = saved.find(row => row.id === id || row.recordId === record.id && decisionSignature(row.record) === decisionSignature(record))!;
+    return freezeOperation(options, request, original);
+}
+function freezeOperation(options: Options, request: KanbanRecordRunRequest, run: SavedRun): Promise<SavedRun> {
     return options.journal.update<SavedRun>('record-operation:' + request.operationId, previous => {
-        requireValue(!previous || previous.id === original.id, 'IDEMPOTENCY_CONFLICT'); return previous ?? original;
+        requireValue(!previous || previous.id === run.id && (previous.requestRevision ?? previous.recordRevision) === request.expectedRevision
+            && (!previous.placement || previous.placement === (request.placement ?? 'current-board')), 'IDEMPOTENCY_CONFLICT');
+        return previous ?? {...run, requestRevision: request.expectedRevision};
     });
 }
 
@@ -84,10 +105,13 @@ async function advance(options: Options, run: SavedRun): Promise<KanbanRecordExe
         await validateRemoteReferences(options.projects, run.record);
         await materialize(options, run);
         const board = await options.service.read(run.boardId);
-        const state = board.items.every(item => item.status === 'completed') ? 'completed'
-            : board.items.some(item => item.blocked) ? 'blocked' : board.items.every(item => ['completed', 'review'].includes(item.status)) ? 'review' : 'running';
-        const updated = await save(options, {...run, state, code: undefined, updatedAt: Date.now()});
-        options.log({operationId: run.id, boardId: run.sourceBoardId, stage: 'record.run', result: 'success', durationMs: Date.now() - started});
+        const items = run.itemIds ? await Promise.all(run.itemIds.map(async id => board.items.find(item => item.id === id) ?? (await options.service.item(run.boardId, id)).item)) : board.items;
+        const state = runState(items);
+        if (state === 'completed' && run.rootItemId && !run.itemIds?.includes(run.rootItemId) && board.items.find(item => item.id === run.rootItemId)?.status !== 'completed') {
+            await once(options, run, 'close-root', {type: 'close-plan', itemId: run.rootItemId, resultRef: 'kanban-run:' + run.id});
+        }
+        const updated = await save(options, {...run, state, code: state === 'failed' ? 'DECISION_TASK_CANCELLED' : undefined, updatedAt: Date.now()});
+        options.log({operationId: run.id, boardId: run.sourceBoardId, stage: 'record.run', result: state === 'failed' ? 'failure' : 'success', code: updated.code, durationMs: Date.now() - started});
         return view(updated);
     } catch (error) {
         const code = safeCode(error, 'RECORD_EXECUTION_FAILED');
@@ -97,16 +121,51 @@ async function advance(options: Options, run: SavedRun): Promise<KanbanRecordExe
     }
 }
 
+function decisionSignature(record: KanbanProjectRecord): string {
+    return sha256HexSync(JSON.stringify([record.title, record.content, record.rationale, record.externalRefs]));
+}
+function newRun(board: KanbanBoard, record: KanbanProjectRecord, request: KanbanRecordRunRequest, id: string): SavedRun {
+    const placement = request.placement ?? 'current-board';
+    requireValue(['current-board', 'new-board'].includes(placement), 'INVALID_EXECUTION_PLACEMENT');
+    requireValue(placement === 'new-board' || board.automation?.enabled, 'AUTOMATION_PAUSED');
+    const refs = record.externalRefs!.filter(ref => ref.system === REMOTE_PROJECT_REFERENCE);
+    const types = board.workTypes ?? DEFAULT_KANBAN_WORK_TYPES;
+    const task = types.find(type => type.id === (board.defaultWorkType ?? 'task') && type.executable) ?? types.find(type => type.executable);
+    const parent = types.filter(type => !type.executable && type.rank < (task?.rank ?? 0)).sort((a, b) => b.rank - a.rank)[0];
+    requireValue(task && (refs.length === 1 || parent), 'DECISION_WORK_TYPES_REQUIRED');
+    const itemIds = refs.map((_, index) => 'work-' + id + '-' + index);
+    return {id, sourceBoardId: board.id, recordId: record.id, recordRevision: record.revision,
+        boardId: placement === 'new-board' ? 'run-' + id : board.id, placement, taskKind: task.id, parentKind: parent?.id,
+        rootItemId: refs.length === 1 ? itemIds[0] : 'feature-' + id, itemIds,
+        state: 'preparing', createdAt: Date.now(), updatedAt: Date.now(), record, automation: structuredClone(board.automation!)};
+}
+function runState(items: KanbanItem[]): KanbanRecordExecution['state'] {
+    if (items.some(item => item.status === 'cancelled')) return 'failed';
+    if (items.length && items.every(item => item.status === 'completed')) return 'completed';
+    if (items.some(item => item.blocked)) return 'blocked';
+    return items.length && items.every(item => ['completed', 'review'].includes(item.status)) ? 'review' : 'running';
+}
 async function materialize(options: Options, run: SavedRun): Promise<void> {
-    const actor = await options.service.currentPrincipal();
-    await options.service.create({id: run.boardId, title: run.record.title, scope: {kind: 'collection', namespace: 'decision-run', id: run.id},
-        members: [{...actor, responsibility: 'Review decision execution', roles: ['coordinator', 'reviewer', 'worker']}], policy: {requireEstimate: false, review: 'independent'}});
-    const refs = run.record.externalRefs!.filter(ref => ref.system === REMOTE_PROJECT_REFERENCE);
-    for (const [index, reference] of refs.entries()) {
-        await once(options, run, 'item-' + index, {type: 'create-item', item: {id: 'work-' + index, title: run.record.title,
-            responsibility: run.record.content, acceptance: run.record.rationale ?? run.record.content, externalRefs: [reference, {system: 'nestos-decision-run', id: run.id}]}});
+    if (run.boardId !== run.sourceBoardId) {
+        const actor = await options.service.currentPrincipal(), source = await options.service.read(run.sourceBoardId);
+        await options.service.create({id: run.boardId, title: run.record.title, scope: {kind: 'collection', namespace: 'decision-run', id: run.id},
+            members: [{...actor, responsibility: 'Review decision execution', roles: ['coordinator', 'reviewer', 'worker']}],
+            ...(run.placement && source.workTypes ? {workTypes: source.workTypes, defaultWorkType: source.defaultWorkType} : {}),
+            policy: {requireEstimate: false, review: 'independent'}});
     }
-    await once(options, run, 'automation', {type: 'configure-automation', settings: {...run.automation, enabled: true, autoAccept: false}});
+    const refs = run.record.externalRefs!.filter(ref => ref.system === REMOTE_PROJECT_REFERENCE);
+    const group = !!run.rootItemId && !run.itemIds?.includes(run.rootItemId);
+    if (group) await once(options, run, 'root', {type: 'create-item', item: {id: run.rootItemId!, title: run.record.title,
+        responsibility: run.record.content, acceptance: run.record.rationale ?? run.record.content},
+        planning: {kind: run.parentKind!, priority: 2, dependencies: [], references: []}});
+    for (const [index, reference] of refs.entries()) {
+        await once(options, run, 'item-' + index, {type: 'create-item', item: {id: run.itemIds?.[index] ?? 'work-' + index,
+            title: run.record.title, responsibility: run.record.content, acceptance: run.record.rationale ?? run.record.content,
+            externalRefs: [reference, {system: 'nestos-decision-run', id: run.id}]},
+            ...(run.taskKind ? {planning: {kind: run.taskKind, priority: 2, dependencies: [], references: [], ...(group ? {parentId: run.rootItemId} : {})}} : {})});
+    }
+    if (run.boardId !== run.sourceBoardId) await once(options, run, 'automation', {type: 'configure-automation', settings: {...run.automation, enabled: true, autoAccept: false}});
+    if (run.rootItemId && run.boardId === run.sourceBoardId) await once(options, run, 'link-root', {type: 'link-record', recordId: run.recordId, itemId: run.rootItemId});
 }
 
 async function once(options: Options, run: SavedRun, stage: string, command: KanbanCommand): Promise<void> {
@@ -118,6 +177,6 @@ async function save(options: Options, run: SavedRun): Promise<SavedRun> {
     return run;
 }
 function view(run: SavedRun): KanbanRecordExecution {
-    const {id, recordId, recordRevision, boardId, state, createdAt, updatedAt, code} = run;
-    return {id, recordId, recordRevision, boardId, state, createdAt, updatedAt, ...(code ? {code} : {})};
+    const {id, recordId, recordRevision, boardId, rootItemId, itemIds, state, createdAt, updatedAt, code} = run;
+    return {id, recordId, recordRevision, boardId, ...(rootItemId ? {rootItemId, itemIds} : {}), state, createdAt, updatedAt, ...(code ? {code} : {})};
 }

@@ -1,6 +1,6 @@
 @import '@itookit/kanban/ui.css';
 
-.kanban, .kanban__sidebar {
+.kanban {
     --kanban-bg-hover: var(--llm-bg-hover, #eef2f7);
     --kanban-bg-primary: var(--llm-bg-primary, #fff);
     --kanban-bg-secondary: var(--llm-bg-secondary, #f8fafc);
@@ -10,3 +10,6 @@
     --kanban-text-primary: var(--llm-text-primary, #222);
     --kanban-text-secondary: var(--llm-text-secondary, #64748b);
 }
+
+.kanban-sidebar { display: flex; flex-direction: column; min-height: 0; }
+.kanban-sidebar__list { display: flex; flex: 1; flex-direction: column; min-height: 0; }

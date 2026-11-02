@@ -9,7 +9,7 @@ export class KanbanDrawer {
     private restoreItem?: string;
     private restoreRecord?: string;
     private restoreRequested = false;
-    constructor(private readonly editor: HTMLElement, private readonly sidebar: HTMLElement) {}
+    constructor(private readonly editor: HTMLElement, private readonly sidebar?: HTMLElement) {}
     get element(): HTMLElement {return this.editor.querySelector('[data-panel]')!;}
     get open(): boolean {return !this.element.hidden;}
     show(html: string, key: string): void {
@@ -24,13 +24,13 @@ export class KanbanDrawer {
         const header = panel.querySelector('.kanban__panel-header'); if (header) header.after(error); else panel.prepend(error);
         panel.hidden = false; panel.scrollTop = top;
         this.key = key; this.focusRequested ||= !same;
-        this.editor.querySelector<HTMLElement>('[data-content]')!.inert = true; this.sidebar.inert = true;
+        this.editor.querySelector<HTMLElement>('[data-content]')!.inert = true; if (this.sidebar) this.sidebar.inert = true;
         this.editor.querySelector<HTMLElement>('[data-backdrop]')!.hidden = false;
         this.editor.classList.add('kanban--detail');
     }
     close(): void {
         this.element.hidden = true; this.element.replaceChildren(); this.key = ''; this.focusRequested = false; this.restoreRequested = true;
-        this.editor.querySelector<HTMLElement>('[data-content]')!.inert = false; this.sidebar.inert = false;
+        this.editor.querySelector<HTMLElement>('[data-content]')!.inert = false; if (this.sidebar) this.sidebar.inert = false;
         this.editor.querySelector<HTMLElement>('[data-backdrop]')!.hidden = true; this.editor.classList.remove('kanban--detail');
     }
     flushFocus(): void {
@@ -52,7 +52,7 @@ export class KanbanDrawer {
         if (event.shiftKey && (active === first || active === this.element)) {event.preventDefault(); last.focus();}
         else if (!event.shiftKey && (active === last || !this.element.contains(active))) {event.preventDefault(); first.focus();}
     }
-    destroy(): void {this.sidebar.inert = false; this.editor.classList.remove('kanban--detail');}
+    destroy(): void {if (this.sidebar) this.sidebar.inert = false; this.editor.classList.remove('kanban--detail');}
 }
 export function drawerMarkup(ui: KanbanPresentation): string {
     return `<button type="button" class="kanban__backdrop" data-backdrop data-action="dismiss-panel" aria-label="${escapeAttr(ui.text('closeDetail'))}" tabindex="-1" hidden></button>

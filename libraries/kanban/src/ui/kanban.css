@@ -145,8 +145,6 @@
     .kanban__board-heading h2 { display: block; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .kanban__navigation:not(:empty), .kanban__mobile-create { display: block; flex-shrink: 0; }
     .kanban__desktop-create { display: none; }
-    .kanban .kanban__sidebar-toggle { display: inline-flex; align-items: center; justify-content: center; width: 44px; padding: 8px; border-color: transparent; background: transparent; }
-    .kanban__sidebar-toggle svg { width: 20px; height: 20px; }
     .kanban .kanban__icon-button, .kanban__menu > summary { width: 44px; height: 44px; }
     .kanban__context-tabs { gap: 20px; margin-bottom: 4px; }
     .kanban__filters { flex-wrap: nowrap; gap: 4px; margin-bottom: 6px; }

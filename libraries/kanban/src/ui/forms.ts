@@ -1,9 +1,10 @@
 import type {KanbanPresentation} from './ports';
+import {childType} from './children';
 import {panelHeader} from './panel-header';
 import {suggestionField, selectedItems} from './suggestion-field';
 import {amendmentsView, sourcesView} from './context-view';
 import {escapeHTML, escapeAttr} from './html';
-import type {KanbanBoardSummary, KanbanEvent, KanbanItem, KanbanPrincipal} from '../contracts';
+import type {KanbanBoardSummary, KanbanEvent, KanbanItem, KanbanPrincipal, KanbanPlanning} from '../contracts';
 import {button, field, textarea, owns} from './view';
 
 export function newBoardForm(ui: KanbanPresentation): string {
@@ -11,12 +12,13 @@ export function newBoardForm(ui: KanbanPresentation): string {
         <label><input name="requireEstimate" type="checkbox">${escapeHTML(ui.text('requireEstimate'))}</label>
         ${save(ui)}</form>`;
 }
-export function newItemForm(ui: KanbanPresentation, board: KanbanBoardSummary): string {
+export function newItemForm(ui: KanbanPresentation, board: KanbanBoardSummary, parent?: KanbanItem): string {
+    const preset: KanbanPlanning | undefined = parent ? {kind: childType(board, parent)!, parentId: parent.id, priority: parent.planning?.priority ?? 2, dependencies: [], references: []} : undefined;
     return `${panelHeader(ui, ui.text('newItem'))}<form data-form="item">${field(ui, 'title', 'name')}
-        ${textarea(ui, 'responsibility', 'responsibility')}${textarea(ui, 'acceptance', 'acceptance')}${planningFields(ui, board)}${save(ui)}</form>`;
+        ${textarea(ui, 'responsibility', 'responsibility')}${textarea(ui, 'acceptance', 'acceptance')}${planningFields(ui, board, undefined, preset)}${save(ui)}</form>`;
 }
-function planningFields(ui: KanbanPresentation, board: KanbanBoardSummary, item?: KanbanItem): string {
-    const plan = item?.planning, types = board.workTypes ?? [{id: 'initiative', label: ui.text('goal')}, {id: 'feature', label: ui.text('group')}, {id: 'task', label: ui.text('action')}];
+function planningFields(ui: KanbanPresentation, board: KanbanBoardSummary, item?: KanbanItem, preset?: KanbanPlanning): string {
+    const plan = preset ?? item?.planning, types = board.workTypes ?? [{id: 'initiative', label: ui.text('goal')}, {id: 'feature', label: ui.text('group')}, {id: 'task', label: ui.text('action')}];
     return `<label>${escapeHTML(ui.text('type'))}<select name="kind">${types.map(type => `<option value="${escapeAttr(type.id)}" ${type.id === (plan?.kind ?? board.defaultWorkType ?? 'task') ? 'selected' : ''}>${escapeHTML(type.label)}</option>`).join('')}</select></label>
         ${field(ui, 'priority', 'priority', String(plan?.priority ?? 2), true, 'number')}
         ${suggestionField({name: 'area', label: 'area', kind: 'area', free: true, selected: plan?.area ? [{id: plan.area, label: plan.area}] : []})}${suggestionField({name: 'milestone', label: 'milestone', kind: 'milestone', free: true, selected: plan?.milestone ? [{id: plan.milestone, label: plan.milestone}] : []})}
@@ -37,7 +39,8 @@ export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, it
         <div class="kanban__actions">${controls(ui, board, item, actor, archived)}</div>
         ${amendmentsView(ui, item)}
         ${archived ? '' : detailForms(ui, board, item, actor)}
-        <section data-related-records></section><h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, item.sources ?? [])}
+        ${item.planning?.parentId ? `<p>${escapeHTML(ui.text('parent'))}: <button type="button" data-item="${escapeAttr(item.planning.parentId)}">${escapeHTML(board.items.find(parent => parent.id === item.planning?.parentId)?.title ?? item.planning.parentId)}</button></p>` : ''}
+        <section data-children></section><section data-related-records></section><h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, item.sources ?? [])}
         <div data-analysis></div><div data-execution-session></div>
         <h4>${escapeHTML(ui.text('sessions'))}</h4>${item.participants.map(p => `<button type="button" data-session="${escapeAttr(p.sessionId)}">${escapeHTML(p.sessionId)} · ${escapeHTML(p.roles.join(', '))}</button>`).join('') || `<p>${escapeHTML(ui.text('none'))}</p>`}
         ${archived ? '' : `<form data-form="session">${suggestionField({name: 'sessionId', label: 'session', kind: 'session', manual: true, required: true})}<button>${escapeHTML(ui.text('registerSession'))}</button></form>`}

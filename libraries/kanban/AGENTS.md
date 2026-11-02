@@ -19,3 +19,5 @@
 mountTitleBar 提供时，目录、看板、详情和新建表单使用完整宿主标题栏，不再同时挂载局部导航和窗口插槽。库交接原标题、关闭及菜单节点，宿主保留其事件与状态；库只提供 fallback 与公开语义插槽，不导入宿主 UI 包。
 
 automation 设置只保存不透明绑定及协调/执行主体；configure-automation 不调用模型。发布计划可凭 expectedRevision 原子接纳尚未认领的既有事项，保留身份和人工依赖；已发布定义不能借此改写。autoDispatch 支持宿主动态谓词，暂停仍观察原派发。analysisStatus/automationCatalog 是可选 UI 端口，模型输出契约、调用 journal 与具体目标解释归宿主。
+
+宿主拥有共享导航时可省略 sidebar，实例只监听、渲染和销毁自己的 editor；独立 mountKanban 默认仍创建侧栏。createBoard/lookupReference 提供语义命令，committed 只通知已成功提交的变更，宿主不得用模拟点击接入。父项详情按 parentId 有界分页读取子事项，新建子事项预填合法工作类型与父项，父子关系和依赖关系分别校验。

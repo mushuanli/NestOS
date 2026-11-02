@@ -72,7 +72,8 @@ export function developmentObserver(options: Options) {
             await options.lifecycle?.enqueue(input.boardId, input.dispatch, item, input.observation);
             if (options.lifecycle && !await options.lifecycle.settled(input.dispatch.id, input.observation.outcome))
                 return {...input.observation, outcome: 'running', outputs: undefined, code: 'LIFECYCLE_PENDING'};
-            await close(input.dispatch.id); return input.observation;
+            const outputs=await journal.artifact(input.dispatch.id,messages.filter(message=>message.type==='result'));
+            await close(input.dispatch.id); return {...input.observation,outputs};
         } finally {await view.dispose();}
     };
     async function close(id: string) {const release = watches.get(id); watches.delete(id); await release?.();}

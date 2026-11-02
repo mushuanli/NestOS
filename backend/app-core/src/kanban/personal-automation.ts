@@ -68,7 +68,7 @@ async function scanBoards(options: Options, bridges: Map<string, Awaited<ReturnT
         try {
             const board = await options.service.read(entry.id); assertAutomationPrincipals(board.automation!);
             let bridge = bridges.get(board.id);
-            if (!bridge) {bridge = await createBridge(options, board.id, prepareSession, active); bridges.set(board.id, bridge);}
+            if (!bridge) {bridge = await createBridge(options, board.id, prepareSession); bridges.set(board.id, bridge);}
             await bridge.scan();
             if (!active()) return;
             await planNext(options, await options.service.read(board.id), prepareSession, active);
@@ -95,7 +95,7 @@ async function planNext(options: Options, board: KanbanBoard, prepareSession: (i
         if (status?.state === 'analyzing' || status?.state === 'unknown' || status?.state === 'ready') return;
     }
 }
-async function createBridge(options: Options, boardId: string, prepareSession: (id: string) => Promise<string>, active: () => boolean) {
+async function createBridge(options: Options, boardId: string, prepareSession: (id: string) => Promise<string>) {
     const manager = async () => {const board = await options.service.read(boardId); return options.serviceFor(board.automation!.coordinator);};
     const service = await manager();
     const executor = createPublishedKanbanWorkExecutor({...options, prepareSession,
@@ -114,7 +114,7 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
                     reportActivity: fact => options.workLog?.append(options.service, boardId, item.id, {...fact, actor: fact.actor ?? dispatch.principal, dispatchId: dispatch.id}) ?? Promise.resolve()});
             }
             return {target};
-        }, outputs: (dispatch, result) => {requireValue(active(), 'SERVICE_STOPPING'); return options.journal.artifact(dispatch.id, result.exit.output);}});
+        }});
     return createNestOSKanbanExecutionBridge({fs: options.fs, directory: '/var/lib/kanban/automation/' + encodeURIComponent(boardId), boardId,
         service, worker: async principal => options.serviceFor(principal), executor,
         autoDispatch: async () => (await options.service.read(boardId)).automation?.enabled === true,

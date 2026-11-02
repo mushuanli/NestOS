@@ -36,7 +36,7 @@ async function fixture(verifyDelivery?: (dispatchId: string) => Promise<void>, l
     closes.push(() => observer.dispose());
     const publish = (id: string, type: string) => fs.driver.createFile({parentPath: directory + '/inbox', name: id + '.json',
         content: JSON.stringify({schema: 'work-message/1', ...scope, id, type, content: 'Business message'})});
-    return {publish, service, events, observe: (outcome: 'running' | 'succeeded') => observer.observe({boardId: 'board', dispatch,
+    return {publish, service, events, journal, observe: (outcome: 'running' | 'succeeded') => observer.observe({boardId: 'board', dispatch,
         service, worker, observation: {outcome, ...(outcome === 'succeeded' ? {outputs: []} : {})}})};
 }
 it('requires a result and native completion before returning a reviewable observation', async () => {
@@ -82,4 +82,12 @@ it('settles a reported error only after native completion and notifies once',asy
     expect(await f.observe('succeeded')).toMatchObject({outcome:'failed',code:'WORKSPACE_ERROR_REPORTED'});
     expect(await f.observe('succeeded')).toMatchObject({outcome:'failed'});
     expect((await f.events.listNotifications()).items.filter(row=>row.event.value.type==='kanban.workspace.error')).toHaveLength(1);
+});
+
+it('publishes artifacts from immutable result files rather than session summaries',async()=>{
+    const f=await fixture();await f.publish('file-result','result');
+    const result=await f.observe('succeeded');
+    expect(result.outputs).toHaveLength(1);
+    const payload=await f.journal.get<string>('artifact:'+result.outputs![0].sha256);
+    expect(JSON.parse(payload!)).toEqual([expect.objectContaining({id:'file-result',type:'result',content:'Business message'})]);
 });

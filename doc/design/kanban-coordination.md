@@ -480,4 +480,31 @@ NestOS 将已提交的看板事件投影到独立的 `/var/lib/kanban/work-log.s
 
 Agent 不直接调用 Kanban 命令或承担协调职责。宿主通过 Session prompt 指定授权工作区、输入、输出路径和协议；规划交付读取 `_nestos/kanban/analysis.yaml`，信封为 `schema: nestos.file-result/1`、`operationId` 和 `payload`。Session 终态只证明执行结束，聊天正文不再作为规划结果。缺少文件保留 pending；格式、范围和不可变摘要分别校验，拒绝异任务结果及发布后改写。平台通用读取位于 `run/session-file-result.ts`，不认识 Agent、Kanban 任务或具体工具。
 
-规划 payload 的业务校验与原子 publish-plan 仍归 Kanban 宿主；文件可由 Agent、CLI 或其他已授权进程生成。当前迁移已替换规划正文解析；执行产物取值、提示词与部署验收尚需统一到同一文件边界，不能将此阶段视为整体迁移完成。
+规划 payload 的业务校验与原子 publish-plan 仍归 Kanban 宿主；文件可由 Agent、CLI 或其他已授权进程生成。规划与执行产物均以文件为准，发布调用回执仅用于确认执行终态。规划使用 YAML 信封，执行消息仍为 work-message/1 JSON；两者当前具有不同协议，不能称为单一 YAML 交换协议。目录订阅接线仍由开发观察适配器负责，尚未抽为通用交换实例。部署与完整端到端验收仍需独立完成。
+
+### C4：文件交付与业务协调边界
+
+```mermaid
+C4Container
+  Person(user, "用户", "确认决策与独立验收")
+  System_Ext(executor, "文件执行者", "Agent、CLI 或其他授权进程")
+  System_Boundary(nestos, "NestOS") {
+    Container(session, "Session", "通用执行机制", "传递 prompt、绑定会话、观察终态")
+    Container(exchange, "文件读取与回执", "run", "限定读取、范围校验、摘要核对")
+    Container(adapter, "文件观察适配", "presets", "绑定项目、目录订阅与业务消息")
+    Container(coordinator, "Kanban 协调", "应用策略", "接纳计划、调度、日志与通知")
+    Container(core, "Kanban 核心", "独立库", "原子命令、依赖、验收与幂等")
+    ContainerDb(files, "授权工作区", "VFS / Cells", "输入、prompt、计划与结果文件")
+  }
+  Rel(user, coordinator, "确认与验收")
+  Rel(coordinator, session, "准备执行及 prompt")
+  Rel(session, executor, "运行并观察终态")
+  Rel(executor, files, "只通过文件交付业务数据")
+  Rel(files, adapter, "目录变化唤醒")
+  Rel(adapter, exchange, "读取并核对")
+  Rel(exchange, files, "受限读取")
+  Rel(adapter, coordinator, "已验证文件")
+  Rel(coordinator, core, "提交协调命令")
+```
+
+执行者没有指向 Kanban 的 API 关系；文件读取机制不导入 Agent 或 Kanban。业务判断保留在适配/协调层，核心不调用 Session。图中的目录变化只作唤醒，持久文件、回执及正式执行终态共同决定推进，事件次数不等于命令次数。当前图描述现有边界，文件观察适配仍是应用预设，不能冒充已完成的通用目录守护模块。

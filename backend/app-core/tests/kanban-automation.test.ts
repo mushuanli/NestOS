@@ -46,7 +46,7 @@ async function fixture(autoAccept = false, analysis?:unknown) {
         return {id, sessionId: _session, version: 1, effects: {}, exit: {status: 'succeeded', output: {exit: {status: 'succeeded', output}}}} as unknown as TaskRecord;
     })} as unknown as PersonalKanbanAutomationOptions['kernel'];
     const fileJournal=new KanbanAutomationJournal(fs);await fileJournal.open();
-    const options: PersonalKanbanAutomationOptions = {readAnalysisOutput:id=>readSessionFileResult(fs,'/results/'+id+'.yaml',id,fileJournal),calls, kernel, sessions: {ensureSession: vi.fn(async id => id), getManifest: vi.fn(async id => ({id, title: id})), listSummaries: async () => []} as unknown as PersonalKanbanAutomationOptions['sessions'],
+    const options: PersonalKanbanAutomationOptions = {observeWork:async input=>input.observation.outcome==='succeeded'?{...input.observation,outputs:await fileJournal.artifact(input.dispatch.id,{file:'result.yaml',content:'Verified result'})}:input.observation,readAnalysisOutput:id=>readSessionFileResult(fs,'/results/'+id+'.yaml',id,fileJournal),calls, kernel, sessions: {ensureSession: vi.fn(async id => id), getManifest: vi.fn(async id => ({id, title: id})), listSummaries: async () => []} as unknown as PersonalKanbanAutomationOptions['sessions'],
         prepareSession: vi.fn(async () => true), catalog: vi.fn(async () => targets)};
     const diagnostics = new DiagnosticJournal();
     const open = () => createPersonalKanban(fs, events, diagnostics, options.sessions, kernel, options);
@@ -73,7 +73,7 @@ it('analyzes newly added work, waits for independent acceptance and passes prere
     await f.command({type: 'accept-execution', dispatchId: first, accept: true});
     await f.service.scan(); expect(f.executions()).toHaveLength(2);
     const second = f.executions()[1], request = JSON.parse(second[1].request.source.text);
-    expect(request.dependencies[0].outputs[0].value).toEqual({message: {content: 'Verified result'}});
+    expect(request.dependencies[0].outputs[0].value).toEqual({file:'result.yaml',content:'Verified result'});
     expect((await f.service.item('board', 'first')).item.id).toBe('first');
     f.completed.add(second[0]); await f.service.scan();
     expect((await f.service.item('board', 'second')).item.status).toBe('review');

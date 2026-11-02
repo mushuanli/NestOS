@@ -69,19 +69,14 @@ async function changedModules(process: RemoteProcessHandle, directory: string, b
     for (let index = 0; index + 1 < parts.length; index += 2) {
         if (/^:(?:160000 [0-9]{6}|[0-9]{6} 160000) /.test(parts[index])) paths.push(parts[index + 1]);
     }
-    const indexEntries = (await gitWorkspace(process, directory, ['ls-files', '--stage', '-z'])).stdout.split('\0');
-    const modules = new Set(indexEntries.filter(entry => entry.startsWith('160000 ')).map(entry => entry.slice(entry.indexOf('\t') + 1)));
+    const modules = await trackedModulePaths(process,directory);
     const status = (await gitWorkspace(process, directory, ['status', '--porcelain=v1', '-z', '--no-renames', '--ignore-submodules=none'])).stdout;
     for (const entry of status.split('\0')) if (modules.has(entry.slice(3))) paths.push(entry.slice(3));
     return [...new Set(paths)];
 }
 export async function availableWorktreeModules(process: RemoteProcessHandle, tree: PreparedWorktree): Promise<WorktreeRepository[]> {
-    const configured = await gitWorkspace(process, tree.directory, ['config', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'], true);
-    if (configured.code === 1) return [];
-    if (configured.code !== 0) throw failure('MODULE_BASE_READ_FAILED');
-    const paths = configured.stdout.split('\n').filter(Boolean).map(line => line.slice(line.indexOf(' ') + 1));
-    if (paths.length > 256) throw failure('WORKSPACE_MODULE_LIMIT');
-    if (!paths.length) return [];
+    const paths=(await moduleBindings(process,tree.directory)).map(binding=>binding.path);
+    if(!paths.length)return [];
     const entries = (await gitWorkspace(process, tree.directory, ['ls-tree', '-z', tree.baseCommit, '--', ...paths])).stdout.split('\0');
     const modules = entries.flatMap(entry => {
         const match = /^160000 commit ([a-f0-9]{40,64})\t(.+)$/.exec(entry);
@@ -94,8 +89,7 @@ export async function availableWorktreeModules(process: RemoteProcessHandle, tre
 async function changesDigest(process: RemoteProcessHandle, cwd: string): Promise<string> {
     const changed = (await gitWorkspace(process, cwd, ['diff', '--name-only', '-z', '--diff-filter=ACMRTUXB', 'HEAD', '--'])).stdout;
     const untracked = (await gitWorkspace(process, cwd, ['ls-files', '--others', '--exclude-standard', '-z'])).stdout;
-    const index = (await gitWorkspace(process, cwd, ['ls-files', '--stage', '-z'])).stdout;
-    const modules = new Set(index.split('\0').filter(entry => entry.startsWith('160000 ')).map(entry => entry.slice(entry.indexOf('\t') + 1)));
+    const modules = await trackedModulePaths(process,cwd);
     const paths = [...new Set((changed + untracked).split('\0').filter(path => path && !modules.has(path)))].sort();
     if (paths.length > 1000) throw failure('DELIVERY_FILE_LIMIT');
     const hashes = paths.length ? (await gitWorkspace(process, cwd, ['hash-object', '--', ...paths])).stdout : '';
@@ -108,9 +102,23 @@ async function initializeModule(process:RemoteProcessHandle,directory:string,pat
     const source='/workspace/'+path;
     const available=await gitWorkspace(process,source,['cat-file','-e',commit+'^{commit}'],true);
     if(available.code!==0) {await gitWorkspace(process,directory,['submodule','update','--init','--',path]);return;}
-    const config=await gitWorkspace(process,directory,['config','--file','.gitmodules','--get-regexp','^submodule\\..*\\.path$']);
-    const key=config.stdout.split('\n').find(line=>line.slice(line.indexOf(' ')+1)===path)?.split(' ')[0];
-    if(!key)throw failure('MODULE_NOT_REGISTERED');
-    await gitWorkspace(process,directory,['-c','protocol.file.allow=always','-c',key.slice(0,-5)+'.url='+source,
+    const binding=(await moduleBindings(process,directory)).find(binding=>binding.path===path);
+    if(!binding)throw failure('MODULE_NOT_REGISTERED');
+    await gitWorkspace(process,directory,['-c','protocol.file.allow=always','-c',binding.key.slice(0,-5)+'.url='+source,
         'submodule','update','--init','--',path]);
+}
+
+async function moduleBindings(process:RemoteProcessHandle,directory:string):Promise<Array<{key:string;path:string}>> {
+    const result=await gitWorkspace(process,directory,['config','--file','.gitmodules','--get-regexp','^submodule\\..*\\.path$'],true);
+    if(result.code===1)return [];
+    if(result.code!==0)throw failure('MODULE_BASE_READ_FAILED');
+    const bindings=result.stdout.split('\n').filter(Boolean).map(line=>({key:line.slice(0,line.indexOf(' ')),path:line.slice(line.indexOf(' ')+1)}));
+    if(bindings.length>256)throw failure('WORKSPACE_MODULE_LIMIT');
+    return bindings;
+}
+async function trackedModulePaths(process:RemoteProcessHandle,directory:string):Promise<Set<string>> {
+    const paths=(await moduleBindings(process,directory)).map(binding=>binding.path);
+    if(!paths.length)return new Set();
+    const index=(await gitWorkspace(process,directory,['ls-files','--stage','-z','--',...paths])).stdout;
+    return new Set(index.split('\0').filter(entry=>entry.startsWith('160000 ')).map(entry=>entry.slice(entry.indexOf('\t')+1)));
 }

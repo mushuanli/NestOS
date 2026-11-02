@@ -2,7 +2,7 @@ import type {IndependentCallService} from '@itookit/llm-session';
 import type {IndependentCallInput, IndependentCallView} from '@itookit/llm-session/contracts';
 import type {TargetRef} from '@itookit/llm-flow/contracts';
 import {taskStat, type Kernel, type TaskCallResult} from '@itookit/durable-kernel';
-import type {KanbanArtifactRef, KanbanDispatch, KanbanItem} from '@itookit/kanban/contracts';
+import type {KanbanDispatch, KanbanItem} from '@itookit/kanban/contracts';
 import type {KanbanExecutionPort, KanbanExecutionObservation} from '@itookit/kanban/execution';
 import {KanbanError} from '@itookit/kanban';
 interface WorkExecutionPolicy {maxDepth: number; timeoutMs?: number | null}
@@ -16,7 +16,6 @@ export interface PublishedKanbanWorkOptions {
     prepareSession(dispatchId: string): Promise<string>;
     binding(dispatch: KanbanDispatch, item: KanbanItem): Promise<{target: TargetRef; overrides?: IndependentCallInput['request']['overrides']}>;
     context?(dispatch: KanbanDispatch, item: KanbanItem): Promise<unknown>;
-    outputs?(dispatch: KanbanDispatch, result: TaskCallResult): Promise<KanbanArtifactRef[]>;
     executionPolicy?: WorkExecutionPolicy;
 }
 /** Reuses the published Task-call admission and read-only execution-tree observation. */
@@ -59,7 +58,7 @@ async function inspectWork(options: PublishedKanbanWorkOptions, frozen: FrozenWo
     const result=record.exit!.output as TaskCallResult|undefined;
     if(!result?.exit) return {...session,outcome:'unknown',code:'WORK_RESULT_MISSING'};
     if(result.exit.status!=='succeeded') return {...session,outcome:result.exit.status==='cancelled'?'cancelled':'failed',code:knownCode(result.exit.error,'WORK_EXECUTION_FAILED')};
-    return {...session,outcome:'succeeded',outputs:await options.outputs?.(frozen.dispatch,result) ?? []};
+    return {...session,outcome:'succeeded',outputs:[]};
 }
 function treeSettled(view: IndependentCallView): boolean {return view.callerState?.settled===true&&view.executionTree?.settled===true;}
 function validateFrozen(value: unknown): FrozenWork {

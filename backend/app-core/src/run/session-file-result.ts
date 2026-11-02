@@ -28,3 +28,7 @@ function assertBounded(root:unknown):void {
         if(value&&typeof value==='object')for(const child of Object.values(value))pending.push({value:child,depth:depth+1});
     }
 }
+
+export function sessionFileResultPrompt(path:string,operationId:string):string {
+    return `Publish the result payload ONLY as YAML at ${path}, wrapped as {schema: nestos.file-result/1, operationId: ${operationId}, payload: <result object>}. Write a temporary file and atomically rename it. Published files are immutable. Chat output is informational and is never parsed as a result.`;
+}

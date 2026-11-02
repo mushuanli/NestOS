@@ -7,9 +7,7 @@ import {failure, readPrompt, type PromptJournal} from './prompt-bundle';
 export async function readSessionFileResult(fs:IFileSystem,path:string,operationId:string,journal:PromptJournal):Promise<unknown|undefined> {
     if(!await fs.driver.exists(path))return;
     const text=await readPrompt(fs,path);
-    let value:unknown;
-    try {value=load(text,{schema:JSON_SCHEMA,json:false});assertBounded(value);}
-    catch {throw failure('SESSION_FILE_RESULT_INVALID');}
+    const value=parseSessionFile(text);
     const result=value as {schema?:string;operationId?:string;payload?:unknown};
     if(!result||result.schema!=='nestos.file-result/1'||result.operationId!==operationId||result.payload===undefined)
         throw failure('SESSION_FILE_RESULT_SCOPE_MISMATCH');
@@ -31,4 +29,9 @@ function assertBounded(root:unknown):void {
 
 export function sessionFileResultPrompt(path:string,operationId:string):string {
     return `Publish the result payload ONLY as YAML at ${path}, wrapped as {schema: nestos.file-result/1, operationId: ${operationId}, payload: <result object>}. Write a temporary file and atomically rename it. Published files are immutable. Chat output is informational and is never parsed as a result.`;
+}
+
+export function parseSessionFile(text:string):unknown {
+    try {const value:unknown=load(text,{schema:JSON_SCHEMA,json:false});assertBounded(value);return value;}
+    catch {throw failure('SESSION_FILE_RESULT_INVALID');}
 }

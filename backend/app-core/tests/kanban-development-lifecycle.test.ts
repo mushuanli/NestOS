@@ -47,6 +47,17 @@ it('runs cancellation finalization independently and reconciles a lost response 
     await second.scan();
     const last = calls.submitPreparedTaskCall.mock.calls.at(-1)![0];
     expect(last.request.expectedTarget.id).toBe('planner');
-    expect(last.request.source.text).toContain('Decision recovery summary');
+    expect(last.request.source.text).not.toContain('Decision recovery summary');
     expect(last.request.source.text).toContain('prompts/decision.md');
+    await journal.update('development-policy:custom',()=>({prompts:{files:[
+        {name:'task.md',content:'Custom base without status sections'},
+        {name:'task-post.md',content:'Custom post body'},
+        {name:'task-succ.md',content:'Custom success body'},
+        {name:'task-clear.md',content:'Custom cleanup body'}]}}));
+    await second.enqueue('board',{...dispatch,id:'custom'},item,{outcome:'succeeded'},'task',
+        {kind:'agent',id:'worker',version:'1',digest:'c'.repeat(64)});
+    await second.scan();
+    const custom=calls.submitPreparedTaskCall.mock.calls.at(-1)![0].request.source.text;
+    expect(custom).toContain('prompts/task-post.md, _nestos/kanban/prompts/task-succ.md, _nestos/kanban/prompts/task-clear.md');
+    expect(custom).not.toContain('Custom post body');
 });

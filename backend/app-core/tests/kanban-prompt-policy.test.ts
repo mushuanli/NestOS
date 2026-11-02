@@ -56,3 +56,16 @@ it('upgrades only unchanged shipped defaults for new attempts and preserves user
     expect((await developmentPolicy(journal,fs,fs,'custom')).prompts.files.find(file=>file.name==='decision.md')?.content).toBe('User planning policy');
     expect(await developmentPolicy(journal,fs,fs,'upgraded')).toEqual(policy);
 });
+it('freezes project pre/post overrides and global status hooks and publishes them with the manifest',async()=>{
+    const {fs,journal}=await fixture();
+    const global='/var/lib/kanban/policies/development',local='/workspace/_nestos/kanban/policies/development';
+    for(const [parentPath,name,content] of [[global,'task-pre.md','Global pre'],[local,'task-pre.md','Project pre'],[local,'task-post.md','Project post'],[global,'task-succ.md','Global success']])
+        await fs.driver.createFile({parentPath,name,content,recursive:true});
+    const policy=await developmentPolicy(journal,fs,fs,'hooks');
+    expect(policy.prompts.files.find(file=>file.name==='task-pre.md')?.content).toBe('Project pre');
+    expect(policy.prompts.files.find(file=>file.name==='task-succ.md')?.content).toBe('Global success');
+    await publishPromptBundle(fs,'/workspace/frozen',policy.prompts,{});
+    expect(await fs.driver.exists('/workspace/frozen/prompts/task-post.md')).toBe(true);
+    await fs.driver.writeContent(local+'/task-pre.md','Later edit');
+    expect(await developmentPolicy(journal,fs,fs,'hooks')).toEqual(policy);
+});

@@ -1,3 +1,4 @@
+import {DirectorySubscriptions} from '../run/directory-subscriptions';
 import {verifyPromptBundle} from '../run/prompt-bundle';
 import type {DevelopmentWorkspaceRecord} from './kanban-development';
 import {readContextCatalog, type ContextInspector} from '../projects/harness-context-catalog';
@@ -20,7 +21,7 @@ interface Options {verifyDelivery?(dispatchId: string): Promise<void>;
 
 export function developmentObserver(options: Options) {
     const journal = new KanbanAutomationJournal(options.fs);
-    const watches = new Map<string, () => Promise<void>>(); let stopped = false;
+    const watches = new DirectorySubscriptions(); let stopped = false;
     const observe: NonNullable<PersonalKanbanAutomationOptions['observeWork']> = async input => {
         if (stopped) return input.observation;
         const worktree = await journal.get<PreparedWorktree>('worktree:' + input.dispatch.id);
@@ -28,12 +29,13 @@ export function developmentObserver(options: Options) {
         const {item} = await input.service.item(input.boardId, input.dispatch.itemId);
         const projectId = item.externalRefs?.find(ref => ref.system === REMOTE_PROJECT_REFERENCE)?.id;
         if (!projectId) throw Object.assign(new Error('Missing workspace project binding'), {code: 'WORKSPACE_PROJECT_MISSING'});
-        if (options.remote && !watches.has(input.dispatch.id)) {
-            const client = await options.remote.projectHarness(projectId);
-            if (stopped) {await client.close(); return input.observation;}
-            const stop = client.subscribeDirectoryPath?.('_nestos/worktrees/' + input.dispatch.id + '/_nestos/kanban/inbox', options.wake);
-            watches.set(input.dispatch.id, async () => {stop?.(); await client.close();});
-        }
+        if(options.remote)await watches.ensure(input.dispatch.id,async()=>{
+            const client=await options.remote!.projectHarness(projectId);
+            try {
+                const stop=client.subscribeDirectoryPath?.('_nestos/worktrees/'+input.dispatch.id+'/_nestos/kanban/inbox',options.wake);
+                return async()=>{stop?.();await client.close();};
+            }catch(error){await client.close();throw error;}
+        });
         await linkReference(journal, input, {system: 'nestos-worktree', id: input.dispatch.id,
             revision: JSON.stringify({projectId, directory: worktree.directory, branch: worktree.branch, baseCommit: worktree.baseCommit})});
         await linkResult(options, journal, input, projectId);
@@ -76,8 +78,8 @@ export function developmentObserver(options: Options) {
             await close(input.dispatch.id); return {...input.observation,outputs};
         } finally {await view.dispose();}
     };
-    async function close(id: string) {const release = watches.get(id); watches.delete(id); await release?.();}
-    return {observe, scan: () => options.lifecycle?.scan(), async quiesce() {stopped = true; await options.lifecycle?.dispose();}, async dispose() {stopped = true; await options.lifecycle?.dispose(); await Promise.allSettled([...watches.keys()].map(close));}};
+    async function close(id:string){await watches.close(id);}
+    return {observe, scan: () => options.lifecycle?.scan(), async quiesce() {stopped = true; await options.lifecycle?.dispose();}, async dispose() {stopped = true; await options.lifecycle?.dispose(); await watches.dispose();}};
 }
 
 async function linkResult(options: Options, journal: KanbanAutomationJournal, input: Input, projectId: string): Promise<void> {

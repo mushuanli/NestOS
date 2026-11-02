@@ -1,3 +1,4 @@
+import {parseSessionFile} from './session-file-result';
 import {sha256HexSync} from '@itookit/common';
 import {FSError, type IFileSystem} from '@itookit/vfs-core';
 
@@ -14,12 +15,14 @@ export async function initializeWorkspaceMessages(fs: IFileSystem, directory: st
         catch (error) {if ((error as {code?: string}).code !== 'EEXIST') throw error;}
     }
     const base = {schema: 'work-message/1', ...scope, types: ['progress', 'clarification', 'error', 'result'],
-        publication: 'Write a temporary file, then atomically rename to inbox/<id>.json. Published messages are immutable.', maxBytes: 65536};
+        publication: 'Write YAML to a temporary file, then atomically rename to inbox/<id>.yaml. Published messages are immutable.', maxBytes: 65536};
     const protocol = JSON.stringify({...base, message: {schema: 'work-message/1', ...scope, id: '<unique-id>',
         type: 'progress', content: '<message text, at most 8000 characters>'}, bodyAlias: 'Legacy body is accepted only when content is absent.'});
     if (await fs.driver.exists(directory + '/protocol.json')) {
         const existing = new TextDecoder('utf-8', {fatal: true}).decode(await readMessageBytes(fs, directory + '/protocol.json'));
-        if (existing !== protocol && existing !== JSON.stringify(base)) throw new FSError('ECONFLICT', 'Workspace protocol identity changed');
+        const legacyBase={...base,publication:'Write a temporary file, then atomically rename to inbox/<id>.json. Published messages are immutable.'};
+        const legacyProtocol={...legacyBase,message:{schema:'work-message/1',...scope,id:'<unique-id>',type:'progress',content:'<message text, at most 8000 characters>'},bodyAlias:'Legacy body is accepted only when content is absent.'};
+        if (existing !== protocol && existing !== JSON.stringify(base) && existing !== JSON.stringify(legacyBase) && existing !== JSON.stringify(legacyProtocol)) throw new FSError('ECONFLICT', 'Workspace protocol identity changed');
     } else await fs.driver.createFile({parentPath: directory, name: 'protocol.json', content: protocol});
 }
 
@@ -30,10 +33,10 @@ export async function consumeWorkspaceMessages(fs: IFileSystem, directory: strin
     if (files.length > 200) throw new FSError('EINVAL', 'Workspace inbox exceeds 200 entries');
     const messages: WorkspaceMessage[] = [];
     for (const file of files.sort((a, b) => a.name.localeCompare(b.name))) {
-        if (file.type !== 'file' || !/^[a-zA-Z0-9_-]{1,128}\.json$/.test(file.name)) continue;
+        if (file.type !== 'file' || !/^[a-zA-Z0-9_-]{1,128}\.(yaml|yml|json)$/.test(file.name)) continue;
         const bytes = await readMessageBytes(fs, directory + '/inbox/' + file.name);
         const message = parseWorkspaceMessage(new TextDecoder('utf-8', {fatal: true}).decode(bytes), scope);
-        if (file.name !== message.id + '.json') throw new FSError('EINVAL', 'Workspace message filename does not match its identity');
+        if (file.name.slice(0,file.name.lastIndexOf('.')) !== message.id) throw new FSError('EINVAL', 'Workspace message filename does not match its identity');
         const digest = sha256HexSync(bytes), key = 'workspace-message:' + scope.attemptId + ':' + message.id;
         const receipt = await journal.update<Receipt>(key, old => {
             if (old && old.digest !== digest) throw new FSError('ECONFLICT', 'Published workspace message changed');
@@ -50,7 +53,7 @@ export async function consumeWorkspaceMessages(fs: IFileSystem, directory: strin
 
 export function parseWorkspaceMessage(text: string, scope: WorkspaceMessageScope): WorkspaceMessage {
     let value: WorkspaceMessage;
-    try {value = JSON.parse(text) as WorkspaceMessage;} catch {throw new FSError('EINVAL', 'Workspace message is not valid JSON');}
+    try {value = parseSessionFile(text) as WorkspaceMessage;} catch {throw new FSError('EINVAL', 'Workspace message is not valid bounded YAML');}
     if (value && typeof value === 'object' && 'body' in value) {
         if (Object.hasOwn(value, 'content')) throw new FSError('EINVAL', 'Workspace message must not contain both body and content');
         value = {...value, content: (value as WorkspaceMessage & {body: string}).body};

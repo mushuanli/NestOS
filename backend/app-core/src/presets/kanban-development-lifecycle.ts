@@ -1,3 +1,4 @@
+import {lifecyclePromptFiles} from '../run/prompt-lifecycle';
 import {developmentObservation} from './kanban-development-log';
 import {t} from '@itookit/common';
 import type {TargetRef} from '@itookit/llm-flow/contracts';
@@ -62,13 +63,14 @@ async function enqueue(options: Options, state: State, boardId: string, dispatch
         const stage = 'postload.' + observation.outcome;
         const policy = workspace?.policy ?? await options.journal.get<DevelopmentPolicy>('development-policy:' + dispatch.id);
         const file = kind + '.md', prompt = policy?.prompts.files.find(entry => entry.name === file)?.content;
-        if (!prompt || !hasMarkdownSection(prompt, stage)) return;
+        const hooks=policy?lifecyclePromptFiles(policy.prompts,kind,observation.outcome as 'succeeded'|'failed'|'cancelled'):[];
+        if (!prompt || !hasMarkdownSection(prompt, stage)&&!hooks.length) return;
         const id = dispatch.id + '-postload-' + observation.outcome, key = 'development-lifecycle:' + id;
         if (state.stopped) return;
         if (!await options.journal.get<Job>(key)) {
             if (target) await options.journal.update<TargetRef>('lifecycle-target:' + id, old => old ?? target);
             const hookDispatch = {...dispatch, id};
-            const hookItem = {...item, responsibility: `Execute ONLY ${stage} and the non-destructive cleanup guidance in _nestos/kanban/prompts/${file}. The original task is terminal. Do not implement, commit, merge, push, or publish primary result. Report retained work and recovery information. Original code: ${observation.code ?? 'NONE'}. Frozen Markdown: ${kind === 'decision' ? prompt : '(read the manifest file)'}`, 
+            const hookItem = {...item, responsibility: `Execute ONLY ${stage} and the non-destructive cleanup guidance in _nestos/kanban/prompts/${file}. The original task is terminal. Do not implement, commit, merge, push, or publish primary result. Report retained work and recovery information. Original code: ${observation.code ?? 'NONE'}. Read the frozen prompts from the manifest, followed by these optional files in order: ${hooks.map(name=>'_nestos/kanban/prompts/'+name).join(', ')||'(none)'}.`,
                 acceptance: 'Return a concise lifecycle summary. Preserve repository state and mailbox history.'};
             const request = await state.executor.prepare(hookDispatch, hookItem);
             await options.journal.update<Job>(key, old => old ?? {id, boardId, dispatch: hookDispatch, stage, request, phase: 'prepared'});

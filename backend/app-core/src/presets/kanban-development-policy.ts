@@ -1,3 +1,4 @@
+import {LIFECYCLE_PROMPT_SUFFIXES} from '../run/prompt-lifecycle';
 import {developmentStage} from './kanban-development-log';
 import migrations from './kanban-development-prompt-migrations.json';
 import {sha256HexSync, t} from '@itookit/common';
@@ -49,6 +50,7 @@ async function resolvePrompts(fs: IFileSystem, project: IFileSystem, profile: st
         const content = projectOverride ? await readPrompt(project,local) : await defaultPrompt(fs,global,name,profile,operationId);
         files.push({name, content, source: projectOverride ? 'project:' + local : 'nestos:' + global, sha256: sha256HexSync(content)});
     }
+    files.push(...await resolveLifecyclePrompts(fs,project,profile));
     return files;
 }
 
@@ -65,4 +67,18 @@ async function defaultPrompt(fs:IFileSystem,path:string,name:'decision.md'|'task
     // Legacy storage cannot replace conditionally; freeze the upgraded default without overwriting authoring files.
     if(revision)await developmentStage(operationId,'prompts.default-upgrade',()=>fs.driver.writeContent(path,defaults[name],{ifRevision:revision}));
     return defaults[name];
+}
+
+async function resolveLifecyclePrompts(fs:IFileSystem,project:IFileSystem,profile:string) {
+    const files=[];
+    for(const entry of ['decision','task'])for(const suffix of LIFECYCLE_PROMPT_SUFFIXES) {
+        const name=entry+'-'+suffix+'.md',local='/workspace/_nestos/kanban/policies/'+profile+'/'+name;
+        const global='/var/lib/kanban/policies/'+profile+'/'+name;
+        const projectOverride=await project.driver.exists(local),source=projectOverride?project:fs,path=projectOverride?local:global;
+        if(await source.driver.exists(path)) {
+            const content=await readPrompt(source,path);
+            files.push({name,content,source:(projectOverride?'project:':'nestos:')+path,sha256:sha256HexSync(content)});
+        }
+    }
+    return files;
 }

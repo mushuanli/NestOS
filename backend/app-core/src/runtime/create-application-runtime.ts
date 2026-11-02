@@ -572,7 +572,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const developmentBindings = remoteConnections && options.remoteSourceProvider ? {fs: systemFS, agents: agentService,
             connections: executionConnections, remote: remoteConnections, provider: options.remoteSourceProvider, projects} : undefined;
         const prepareDevelopment = developmentBindings ? developmentPreparation(developmentBindings) : undefined;
-        const analyzeDevelopment = developmentBindings ? developmentAnalysis(developmentBindings) : undefined;
+        const analyzeDevelopment = developmentBindings ? developmentAnalysis(developmentBindings,()=>wakeKanban()) : undefined;
+        if(analyzeDevelopment)cleanupFns.push(()=>analyzeDevelopment.dispose());
         const verifyDevelopment = developmentBindings ? developmentDelivery(systemFS, developmentBindings.remote, developmentBindings.provider) : undefined;
         const lifecycle = independentCalls ? developmentLifecycle({journal: new KanbanAutomationJournal(systemFS), events, calls: independentCalls, kernel: kernelCore,
             authorize: async (boardId): Promise<boolean> => (await kanban.read(boardId)).automation?.enabled === true,

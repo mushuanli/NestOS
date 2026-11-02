@@ -60,3 +60,10 @@ it('fits remote range reads to the file size instead of treating a maximum as an
     await initializeWorkspaceMessages(f.fs, directory, scope);
     expect(deliver).toHaveBeenCalledTimes(1);
 });
+it('uses the same bounded YAML decoder for new messages and legacy JSON files',async()=>{
+    const f=await fixture(),deliver=vi.fn(async()=>{});
+    await f.fs.driver.createFile({parentPath:directory+'/inbox',name:'yaml-message.yaml',content:'schema: work-message/1\nrunId: run\nitemId: item\nattemptId: attempt\nid: yaml-message\ntype: progress\ncontent: YAML progress'});
+    await f.publish();
+    expect(await consumeWorkspaceMessages(f.fs,directory,scope,f.journal,deliver)).toHaveLength(2);
+    await consumeWorkspaceMessages(f.fs,directory,scope,f.journal,deliver);expect(deliver).toHaveBeenCalledTimes(2);
+});

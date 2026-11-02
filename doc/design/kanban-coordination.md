@@ -480,7 +480,7 @@ NestOS 将已提交的看板事件投影到独立的 `/var/lib/kanban/work-log.s
 
 Agent 不直接调用 Kanban 命令或承担协调职责。宿主通过 Session prompt 指定授权工作区、输入、输出路径和协议；规划交付读取 `_nestos/kanban/analysis.yaml`，信封为 `schema: nestos.file-result/1`、`operationId` 和 `payload`。Session 终态只证明执行结束，聊天正文不再作为规划结果。缺少文件保留 pending；格式、范围和不可变摘要分别校验，拒绝异任务结果及发布后改写。平台通用读取位于 `run/session-file-result.ts`，不认识 Agent、Kanban 任务或具体工具。
 
-规划 payload 的业务校验与原子 publish-plan 仍归 Kanban 宿主；文件可由 Agent、CLI 或其他已授权进程生成。规划与执行产物均以文件为准，发布调用回执仅用于确认执行终态。规划使用 YAML 信封，执行消息仍为 work-message/1 JSON；两者当前具有不同协议，不能称为单一 YAML 交换协议。目录订阅接线仍由开发观察适配器负责，尚未抽为通用交换实例。部署与完整端到端验收仍需独立完成。
+规划 payload 的业务校验与原子 publish-plan 仍归 Kanban 宿主；文件可由 Agent、CLI 或其他已授权进程生成。规划与执行产物均以文件为准，发布调用回执仅用于确认执行终态。规划和执行消息都使用受限 YAML，信封分别描述结果和消息业务；历史 JSON 由同一个解析器兼容，没有第二套解析实现。目录订阅的并发接纳、释放和关闭由 `run/directory-subscriptions.ts` 统一管理；项目授权、路径选择和唤醒仍由宿主注入。部署与完整端到端验收仍需独立完成。
 
 ### C4：文件交付与业务协调边界
 
@@ -507,4 +507,12 @@ C4Container
   Rel(coordinator, core, "提交协调命令")
 ```
 
-执行者没有指向 Kanban 的 API 关系；文件读取机制不导入 Agent 或 Kanban。业务判断保留在适配/协调层，核心不调用 Session。图中的目录变化只作唤醒，持久文件、回执及正式执行终态共同决定推进，事件次数不等于命令次数。当前图描述现有边界，文件观察适配仍是应用预设，不能冒充已完成的通用目录守护模块。
+执行者没有指向 Kanban 的 API 关系；文件读取机制不导入 Agent 或 Kanban。业务判断保留在适配/协调层，核心不调用 Session。图中的目录变化只作唤醒，持久文件、回执及正式执行终态共同决定推进，事件次数不等于命令次数。通用目录订阅资源管理归 run/directory-subscriptions；业务适配仅注入授权目录、传输及唤醒回调，不实现另一套监听生命周期。
+
+### Kanban Markdown 生命周期定制
+
+每种入口共用同一命名规则：`decision.md` / `task.md` 为基础提示词；可选 `decision-pre.md`、`decision-post.md`、`decision-succ.md`、`decision-fail.md`、`decision-cancel.md`、`decision-clear.md`，任务对应 `task-*.md`。子任务复用 task 入口。文件只提供 Agent 提示，不授权工具或改变提交策略。
+
+全局位置 `/var/lib/kanban/policies/<profile>/`，项目位置 `/workspace/_nestos/kanban/policies/<profile>/`；逐文件项目优先，缺失则继承全局。基础默认内置，可选文件不存在就不运行该定制。所有选中文件在尝试开始前冻结、计算摘要，传送至工作树 `_nestos/kanban/prompts/` 并列入 manifest；执行中的源文件改动只影响新尝试。14 个基础和可选文件落在既有 16 文件限制内。
+
+主 Session 先读取基础文件和 pre 文件；正式执行结束后，以独立且稳定身份的 Session 调用按 `post → succ/fail/cancel → clear` 读取文件，禁止重新执行原任务。clear 用于总结和非破坏性清理，不删除工作树、历史或绕过冻结的 commit 策略。已有基础 Markdown 的 preload/postload 状态章节继续使用同一生命周期执行器。聊天内容仅供阅读，业务交付仍需写入协议指定文件。

@@ -388,7 +388,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 uiPersistence, workbenchState, executorUsage, windows: windowBinding,
                 agentsInWorkbench: workspaces.some(workspace => workspace.type === 'chat'),
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
-                navigate: handleNavigationRequest, selected: path => selectionHistory(elementId, path, 'push') });
+                navigate: handleNavigationRequest, onBeforeNavigate: () => {if (visibleWorkspaceId === elementId) rememberCurrentPage();},
+                selected: path => selectionHistory(elementId, path, 'push') });
             const toolbox = module.workbench;
             own(module.dispose); await toolbox.start(); managerCache.set(elementId, toolbox);
             // The toolbox renders inside the editor area, so both stages are already painted.
@@ -687,6 +688,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (closed || revision !== navigationRevision) return;
         requestAnimationFrame(() => { if (!closed) services.startBackground?.(); });
         if (movedSettings || legacyToolbox) updateHistory(workspaceId, resourceId ?? null, 'replace');
+        if (!historyReplay) rememberCurrentPage();
         if (projectRouteError) {
             const workspace = document.getElementById(workspaceId);
             workspace?.querySelector('[data-project-route-error]')?.remove();

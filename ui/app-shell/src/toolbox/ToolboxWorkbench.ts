@@ -40,7 +40,7 @@ interface Options {
     configuration: ModelConfigurationCommands;
     projects?: Pick<import('@itookit/app-contracts/services').ProjectService,'list'>;
     factories: Record<ToolboxKind, EditorFactory>; flowMenu: ContextMenuConfig<VFSNodeUI>;
-    navigate(request: NavigationRequest): Promise<void>; selected(path: string | null): void;
+    navigate(request: NavigationRequest): Promise<void>; selected(path: string | null): void; onBeforeNavigate?(): void;
     /** Host-owned snapshot storage; omitted means the toolbox restores nothing. */
     uiPersistence?: UIPersistencePort;
     /** Host-owned preference storage; omitted means the toolbox starts from defaults. */
@@ -141,7 +141,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.deletion = new ConfigurationDeletionDialog(this.options.configuration, () => this.refresh(), this.options.ocr?.deletionImpact, this.options.projects);
         this.selectionDeletion = new ToolboxDeletion({ resources, inventory: this.options.inventory, view: this.view, deletion: this.deletion,
             completed: async () => { if (!this.closed) { this.ui.setSelection([]); await this.refresh(); } } });
-        this.cleanups.push(this.editorLifecycle = connectEditorLifecycle(this.ui, this.view, editor, undefined, { sidebarContainer: this.options.sidebar, workbenchState: this.options.workbenchState, windows: this.options.windows, navigationLabel: t('toolbox.title'), emptyMessage: t('toolbox.empty'), files: { fs: this.view, cwd: '/' }, resolveEditor: node => this.factory(toolboxKind(node.id)!),
+        this.cleanups.push(this.editorLifecycle = connectEditorLifecycle(this.ui, this.view, editor, undefined, { sidebarContainer: this.options.sidebar, workbenchState: this.options.workbenchState, windows: this.options.windows, navigationLabel: t('toolbox.title'), onBeforeNavigate: this.options.onBeforeNavigate, emptyMessage: t('toolbox.empty'), files: { fs: this.view, cwd: '/' }, resolveEditor: node => this.factory(toolboxKind(node.id)!),
             hostContext: { navigate: this.options.navigate } }));
         this.cleanups.push(this.ui.on('sessionSelected', ({ item }) => this.selected(item?.id ?? null)));
         this.cleanups.push(this.ui.on('stateChanged', () => this.capabilities.sync()));

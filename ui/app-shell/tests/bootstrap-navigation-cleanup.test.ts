@@ -440,3 +440,13 @@ it('ends obsolete replay mode when a new explicit navigation supersedes a pendin
         lifecycle.selection?.('user-selected');expect(push).toHaveBeenCalledOnce();expect(history.state.resourceId).toBe('user-selected');
     }finally{finish();await app.destroy();}
 });
+
+it('records the actual list presentation after navigating to a category with a resource URL',async()=>{
+    navigationDOM();const app=await initTestApp({services:makeRuntime(),workspaces:[workspace],ui:testUI()});
+    const layout=document.querySelector<HTMLElement>('.mm-layout')!;
+    try {
+        lifecycle.open.mockImplementation(async()=>{layout.dataset.mobileView='list';});
+        await app.navigate('settings','category');
+        expect(history.state).toMatchObject({resourceId:'category',mobileView:'list'});
+    }finally{await app.destroy();}
+});

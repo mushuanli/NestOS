@@ -17,7 +17,7 @@ it('keeps the shared sidebar file and directory creation actions usable', async 
         expect(sidebar.querySelector('.vfs-sidebar__title')?.textContent).toBe('Minds');
         expect(sidebar.querySelector('.vfs-node-list--hide-title')).not.toBeNull();
         const root = sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!;
-        expect(root.textContent).toBe('/');
+        expect(root.firstElementChild?.textContent).toBe('/');
         expect(root.closest('details')).toBeNull();
         expect(sidebar.querySelector('[data-action="refresh"]')!.closest('details')).not.toBeNull();
         sidebar.querySelector<HTMLButtonElement>('[data-action="create-directory"]')!.click();

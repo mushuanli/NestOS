@@ -1,10 +1,13 @@
+import {type OcrControls} from '@itookit/app-contracts/services';
+import {type EditorOptions} from '../../contracts';
+import type {SessionDraftPreferences} from '../../contracts';
 import {resourceSuggestions} from '../../flows/resource-suggestions';
 import {prepareRemoteAttachments} from '../remote-attachments';
 import { DraftSaveQueue } from './draft-save-queue';
 import { LayoutTemplates } from '../../components/templates/LayoutTemplates';
 import { DraftDataCodec } from './session-draft-data';
 import type { IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
-import { IEditor, Toast, type EditorOptions, type OcrControls } from '@itookit/ui-common-adapter';
+import {IEditor, Toast} from '@itookit/ui-common-adapter';
 import { randomUUID, t } from '@itookit/common';
 import { ChatInput } from '../../components/input/ChatInputView';
 import { EventBinder } from '../EventBinder';
@@ -18,7 +21,7 @@ import type {ChatInputOptions} from '../../components/input/ChatInputView';
 import {EventBus} from '@itookit/vfs-core';
 import {disposeEditorResources} from '../editor-disposal';
 import {inheritDraftPreferences} from './draft-preferences';
-import type {SessionDraftPreferences, EditorFactory} from '@itookit/ui-common-adapter';
+import type {EditorFactory} from '@itookit/ui-common-adapter';
 import type {EditorEvent, EditorEventMap, EditorEventCallback} from '@itookit/ui-common-adapter';
 
 /** Reuse the chat composer while persisting project drafts independently from Session history. */

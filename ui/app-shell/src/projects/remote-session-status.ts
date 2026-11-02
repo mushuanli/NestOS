@@ -1,5 +1,6 @@
+import {conversationStatus} from '@itookit/llm-ui-adapter/presentation';
 import { harnessObservation as observeHarness } from '@itookit/app-contracts';
-import { conversationStatus } from '@itookit/ui-common-adapter';
+
 import { resolveBrowserTarget } from '@itookit/app-contracts';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import type { VFSNodeUI } from '@itookit/vfs-ui';

@@ -11,6 +11,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./ocr": {
+      "types": "./src/ocr.ts",
+      "import": "./src/ocr.ts",
+      "default": "./src/ocr.ts"
     }
   },
   "publishConfig": {
@@ -23,6 +28,10 @@
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js",
         "require": "./dist/index.cjs"
+      },
+      "./ocr": {
+        "types": "./dist/ocr.d.ts",
+        "import": "./dist/ocr.js"
       }
     }
   },
@@ -44,7 +53,8 @@
     "@itookit/vfs-core": "workspace:*",
     "js-yaml": "^4.1.1",
     "@itookit/kernel-adapters": "workspace:*",
-    "@itookit/tools": "workspace:*"
+    "@itookit/tools": "workspace:*",
+    "@itookit/app-contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

@@ -1,5 +1,6 @@
+import type {ConversationControls, ConversationModelSelection, ConversationSlashCommand} from '../contracts';
 import {parseCommand} from '@itookit/llm-ui';
-import type {ConversationControls, ConversationModelSelection, ConversationSlashCommand} from '@itookit/ui-common-adapter';
+
 
 /** Both composer views preserve the submitted text while sharing native command semantics. */
 export function resolveNativeCommand(text: string, commands: readonly ConversationSlashCommand[]) {

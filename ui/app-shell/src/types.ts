@@ -1,8 +1,9 @@
+import type {FileCreationConfig} from '@itookit/vfs-ui';
 import type { EditorFileType as FileTypeDefinition, EditorResolver as CustomEditorResolver } from './browser/types';
 import type { NavigationRequest } from '@itookit/common';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { ApplicationServices } from '@itookit/app-contracts/services';
-import type { FileCreationConfig, EditorFactory, EditorOptions, ContextMenuConfig } from '@itookit/ui-common-adapter';
+import type {EditorFactory, EditorOptions, ContextMenuConfig} from '@itookit/ui-common-adapter';
 import type { IFileSystem } from '@itookit/vfs-core';
 import type {StudyCreation, StudyDraft} from '@itookit/mdxeditor';
 import type { ThemeMode } from './ThemeService';
@@ -61,7 +62,7 @@ export interface ChatEditorDeps {
     defaultHarnessToolIds?: readonly string[];
     sessionManager: import('@itookit/llm-session/contracts').SessionViewPort;
     sessionRepository: ISessionRepository;
-    ocr?: import('@itookit/ui-common-adapter').OcrControls;
+    ocr?: import('@itookit/app-contracts/services').OcrControls;
     commandBus?: ICommandBus;
     kernel?: import('@itookit/durable-kernel/contracts').EditorTaskControlPlane;
     readTaskAttachment?: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;

@@ -1,5 +1,6 @@
+import type {ConversationSnapshot} from '../contracts';
 import {getLocale, t} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+
 import {conversationBudget} from './conversation-budget';
 const count = (n: number) => new Intl.NumberFormat(getLocale(), {maximumFractionDigits: 1}).format(n);
 export function conversationContext(snapshot: ConversationSnapshot): string {

@@ -1,4 +1,4 @@
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationSnapshot} from '../contracts';
 import {expect, it, vi} from 'vitest';
 import {NativeMetricsObserver} from './native-metrics-observer';
 import {nativeComposerIndicators} from './native-composer-indicators';

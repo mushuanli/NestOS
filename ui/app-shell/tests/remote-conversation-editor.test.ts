@@ -1,4 +1,4 @@
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationControls, ConversationSnapshot} from '@itookit/llm-ui-adapter/contracts';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { RemoteConversationEditor } from '../../llm-ui-adapter/src/shell/RemoteConversationEditor';
@@ -287,7 +287,7 @@ it('selects native models and exposes reasoning options for the selected model o
 
 it.each(['destroyed', 'hidden'])('discards model discovery results after the native input is %s', async mode => {
     const {editor, peer, host} = setup();
-    let finish!: (catalog: import('@itookit/ui-common-adapter').ConversationModelCatalog) => void;
+    let finish!: (catalog: import('@itookit/llm-ui-adapter/contracts').ConversationModelCatalog) => void;
     peer.models = vi.fn(() => new Promise(resolve => {finish = resolve;}));
     vi.mocked(peer.read).mockResolvedValue({...state, supportsModels: true});
     vi.mocked(peer.refresh).mockResolvedValue({...state, supportsModels: true});
@@ -334,7 +334,7 @@ it('suggests only the current harness commands and dispatches commands through i
 
 it.each(['closed', 'hidden'])('does not restore native command suggestions after the input is %s', async mode => {
     const {editor, peer, host} = setup();
-    let finish!: (rows: import('@itookit/ui-common-adapter').ConversationSlashCommand[]) => void;
+    let finish!: (rows: import('@itookit/llm-ui-adapter/contracts').ConversationSlashCommand[]) => void;
     peer.commands = vi.fn(() => new Promise(resolve => {finish = resolve;}));
     await editor.init(host);
     const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
@@ -348,7 +348,7 @@ it.each(['closed', 'hidden'])('does not restore native command suggestions after
 
 it('coalesces candidate discovery across keystrokes and revalidates the raw command on send', async () => {
     const {editor, peer, host} = setup();
-    let finish!: (rows: import('@itookit/ui-common-adapter').ConversationSlashCommand[]) => void;
+    let finish!: (rows: import('@itookit/llm-ui-adapter/contracts').ConversationSlashCommand[]) => void;
     peer.commands = vi.fn(() => new Promise(resolve => {finish = resolve;}));
     peer.command = vi.fn(async () => ({...state, supportsSlashCommands: true, draft: ''}));
     vi.mocked(peer.read).mockResolvedValue({...state, supportsSlashCommands: true});

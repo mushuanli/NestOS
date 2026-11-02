@@ -1,5 +1,6 @@
+import type {SessionDraftControls, SessionDraftMaterialization} from '@itookit/llm-ui-adapter/contracts';
 import type { ProjectDraftComposer } from '@itookit/app-contracts/services';
-import type { IEditor, SessionDraftControls, SessionDraftMaterialization } from '@itookit/ui-common-adapter';
+import type {IEditor} from '@itookit/ui-common-adapter';
 
 /** Navigation adapts a headless draft use case into editor controls. */
 export function createProjectDraftControls(composer: ProjectDraftComposer,

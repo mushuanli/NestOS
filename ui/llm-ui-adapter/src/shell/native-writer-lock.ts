@@ -1,5 +1,6 @@
+import type {ConversationSnapshot} from '../contracts';
 import {getLocale, t} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+
 
 /** Current host evidence is independent of the persisted submission error. */
 export function nativeWriterLockText(lock: ConversationSnapshot['writerLock']): string {

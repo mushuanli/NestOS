@@ -1,9 +1,12 @@
+import {type OcrSettingsState,type OcrControls} from '@itookit/app-contracts/services';
+import {renderOcrSettings, readOcrSettings} from '@itookit/llm-settings-ui/ocr';
+
 import { OcrAccess } from './ocr-access';
 import { editOcrPrompt } from './ocr-prompt-dialog';
 import type { OcrService } from '@itookit/app-contracts/services';
 import { escapeHTML, randomUUID, t, type NavigationRequest } from '@itookit/common';
 import { type IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import { Modal, Toast, renderOcrSettings, readOcrSettings, type OcrSettingsState, type EditorTarget, type OcrControls } from '@itookit/ui-common-adapter';
+import {Modal, Toast, type EditorTarget} from '@itookit/ui-common-adapter';
 
 export interface OcrConfigurationControls extends OcrControls {
     dispose(): Promise<void>;

@@ -10,7 +10,7 @@ import { isRootCallable } from '@itookit/llm-flow/contracts';
 
 export async function buildExecutorOptions(
     agentService: IAgentConfigService,
-    remote?: import('@itookit/ui-common-adapter').RemoteAgentControls,
+    remote?: import('../contracts').RemoteAgentControls,
     configuration?: ChatConfigurationSnapshot,
 ): Promise<ExecutorOption[]> {
     const allAgents = configuration?.agents ?? agentService.listAgents();

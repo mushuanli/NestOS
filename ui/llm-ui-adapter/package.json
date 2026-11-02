@@ -33,7 +33,17 @@
       "import": "./src/conversation.ts",
       "default": "./src/conversation.ts"
     },
-    "./independent": "./src/independent.ts"
+    "./independent": "./src/independent.ts",
+    "./contracts": {
+      "types": "./src/contracts.ts",
+      "import": "./src/contracts.ts",
+      "default": "./src/contracts.ts"
+    },
+    "./presentation": {
+      "types": "./src/presentation.ts",
+      "import": "./src/presentation.ts",
+      "default": "./src/presentation.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -66,6 +76,14 @@
       "./independent": {
         "types": "./dist/independent.d.ts",
         "import": "./dist/independent.js"
+      },
+      "./contracts": {
+        "types": "./dist/contracts.d.ts",
+        "import": "./dist/contracts.js"
+      },
+      "./presentation": {
+        "types": "./dist/presentation.d.ts",
+        "import": "./dist/presentation.js"
       }
     }
   },

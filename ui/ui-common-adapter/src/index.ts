@@ -20,35 +20,18 @@ export {
     type CollapseExpandResult
 } from './interfaces/IEditor';
 export { type EditorFactory } from './interfaces/IEditorFactory';
-export {
-    ISessionUI,
-    type MenuItem, type ContextMenuBuilder, type ContextMenuConfig, type SessionUIOptions, type ResourceListOptions, type FileCreationConfig,
-    type TagEditorOptions, type TagEditorInstance, type TagEditorFactory,
-    type SessionManagerEvent,
-    type SessionManagerCallback,
-    type SessionUIEventMap
-} from './interfaces/ISessionUI';
 
 // ── UI components ──
 export * from './components/BaseSettingsEditor';
-export * from './components/UIComponents';
+export {Modal, Toast, showConfirmDialog} from './components/UIComponents';
+export type {ModalOptions} from './components/UIComponents';
 
 // ── Browser utilities ──
 export { copyText } from './utils/clipboard';
 export { setTimePresentation } from './utils/time-presentation';
 
-export type { Suggestion, IAutocompleteSource } from './interfaces/IAutocompleteSource';
-
-export type { OcrControls, OcrSettingsState } from './interfaces/OcrControls';
-export { OcrSettingsForm, renderOcrSettings, readOcrSettings } from './components/OcrSettingsForm';
-
-export type { SessionDraftControls, SessionDraftPreferences, SessionDraftMaterialization } from './interfaces/SessionDraftControls';
-
 export { SettingsAutoSave, SettingsValidationError, requestSettingsSave } from './components/SettingsAutoSave';
 export type { SettingsSave } from './components/SettingsAutoSave';
-
-export type { ConversationCommandOutputRef, ConversationCommandOutput, ConversationCommandOutputPage, ConversationInstructionQueue, ConversationQueueEdit, ConversationComposerDraft, ConversationModelCatalog, ConversationModelSelection, ConversationSlashCommand, ConversationAttachment, ConversationControls, ConversationSnapshot, ConversationMessage, ConversationRequest, RemoteAgentControls } from './interfaces/ConversationControls';
-export { conversationStatus } from './utils/conversation-status';
 
 export { installNavigationButtonPresentation } from './components/navigation-button';
 export * from '@itookit/ui-common';

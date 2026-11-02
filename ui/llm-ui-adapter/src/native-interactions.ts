@@ -1,4 +1,5 @@
-import type {ConversationRequest} from '@itookit/ui-common-adapter';
+import type {ConversationRequest} from './contracts';
+
 import type {InputField, InteractionResponse, InteractionView} from '@itookit/llm-ui';
 import {t} from '@itookit/common';
 

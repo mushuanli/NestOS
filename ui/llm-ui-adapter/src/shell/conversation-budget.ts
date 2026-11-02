@@ -1,5 +1,6 @@
+import type {ConversationSnapshot} from '../contracts';
 import {getLocale, t} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+
 export interface ConversationBudget {kind: 'quota' | 'cost' | 'unknown'; label: string; value: string; compactValue?: string; detail: string; warning?: boolean}
 type Window = NonNullable<NonNullable<ConversationSnapshot['metrics']>['quota']>['windows'][number];
 const count = (n: number) => new Intl.NumberFormat(getLocale(), {maximumFractionDigits: 1}).format(n);

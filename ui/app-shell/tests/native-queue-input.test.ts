@@ -1,4 +1,4 @@
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationControls, ConversationSnapshot} from '@itookit/llm-ui-adapter/contracts';
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
 import {createOperationLedger} from '@itookit/llm-ui';
@@ -24,7 +24,7 @@ it.each(['success', 'failure'] as const)('uses durable native receipts to releas
         }
         return state;
     });
-    const edit = vi.fn(async (change: import('@itookit/ui-common-adapter').ConversationQueueEdit) => {
+    const edit = vi.fn(async (change: import('@itookit/llm-ui-adapter/contracts').ConversationQueueEdit) => {
         const queue = state.instructionQueue!;
         state = {...state, instructionQueue: {...queue, revision: queue.revision + 1,
             items: queue.items.map(item => change.action === 'update' && item.id === change.id ? {...item, text: change.text} : item)}};

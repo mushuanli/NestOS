@@ -1,4 +1,4 @@
-import type {ConversationControls} from '@itookit/ui-common-adapter';
+import type {ConversationControls} from '../contracts';
 import {expect, it, vi} from 'vitest';
 import {randomUUID} from '@itookit/common';
 import {NativeChatStore} from './native-store';

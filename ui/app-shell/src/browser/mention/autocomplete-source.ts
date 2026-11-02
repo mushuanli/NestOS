@@ -1,3 +1,4 @@
+import type {IAutocompleteSource, Suggestion} from '@itookit/vfs-ui';
 /**
  * @file app-shell/src/browser/mention/autocomplete-source.ts
  * Editor mention integration built on shared autocomplete contracts.
@@ -8,8 +9,8 @@ import type { HoverPreviewData } from '@itookit/common';
 
 export type { HoverPreviewData };
 
-import type { IAutocompleteSource, Suggestion } from '@itookit/ui-common-adapter';
-export type { Suggestion } from '@itookit/ui-common-adapter';
+
+export type { Suggestion } from '@itookit/vfs-ui';
 
 export abstract class IMentionSource implements IAutocompleteSource {
     abstract getSuggestions(query: string): Promise<Suggestion[]>;

@@ -1,4 +1,5 @@
-import type { SessionDraftControls } from '@itookit/ui-common-adapter';
+import type {SessionDraftControls} from '../../contracts';
+
 import type { IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
 import {readInputDraft} from '../../domain/input-draft';
 import {isTargetRef} from '@itookit/llm-flow/contracts';

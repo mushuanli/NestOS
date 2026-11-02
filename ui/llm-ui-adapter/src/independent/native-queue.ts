@@ -1,4 +1,5 @@
-import type {ConversationControls, ConversationQueueEdit, ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationControls, ConversationQueueEdit, ConversationSnapshot} from '../contracts';
+
 import {NativeInstructionQueuePanel} from '../components/NativeInstructionQueuePanel';
 import type {ImageChatOptions} from './image-chat-view';
 import {createModuleLogger, randomUUID, t} from '@itookit/common';

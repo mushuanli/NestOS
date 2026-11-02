@@ -1,5 +1,6 @@
+import type {ConversationControls, ConversationSnapshot} from '../contracts';
 import {createModuleLogger} from '@itookit/common';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
+
 
 const log = createModuleLogger('native-submission');
 

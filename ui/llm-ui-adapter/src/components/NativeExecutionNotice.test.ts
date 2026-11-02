@@ -1,4 +1,4 @@
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationSnapshot} from '../contracts';
 // @vitest-environment jsdom
 import {expect, it} from 'vitest';
 import {NativeExecutionNotice} from './NativeExecutionNotice';

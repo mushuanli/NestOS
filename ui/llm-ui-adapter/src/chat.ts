@@ -1,8 +1,9 @@
+import {EditorOptions} from './contracts';
 import {IndependentSessionEditor} from './shell/IndependentSessionEditor';
 import {ChatDraftEditor} from './shell/drafts/ChatDraftEditor';
 import {createConversationEditor} from './conversation';
 import type {RetainedWorkspaceHandoff} from './shell/drafts/workspace-handoff';
-import { normalizeEditorOptions } from '@itookit/ui-common-adapter';
+import {normalizeEditorOptions} from '@itookit/ui-common-adapter';
 // @file: llm-ui/index.ts
 
 import './styles/index.css';
@@ -10,9 +11,9 @@ import './styles/index.css';
 import type { LLMEditorOptions } from './shell/session-editor-options';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { IAgentConfigService } from '@itookit/kernel-adapters/contracts';
-import { IEditor } from '@itookit/ui-common-adapter';
+import {IEditor} from '@itookit/ui-common-adapter';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
-import { EditorFactory, EditorOptions } from '@itookit/ui-common-adapter';
+import {EditorFactory} from '@itookit/ui-common-adapter';
 import type { EditorTaskControlPlane } from '@itookit/durable-kernel/contracts';
 
 export type {
@@ -48,7 +49,7 @@ export type SessionViewBinding =
 export type LLMFactoryDependencies = SessionViewBinding & {
     defaultHarnessToolIds?: readonly string[];
     sessionRepository: ISessionRepository;
-    ocr?: import('@itookit/ui-common-adapter').OcrControls;
+    ocr?: import('@itookit/app-contracts/services').OcrControls;
     commandBus?: ICommandBus;
     kernel?: EditorTaskControlPlane;
     readTaskAttachment?: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;

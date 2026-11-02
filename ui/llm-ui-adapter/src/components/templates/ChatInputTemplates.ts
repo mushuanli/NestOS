@@ -35,9 +35,6 @@ export const ChatInputTemplates = {
                         ${this.renderExecutionMode()}${this.renderConnectionRow()}${this.renderTierRow()}${this.renderContextSetting()}
                         <div class="llm-input__settings-toggles">${this.renderThinkingSetting()}${this.renderWebSearchSetting()}</div>
                     </section>
-                    <section class="llm-input__settings-group llm-input__ocr-preferences" data-ocr-preferences hidden>
-                        <h3>${ACTION_ICONS.ocr} ${t('ocr.section')}</h3><div data-ocr-fields></div>
-                    </section>
                     <details class="llm-input__settings-advanced" data-local-settings>
                         <summary>${t('chatSettings.advanced')}</summary>
                         <div class="llm-input__settings-group">${this.renderSessionProfileSection()}${this.renderAdvancedSection()}${this.renderFlowInvocationRow()}</div>

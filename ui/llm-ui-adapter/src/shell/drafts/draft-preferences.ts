@@ -1,5 +1,6 @@
+import type {SessionDraftPreferences} from '../../contracts';
 import {isImageResizePolicy} from '@itookit/kernel-adapters/contracts';
-import type {SessionDraftPreferences} from '@itookit/ui-common-adapter';
+
 import type {ChatInputSettings, IChatInputConfig} from '../../domain/ports/IChatInputPresenter';
 import type {ConnectionOption, ExecutorOption} from '../../domain/types';
 

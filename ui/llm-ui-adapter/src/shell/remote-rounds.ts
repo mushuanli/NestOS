@@ -1,5 +1,6 @@
+import type {ConversationMessage} from '../contracts';
 import { t } from '@itookit/common';
-import type { ConversationMessage } from '@itookit/ui-common-adapter';
+
 import type { SessionGroup, ExecutionNode } from '@itookit/llm-session/contracts';
 import { TRANSCRIPT_CONTEXT, TRANSCRIPT_SYSTEM, TRANSCRIPT_TOOL, contextLabel, transcriptCodeBlock, type TranscriptEncoder } from './transcript-markup';
 

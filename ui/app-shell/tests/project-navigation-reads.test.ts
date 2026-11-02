@@ -160,7 +160,8 @@ it('opens project files before blocked navigation and discards stale navigation 
         expect(openFiles).toHaveBeenCalled();
         const startup = await projects.current();
         expect(startup).toBeDefined();
-        expect(sync).toHaveBeenCalledWith(folderBrowserPath(startup!.path), { reveal: true });
+        expect(sync).toHaveBeenCalledWith(folderBrowserPath(startup!.path), expect.objectContaining({reveal: true}),
+            expect.objectContaining({path: folderBrowserPath(startup!.path), project: expect.objectContaining({path: startup!.path})}));
         const owner = await projects.openFiles(startup!.path);
         await owner.fs.driver.createFile({ parentPath: '/', name: 'notes.md', content: 'body before navigation' });
         await owner.dispose();
@@ -320,22 +321,20 @@ it('runs transfer actions from the more menu without navigating or changing the 
     }
 });
 
-it('ignores a delayed project choice after its navigation intent has been cancelled', async () => {
+it('ignores a cached project choice cancelled before its navigation commits without another lookup', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
     const root = await manager.openFileSystem('/'), repository = new SessionRepository(root); await repository.init();
     const { projects, mounts, files } = await projectServices(root, repository), commands = { ...actions(), navigate: vi.fn() };
     const project = await projects.create('Demo'), navigation = new ProjectNavigation(projects, () => undefined, commands);
-    let release!: () => void; const pending = new Promise<void>(resolve => { release = resolve; });
     try {
-        await navigation.refresh(); const original = projects.forFolder.bind(projects);
-        const lookup = vi.spyOn(projects, 'forFolder').mockImplementationOnce(async (...args) => { await pending; return original(...args); });
+        await navigation.refresh();
+        const lookup = vi.spyOn(projects, 'forFolder');
         const selector = navigation.header.querySelector('select')!; selector.value = folderBrowserPath(project.path);
-        selector.dispatchEvent(new Event('change')); await vi.waitFor(() => expect(lookup).toHaveBeenCalledOnce());
-        navigation.cancelPending(); release(); await vi.waitFor(() => expect(selector.disabled).toBe(false));
+        selector.dispatchEvent(new Event('change')); await Promise.resolve(); navigation.cancelPending(); await vi.waitFor(() => expect(selector.disabled).toBe(false));
         expect(commands.navigate).not.toHaveBeenCalled(); expect(navigation.currentProject()).toBeUndefined(); expect(selector.value).toBe('/');
-        lookup.mockRestore();
+        expect(lookup).not.toHaveBeenCalled(); lookup.mockRestore();
     } finally {
-        release(); navigation.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose();
+        navigation.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose();
     }
 });
 

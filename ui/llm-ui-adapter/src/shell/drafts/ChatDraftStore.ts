@@ -1,9 +1,10 @@
+import type {SessionDraftControls} from '../../contracts';
 import {StoredChatImages} from '../../independent/stored-chat-images';
 import {chatSettings} from '../chat-settings';
 import {readInputDraft} from '../../domain/input-draft';
 import {randomUUID} from '@itookit/common';
 import type {AttachmentRef, ComposerDraft} from '@itookit/llm-ui';
-import type {SessionDraftControls} from '@itookit/ui-common-adapter';
+
 import {DraftDataCodec} from './session-draft-data';
 import {DraftFilesCodec, type DraftFilePort} from '../../services/DraftFilesCodec';
 import {draftFileId} from '../../domain/draft-file-identity';

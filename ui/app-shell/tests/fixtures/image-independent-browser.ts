@@ -1,4 +1,4 @@
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationControls, ConversationSnapshot} from '@itookit/llm-ui-adapter/contracts';
 import {createOperationLedger} from '@itookit/llm-ui';
 
 import {createNativeChatBinding, createNativeChatView, type ImageEditingHost, type ImageAssetMetadata} from '../../../llm-ui-adapter/src/independent';

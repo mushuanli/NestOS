@@ -1,5 +1,6 @@
+import type {OcrControls,OcrSettingsState} from '@itookit/app-contracts/services';
 import { escapeHTML, randomUUID, t, TOOLBOX_ICONS } from '@itookit/common';
-import type { OcrControls, OcrSettingsState } from '../interfaces/OcrControls';
+
 
 /** Shared fields for the host dialog and the inline chat settings. */
 export function renderOcrSettings(state: OcrSettingsState, id: string, compact = false): string {

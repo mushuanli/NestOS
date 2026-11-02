@@ -1,4 +1,5 @@
-import type {OcrControls} from '@itookit/ui-common-adapter';
+import {OcrSettingsForm} from '@itookit/llm-settings-ui/ocr';
+import type {OcrControls} from '@itookit/app-contracts/services';
 
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 // @vitest-environment jsdom
@@ -125,14 +126,15 @@ it('does not upload an image when recognition is cancelled while configuration i
     expect(service.snapshot().connectionId).toBe('ocr'); expect(chat).not.toHaveBeenCalled();
 });
 
-it('configures the OCR connection directly in chat settings and offers editing without prompt selection', async () => {
+it('keeps OCR configuration outside chat settings and offers shared model fields without prompt selection', async () => {
     const { controls, service, agents, navigate } = await setup();
     await agents.saveSystemPrompt({ id: 'tables', name: 'Tables', content: ['Extract tables'] });
     await agents.saveConnection({ id: 'ocr', name: 'OCR', providerId: 'vision', tiers: { fast: 'image', optimal: 'text' } });
     const host = document.createElement('div'); document.body.append(host);
     const view = new ChatInput(host, { ocr: controls, onSend: vi.fn(), onStop: vi.fn() }); cleanup.push(() => view.destroy());
     host.querySelector<HTMLButtonElement>('.llm-input__btn--settings')!.click();
-    await vi.waitFor(() => expect(host.querySelector('[name="ocr-connection"]')).not.toBeNull());
+    expect(host.querySelector('[name="ocr-connection"]')).toBeNull();
+    const form = new OcrSettingsForm(host, controls); cleanup.push(() => form.destroy()); await form.refresh();
     const connection = host.querySelector<HTMLSelectElement>('[name="ocr-connection"]')!;
     expect(connection.querySelector('option[value="ocr"]')?.textContent).toContain('image · ' + t('ocr.tier.fast'));
     connection.value = 'ocr'; connection.dispatchEvent(new Event('change', { bubbles: true }));
@@ -146,11 +148,10 @@ it('configures the OCR connection directly in chat settings and offers editing w
     expect(document.querySelectorAll('.settings-modal-overlay')).toHaveLength(1);
     expect(view.getConfig().settings.connectionId).toBeUndefined();
 });
-it('updates open chat settings after OCR is changed elsewhere and keeps failed edits visible', async () => {
+it('updates model OCR settings after external changes and keeps failed edits visible', async () => {
     const { controls, service } = await setup();
     const host = document.createElement('div'); document.body.append(host);
-    const view = new ChatInput(host, { ocr: controls, onSend: vi.fn(), onStop: vi.fn() }); cleanup.push(() => view.destroy());
-    host.querySelector<HTMLButtonElement>('.llm-input__btn--settings')!.click();
+    const form = new OcrSettingsForm(host, controls); cleanup.push(() => form.destroy()); await form.refresh();
     await service.save({ ...service.snapshot(), connectionId: 'ocr' });
     await vi.waitFor(() => expect(host.querySelector<HTMLSelectElement>('[name="ocr-connection"]')?.value).toBe('ocr'));
     vi.spyOn(controls, 'saveSettings').mockRejectedValueOnce(new Error('Disk unavailable'));

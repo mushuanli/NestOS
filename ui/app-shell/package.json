@@ -29,7 +29,9 @@
     "@itookit/app-contracts": "workspace:*",
     "@itookit/app-transport": "workspace:*",
     "@itookit/kanban": "workspace:*",
-    "@itookit/ui-common": "workspace:*"
+    "@itookit/ui-common": "workspace:*",
+    "@itookit/llm-ui-adapter": "workspace:*",
+    "@itookit/llm-settings-ui": "workspace:*"
   },
   "peerDependencies": {
     "@itookit/app-settings": "workspace:*",

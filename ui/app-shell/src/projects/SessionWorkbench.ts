@@ -1,3 +1,4 @@
+import type {ChatEditorFactory as EditorFactory, ChatEditorOptions as EditorOptions} from '@itookit/llm-ui-adapter/contracts';
 import {confirmRemoteRemoval, remoteRemovalItems} from './remote-session-removal';
 import { PROJECT_ACTION_ICONS } from '@itookit/common';
 import {projectFileSource} from '@itookit/app-contracts';
@@ -71,7 +72,7 @@ import { showNameDialog, showProjectDialog } from '../files/project-dialog';
 import { showMountDialog } from '../files/mount-dialog';
 import { localizeMountError } from '../files/localize-mount-error';
 
-import type { EditorFactory, IEditor, EditorHostContext, EditorOptions, ContextMenuConfig, MenuItem } from '@itookit/ui-common-adapter';
+import type {IEditor, EditorHostContext, ContextMenuConfig, MenuItem} from '@itookit/ui-common-adapter';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { KernelViewPort as Kernel } from '@itookit/durable-kernel/contracts';
 import { describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
@@ -187,7 +188,7 @@ interface RetainedEditor {
     previewCleanup?: () => void; renameCleanup?: () => void;
     active: string | null; branch?: string; cancel?: () => void; lease?: EditorLease;
     skills?: { sessionId: string; path: string };
-    draft?: {id: string; projectId: string; remote?: import('@itookit/ui-common-adapter').ConversationControls};
+    draft?: {id: string; projectId: string; remote?: import('@itookit/llm-ui-adapter/contracts').ConversationControls};
 }
 
 /** vfs-ui owns the sidebar; this host owns business views and their file leases. */
@@ -1786,7 +1787,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.fileRenameCleanup = () => stops.forEach(stop => stop());
     }
 
-    private remoteAgentControls(folder?: string | null, initialProject?: SessionOpenView['project']): import('@itookit/ui-common-adapter').RemoteAgentControls | undefined {
+    private remoteAgentControls(folder?: string | null, initialProject?: SessionOpenView['project']): import('@itookit/llm-ui-adapter/contracts').RemoteAgentControls | undefined {
         if (!folder || !this.projects?.remoteMounts) return;
         const projects = this.projects;
         const catalog = remoteDraftCatalog(projects, folder, initialProject);
@@ -1908,7 +1909,7 @@ export class SessionWorkbench implements WorkspaceController {
         await this.restoreNavigationScope(scope);
         this.onSelect(origin.id, 'replace');
     }
-    private draftPresentation(project: ProjectFolder): Pick<import('@itookit/ui-common-adapter').SessionDraftControls, 'scope' | 'executorScope' | 'promptHarness'> {
+    private draftPresentation(project: ProjectFolder): Pick<import('@itookit/llm-ui-adapter/contracts').SessionDraftControls, 'scope' | 'executorScope' | 'promptHarness'> {
         return {promptHarness: this.isRemoteProject(project), executorScope: this.isRemoteProject(project) ? 'remote' : 'local', scope: {
             id: project.project.id, label: project.displayName ?? project.name,
             choices: async () => (await this.projects!.list()).map(item => ({id: item.project.id, label: item.displayName ?? item.name,
@@ -1968,7 +1969,7 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
     private async prepareRemoteDraft(tab: WorkbenchTab<RetainedEditor>, project: ProjectFolder, draftId: string,
-        request: import('@itookit/ui-common-adapter').SessionDraftMaterialization, signal: AbortSignal, nativeId?: string): Promise<IEditor> {
+        request: import('@itookit/llm-ui-adapter/contracts').SessionDraftMaterialization, signal: AbortSignal, nativeId?: string): Promise<IEditor> {
         const choices = await this.remoteAgentControls(project.path)!.list();
         if (!choices.some(choice => choice.id === request.agentId)) throw new Error(t('toolbox.unavailable'));
         const [connectionId, serverProjectId, profileId] = JSON.parse(decodeURIComponent(request.agentId!.slice(7))) as string[];
@@ -2016,7 +2017,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (replaceActive) {this.tabs.activate(path); await this.restoreEditor(value); this.onSelect(this.getActiveResourceId()!, 'replace');}
     }
     async startSessionDraft(parent?: string, input?: {text: string; files: File[]}, agentId?: string,
-        preferences?: import('@itookit/ui-common-adapter').SessionDraftPreferences, navigationCurrent?: () => boolean): Promise<void> {
+        preferences?: import('@itookit/llm-ui-adapter/contracts').SessionDraftPreferences, navigationCurrent?: () => boolean): Promise<void> {
         const folder = await this.creationFolder(parent);
         if (navigationCurrent && !navigationCurrent()) return;
         this.cancelViewLoad(); const load = this.viewLoads.begin();

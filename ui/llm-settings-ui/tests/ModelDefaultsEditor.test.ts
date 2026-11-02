@@ -1,4 +1,4 @@
-import type {OcrControls} from '@itookit/ui-common-adapter';
+import type {OcrControls} from '@itookit/app-contracts/services';
 
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';

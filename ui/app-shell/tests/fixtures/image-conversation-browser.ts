@@ -1,4 +1,4 @@
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationControls, ConversationSnapshot} from '@itookit/llm-ui-adapter/contracts';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 
 import {ConversationComposerStore} from '../../../../backend/app-core/src/projects/conversation-composer-store';

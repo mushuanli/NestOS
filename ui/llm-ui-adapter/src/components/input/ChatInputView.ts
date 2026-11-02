@@ -2,7 +2,7 @@ import {resolveChatImageResize} from './image-processing-session';
 import {getLocale} from '@itookit/common';
 import {InputPluginRegistry} from '@itookit/llm-ui';
 import {isCommandInput, resizeMessageInput, shouldSubmitMessage} from '@itookit/llm-ui';
-import { OcrSettingsForm, Modal, Toast } from '@itookit/ui-common-adapter';
+import {Modal, Toast} from '@itookit/ui-common-adapter';
 // @file: llm-ui/components/input/ChatInputView.ts
 
 import type { IChatInputPresenter, IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
@@ -49,7 +49,7 @@ export interface ChatInputOptions {
     instructionQueue?: boolean;
     flushDraft?: () => Promise<void>;
     persistImageFiles?: (files: File[], resize: ImageResizePolicy) => Promise<void>;
-    nativeModels?(executorId: string): Promise<import('@itookit/ui-common-adapter').ConversationModelCatalog>;
+    nativeModels?(executorId: string): Promise<import('../../contracts').ConversationModelCatalog>;
     /** Host-owned menu slot for immutable conversation mode information. */
     executionModeInfo?: HTMLElement;
     executorUsage?: import('@itookit/ui-common-adapter').EditorOptions['executorUsage'];
@@ -128,7 +128,7 @@ export interface ChatInputOptions {
     onRequestReferences?: (query: string, options?: {includeIgnored?: boolean}) => Promise<FileSuggestion[]>;
 
     /** Host-owned image recognition, shared configuration and live connection label. */
-    ocr?: import('@itookit/ui-common-adapter').OcrControls;
+    ocr?: import('@itookit/app-contracts/services').OcrControls;
 
     /**
      * 预留（本期不接线）：语音转文字。
@@ -184,7 +184,6 @@ export class ChatInput implements IChatInputPresenter {
     private historyValue: HTMLSpanElement | null = null; // removed from new template
     private streamToggle!: HTMLInputElement;
     private settingsPanel!: HTMLElement;
-    private ocrSettings?: OcrSettingsForm;
     private flowIdInput!: HTMLInputElement;
     private branchModeSelect!: HTMLSelectElement;
     private retentionModeSelect!: HTMLSelectElement;
@@ -323,10 +322,6 @@ export class ChatInput implements IChatInputPresenter {
             choose: () => this.openConnectionPicker(), retry: () => { void this.refreshConnections(); },
         });
 
-        if (options.ocr) {
-            const section = container.querySelector<HTMLElement>('[data-ocr-preferences]')!; section.hidden = false;
-            this.ocrSettings = new OcrSettingsForm(section.querySelector<HTMLElement>('[data-ocr-fields]')!, options.ocr);
-        }
         this.bindEvents();
         this.executionMode = new ExecutionModeControl(container, mode => {
             this.config.settings.executionMode = mode;
@@ -650,7 +645,6 @@ export class ChatInput implements IChatInputPresenter {
         delete this.container.dataset.editorComposing;
         this.connectionsDisposed = true;
         this.connectionLoadRevision++;
-        this.ocrSettings?.destroy();
         this.skillModal?.hide(); this.skillPanel = undefined;
         this.interactionPanel.clear();
         if (this.outsideClickHandler) {
@@ -1402,7 +1396,6 @@ export class ChatInput implements IChatInputPresenter {
         this.settingsBtn.classList.toggle('active', this.settingsExpanded);
 
         if (this.settingsExpanded) {
-            void this.ocrSettings?.refresh();
             this.settingsPanel.classList.add('llm-input__settings-panel--entering');
             requestAnimationFrame(() => {
                 this.settingsPanel.classList.remove('llm-input__settings-panel--entering');

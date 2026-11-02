@@ -1,4 +1,4 @@
-import type {ConversationModelCatalog} from '@itookit/ui-common-adapter';
+import type {ConversationModelCatalog} from '@itookit/llm-ui-adapter/contracts';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {ChatDraftEditor} from '../../llm-ui-adapter/src/shell/drafts/ChatDraftEditor';

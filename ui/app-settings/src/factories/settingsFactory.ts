@@ -1,13 +1,13 @@
 import { TerminalSettingsEditor } from '../editors/TerminalSettingsEditor';
 import type { InitialFilesPort } from '../editors/initial-files';
 import type { MCPServer, MCPDiscovery } from '@itookit/tools/mcp-contracts';
-import type { ConfigurationFormControls } from '@itookit/ui-common-adapter';
-import { editorResourceId } from '@itookit/ui-common-adapter';
+import type {ConfigurationFormControls} from '@itookit/ui-common-adapter';
+import {editorResourceId} from '@itookit/ui-common-adapter';
 // @file app-settings/factories/settingsFactory.ts
 import type { IConnectionService, MediaProbeExamples } from '@itookit/kernel-adapters/contracts';
-import type { EditorOptions } from '@itookit/ui-common-adapter';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import type { EditorFactory, IEditor } from '@itookit/ui-common-adapter';
+import type {EditorFactory, IEditor} from '@itookit/ui-common-adapter';
 import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 import { SETTINGS_PAGES } from '../engine/SettingsEngine';
 
@@ -22,7 +22,7 @@ import { AppearanceSettingsEditor } from '../editors/AppearanceSettingsEditor';
 
 /** Injected UI editors from @itookit/llm-ui-adapter (to avoid upward dependency). */
 export interface LLMUIEditors {
-    ModelDefaultsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions, ocr?: import('@itookit/ui-common-adapter').OcrControls) => IEditor;
+    ModelDefaultsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions, ocr?: import('@itookit/app-contracts/services').OcrControls) => IEditor;
     ProviderSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions, examples?: MediaProbeExamples) => IEditor;
     ConnectionSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;
     MCPSettingsEditor: new (container: HTMLElement, service: IAgentManagementService, options: EditorOptions, controls?: ConfigurationFormControls<MCPServer,MCPDiscovery>) => IEditor;
@@ -48,7 +48,7 @@ export interface SettingsFactoryOptions {
     serverTerminals?: import('@itookit/app-contracts/services').ServerTerminals;
     diagnostics?: import('@itookit/app-contracts/services').ApplicationDiagnostics;
     mediaProbeExamples?: MediaProbeExamples;
-    ocr?: import('@itookit/ui-common-adapter').OcrControls;
+    ocr?: import('@itookit/app-contracts/services').OcrControls;
     settingsService: SettingsService;
     agentService: IAgentManagementService;
     connectionService: IConnectionService;

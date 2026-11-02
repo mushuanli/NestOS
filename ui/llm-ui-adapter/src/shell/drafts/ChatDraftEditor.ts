@@ -1,3 +1,4 @@
+import {type EditorOptions} from '../../contracts';
 import {mountDraftHeader} from './draft-header';
 import {mountEditorTitleBar} from '../content-titlebar';
 import {draftLoading} from './draft-loading';
@@ -7,12 +8,12 @@ import {chatAttachmentMenu} from '../chat-attachment-menu';
 import {mountChatInputMenu} from '../chat-input-menu';
 import {refreshDraftTarget, restoreDraftTarget} from '../../independent/restore-draft-target';
 import {workspaceInputPlugins} from '../workspace-input-plugins';
-import {SharedChatOcr} from '../SharedChatOcr';
+import {chatOcrPort} from '../ocr-port';
 
 import {prepareImageChatOptions} from '../../independent/image-chat-view';
 import type {ImageEditingHost} from '../../independent/image-editing';
 import {createChatView, createOperationLedger, type ChatOptions, type ChatView, type ChatSubmission, type ComposerDraft, type SelectorView, type SendPreparation} from '@itookit/llm-ui';
-import {BaseSettingsEditor, Toast, type EditorOptions, type EditorFactory, type IEditor, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common-adapter';
+import {BaseSettingsEditor, Toast, type EditorFactory, type IEditor, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common-adapter';
 import {createModuleLogger, getLocale, randomUUID, escapeHTML, t} from '@itookit/common';
 import type {IAgentConfigService, ChatConfigurationView} from '@itookit/kernel-adapters/contracts';
 import type {ICommandBus} from '@itookit/llm-session/contracts';
@@ -33,7 +34,6 @@ type Materialized = Awaited<ReturnType<NonNullable<Options['sessionDraft']>['mat
 /** The first submit transfers one ChatView to its formal controller before registering the operation. */
 export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     private view!: ChatView;
-    private ocr?: SharedChatOcr;
     private imageHost?: ImageEditingHost;
     private store: ChatDraftStore;
     private source: ChatProjection;
@@ -62,11 +62,11 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     private readonly stops: (() => void)[] = [];
     private readonly events = new Map<EditorEvent, Set<(payload: unknown) => void>>();
     private connections: Awaited<ReturnType<typeof buildConnectionOptions>> = [];
-    private readonly nativeModels = new Map<string, import('@itookit/ui-common-adapter').ConversationModelCatalog>();
+    private readonly nativeModels = new Map<string, import('../../contracts').ConversationModelCatalog>();
     private executors: Awaited<ReturnType<typeof buildExecutorOptions>> = [];
     constructor(container: HTMLElement, agents: IAgentConfigService, private config: Options,
         private readonly factory: (container: HTMLElement, options: EditorOptions, handoff: RetainedWorkspaceHandoff) => Promise<IEditor>,
-        private readonly controls: {commands?: ICommandBus; configuration?: ChatConfigurationView; ocr?: import('@itookit/ui-common-adapter').OcrControls}) {
+        private readonly controls: {commands?: ICommandBus; configuration?: ChatConfigurationView; ocr?: import('@itookit/app-contracts/services').OcrControls}) {
         super(container, agents, config);
         if (!config.sessionDraft) throw new Error('Project draft controls are required');
         this.store = new ChatDraftStore(config.sessionDraft);
@@ -99,12 +99,10 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         }, resize => {const view = this.view; if (!view) return; const draft = view.getDraft();
             view.configureInput({selection: {...draft.selection, imageResize: JSON.stringify(resize)}}, draft.revision);});
         const images = this.imageHost;
-        const ocr = this.controls.ocr ? new SharedChatOcr(this.controls.ocr, () => this.view,
-            (ref, signal) => images.read(ref, {signal}), failure => this.report(failure)) : undefined;
-        this.ocr = ocr;
+        const ocr = chatOcrPort(this.controls.ocr, (ref, signal) => images.read(ref, {signal}));
         return prepareImageChatOptions({inputPresentation: 'host', attachmentMenu: chatAttachmentMenu(true), plugins: workspaceInputPlugins(this.controls.commands, {navigation: 'projects', projectId: this.config.sessionDraft?.scope?.id},
-            () => this.store.preferences(this.view?.getDraft()).agentId), attachmentActions: item => ocr?.actions(item) ?? [],
-            setActive: active => ocr?.setActive(active), release: () => ocr?.destroy(),source: this.source, operations: this.ledger, locale: getLocale(), initialDraft: restoreDraftTarget(this.store.draft, this.callTargets(), undefined, this.config.sessionDraft?.promptHarness && !store.draft.target
+            () => this.store.preferences(this.view?.getDraft()).agentId), ocr,
+            source: this.source, operations: this.ledger, locale: getLocale(), initialDraft: restoreDraftTarget(this.store.draft, this.callTargets(), undefined, this.config.sessionDraft?.promptHarness && !store.draft.target
                 ? this.executors.find(item => item.id.startsWith('remote:'))?.id : store.preferences().agentId),
             actions: {send: async () => {throw new Error('Draft must materialize before dispatch');}, prepareSend: (input, draft) => this.prepare(input, draft),
                 reconcile: async operationId => ({status: 'unknown', operationId, message: t('chat.submission.unconfirmed')})},
@@ -337,7 +335,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         this.view.configureInput({selection: {...this.view.getDraft().selection, ...(!this.config.sessionDraft?.promptHarness || id.startsWith('remote:') ? {executorId: id} : {})}, ...(this.targets ? {target} : {})}, revision);
         await this.view.flushDraft();
     }
-    private async inherit(preferences: import('@itookit/ui-common-adapter').SessionDraftPreferences): Promise<void> {
+    private async inherit(preferences: import('../../contracts').SessionDraftPreferences): Promise<void> {
         if (this.transferred || !this.active || this.view.inputBusy) return;
         const draft = this.view.getDraft(); await this.refreshConfiguration(); this.check();
         if (this.transferred || !this.active || this.view.getDraft().revision !== draft.revision) return;
@@ -374,7 +372,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     async flushPendingSave(): Promise<void> {if (this.delegate) await this.delegate.flushPendingSave?.(); else await this.view?.flushDraft();}
     cancelPendingRender(): void {this.active = false; this.view?.setActive(false); this.delegate?.cancelPendingRender?.();}
     async activate(): Promise<void> {this.check(); this.active = true; if (this.delegate) await this.delegate.activate?.(); else {await this.refreshDraft(); await this.refreshConfiguration(); this.publish(); this.view?.setActive(true);}}
-    captureRecovery(): unknown {this.ocr?.assertRecoverable(); return this.delegate?.captureRecovery?.() ?? this.view?.captureRecovery();}
+    captureRecovery(): unknown {return this.delegate?.captureRecovery?.() ?? this.view?.captureRecovery();}
     restoreRecovery(value: unknown): void {if (this.delegate) this.delegate.restoreRecovery?.(value); else this.view?.restoreRecovery(value as ReturnType<ChatView['captureRecovery']>);}
     suspendForRecovery(): void {if (this.delegate) this.delegate.suspendForRecovery?.(); this.rebuilding = true; this.cancelPendingRender();}
     destroy(): Promise<void> {return this.closing ??= disposeEditorResources([() => this.flushPendingSave(), () => {this.closed = true;},
@@ -390,7 +388,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
                 ...(config.target ? {target: config.target} : {})}, current.revision);
             if (config.text !== undefined) this.view.setText(config.text); await this.view.flushDraft();
         },
-        refreshDraft: () => this.refreshDraft(), selectDraftAgent: (id: string) => this.selectAgent(id), inheritDraftPreferences: (preferences: import('@itookit/ui-common-adapter').SessionDraftPreferences) => this.inherit(preferences),
+        refreshDraft: () => this.refreshDraft(), selectDraftAgent: (id: string) => this.selectAgent(id), inheritDraftPreferences: (preferences: import('../../contracts').SessionDraftPreferences) => this.inherit(preferences),
         appendDraft: async (input: {text: string; files: File[]}) => {
             this.check(); if (this.transferred || this.view.inputBusy) throw new Error(t('chatInput.switchUnavailable'));
             this.view.setText([this.view.getDraft().text, input.text].filter(Boolean).join('\n')); if (input.files.length) await this.view.addFiles(input.files); await this.view.flushDraft();

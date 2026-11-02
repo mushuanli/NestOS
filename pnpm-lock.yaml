@@ -1398,6 +1398,9 @@ importers:
       '@itookit/app-contracts':
         specifier: workspace:*
         version: link:../../shared/app-contracts
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../../libraries/ui-common
       '@xterm/addon-fit':
         specifier: ^0.10.0
         version: 0.10.0(@xterm/xterm@5.5.0)
@@ -1456,6 +1459,12 @@ importers:
       '@itookit/kanban':
         specifier: workspace:*
         version: link:../../libraries/kanban
+      '@itookit/llm-settings-ui':
+        specifier: workspace:*
+        version: link:../llm-settings-ui
+      '@itookit/llm-ui-adapter':
+        specifier: workspace:*
+        version: link:../llm-ui-adapter
       '@itookit/ui-common':
         specifier: workspace:*
         version: link:../../libraries/ui-common
@@ -1550,6 +1559,9 @@ importers:
 
   ui/llm-settings-ui:
     dependencies:
+      '@itookit/app-contracts':
+        specifier: workspace:*
+        version: link:../../shared/app-contracts
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common

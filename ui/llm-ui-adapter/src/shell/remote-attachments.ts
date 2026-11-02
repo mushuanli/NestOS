@@ -1,5 +1,6 @@
+import type {ConversationControls} from '../contracts';
 import { t } from '@itookit/common';
-import type { ConversationControls } from '@itookit/ui-common-adapter';
+
 type Attachment = NonNullable<Parameters<ConversationControls['send']>[1]>[number];
 
 /** Browser bytes are transmitted inline; callers cannot nominate a server path or URL. */
@@ -36,7 +37,7 @@ function image(bytes: Uint8Array, mime: string): string {
     return `data:${mime};base64,${btoa(binary)}`;
 }
 
-export function restoreRemoteAttachments(attachments: NonNullable<import('@itookit/ui-common-adapter').ConversationSnapshot['draftAttachments']>): File[] {
+export function restoreRemoteAttachments(attachments: NonNullable<import('../contracts').ConversationSnapshot['draftAttachments']>): File[] {
     return attachments.map(attachment => {
         const content = attachment.kind === 'text' ? attachment.content : Uint8Array.from(atob(attachment.content.split(',')[1] ?? ''), char => char.charCodeAt(0));
         return new File([content], attachment.name, {type: attachment.mimeType ?? 'text/plain'});

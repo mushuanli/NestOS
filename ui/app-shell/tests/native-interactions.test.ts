@@ -1,4 +1,4 @@
-import type {ConversationRequest} from '@itookit/ui-common-adapter';
+import type {ConversationRequest} from '@itookit/llm-ui-adapter/contracts';
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
 import {renderConversationRequests, clearConversationRequests} from '../../llm-ui-adapter/src/shell/remote-interactions';

@@ -1,6 +1,7 @@
+import type {ConversationSlashCommand} from '../contracts';
 import {parseCommand} from '@itookit/llm-ui';
 import {t} from '@itookit/common';
-import type {ConversationSlashCommand} from '@itookit/ui-common-adapter';
+
 
 /** Host branch commands take precedence over native command names. */
 export function nativeBranchCommand(text: string) {

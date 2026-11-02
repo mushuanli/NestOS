@@ -1,5 +1,5 @@
-import {type OcrControls} from '@itookit/ui-common-adapter';
-import {OcrSettingsForm} from '@itookit/ui-common-adapter';
+import {type OcrControls} from '@itookit/app-contracts/services';
+import {OcrSettingsForm} from '@itookit/llm-settings-ui/ocr';
 
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';

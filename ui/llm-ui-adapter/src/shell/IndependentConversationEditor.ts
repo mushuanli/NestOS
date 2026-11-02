@@ -1,14 +1,15 @@
+import {type ConversationControls, type EditorOptions} from '../contracts';
 import {resolveChatImageResize} from '../components/input/image-processing-session';
 import {mountNativeRecovery} from '../independent/native-recovery';
 import {mountEditorTitleBar} from './content-titlebar';
 import {mountExecutionDraftAction} from './chat-execution-draft';
-import {SharedChatOcr} from './SharedChatOcr';
+import {chatOcrPort} from './ocr-port';
 
 import {CHAT_SLOT_CLASSES} from '@itookit/llm-ui';
 import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
 import {ACTION_ICONS, CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
-import {BaseSettingsEditor, Toast, type ConversationControls, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common-adapter';
+import {BaseSettingsEditor, Toast, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common-adapter';
 import type {ChatView, OperationReceipt} from '@itookit/llm-ui';
 import {createNativeChatBinding, createNativeChatView} from '../independent/native';
 import type {RetainedWorkspaceHandoff} from './drafts/workspace-handoff';
@@ -33,14 +34,13 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
     private owned: boolean;
     private readonly lifetime = new AbortController();
     private offSnapshot?: () => void;
-    private ocr?: SharedChatOcr;
     private announced?: string;
     private suspended = false;
     private timer?: ReturnType<typeof setTimeout>;
     private branches?: RemoteBranches;
     private historyBranches?: RemoteHistoryBranches;
     private readonly events = new Map<EditorEvent, Set<(payload: unknown) => void>>();
-    constructor(container: HTMLElement, controls: ConversationControls, options: EditorOptions, private store: NativeChatStore, private handoff?: RetainedWorkspaceHandoff, private ocrControls?: import('@itookit/ui-common-adapter').OcrControls) {
+    constructor(container: HTMLElement, controls: ConversationControls, options: EditorOptions, private store: NativeChatStore, private handoff?: RetainedWorkspaceHandoff, private ocrControls?: import('@itookit/app-contracts/services').OcrControls) {
         super(container, controls, options); this.owned = !handoff; this.operations = store.ledger();
     }
     async init(container: HTMLElement): Promise<void> {this.container = container; await this.render();}
@@ -88,10 +88,9 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             return resolveChatImageResize(value ? JSON.parse(value) : undefined);
         }, resize => {const view = this.view; if (!view) return; const draft = view.getDraft();
             view.configureInput({selection: {...draft.selection, imageResize: JSON.stringify(resize)}}, draft.revision);});
-        const ocr = this.ocr = this.ocrControls ? new SharedChatOcr(this.ocrControls, () => this.view,
-            (ref, signal) => images.read(ref, {signal}), failure => this.fail(failure)) : undefined;
-        return {promptHistoryPages: 3, images, attachmentActions: item => ocr?.actions(item) ?? [],
-            setActive: active => ocr?.setActive(active), release: () => ocr?.destroy(), messageActions: ({message}) => this.historyBranches?.actions(message.id) ?? [], locale: getLocale(), initialDraft: this.store.draft, markdown: messageMarkdown(this.options),
+        const ocr = chatOcrPort(this.ocrControls, (ref, signal) => images.read(ref, {signal}));
+        return {promptHistoryPages: 3, images, ocr,
+             messageActions: ({message}) => this.historyBranches?.actions(message.id) ?? [], locale: getLocale(), initialDraft: this.store.draft, markdown: messageMarkdown(this.options),
             upload: this.options.readOnly ? undefined : this.store.upload.bind(this.store),
             assets: {read: async id => (await this.store.read({id, name: id}, {signal: this.lifetime.signal})).arrayBuffer()},
             saveDraft: draft => this.suspended || this.options.readOnly ? Promise.resolve() : this.store.saveDraft(draft),
@@ -104,7 +103,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         const id = this.service.snapshot?.()?.sessionId;
         if (id && id !== this.announced && !this.closed) {this.announced = id; this.options.onConversationSession?.(id);}
     }
-    private async runBranch(action: () => Promise<import('@itookit/ui-common-adapter').ConversationSnapshot>): Promise<void> {
+    private async runBranch(action: () => Promise<import('../contracts').ConversationSnapshot>): Promise<void> {
         if (!this.active || this.closed || this.options.readOnly) throw new Error('Conversation view is unavailable');
         await this.flushPendingSave();
         if (!this.active || this.closed) return;
@@ -195,7 +194,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
     }
     setReadOnly(value: boolean): void {this.options.readOnly = value; void this.binding?.source.refresh().catch(error => this.fail(error));}
     suspendForRecovery(): void {this.suspended = true; this.store.suspend(); this.cancelPendingRender();}
-    captureRecovery(): unknown {this.ocr?.assertRecoverable(); return this.view?.captureRecovery();}
+    captureRecovery(): unknown {return this.view?.captureRecovery();}
     restoreRecovery(value: unknown): void {this.view?.restoreRecovery(value as ReturnType<ChatView['captureRecovery']>);}
     destroy(): Promise<void> {
         return this.closing ??= disposeEditorResources([() => this.flushPendingSave(),

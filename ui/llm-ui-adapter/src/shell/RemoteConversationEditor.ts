@@ -1,10 +1,12 @@
+import {conversationStatus} from '@itookit/llm-ui-adapter/presentation';
+import {type ConversationControls, type ConversationSnapshot, type EditorOptions} from '../contracts';
 import {nativeCatalogNotice} from '../independent/native-catalog';
 import {awaitNativeAdmission} from '../independent/native-admission';
 import {NativeInstructionQueuePanel} from '../components/NativeInstructionQueuePanel';
 import {ConversationComposer} from './drafts/conversation-composer';
 import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
 interface SubmittedInput {text: string; files: File[]; revision: number; config: IChatInputConfig}
-import { BaseSettingsEditor, Toast, conversationStatus, type ConversationControls, type ConversationSnapshot, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap } from '@itookit/ui-common-adapter';
+import {BaseSettingsEditor, Toast, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common-adapter';
 import { createModuleLogger, escapeHTML, randomUUID, t } from '@itookit/common';
 import {renderConversationRequests, clearConversationRequests} from './remote-interactions';
 import { ConversationWorkspaceView } from './ConversationWorkspaceView';
@@ -293,7 +295,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         return !this.closed && !this.working && !!this.snapshot?.hasEarlier && !!this.service.loadEarlier
             && remotePrompts(this.snapshot.messages).length === 0;
     }
-    async sendText(text: string, files: File[] = [], nativeSelection?: import('@itookit/ui-common-adapter').ConversationModelSelection): Promise<void | false> {
+    async sendText(text: string, files: File[] = [], nativeSelection?: import('../contracts').ConversationModelSelection): Promise<void | false> {
         if (!text.trim() && !files.length) return;
         const query = this.independentQuery(text);
         if (query) return this.sendReadOnlyQuery(text, files, query);
@@ -339,10 +341,10 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             return action();
         });
     }
-    private async readCommands(): Promise<import('@itookit/ui-common-adapter').ConversationSlashCommand[]> {
+    private async readCommands(): Promise<import('../contracts').ConversationSlashCommand[]> {
         return withNativeBranchCommands(await this.service.commands?.() ?? []);
     }
-    private async sendInput(input: SubmittedInput, selection: import('@itookit/ui-common-adapter').ConversationModelSelection | undefined, frozen?: Promise<string>): Promise<ConversationSnapshot> {
+    private async sendInput(input: SubmittedInput, selection: import('../contracts').ConversationModelSelection | undefined, frozen?: Promise<string>): Promise<ConversationSnapshot> {
         let ready = false, invoked = false;
         const sendingId = this.submission!.id;
         try {
@@ -361,7 +363,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             return result;
         } catch (error) {return this.submissionFailure(error, ready && !invoked);}
     }
-    private sendPrepared(text: string, attachments: NonNullable<Parameters<ConversationControls['send']>[1]>, selection?: import('@itookit/ui-common-adapter').ConversationModelSelection, submissionId?: string) {
+    private sendPrepared(text: string, attachments: NonNullable<Parameters<ConversationControls['send']>[1]>, selection?: import('../contracts').ConversationModelSelection, submissionId?: string) {
         if (this.service.enqueue && this.snapshot?.canQueue) {
             const id = submissionId ?? this.submission!.id;
             return awaitNativeAdmission(this.service, id, () => this.service.enqueue!(text, attachments, selection, id), this.admissions.signal);
@@ -416,7 +418,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         } finally {this.querying.delete(name); if (!this.closed) this.updateControls();}
         return false;
     }
-    private async sendCommand(text: string, files: File[], selection: import('@itookit/ui-common-adapter').ConversationModelSelection | undefined, revision: number, captured?: NonNullable<ReturnType<typeof resolveNativeCommand>>): Promise<void> {
+    private async sendCommand(text: string, files: File[], selection: import('../contracts').ConversationModelSelection | undefined, revision: number, captured?: NonNullable<ReturnType<typeof resolveNativeCommand>>): Promise<void> {
         if (files.length) throw new Error(t('harness.commandUnavailable'));
         const frozen = this.composer?.submit({...this.view.input.getConfig(), text}, [], randomUUID(), 'command'); void frozen?.catch(() => {});
         let ready = false, invoked = false;
@@ -618,7 +620,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.events.get(event)!.add(listener); return () => { this.events.get(event)?.delete(listener); };
     }
     setReadOnly(value: boolean) { if (value !== !!this.options.readOnly) ++this.branchRevision; this.options.readOnly = value; this.updateControls(); }
-    get commands() { return {sendMessage: (message: {text: string; files?: File[]; nativeSelection?: import('@itookit/ui-common-adapter').ConversationModelSelection}) => {
+    get commands() { return {sendMessage: (message: {text: string; files?: File[]; nativeSelection?: import('../contracts').ConversationModelSelection}) => {
         return this.sendText(message.text, message.files, message.nativeSelection);
     }}; }
 }

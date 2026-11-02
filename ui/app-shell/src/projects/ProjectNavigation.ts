@@ -176,8 +176,8 @@ export class ProjectNavigation {
     }
     private async choose(path: string, signal: AbortSignal): Promise<void> {
         const revision = ++this.scopeRevision;
-        const project = path === '/' ? undefined : this.projectChoices.find(item => folderBrowserPath(item.path) === path)
-            ?? await this.projects.forFolder(browserTargetFolder(resolveBrowserTarget(path), path));
+        const project = await (path === '/' ? undefined : this.projectChoices.find(item => folderBrowserPath(item.path) === path)
+            ?? this.projects.forFolder(browserTargetFolder(resolveBrowserTarget(path), path)));
         if (signal.aborted || revision !== this.scopeRevision) return;
         this.project = project;
         this.updateSelector();

@@ -1,4 +1,5 @@
-import type {EditorOptions} from '@itookit/ui-common-adapter';
+import type {EditorOptions} from '../contracts';
+
 import type {ToolbarContext} from '@itookit/llm-ui';
 const mounted = new WeakMap<HTMLElement, () => void>();
 

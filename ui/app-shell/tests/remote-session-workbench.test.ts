@@ -204,7 +204,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         await vi.waitFor(()=>expect(workbench.getActiveResourceId()).toBe(remoteSessionPath(project.path,'codex','native')));
         expect(selector.value).toBe('/');
         const folder=await runtime.projects.sessionFolder(project);
-        const controls=(workbench as unknown as {remoteAgentControls(folder:string):import('@itookit/ui-common-adapter').RemoteAgentControls}).remoteAgentControls(folder);
+        const controls=(workbench as unknown as {remoteAgentControls(folder:string):import('@itookit/llm-ui-adapter/contracts').RemoteAgentControls}).remoteAgentControls(folder);
         const remoteId=(await controls.list())[0].id;expect(remoteId).toContain('remote:');
         const before=(await runtime.sessionRepository.list()).length;
         await workbench.startSessionDraft(remotePath, undefined, remoteId);

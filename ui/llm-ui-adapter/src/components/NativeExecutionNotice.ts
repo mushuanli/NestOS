@@ -1,6 +1,7 @@
+import type {ConversationSnapshot} from '../contracts';
 import {ExecutionNotice} from '@itookit/llm-ui';
 import {t} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+
 
 /** Native policy supplies the message; the shared library owns DOM and clock lifecycle. */
 export class NativeExecutionNotice {

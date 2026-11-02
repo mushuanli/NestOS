@@ -1,3 +1,5 @@
+import type {ConversationControls, ConversationSnapshot as NativeSnapshot} from '../contracts';
+import type {ConversationCommandOutput} from '../contracts';
 import {NativeMetricsObserver} from './native-metrics-observer';
 import {nativeObservationDiagnostics} from './native-observation-diagnostics';
 import {nativeComposerIndicators} from './native-composer-indicators';
@@ -8,7 +10,7 @@ import type {ImageEditingHost} from './image-editing';
 import {prepareRemoteAttachments} from '../shell/remote-attachments';
 import { type ChatMessage, type ConversationActions,
     type InteractionView, type OperationLedger, type OperationRecord, type CommandSubmission, type OperationContext, type OperationReceipt } from '@itookit/llm-ui';
-import type { ConversationControls, ConversationSnapshot as NativeSnapshot } from '@itookit/ui-common-adapter';
+
 import {NativeComposerCapabilities, type NativeCommandProvider} from './native-composer';
 import {submitNativeCommand} from './native-command';
 import {nativeControlReceipt} from './native-control';
@@ -22,7 +24,7 @@ import {t} from '@itookit/common';
 import {NativeCommandOutput} from '../components/history/NativeCommandOutput';
 import {NativeExecutionNotice} from '../components/NativeExecutionNotice';
 import {NativeResultRepair} from '../components/history/NativeResultRepair';
-import type {ConversationCommandOutput} from '@itookit/ui-common-adapter';
+
 import type {ExtensionRenderer, JsonValue} from '@itookit/llm-ui';
 
 const log = createModuleLogger('native-submission');
@@ -126,7 +128,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         if (!command) return reject(context, 'STALE_COMMAND', 'Command changed or is unavailable');
         const currentDescriptor = capabilities.resolve(command.commandId);
         if (!currentDescriptor) return reject(context, 'STALE_COMMAND', 'Native command definition unavailable');
-        let selection: import('@itookit/ui-common-adapter').ConversationModelSelection | undefined;
+        let selection: import('../contracts').ConversationModelSelection | undefined;
         try {selection = command.kind === 'prompt' ? capabilities.selection(input.selection) : undefined;}
         catch (error) {return reject(context, 'INVALID_SELECTION', String(error));}
         const captured = generation;
@@ -152,7 +154,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
                 } catch (error) {return reject(context, 'INVALID_ATTACHMENT', String(error));}
                 if (!valid(context.viewId)) return reject(context, 'STALE_VIEW', 'Observation binding expired');
             }
-            let selection: import('@itookit/ui-common-adapter').ConversationModelSelection | undefined;
+            let selection: import('../contracts').ConversationModelSelection | undefined;
             try {selection = capabilities.selection(input.selection);}
             catch (error) {return {status: 'rejected', operationId: context.operationId, code: 'INVALID_SELECTION', message: String(error)};}
             const captured = generation;

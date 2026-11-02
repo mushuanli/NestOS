@@ -1,5 +1,6 @@
+import type {SessionDraftControls} from '../../contracts';
 import {createModuleLogger, randomUUID, t} from '@itookit/common';
-import type {SessionDraftControls} from '@itookit/ui-common-adapter';
+
 
 const log = createModuleLogger('draft-header');
 export function mountDraftHeader(root: HTMLElement, options: {controls: SessionDraftControls; title(): string; busy(): boolean;

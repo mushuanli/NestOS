@@ -1,5 +1,5 @@
 import { HARNESS_STATE_ICONS, t } from '@itookit/common';
-import type { ConversationSnapshot } from '../interfaces/ConversationControls';
+import type { ConversationSnapshot } from '../contracts/ConversationControls';
 
 type Observation = NonNullable<ConversationSnapshot['observation']>;
 function recentActivity(observation: Observation, now: number) {

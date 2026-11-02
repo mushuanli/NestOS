@@ -11,7 +11,7 @@ export function remotePromptTargets(catalog: CallTargetCatalog, executors: reado
     return {...catalog, label: t('harness.promptTarget'), entries: [...native, ...catalog.entries], ...(native.length ? {error: undefined} : {})};
 }
 
-export function draftHarnessTarget(executorId: string | undefined, selection?: Readonly<Record<string, string>>, catalog?: import('@itookit/ui-common-adapter').ConversationModelCatalog) {
+export function draftHarnessTarget(executorId: string | undefined, selection?: Readonly<Record<string, string>>, catalog?: import('../../contracts').ConversationModelCatalog) {
     if (!executorId?.startsWith('remote:')) throw Object.assign(new Error(t('harness.executorRequired')), {code: 'REMOTE_HARNESS_REQUIRED'});
     let identity: unknown;
     try {identity = JSON.parse(decodeURIComponent(executorId.slice(7)));} catch {throw Object.assign(new Error(t('harness.executorInvalid')), {code: 'REMOTE_HARNESS_INVALID'});}

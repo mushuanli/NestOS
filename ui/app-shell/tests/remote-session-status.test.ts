@@ -1,4 +1,4 @@
-import {conversationStatus} from '@itookit/ui-common-adapter';
+import {conversationStatus} from '@itookit/llm-ui-adapter/presentation';
 import { harnessObservation as observeHarness } from '@itookit/app-contracts';
 import {expect, it, vi} from 'vitest';
 

@@ -1,4 +1,4 @@
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationSnapshot} from '../contracts';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {t} from '@itookit/common';

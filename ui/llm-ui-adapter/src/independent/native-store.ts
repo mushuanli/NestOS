@@ -1,8 +1,9 @@
+import type {ConversationComposerDraft, ConversationControls} from '../contracts';
 import {StoredChatImages} from './stored-chat-images';
 import type {ImageEditingHost} from './image-editing';
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import {createOperationLedger, type AttachmentRef, type ComposerDraft, type OperationRecord} from '@itookit/llm-ui';
-import type {ConversationComposerDraft, ConversationControls} from '@itookit/ui-common-adapter';
+
 import {readDraftFiles} from '../services/DraftFilesCodec';
 import {draftFileId} from '../domain/draft-file-identity';
 import {DraftDataCodec} from '../shell/drafts/session-draft-data';

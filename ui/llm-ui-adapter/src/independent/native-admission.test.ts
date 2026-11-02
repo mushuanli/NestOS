@@ -1,4 +1,4 @@
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
+import type {ConversationControls, ConversationSnapshot} from '../contracts';
 import {expect, it, vi} from 'vitest';
 
 import {awaitNativeAdmission} from './native-admission';

@@ -1,6 +1,7 @@
+import type {EditorOptions} from '../contracts';
 import {t} from '@itookit/common';
 import type {ChatView, ComposerDraft} from '@itookit/llm-ui';
-import type {EditorOptions} from '@itookit/ui-common-adapter';
+
 
 /** The host owns cross-executor navigation; input is copied without consuming the current draft. */
 export function mountExecutionDraftAction(root: HTMLElement, options: EditorOptions, view: () => ChatView | undefined,

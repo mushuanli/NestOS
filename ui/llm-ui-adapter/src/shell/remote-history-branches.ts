@@ -1,6 +1,7 @@
+import {type ConversationControls, type ConversationSnapshot, type EditorOptions} from '../contracts';
 import type {MessageAction} from '@itookit/llm-ui';
 import {ACTION_ICONS, escapeHTML, t} from '@itookit/common';
-import {Modal, type ConversationControls, type ConversationSnapshot, type EditorOptions} from '@itookit/ui-common-adapter';
+import {Modal} from '@itookit/ui-common-adapter';
 import {remoteBranchTargets} from './remote-rounds';
 
 /** Mutating native history stays outside the read-only transcript renderer. */

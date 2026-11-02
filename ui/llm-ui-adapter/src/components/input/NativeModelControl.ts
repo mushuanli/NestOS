@@ -1,6 +1,7 @@
+import type {ConversationModelCatalog, ConversationModelSelection} from '../../contracts';
 import {getLocale} from '@itookit/common';
 import {t, FEEDBACK_ICONS} from '@itookit/common';
-import type {ConversationModelCatalog, ConversationModelSelection} from '@itookit/ui-common-adapter';
+
 import {PopupPanel, type PopupItem} from '@itookit/llm-ui';
 
 /** A native selection belongs to the next submission, independent of local connections. */

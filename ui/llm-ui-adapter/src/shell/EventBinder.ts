@@ -1,6 +1,7 @@
+import {type EditorOptions} from '../contracts';
 // @file: llm-ui/shell/EventBinder.ts
 
-import { installResponsiveActions, type EditorOptions } from '@itookit/ui-common-adapter';
+import {installResponsiveActions} from '@itookit/ui-common-adapter';
 import {EventCleanup} from '@itookit/llm-ui';
 
 export interface EventBinderCallbacks {

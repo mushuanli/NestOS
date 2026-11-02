@@ -5,7 +5,7 @@ import {mountChatInputMenu} from './chat-input-menu';
 import {refreshDraftTarget, restoreDraftTarget} from '../independent/restore-draft-target';
 import {mountExecutionDraftAction} from './chat-execution-draft';
 import {workspaceInputPlugins} from './workspace-input-plugins';
-import {SharedChatOcr} from './SharedChatOcr';
+import {chatOcrPort} from './ocr-port';
 
 import {SharedChatCommands} from './SharedChatCommands';
 import {SharedChatTaskPanel} from './SharedChatTaskPanel';
@@ -47,7 +47,6 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     private store?: SessionChatStore;
     private historyActions?: SessionHistoryActions;
     private inputCommands?: SharedChatCommands;
-    private ocr?: SharedChatOcr;
     private taskPanel?: SharedChatTaskPanel;
     private branch = 'main';
     private initialManifest?: import('@itookit/llm-session/contracts').ConversationManifest;
@@ -109,15 +108,15 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     }
     private mountSnapshot() {
         return {store: this.store, binding: this.binding, branch: this.branch, lifetime: this.lifetime,
-            history: this.historyActions, commands: this.inputCommands, taskPanel: this.taskPanel, ocr: this.ocr};
+            history: this.historyActions, commands: this.inputCommands, taskPanel: this.taskPanel};
     }
     private async rollbackMount(error: unknown, previous: ReturnType<IndependentSessionEditor['mountSnapshot']>, binding: Binding, lifetime: AbortController): Promise<void> {
         if (!(error as {bindingCommitted?: boolean})?.bindingCommitted) {
-            const abandoned = {history: this.historyActions, commands: this.inputCommands, taskPanel: this.taskPanel, ocr: this.ocr};
+            const abandoned = {history: this.historyActions, commands: this.inputCommands, taskPanel: this.taskPanel};
             binding.dispose(); lifetime.abort();
-            this.store = previous.store; this.binding = previous.binding; this.branch = previous.branch; this.lifetime = previous.lifetime; this.historyActions = previous.history; this.inputCommands = previous.commands; this.taskPanel = previous.taskPanel; this.ocr = previous.ocr;
+            this.store = previous.store; this.binding = previous.binding; this.branch = previous.branch; this.lifetime = previous.lifetime; this.historyActions = previous.history; this.inputCommands = previous.commands; this.taskPanel = previous.taskPanel;
             if (this.config.target?.kind === 'session') this.config.target = {...this.config.target, branch: previous.branch};
-            try {await disposeEditorResources([() => abandoned.history?.destroy(), () => abandoned.commands?.destroy(), () => abandoned.taskPanel?.destroy(), () => abandoned.ocr?.destroy()]);}
+            try {await disposeEditorResources([() => abandoned.history?.destroy(), () => abandoned.commands?.destroy(), () => abandoned.taskPanel?.destroy()]);}
             catch (cleanup) {throw new AggregateError([error, cleanup], 'Session binding replacement and cleanup failed');}
         } else {previous.lifetime.abort(); previous.binding?.dispose();}
     }
@@ -197,12 +196,10 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             return resolveChatImageResize(settings.imageResize, agent?.config.imageProcessing?.resize);
         }, resize => {const view = this.view; if (!view) return; const current = view.getDraft();
             view.configureInput({selection: {...current.selection, imageResize: JSON.stringify(resize)}}, current.revision);});
-        const ocr = this.config.ocr ? new SharedChatOcr(this.config.ocr, () => this.view,
-            (ref, signal) => images.read(ref, {signal}), failure => this.fail(failure)) : undefined;
-        this.ocr = ocr;
+        const ocr = chatOcrPort(this.config.ocr, (ref, signal) => images.read(ref, {signal}));
         return {images, inputPresentation: 'host', attachmentMenu: chatAttachmentMenu(true), plugins: workspaceInputPlugins(this.config.commandBus, {navigation: 'projects', sessionId: this.config.sessionId},
-            () => this.view?.getDraft().target?.id ?? 'default', this.config.sessionManager.promptHistory), attachmentActions: item => ocr?.actions(item) ?? [], setActive: active => {history?.setActive(active); ocr?.setActive(active); taskPanel?.setActive(active); if (active) void inputCommands?.restore().catch(error => this.fail(error));},
-            release: () => disposeEditorResources([releaseUsage, () => history?.destroy(), () => inputCommands?.destroy(), () => taskPanel?.destroy(), () => ocr?.destroy()]),messageActions: context => history?.messageActions(context) ?? [], locale: getLocale(), initialDraft: draft, markdown: messageMarkdown(this.config, id => this.messageAnchor(id)),
+            () => this.view?.getDraft().target?.id ?? 'default', this.config.sessionManager.promptHistory), ocr, setActive: active => {history?.setActive(active); taskPanel?.setActive(active); if (active) void inputCommands?.restore().catch(error => this.fail(error));},
+            release: () => disposeEditorResources([releaseUsage, () => history?.destroy(), () => inputCommands?.destroy(), () => taskPanel?.destroy()]),messageActions: context => history?.messageActions(context) ?? [], locale: getLocale(), initialDraft: draft, markdown: messageMarkdown(this.config, id => this.messageAnchor(id)),
             assets: createAssetProvider(undefined, undefined, this.config.assets), upload: this.config.assets ? store.upload.bind(store) : undefined,
             saveDraft: value => this.save(store, value), onDraftChange: value => {this.emit('interactiveChange', undefined); const next = JSON.stringify([value.target, value.selection]);
                 if (next !== inputSignature) {inputSignature = next; for (const listener of this.inputListeners) listener();}},
@@ -364,7 +361,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         this.active = true; this.sessionRunsPanel?.setVisible(!!this.container.querySelector<HTMLDetailsElement>('[data-chat-menu]')?.open); this.view?.setActive(true); await this.binding?.refreshTargets();
     }
     setReadOnly(value: boolean): void {this.config.readOnly = value; void this.binding?.refreshTargets();}
-    captureRecovery(): unknown {this.ocr?.assertRecoverable(); return this.view?.captureRecovery();}
+    captureRecovery(): unknown {return this.view?.captureRecovery();}
     restoreRecovery(value: unknown): void {this.view?.restoreRecovery(value as ReturnType<ChatView['captureRecovery']>);}
     suspendForRecovery(): void {this.suspended = true; this.store?.suspend(); this.cancelPendingRender();}
     destroy(): Promise<void> {

@@ -139,12 +139,8 @@ export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
     onConversationSession?(sessionId: string): void;
     /** Explicit removal of another native branch through the host's management service. */
     removeConversationSession?(sessionId: string): Promise<void>;
-    conversation?: import('./ConversationControls').ConversationControls;
-    remoteAgents?: import('./ConversationControls').RemoteAgentControls;
     /** Explicit initial input for conversation editors. */
     initialInputState?: { text?: string; agentId?: string };
-    /** A project draft is separate from Session history until first submission. */
-    sessionDraft?: import('./SessionDraftControls').SessionDraftControls<TSubmission>;
     /** Resolve optional host correlation for a user-initiated submission. */
     resolveSubmission?(): Promise<TSubmission | undefined>;
 

@@ -1,5 +1,6 @@
+import type {ConversationSnapshot} from '../contracts';
 import {ACTION_ICONS, escapeHTML, t} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
+
 import {setTimePresentation} from '@itookit/ui-common-adapter';
 import {conversationMetrics} from './conversation-metrics';
 import {conversationUsage} from './conversation-usage';

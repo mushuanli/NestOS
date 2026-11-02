@@ -366,105 +366,6 @@
 }
 
 /* ============================================
-   模态框 - Modal
-   ============================================ */
-.settings-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--st-bg-overlay);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    backdrop-filter: blur(2px);
-}
-
-.settings-modal-overlay.show {
-    opacity: 1;
-}
-
-.settings-modal {
-    background: var(--st-bg-primary);
-    border-radius: var(--st-radius-lg);
-    min-width: 400px;
-    max-width: 600px;
-    max-height: 80vh;
-    overflow: auto;
-    box-shadow: var(--st-shadow-xl);
-    transform: scale(0.9) translateY(20px);
-    transition: transform 0.3s ease;
-}
-
-.settings-modal-overlay.show .settings-modal {
-    transform: scale(1) translateY(0);
-}
-
-.settings-modal__header {
-    padding: var(--st-space-xl);
-    border-bottom: 1px solid var(--st-border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.settings-modal__body {
-    padding: var(--st-space-xl);
-}
-
-.settings-modal__footer {
-    padding: var(--st-space-xl);
-    border-top: 1px solid var(--st-border-color);
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--st-space-md);
-    background: var(--st-bg-secondary);
-}
-
-/* ============================================
-   Toast
-   ============================================ */
-.settings-toast-container {
-    position: fixed;
-    top: var(--st-space-xl);
-    right: var(--st-space-xl);
-    z-index: 10001;
-    display: flex;
-    flex-direction: column;
-    gap: var(--st-space-md);
-    pointer-events: none;
-}
-
-.settings-toast {
-    background: var(--st-bg-primary);
-    padding: var(--st-space-md) var(--st-space-xl);
-    border-radius: var(--st-radius-md);
-    box-shadow: var(--st-shadow-lg);
-    display: flex;
-    align-items: center;
-    gap: var(--st-space-md);
-    min-width: 300px;
-    opacity: 0;
-    transform: translateX(100%);
-    transition: all 0.3s ease;
-    pointer-events: auto;
-}
-
-.settings-toast.show {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.settings-toast--success { border-left: 4px solid var(--st-color-success); }
-.settings-toast--error { border-left: 4px solid var(--st-color-danger); }
-.settings-toast--warning { border-left: 4px solid var(--st-color-warning); }
-.settings-toast--info { border-left: 4px solid var(--st-color-info); }
-
-/* ============================================
    搜索框 - Search Box
    ============================================ */
 .settings-search-box {
@@ -599,7 +500,7 @@
     font-size: 0.85rem;
 }
 
-.settings-modal-confirm:disabled { cursor: wait; opacity: 0.65; }
+
 
 .initial-files details { margin-block: .75rem; }
 .initial-files summary { cursor: pointer; font-weight: 600; }

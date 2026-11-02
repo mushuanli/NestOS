@@ -1,7 +1,8 @@
+import type {EditorOptions} from '../contracts';
 import {AiChatPlugin, type AiChatHost} from '@itookit/mdxeditor';
 import {createModuleLogger} from '@itookit/common';
 import type {ChatOptions} from '@itookit/llm-ui';
-import type {EditorOptions} from '@itookit/ui-common-adapter';
+
 
 interface MessageSource {documentPath: string; messageId: string; role: string; branch?: string; roundId?: string; userIndex?: number}
 const log = createModuleLogger('message-markdown');

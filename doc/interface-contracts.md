@@ -393,3 +393,11 @@ StudyCreation.documents.save 可返回 {label: string}，由宿主提供包含�
 publish-plan → prepare-dispatch → observe-execution → accept-execution 表达已封闭计划的控制协议，状态、依赖产物引用、派发、事件/outbox 和幂等回执同 SeqFile 事务。KanbanExecutionPort 属于独立库 `/execution`，Session/Task/模型调用由 NestOS 的正式 IndependentCallService 适配；prepare 冻结可持久请求，start 仅在提交前日志 CAS 胜出时调用，inspect 只能核对原身份。unknown 不产生重派授权；产物需要内容核验，默认独立验收后解锁依赖。文件键、关闭与恢复边界见 [Kanban 设计](design/kanban-coordination.md)。
 
 应用 KanbanService.queryActivity / executionSession 投影 WorkItem 对应的执行 Session，DTO 只包含 Session 身份、状态、活动及观察时间，不暴露内部 Task。绑定使用通用 link-reference 的 nestos-execution-session 外部引用，业务解释和权限校验归 app-core。queryActivity 的执行筛选先过滤后分页；不把已认领或最近 10 分钟活跃当成执行仍运行。独立库继续仅依赖 vfs-core。
+
+## UI 契约与可选能力的归属
+
+独立 ui-common 只提供 DOM 布局、弹窗、Toast、确认框、剪贴板、带调用方 locale 的时间展示及通用菜单 DTO；无运行时依赖。ui-common-adapter 保留通用 EditorOptions / IEditor 与应用设置基础设施。llm-ui-adapter/contracts 的 ChatEditorOptions 扩展 conversation、remoteAgents、sessionDraft，ConversationControls / SessionDraftControls 同入口导出；conversationStatus 从 /presentation 轻量入口提供，不拉入聊天运行代码。旧 ISessionUI、列表和自动补全重复定义已移除，资源列表直接使用 vfs-ui 公共契约。
+
+ChatOptions.ocr 是独立 llm-ui 的可选识别端口，支持 recognize、read、prepare 与安全阶段诊断。进度、取消、失败重试、结果审阅及按附件稳定身份/修订插入与移除均由库负责；模型连接与提示词不进入库。应用 OcrControls/OcrSettingsState 属于 app-contracts/services，配置表单属于 llm-settings-ui/ocr；聊天设置不重复模型配置。
+
+历史与实时输出共用 ToolOutputGroups：连续工具消息、混合助手消息中相邻的工具 part 合并为一个默认折叠组；普通正文和用户消息分隔组。分组按稳定成员身份复用节点与展开状态，批量折叠和搜索定位仍可用。cells 保留完整事实，UI 折叠不改变日志、执行结果、历史分页或传输截断标记。

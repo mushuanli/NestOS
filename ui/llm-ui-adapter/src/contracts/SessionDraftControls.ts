@@ -1,5 +1,5 @@
-import type {IEditor} from './IEditor';
-import type {EditorFactory} from './IEditorFactory';
+import type {IEditor} from '@itookit/ui-common-adapter';
+import type {EditorFactory} from '@itookit/ui-common-adapter';
 
 export interface SessionDraftMaterialization {
     container: HTMLElement;

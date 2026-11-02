@@ -12,6 +12,7 @@ export interface PublishedKanbanWorkOptions {
     /** Stable Session preparation is owned by the host's existing session journal. */
     prepareSession(dispatchId: string): Promise<string>;
     binding(dispatch: KanbanDispatch): Promise<{target: TargetRef; overrides?: IndependentCallInput['request']['overrides']}>;
+    context?(dispatch: KanbanDispatch, item: KanbanItem): Promise<unknown>;
     outputs?(dispatch: KanbanDispatch, result: TaskCallResult): Promise<KanbanArtifactRef[]>;
     executionPolicy?: WorkExecutionPolicy;
 }
@@ -22,7 +23,7 @@ export function createPublishedKanbanWorkExecutor(options: PublishedKanbanWorkOp
             const sessionId=await options.prepareSession(dispatch.id), binding=await options.binding(dispatch);
             const input: IndependentCallInput={title:'Kanban work', request:{expectedSessionId:sessionId,expectedBranch:'main',expectedTarget:binding.target,
                 target:{kind:binding.target.kind,id:binding.target.id,version:binding.target.version},overrides:binding.overrides,
-                source:{kind:'composer',text:JSON.stringify({item,inputs:dispatch.inputs,planId:dispatch.planId,planRevision:dispatch.planRevision}),attachments:[],values:{}},
+                source:{kind:'composer',text:JSON.stringify({item,inputs:dispatch.inputs,dependencies:await options.context?.(dispatch,item),planId:dispatch.planId,planRevision:dispatch.planRevision}),attachments:[],values:{}},
                 submission:{id:dispatch.id,source:{kind:'conversation',ownerId:sessionId,id:dispatch.id}}}};
             return {schema:1,dispatch:structuredClone(dispatch),input,policy:structuredClone(options.executionPolicy ?? {maxDepth:4})};
         },

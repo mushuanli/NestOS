@@ -144,4 +144,4 @@ Flow 库恢复时是否发布修订属于应用策略，由 app-core/presets/res
 
 ## 可插拔协作看板
 
-`@itookit/app-core/kanban` 是显式装配的可选应用服务；纯契约由 app-contracts 拥有，用户 VFS 的事务存储由宿主注入。项目与系统看板维护唯一工作项，全局视图只聚合；相关 Session、职责、估算、转交和超时升级均不进入 durable-kernel。模型唤醒、工具入口和持久邮箱桥由宿主或外部适配负责，当前不自动启用 Agent 执行。默认应用宿主仅装配个人看板、共享 UI 和系统通知健康检查，项目存储与扫描仍显式绑定。详见 [Kanban 协调模块](kanban-coordination.md)。
+`@itookit/app-core/kanban` 是显式装配的可选应用服务；纯契约由 app-contracts 拥有，用户 VFS 的事务存储由宿主注入。项目与系统看板维护唯一工作项，全局视图只聚合；相关 Session、职责、估算、转交和超时升级均不进入 durable-kernel。模型唤醒、工具入口和持久邮箱桥由宿主或外部适配负责，看板 AI 协作默认关闭，用户显式绑定已发布的规划/执行 Agent 或 Flow 并启用后才启动依赖分析与自动执行。默认应用宿主装配个人看板、共享 UI、系统通知及持久调用接线，项目存储与来源扫描仍显式绑定。详见 [Kanban 协调模块](kanban-coordination.md)。

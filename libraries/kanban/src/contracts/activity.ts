@@ -15,6 +15,8 @@ export interface KanbanExecutionSessionDetail {
 
 /** Transport-facing service with optional authorized resource activity. */
 export interface KanbanClient extends KanbanService {
+    automationCatalog?(): Promise<import('./automation').KanbanAutomationCatalog>;
+    analysisStatus?(boardId: string, itemId: string): Promise<import('./automation').KanbanAnalysisStatus | null>;
     queryActivity?(boardId: string, query?: KanbanSessionActivityQuery): Promise<KanbanSessionItemPage>;
     executionSession?(boardId: string, itemId: string): Promise<KanbanExecutionSessionDetail>;
 }

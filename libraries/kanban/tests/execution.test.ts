@@ -82,3 +82,12 @@ it('reports a corrupt frozen request without executing or inspecting it',async()
     expect(f.executor.start).toHaveBeenCalledTimes(1);expect(f.executor.inspect).not.toHaveBeenCalled();
     expect((await f.service.workflow('b')).dispatches.d).toMatchObject({outcome:'unknown',code:'INVALID_EXECUTION_JOURNAL'});
 });
+it('settles preparation failures as not-started work without calling the executor', async () => {
+    const f = await fixture(); await f.prepare();
+    vi.mocked(f.executor.prepare).mockRejectedValueOnce(Object.assign(new Error('PRIVATE'), {code: 'DEPENDENCY_CONTEXT_TOO_LARGE'}));
+    const bridge = await f.bridge(); await bridge.scan();
+    expect((await f.service.workflow('b')).dispatches.d).toMatchObject({outcome: 'failed', code: 'DEPENDENCY_CONTEXT_TOO_LARGE'});
+    expect(f.executor.start).not.toHaveBeenCalled();
+    expect((await f.service.item('b', 'first')).item.blocked?.reason).toBe('DEPENDENCY_CONTEXT_TOO_LARGE');
+    await bridge.quiesce();
+});

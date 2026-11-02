@@ -23,7 +23,7 @@ export interface KanbanExecutionBridgeOptions {
     log(input: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; durationMs: number}): void;
     executionReference?(sessionId: string, dispatchId: string): import('./contracts').KanbanExternalReference;
     subscribe?(wake: () => void): () => void;
-    autoDispatch?: boolean; shutdownTimeoutMs?: number;
+    autoDispatch?: boolean | (() => Promise<boolean>); shutdownTimeoutMs?: number;
     estimate?(item: KanbanItem, principal: KanbanPrincipal): Promise<KanbanEstimate | undefined>;
 }
 interface ExecutionRecord {schema: 1; fence: string; request: unknown; digest: string; phase: 'prepared' | 'submitting'}
@@ -57,7 +57,8 @@ async function runBridge(options: KanbanExecutionBridgeOptions, path: string, ac
         if(!active()) return;
         if(['prepared','running','unknown'].includes(dispatch.outcome)) await runDispatch(options,path,dispatch,active,track);
     }
-    if(!options.autoDispatch||!active()) return;
+    const automatic = typeof options.autoDispatch === 'function' ? await options.autoDispatch() : options.autoDispatch;
+    if(!automatic||!active()) return;
     for(const id of (await options.service.workflow(options.boardId)).ready) {
         if(!active()) return;
         const {item}=await options.service.item(options.boardId,id), owner=item.eligiblePrincipals?.[0]; if(!owner) continue;
@@ -86,7 +87,7 @@ async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, 
         const submit=record.phase==='prepared'&&await track(claimSubmission(options,path,dispatch));
         if(!active()) return; stage=submit?'start':'inspect';await options.authorize(stage,dispatch);if(!active()) return;
         result=await (submit?options.executor.start(record.request):options.executor.inspect(record.request));
-    } catch(error) {result={outcome:'unknown',code:safeCode(error)};}
+    } catch(error) {result={outcome:stage==='prepare'?'failed':'unknown',code:safeCode(error)};}
     try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
     if(active()) try {await linkSession(options,dispatch,result.executionSessionId);if(active()) await settle(options,dispatch,result);} catch(error) {if(safeCode(error)!=='REVISION_CONFLICT') throw error;}
 }

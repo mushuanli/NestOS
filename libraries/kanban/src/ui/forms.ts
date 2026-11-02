@@ -38,7 +38,7 @@ export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, it
         ${amendmentsView(ui, item)}
         ${archived ? '' : detailForms(ui, board, item, actor)}
         <section data-related-records></section><h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, item.sources ?? [])}
-        <div data-execution-session></div>
+        <div data-analysis></div><div data-execution-session></div>
         <h4>${escapeHTML(ui.text('sessions'))}</h4>${item.participants.map(p => `<button type="button" data-session="${escapeAttr(p.sessionId)}">${escapeHTML(p.sessionId)} · ${escapeHTML(p.roles.join(', '))}</button>`).join('') || `<p>${escapeHTML(ui.text('none'))}</p>`}
         ${archived ? '' : `<form data-form="session">${suggestionField({name: 'sessionId', label: 'session', kind: 'session', manual: true, required: true})}<button>${escapeHTML(ui.text('registerSession'))}</button></form>`}
         <details><summary>${escapeHTML(ui.text('eventsHelp'))}</summary><ol>${events.map(event => `<li>${escapeHTML(event.kind)} · ${escapeHTML(event.actor.id ?? event.actor.agentId ?? '')} · ${escapeHTML(new Date(event.at).toLocaleString())}${event.data.message ? `<p>${escapeHTML(event.data.message)}</p>` : ''}</li>`).join('')}</ol></details>`;
@@ -61,7 +61,9 @@ function detailForms(ui: KanbanPresentation, board: KanbanBoardSummary, item: Ka
     if (!executable && ['backlog', 'proposed', 'open'].includes(item.status)) forms += `<form data-form="close-plan">${field(ui, 'resultRef', 'result')}<button>${escapeHTML(ui.text('closePlan'))}</button></form>`;
     if (executable && item.status === 'open' && !item.blocked) forms += `<form data-form="claim">${board.policy.requireEstimate !== false ? estimates(ui) : ''}<button>${escapeHTML(ui.text('claim'))}</button></form>`;
     if (item.status === 'claimed' && owns(item, actor)) forms += `<form data-form="submit">${field(ui, 'resultRef', 'result')}<button>${escapeHTML(ui.text('submit'))}</button></form>`;
+    const automatic = item.eligiblePrincipals?.some(principal => principal.kind === board.automation?.worker.kind && principal.id === board.automation.worker.id);
     let secondary = '';
+    if (['proposed', 'backlog', 'open'].includes(item.status) && !automatic) secondary += `<details><summary>${escapeHTML(ui.text('editItem'))}</summary><form data-form="edit-item">${field(ui, 'title', 'name', item.title)}${textarea(ui, 'responsibility', 'responsibility', item.responsibility)}${textarea(ui, 'acceptance', 'acceptance', item.acceptance)}<button>${escapeHTML(ui.text('save'))}</button></form></details>`;
     if (['proposed', 'backlog', 'open'].includes(item.status)) secondary += `<details><summary>${escapeHTML(ui.text('plan'))}</summary><form data-form="plan">${planningFields(ui, board, item)}<button>${escapeHTML(ui.text('save'))}</button></form></details><form data-form="cancel">${field(ui, 'reason', 'reason')}<button>${escapeHTML(ui.text('cancel'))}</button></form>`;
     if (owns(item, actor)) secondary += `<form data-form="release">${field(ui, 'reason', 'reason')}<button>${escapeHTML(ui.text('release'))}</button></form>`;
     if (!item.blocked && (!item.owner || owns(item, actor))) secondary += `<form data-form="block">${field(ui, 'reason', 'reason')}<button>${escapeHTML(ui.text('block'))}</button></form>`;

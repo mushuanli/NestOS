@@ -18,6 +18,9 @@ it('exposes user-bound Kanban commands, queries and system notifications through
         expect((await initial.list()).find((entry: {id: string}) => entry.id === 'kanban:nestos-demo')).toMatchObject({group: 'kanban', exists: true});
         expect(await initial.restore(['kanban:nestos-demo'])).toEqual([{id: 'kanban:nestos-demo', status: 'preserved'}]);
         const actor = await kanban.currentPrincipal(); expect(actor).toEqual({kind: 'human', id: 'admin'});
+        const automation = await kanban.automationCatalog();
+        expect(automation).toMatchObject({coordinator: {kind: 'service', id: 'kanban-planner'}, worker: {kind: 'service', id: 'kanban-worker'}});
+        expect(Array.isArray(automation.targets)).toBe(true);
         const board = await kanban.create({id: 'board', title: 'Work', scope: {kind: 'system'}, members: [{...actor, responsibility: 'Work', roles: ['worker','coordinator','reviewer']}], policy: {requireEstimate: false, review: 'assignee'}, notifications: {rules: {'create-item': 'info'}}});
         await kanban.execute(board.id, {operationId: 'create-card', expectedRevision: board.revision, command: {type: 'create-item', item: {id: 'card', title: 'PRIVATE_CARD_TITLE', responsibility: 'PRIVATE_BODY', acceptance: 'Verified'}}});
         const directory = await kanban.catalog();
@@ -28,6 +31,7 @@ it('exposes user-bound Kanban commands, queries and system notifications through
         expect(candidates.items[0]).toMatchObject({id: 'card', label: 'PRIVATE_CARD_TITLE'}); expect(JSON.stringify(candidates)).not.toContain('PRIVATE_BODY');
         expect(await kanban.resolve(`KB-${board.number}#1`)).toMatchObject({boardId:board.id,itemId:'card'});
         const read = await kanban.item(board.id, 'card'); expect(read.item.status).toBe('backlog');
+        expect(await kanban.analysisStatus(board.id, 'card')).toBeNull();
         const notifications = await remote.backend.events.listNotifications(); expect(notifications.items).toHaveLength(1);
         expect(notifications.items[0].event.value.type).toBe('kanban.create-item'); expect(JSON.stringify(notifications)).not.toContain('PRIVATE_');
         const sessionId = await runtime.sessionRepository.createSession('Autocomplete planning session');

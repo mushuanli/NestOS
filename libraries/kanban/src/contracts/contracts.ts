@@ -32,6 +32,7 @@ export interface KanbanItem {
     planning?: KanbanPlanning; closedAt?: number; restoredAt?: number; closureReason?: string;
 }
 export interface KanbanBoard {
+    automation?: import('./automation').KanbanAutomationSettings;
     number?: number;
     id: string; scope: { kind: 'system' } | { kind: 'project'; projectId: string } | {kind: 'collection'; namespace: string; id: string};
     title: string; policy: KanbanPolicy; agents?: Array<{ agentId: string; responsibility: string }>; members?: KanbanMember[];
@@ -44,6 +45,8 @@ export interface KanbanEvent {
     data: { dispatchId?: string; readyItemIds?: string[]; planId?: string; recordId?: string; recordIds?: string[]; itemIds?: string[]; planning?: KanbanPlanning; message?: string; reason?: string; resultRef?: string; estimate?: KanbanEstimate; workUnits?: number };
 }
 export type KanbanCommand = import('./workflow').KanbanWorkflowCommand
+    | {type: 'edit-item'; itemId: string; title: string; responsibility: string; acceptance: string}
+    | {type: 'configure-automation'; settings: import('./automation').KanbanAutomationSettings}
     | {type: 'review-amendment'; itemId: string; amendmentId: string; accept: boolean; reason?: string}
     | {type: 'append-record'; record: KanbanRecordInput}
     | {type: 'review-record'; recordId: string; accept: boolean}

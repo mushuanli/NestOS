@@ -1,3 +1,6 @@
+import {KanbanAutomationJournal} from './automation-journal';
+import {createPersonalKanbanAutomation, type PersonalKanbanAutomationOptions} from './personal-automation';
+import {authorizeAutomation} from './automation-authority';
 import {reportKanbanHealth} from './health-events';
 import type {IFileSystem} from '@itookit/vfs-core';
 import type {UserEventService} from '../events/service';
@@ -9,10 +12,32 @@ import {KanbanError} from '@itookit/kanban';
 import {createLocalKanbanSessionSource} from './session-source';
 
 /** The authenticated runtime owns this user store; project boards require their own binding. */
-export async function createPersonalKanban(fs: IFileSystem, events: UserEventService, diagnostics: DiagnosticJournal, sessions?: Pick<import('@itookit/llm-session/contracts').ISessionRepository, 'listSummaries'|'getManifest'>, kernel?: Pick<import('@itookit/durable-kernel').Kernel,'sessionActivity'>) {
+export async function createPersonalKanban(fs: IFileSystem, events: UserEventService, diagnostics: DiagnosticJournal, sessions?: Pick<import('@itookit/llm-session/contracts').ISessionRepository, 'listSummaries'|'getManifest'>, kernel?: Pick<import('@itookit/durable-kernel').Kernel,'sessionActivity'>, automationOptions?: PersonalKanbanAutomationOptions) {
     const store = await openPersonalKanbanStore(fs);
     await new KanbanExamples(store).seed();
-    const service = createNestOSKanban({
+    const journal = new KanbanAutomationJournal(fs); await journal.open();
+    const base = personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions});
+    const service = createNestOSKanban({...base, actor: {kind: 'human', id: 'admin'}});
+    const automation = automationOptions ? createPersonalKanbanAutomation({...automationOptions, fs, service, journal, log: base.log,
+        serviceFor: actor => createNestOSKanban({...base, actor})}) : undefined;
+    try {await service.scan();await reportKanbanHealth(events);}
+    catch(error) {await reportKanbanHealth(events,error);}
+    return {...service,
+        ...(automation ? {automationCatalog: automation.automationCatalog, analysisStatus: automation.analysisStatus} : {}),
+        scan: async () => {await service.scan(); await automation?.scan();},
+        quiesce: async () => {await automation?.quiesce(); await service.quiesce();},
+        dispose: async () => {await automation?.quiesce(); await service.dispose();}};
+}
+
+
+type PersonalOptions = {
+    store: Awaited<ReturnType<typeof openPersonalKanbanStore>>; journal: KanbanAutomationJournal;
+    events: UserEventService; diagnostics: DiagnosticJournal;
+    sessions?: Pick<import('@itookit/llm-session/contracts').ISessionRepository, 'listSummaries' | 'getManifest'>;
+    kernel?: Pick<import('@itookit/durable-kernel').Kernel, 'sessionActivity'>; automationOptions?: PersonalKanbanAutomationOptions;
+};
+function personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions}: PersonalOptions) {
+    return {
         executionSessions:sessions&&kernel?{source:createLocalKanbanSessionSource(sessions,kernel)}:undefined,
         suggestions: async (_board, kind, search, limit) => {
             if (kind !== 'session') return undefined;
@@ -21,16 +46,19 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
                 .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)).slice(0, limit)
                 .map(row => ({id: row.id, label: row.title.slice(0, 256), detail: row.folder?.slice(0, 256) ?? ''}));
         },
-        store, actor: {kind: 'human', id: 'admin'},
-        authorize: async ({board, command}) => {
+        store, verifyOutputs: async ({board, itemId, dispatchId, outputs}: Parameters<NonNullable<import('./module').NestOSKanbanOptions['verifyOutputs']>>[0]) => {
+            const state = await store.read(board.id);
+            const dispatch = dispatchId ? state?.workflow?.dispatches[dispatchId] : undefined;
+            return dispatch?.itemId === itemId && journal.verify(outputs, dispatch.id);
+        },
+        authorize: async (input: Parameters<import('./module').NestOSKanbanOptions['authorize']>[0]) => {
+            const {board, command} = input;
+            await authorizeAutomation(input, automationOptions?.catalog);
             if (board.scope.kind === 'project') throw new KanbanError('PROJECT_STORE_REQUIRED');
             if (command?.type === 'apply-discovery') throw new KanbanError('DISCOVERY_BINDING_REQUIRED');
         },
         notifications: {sourceId: 'personal:user-store', journal: events.journal},
         log: event => {diagnostics.record({...event, module: 'application', operation: 'kanban.operation',
             level: event.result === 'failure' ? 'warn' : 'info'});},
-    });
-    try {await service.scan();await reportKanbanHealth(events);}
-    catch(error) {await reportKanbanHealth(events,error);}
-    return service;
+    } satisfies Omit<import('./module').NestOSKanbanOptions, 'actor'>;
 }

@@ -6,10 +6,10 @@ import {executable} from './configuration';
 import {archiveItems, restoreItem} from './archives';
 
 type OperationalCommand = Extract<KanbanCommand, {type: 'block-item' | 'unblock-item' | 'link-reference' | 'release-item'}>;
-type PlanCommand = Extract<KanbanCommand, {type: 'plan-item' | 'set-stage' | 'publish-proposal' | 'cancel-item' | 'close-plan'}>;
+type PlanCommand = Extract<KanbanCommand, {type: 'edit-item' | 'plan-item' | 'set-stage' | 'publish-proposal' | 'cancel-item' | 'close-plan'}>;
 export type PlanningCommand = PlanCommand | OperationalCommand | Extract<KanbanCommand, {type: 'archive-items' | 'restore-item'}>;
 export function planningCommand(command: KanbanCommand): command is PlanningCommand {
-    return ['plan-item', 'set-stage', 'publish-proposal', 'cancel-item', 'close-plan', 'archive-items', 'restore-item', 'block-item', 'unblock-item', 'link-reference', 'release-item'].includes(command.type);
+    return ['edit-item', 'plan-item', 'set-stage', 'publish-proposal', 'cancel-item', 'close-plan', 'archive-items', 'restore-item', 'block-item', 'unblock-item', 'link-reference', 'release-item'].includes(command.type);
 }
 export function applyPlanningCommand(state: KanbanState, command: PlanningCommand, now: number, actor: KanbanActor): void {
     if (command.type === 'archive-items') return archiveItems(state, command.itemIds, command.reason, now);
@@ -43,7 +43,11 @@ function updatePlan(state: KanbanState, item: KanbanItem, command: PlanCommand, 
     }
     if (command.type === 'set-stage') return setStage(state, item, command.stage, now);
     requireValue(['proposed', 'backlog', 'open'].includes(item.status), 'ITEM_NOT_PLANNABLE');
-    if (command.type === 'plan-item') {
+    if (command.type === 'edit-item') {
+        text(command.title); text(command.responsibility); text(command.acceptance);
+        item.title = command.title; item.responsibility = command.responsibility; item.acceptance = command.acceptance;
+        if (item.status === 'open') return setStage(state, item, 'backlog', now);
+    } else if (command.type === 'plan-item') {
         validatePlan(state, item, command.planning); item.planning = command.planning;
         if (item.status === 'open') return setStage(state, item, 'backlog', now);
     } else {

@@ -2,7 +2,7 @@
 
 Kanban 的实际执行者按 WorkItem ↔ Session 关联，执行绑定通过 nestos-execution-session 外部引用与核心状态同事务保存；Dispatch 记录尝试身份，自动适配使用真实 executionSessionId。queryActivity/executionSession 只投影 Session 状态与活动，不向看板暴露内部 Task；普通 participants 不触发执行标记。Session 状态取授权来源的冷摘要，lastActivityAt 不能使用读取、心跳或 manifest.updatedAt 补齐；过期/不可达不计活跃。源端授权和只读核对留在应用集成层。
 
-Kanban 通用规则、契约与 SeqFile 存储位于独立库 `@itookit/kanban`（仅依赖 vfs-core）。本包 kanban/ 仅承担授权 Session 来源读取、远程客户端绑定、正式发布 Agent/Flow 调用、Kernel 回执核对和 UserEventService 投影。扫描状态机、远程事务编码、执行日志与恢复及活动投影归独立库；应用仅提供端口，不改写 reducer、不代转出库 API。示例配置保留在 presets，借助库 installKanbanContent 安装。独立执行桥先保存冻结请求及 submitting 标记再调用执行入口，重启只核对原身份；unknown 不重派。Runtime 关停先停止准入和监听、排空事务与观察，再关闭 VFS；恢复错误通过现有 global event/notify 去重报告。接线使用 configureKanban，默认不自动启动模型，见 [协调设计](../../doc/design/kanban-coordination.md)。
+Kanban 通用规则、契约与 SeqFile 存储位于独立库 `@itookit/kanban`（仅依赖 vfs-core）。本包 kanban/ 仅承担授权 Session 来源读取、远程客户端绑定、正式发布 Agent/Flow 调用、Kernel 回执核对和 UserEventService 投影。扫描状态机、远程事务编码、执行日志与恢复及活动投影归独立库；应用仅提供端口，不改写 reducer、不代转出库 API。示例配置保留在 presets，借助库 installKanbanContent 安装。独立执行桥先保存冻结请求及 submitting 标记再调用执行入口，重启只核对原身份；unknown 不重派。Runtime 关停先停止准入和监听、排空事务与观察，再关闭 VFS；恢复错误通过现有 global event/notify 去重报告。个人看板显式启用 AI 协作后复用正式发布调用分析与执行，默认关闭；项目接线仍使用 configureKanban，见 [协调设计](../../doc/design/kanban-coordination.md)。
 
 远程原生队列启动恢复由 projects/remote-conversation-recovery 扫描当前用户已有 journal，重验连接、项目、principal 与稳定会话身份后挂入 ConversationRegistry。恢复只建立观察和读取基线，不直接重发原指令；失效绑定或不可用远端保留 deferred 与原记录。所有存储沿注入 IFileSystem 的 SeqFile CAS，不创建跨用户全局 events.seq，也不把会话恢复策略放进 vfs-core。
 
@@ -248,3 +248,5 @@ projects/project-environment 将本地普通环境按项目 ID 存在 settings.s
 草稿标题以 prepare.title 冻结；原生远程通过 projectConversation 的 draftTitle 交给同一首次接纳命名链。ProjectDraftComposer.move 只移动未提交草稿，按源和目标记录 CAS 保留原 UUID/正文/附件，不覆盖已有目标草稿。attachmentScopeId 隔离每次目录所有权，回执包含源目录代次；旧窗口不能因往返移动后 UUID 相同而覆盖新拥有者。迁移和标题均不改写可移植 Agent 定义，日志不记录草稿或附件正文。
 
 session/directory-view 在既有授权 Session 浏览器文件视图内聚合节点、透明容器条目和项目导航，浏览器不再逐层请求虚拟会话分组。普通文件目录保持惰性；透明容器拒绝循环，读取中 revision 改变则将种子标 stale。查询不打开 Session 或持有执行租约，错误保留具体分类，日志只含操作标识、阶段、数量、结果与耗时。
+
+个人看板 AI 联动由 kanban/personal-automation 与 automation-analysis 装配，规划指令归 presets/kanban-planning.json。automation.seq 的稳定调用身份先持久再提交，unknown 只核对不重派；事项修订和规划签名过期则拒绝迟到结果。产物须核对派发归属、正文摘要及字节数，默认独立验收后才解锁依赖。库内不放 NestOS 目标、提示词或调用实现。

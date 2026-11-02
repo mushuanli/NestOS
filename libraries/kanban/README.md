@@ -110,3 +110,7 @@ VFS `seq:committed` 可用于唤醒宿主，但持久状态与定期补扫才是
 关闭顺序：停止事件/定时准入 → service.quiesce（拒新操作、等待已准入事务）→ 排空执行适配器 → 最后关闭 VFS。宿主重启后扫描持久派发、检查原执行身份并补投 outbox。SeqFile 不能与模型调用、远程服务或另一数据库组成单一事务，执行桥必须保留提交前日志和 unknown 状态。
 
 NestOS 的默认目录、远程 HttpSeqClient、Session 来源读取、发布 Agent/Flow、Kernel 回执、系统 notify 与调度接线均位于 `backend/app-core/src/kanban/`。扫描状态机、批量提交、远程事务编码与执行恢复归独立库；UI 的 NestOS 包装位于 `ui/app-shell/src/kanban/`。应用入口只导出实际 NestOS 绑定，不代转出库 API，核心没有这些运行依赖。完整规范见 [Kanban 协调设计](../../doc/design/kanban-coordination.md)。
+
+## Optional automation integration
+
+Boards may store automation settings with opaque planner/executor references and trusted coordinator/worker principals. `configure-automation` changes configuration only; the host owns model calls and scheduling. Existing unassigned work may join a sealed plan with `expectedRevision`; adoption preserves its identity and manual dependencies. `edit-item` updates unplanned work while published definitions remain immutable. Execution bridges accept a dynamic `autoDispatch` predicate so pausing prevents new claims while existing admissions are still inspected. Optional client `automationCatalog` and `analysisStatus` ports supply the generic configuration UI and analysis details.

@@ -75,7 +75,7 @@ VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依�
 
 VFS `IPlugin` 可以提供变更提示，但不能替代跨窗口扫描、恢复日志与条件提交。core 不内置同步业务。
 
-协作看板核心位于独立库 `@itookit/kanban`，仅依赖 vfs-core；应用端口直接引用库自包含的 KanbanClient，`@itookit/app-core/kanban` 显式装配 Session/Flow/Kernel、远程存储、调度与 notify，身份授权由宿主注入。项目/系统看板及相关 Session 登记独立于聊天 Session 生命周期，运行时装配用户个人看板，Web/桌面通过共享看板工作区和 RPC 访问，不自动启动 Agent。见[Kanban 协调模块](design/kanban-coordination.md)。
+协作看板核心位于独立库 `@itookit/kanban`，仅依赖 vfs-core；应用端口直接引用库自包含的 KanbanClient，`@itookit/app-core/kanban` 显式装配 Session/Flow/Kernel、远程存储、调度与 notify，身份授权由宿主注入。项目/系统看板及相关 Session 登记独立于聊天 Session 生命周期，运行时装配用户个人看板，Web/桌面通过共享看板工作区和 RPC 访问，AI 协作默认关闭，按看板显式绑定并启用后才自动分析依赖与派发。见[Kanban 协调模块](design/kanban-coordination.md)。
 
 数字分身的领域服务与 SeqFile 布局归 app-core 的 `digital-twin/`，五页工作台归 app-shell 的 `digital-twin/`。kernel-adapters 仅注入通用发送前钩子，vfsdrivers 的 IndexedDB/SQLite schema 不加入分身表或业务字段；固定槽分页与版本链由 SeqTwinStore 管理。见[数字分身实施边界](design/digital-twin.md#实现与边界)。
 

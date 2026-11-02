@@ -1,4 +1,5 @@
 import type {KanbanActor, KanbanCommand, KanbanWorkflowCommand, KanbanDispatch, KanbanArtifactRef} from './contracts';
+import {sameAutomationBinding} from './contracts';
 import type {KanbanState} from './ports';
 import {identity, requireValue} from './rules';
 import {principal} from './identity';
@@ -9,10 +10,14 @@ export function isWorkflowCommand(command: KanbanCommand): command is KanbanWork
 }
 /** Plan definitions and live admissions cannot be bypassed by ordinary board commands. */
 export function protectWorkflowItem(state: KanbanState, command: KanbanCommand): void {
+    if (command.type === 'configure-automation' && Object.values(state.workflow?.dispatches ?? {}).some(dispatch =>
+        ['prepared', 'running', 'unknown', 'succeeded'].includes(dispatch.outcome))) {
+        requireValue(sameAutomationBinding(state.board.automation, command.settings), 'PLAN_EXECUTION_UNSETTLED');
+    }
     if (!('itemId' in command) || !command.itemId || !state.workflow) return;
     const plan=Object.values(state.workflow.plans).find(plan=>plan.itemIds.includes(command.itemId!));
     if (!plan) return;
-    requireValue(!['plan-item','review-amendment'].includes(command.type),'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
+    requireValue(!['edit-item','plan-item','review-amendment'].includes(command.type),'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
     if (plan.sealed) requireValue(!['claim','submit','review','close-plan'].includes(command.type),'WORKFLOW_COMMAND_REQUIRED');
     const live=Object.values(state.workflow.dispatches).some(dispatch=>dispatch.itemId===command.itemId&&['prepared','running','unknown','succeeded'].includes(dispatch.outcome));
     if (live) requireValue(!['request-transfer','accept-transfer','release-item','cancel-item'].includes(command.type),'EXECUTION_UNSETTLED');

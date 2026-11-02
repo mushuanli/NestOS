@@ -558,7 +558,12 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         }
 
         const events = await UserEventService.open(systemFS);
-        const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore).catch(async error => {
+        const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
+            calls: independentCalls, kernel: kernelCore, sessions: sessionRepository,
+            ensureReady: initializeProjects,
+            prepareSession: async id => {await prepareChildExecution(id); return recovery.acquireLater(id);},
+            catalog: () => commandBus.execute('session.targets.list'),
+        } : undefined).catch(async error => {
             try {await reportKanbanHealth(events,error);} catch { /* Preserve the initialization failure. */ }
             throw error;
         });
@@ -593,7 +598,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             await initializeProjects();
             if (!startup.active) return;
             kanbanMonitor = startKanbanMonitor({service: {scan:async()=>{await kanban.scan();for(const integration of kanbanIntegrations) await integration.scan();}}, initialScan: kanbanIntegrations.length > 0, subscribeTick: tick => {
-                const timer = setInterval(tick, 60_000); return () => clearInterval(timer);
+                const timer = setInterval(tick, 5_000); return () => clearInterval(timer);
             }, subscribeChanges: tick => systemFS.on('seq:committed', event => {if(event.payload.paths.includes('/var/lib/kanban/boards.seq')) tick();}),
             onSuccess: () => reportKanbanHealth(events), onError: async error => {diagnostics.record({module: 'application', operation: 'kanban.monitor', stage: 'scan', result: 'failure', level: 'warn', code: kanbanFailureCode(error)}); await reportKanbanHealth(events,error);}});
             recovery.startBackground();

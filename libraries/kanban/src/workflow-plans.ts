@@ -2,7 +2,8 @@ import type {KanbanActor, KanbanCommand, KanbanWorkDefinition, KanbanWorkPlan, K
 import type {KanbanState} from './ports';
 import {sha256HexSync} from './utils';
 import {identity, requireValue} from './rules';
-import {principal, principalKey} from './identity';
+import {principal, principalKey, validateCandidates} from './identity';
+import {plan as planning} from './planning';
 export type ApplyWorkCommand = (command: KanbanCommand, actor?: KanbanActor) => void;
 
 export function requireCoordinator(state: KanbanState, actor: KanbanActor): void {
@@ -24,12 +25,26 @@ export function publishPlan(state: KanbanState, plan: KanbanWorkPlan, actor: Kan
         const digest = sha256HexSync(JSON.stringify(item));
         requireValue(!Object.values(workflow.plans).some(other => other.id !== plan.id && other.itemIds.includes(item.id)), 'ITEM_IN_OTHER_PLAN');
         const exists=state.board.items.some(old => old.id === item.id)||state.archiveIndex?.some(old=>old.id===item.id);
-        requireValue(!exists || previous?.definitions[item.id]?.digest === digest, 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
+        if (exists && previous?.definitions[item.id]?.digest !== digest) {
+            requireValue(!previous?.definitions[item.id], 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
+            adoptItem(state, item, apply);
+        }
         if (!exists) apply({type:'create-item', item:{id:item.id,title:item.title,responsibility:item.responsibility,acceptance:item.acceptance,eligiblePrincipals:[item.assignee]},
             planning:{kind:state.board.defaultWorkType ?? 'task',priority:2,dependencies:item.dependsOn,references:[],...(plan.rootItemId ? {parentId:plan.rootItemId}: {})}});
         definitions[item.id] = {digest, inputs:item.inputs, outputs:item.outputs ?? []};
     }
     workflow.plans[plan.id] = {schema:plan.schema,id:plan.id,revision:plan.revision,decisionId:plan.decisionId,rootItemId:plan.rootItemId,sealed:plan.sealed,itemIds:ordered.map(item=>item.id),definitions};
+}
+function adoptItem(state: KanbanState, definition: KanbanWorkDefinition, apply: ApplyWorkCommand): void {
+    const item = state.board.items.find(item => item.id === definition.id);
+    requireValue(item && definition.expectedRevision === item.revision && ['backlog', 'open'].includes(item.status)
+        && !item.owner && !item.blocked, 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
+    requireValue(item.title === definition.title && item.responsibility === definition.responsibility
+        && item.acceptance === definition.acceptance, 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
+    requireValue(planning(item).dependencies.every(id => definition.dependsOn.includes(id)), 'EXISTING_DEPENDENCY_REQUIRED');
+    apply({type: 'plan-item', itemId: item.id, planning: {...planning(item), dependencies: definition.dependsOn}});
+    item.eligiblePrincipals = [definition.assignee]; delete item.eligibleAgentIds;
+    validateCandidates(state.board, item, true);
 }
 function orderWork(items: KanbanWorkDefinition[], state: KanbanState): KanbanWorkDefinition[] {
     for (const item of items) validateDefinition(item);

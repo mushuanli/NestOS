@@ -1,3 +1,4 @@
+import {automationForm, analysisView} from './automation';
 import {KanbanSuggestions} from './suggestions';
 import {mountTitleBar as mountSharedTitleBar} from '@itookit/ui-common';
 import {KanbanDrawer, drawerMarkup, preserveBoardScroll} from './drawer';
@@ -12,6 +13,7 @@ export class KanbanWorkbench {
     private board?: KanbanBoardSummary;
     private page?: KanbanSessionItemPage;
     private actor?: KanbanPrincipal;
+    private automationCatalog?: import('../contracts').KanbanAutomationCatalog;
     private item?: KanbanItem;
     private boardId = '';
     private recordKind?: 'log' | 'decision';
@@ -66,7 +68,7 @@ export class KanbanWorkbench {
         sidebar.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
         editor.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
         editor.addEventListener('input', event => {if ((event.target as HTMLElement).closest('[data-panel]')) {this.dirty = true; this.options.changed?.();}}, {signal});
-        if (this.options.service?.queryActivity) this.activityTimer=setInterval(()=>{if(this.visible&&!document.hidden&&!this.busy&&!this.dirty&&(this.page?.items.some(item=>item.execution)||this.query.execution&&this.query.execution!=='all')) this.invalidateFromEvents();},15000);
+        if (this.options.service?.queryActivity) this.activityTimer=setInterval(()=>{if(this.visible&&!document.hidden&&!this.busy&&!this.dirty&&(this.board?.automation?.enabled||this.page?.items.some(item=>item.execution)||this.query.execution&&this.query.execution!=='all')) this.invalidateFromEvents();},15000);
         if (this.options.initialResource !== undefined) await this.openResource(this.options.initialResource);
         else await this.run(() => this.refresh());
     }
@@ -119,7 +121,7 @@ export class KanbanWorkbench {
         if (!this.alive(generation)) return;
         this.page = page; this.invalid = events !== this.eventGeneration;
         this.options.sidebar.innerHTML = this.ui.navigation(boards, this.boardId);
-        preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity) : this.ui.catalogView(boards);});
+        preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity, !!service.automationCatalog) : this.ui.catalogView(boards);});
         if (this.recordKind) await this.showRecords(generation);
         if (!this.alive(generation)) return;
         this.releaseNavigation?.(); this.releaseNavigation = undefined;
@@ -132,9 +134,10 @@ export class KanbanWorkbench {
     private async showItem(generation = this.generation): Promise<void> {
         const service = this.options.service;
         if (!service || !this.board || !this.itemId) return;
-        const [{item, archive}, events, records, execution] = await Promise.all([service.item(this.boardId, this.itemId), service.events(this.boardId, 0, 200), service.records(this.boardId, {itemId: this.itemId, limit: 10}),service.executionSession?.(this.boardId,this.itemId)]);
+        const [{item, archive}, events, records, execution, analysis] = await Promise.all([service.item(this.boardId, this.itemId), service.events(this.boardId, 0, 200), service.records(this.boardId, {itemId: this.itemId, limit: 10}),service.executionSession?.(this.boardId,this.itemId), this.board.automation ? service.analysisStatus?.(this.boardId,this.itemId) : undefined]);
         if (!this.alive(generation)) return;
         this.item = item; this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, events.filter(event => event.itemId === item.id).reverse()), 'item:' + item.id);
+        if (this.board.automation) this.panel().querySelector('[data-analysis]')!.innerHTML = analysisView(this.options.presentation, analysis ?? null);
         if(execution) this.panel().querySelector('[data-execution-session]')!.innerHTML=this.ui.executionSessionView(execution,!!this.options.executionReference&&!archive&&!['completed','cancelled'].includes(item.status));
         this.panel().querySelector('[data-related-records]')!.innerHTML = `<h4>${escapeHTML(this.ui.label('relatedRecords'))} (${records.total})</h4>${this.ui.recordLinks(records, this.board)}<div class="kanban__actions">${this.ui.button('new-log', 'newLog')}${this.ui.button('new-decision', 'newDecision')}</div>`;
         this.options.selected(this.getActiveResourceId());
@@ -165,6 +168,11 @@ export class KanbanWorkbench {
         const action = target.dataset.action;
         if (action === 'close-panel' || action === 'dismiss-panel') {await this.requestClose(action === 'close-panel'); return;}
         if (action === 'copy-reference' || action === 'copy-link') {await this.ui.copyReference(target.closest<HTMLElement>('[data-action]')!); return;}
+        if (action === 'automation' && this.board && this.options.service?.automationCatalog) {
+            this.automationCatalog = await this.options.service.automationCatalog();
+            this.itemId = ''; this.drawer.show(automationForm(this.options.presentation, this.board, this.automationCatalog), 'automation'); this.dirty = true; return;
+        }
+        if (action === 'reanalyze' && this.item?.planning) {await this.execute({type: 'plan-item', itemId: this.item.id, planning: this.item.planning}); return;}
         if (action === 'new-board') {this.itemId = ''; this.drawer.show(this.ui.newBoardForm(), 'new-board'); this.dirty = true; return;}
         if (action === 'new-item' && this.board) {this.itemId = ''; this.drawer.show(this.ui.newItemForm(this.board), 'new-item'); this.dirty = true; return;}
         if (action === 'new-log' || action === 'new-decision') {this.recordId = ''; this.drawer.show(this.ui.recordForm(action === 'new-log' ? 'log' : 'decision', this.board!, this.itemId), action); this.dirty = true; return;}
@@ -204,6 +212,11 @@ export class KanbanWorkbench {
             const created = await this.options.service.create(boardInput(data, this.actor, form.dataset.resourceId));
             this.dirty = false; await this.navigate(created.id); return;
         }
+        if (kind === 'automation' && this.automationCatalog) {
+            await this.execute({type: 'configure-automation', settings: {enabled: data.has('enabled'), autoAccept: data.has('autoAccept'),
+                planner: JSON.parse(value(data, 'planner')), executor: JSON.parse(value(data, 'executor')),
+                coordinator: this.automationCatalog.coordinator, worker: this.automationCatalog.worker}}); return;
+        }
         if (kind === 'amendment') data.set('amendmentId', form.dataset.amendment ?? '');
         if (kind === 'record-link' && this.recordId) {await this.execute({type: 'link-record', recordId: this.recordId, itemId: value(data, 'itemId')}); return;}
         if (kind && this.board) {
@@ -215,6 +228,11 @@ export class KanbanWorkbench {
     }
     private async execute(command: KanbanCommand): Promise<void> {
         if (!this.board || !this.options.service) return;
+        if (command.type === 'review') {
+            const workflow = await this.options.service.workflow(this.board.id);
+            const dispatch = Object.values(workflow.dispatches).find(dispatch => dispatch.itemId === ('itemId' in command ? command.itemId : '') && dispatch.outcome === 'succeeded');
+            if (dispatch) command = {type: 'accept-execution', dispatchId: dispatch.id, accept: command.accept};
+        }
         const fingerprint = JSON.stringify(command);
         if (this.pending && (this.pending.boardId !== this.board.id || this.pending.fingerprint !== fingerprint)) throw Object.assign(new Error('Pending write'), {code: 'WRITE_OUTCOME_UNKNOWN'});
         this.pending ??= {boardId: this.board.id, fingerprint, request: {operationId: randomUUID(), expectedRevision: this.board.revision, command}};
@@ -224,6 +242,7 @@ export class KanbanWorkbench {
             throw error;
         }
         this.pending = undefined;
+        if (command.type === 'configure-automation') this.closePanel();
         this.dirty = false; this.query.cursor = undefined; this.recordCursor = undefined;
         if (command.type === 'create-item') this.itemId = command.item.id;
         if (command.type === 'append-record') {this.recordId = command.record.id; this.itemId = ''; this.item = undefined;}

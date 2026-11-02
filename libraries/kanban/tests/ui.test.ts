@@ -72,3 +72,22 @@ it('isolates presentation between simultaneous instances and preserves drafts th
     expect(first.root.textContent).not.toContain('second:'); expect(second.root.textContent).not.toContain('first:');
     await submit(first.root, 'board'); expect((await first.service.list())).toHaveLength(1);
 });
+it('configures published AI targets through the board menu and defaults to independent acceptance', async () => {
+    const {root, service} = await fixture();
+    const catalog = {targets: [{label: 'Planner', reference: {system: 'published', id: 'planner', revision: '1'}},
+        {label: 'Executor', reference: {system: 'published', id: 'executor', revision: '1'}}],
+        coordinator: {kind: 'service' as const, id: 'planner'}, worker: {kind: 'service' as const, id: 'worker'}};
+    Object.assign(service, {automationCatalog: async () => catalog});
+    await click(root, '[data-action=new-board]'); fill(root, 'title', 'AI work'); await submit(root, 'board');
+    expect(root.querySelector('.kanban__menu [data-action=automation]')).not.toBeNull();
+    await click(root, '[data-action=automation]');
+    expect(root.querySelector<HTMLInputElement>('[name=autoAccept]')!.checked).toBe(false);
+    fill(root, 'planner', JSON.stringify(catalog.targets[0].reference)); fill(root, 'executor', JSON.stringify(catalog.targets[1].reference));
+    root.querySelector<HTMLInputElement>('[name=enabled]')!.checked = true;
+    await submit(root, 'automation');
+    const board = (await service.list())[0];
+    expect(board.automation).toMatchObject({enabled: true, autoAccept: false, planner: catalog.targets[0].reference});
+    expect(board.policy.review).toBe('independent');
+    expect(board.members?.find(member => member.id === 'worker')?.roles).toContain('worker');
+    expect(root.querySelector<HTMLElement>('[data-panel]')!.hidden).toBe(true);
+});

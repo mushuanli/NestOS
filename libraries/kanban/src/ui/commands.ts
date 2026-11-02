@@ -24,6 +24,7 @@ export function formCommand(kind: string, data: FormData, board: KanbanBoardSumm
     }
     if (!item) throw new Error('ITEM_NOT_FOUND');
     const itemId = item.id, token = item.owner?.token ?? '';
+    if (kind === 'edit-item') return {type: 'edit-item', itemId, title: value(data, 'title'), responsibility: value(data, 'responsibility'), acceptance: value(data, 'acceptance')};
     if (kind === 'amendment') return {type: 'review-amendment', itemId, amendmentId: value(data, 'amendmentId'), accept: value(data, 'decision') === 'accept', reason: value(data, 'reason') || undefined};
     if (kind === 'claim') return {type: 'claim', itemId, ...(board.policy.requireEstimate !== false ? {estimate: estimate(data)} : {})};
     if (kind === 'close-plan') return {type: 'close-plan', itemId, resultRef: value(data, 'resultRef')};

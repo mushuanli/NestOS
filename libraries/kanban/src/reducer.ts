@@ -1,4 +1,5 @@
 import {applyDiscovery} from './scan-commit';
+import {configureAutomation} from './automation';
 import {applyWorkflow, isWorkflowCommand, refreshReady, protectWorkflowItem} from './workflow';
 import {numberEntities} from './numbering';
 import {isRecordCommand, applyRecord} from './project-records';
@@ -26,6 +27,7 @@ export function reduce(state: KanbanState, command: KanbanCommand, actor: Kanban
     else if (command.type === 'review-amendment') reviewAmendment(board, command, actor, now);
     else if (planningCommand(command)) applyPlanningCommand(state, command, now, actor);
     else if (command.type === 'create-item') createItem(state, command, actor, now);
+    else if (command.type === 'configure-automation') configureAutomation(board, command.settings, actor);
     else if (command.type === 'register-session') {
         const item = command.itemId ? itemFor(board, command.itemId) : undefined;
         const list = item ? item.participants : board.participants;

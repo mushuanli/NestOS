@@ -117,3 +117,21 @@ it('rejects malformed model-produced definitions with specific errors before pub
     await expect(f.run(f.managerApi,{type:'publish-plan',plan:malformed})).rejects.toMatchObject({code:'OUTPUT_NOT_DECLARED'});
     expect(await f.store.read('b')).toEqual(before);
 });
+it('adopts existing unassigned work atomically without changing its identity or removing manual dependencies', async () => {
+    const f = await fixture();
+    await f.run(f.managerApi, {type: 'create-item', item: {id: 'first', title: 'First', responsibility: 'Prepare', acceptance: 'Verified'}});
+    await f.run(f.managerApi, {type: 'create-item', item: {id: 'second', title: 'Second', responsibility: 'Deliver', acceptance: 'Verified'}, planning: {kind: 'task', priority: 1, dependencies: ['first'], references: []}});
+    const original = (await f.managerApi.item('b', 'second')).item;
+    const plan: KanbanWorkPlan = {schema: 'kanban.plan/1', id: 'adopt', revision: 1, sealed: true, items: [{id: original.id, title: original.title,
+        responsibility: original.responsibility, acceptance: original.acceptance, expectedRevision: original.revision, assignee: {kind: 'service', id: 'worker'}, dependsOn: []}]};
+    const before = await f.store.read('b');
+    await expect(f.run(f.managerApi, {type: 'publish-plan', plan})).rejects.toMatchObject({code: 'EXISTING_DEPENDENCY_REQUIRED'});
+    expect(await f.store.read('b')).toEqual(before);
+    plan.items[0].dependsOn = ['first']; plan.items[0].expectedRevision = original.revision + 1;
+    await expect(f.run(f.managerApi, {type: 'publish-plan', plan})).rejects.toMatchObject({code: 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID'});
+    plan.items[0].expectedRevision = original.revision;
+    await f.run(f.managerApi, {type: 'publish-plan', plan});
+    const adopted = (await f.managerApi.item('b', 'second')).item;
+    expect(adopted).toMatchObject({id: original.id, number: original.number, createdAt: original.createdAt, planning: {priority: 1, dependencies: ['first']}});
+    expect((await f.managerApi.workflow('b')).ready).toEqual([]);
+});

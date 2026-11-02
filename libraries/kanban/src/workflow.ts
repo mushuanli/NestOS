@@ -54,6 +54,7 @@ function observe(state: KanbanState, command: Extract<KanbanWorkflowCommand,{typ
     if(command.code!==undefined) requireValue(/^[A-Z][A-Z0-9_]{0,79}$/.test(command.code),'INVALID_ERROR_CODE');
     const item=state.board.items.find(item=>item.id===dispatch.itemId)!;
     const outputs=command.outputs ?? [];validateOutputs(outputs);
+    if (['running', 'unknown'].includes(command.outcome)) item.owner!.leaseUntil = now + state.board.policy.leaseMs;
     if(command.outcome==='succeeded') {
         const required=state.workflow!.plans[dispatch.planId].definitions[item.id].outputs;
         requireValue(required.every(name=>outputs.some(output=>output.name===name)),'REQUIRED_OUTPUT_MISSING');

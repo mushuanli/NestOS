@@ -119,10 +119,12 @@ function decodeRecord(raw: string, dispatch: KanbanDispatch): ExecutionRecord {
 async function settle(options: KanbanExecutionBridgeOptions, dispatch: KanbanDispatch, result: KanbanExecutionObservation): Promise<void> {
     const current=(await options.service.workflow(options.boardId)).dispatches[dispatch.id];
     if(!current||!['prepared','running','unknown'].includes(current.outcome)) return;
-    if(current.outcome===result.outcome&&current.code===result.code&&JSON.stringify(current.outputs ?? [])===JSON.stringify(result.outputs ?? [])) return;
+    const board=await options.service.read(options.boardId), item=board.items.find(item=>item.id===dispatch.itemId);
+    const renew=['running','unknown'].includes(result.outcome) && (item?.owner?.leaseUntil ?? 0) <= Date.now() + board.policy.leaseMs / 2;
+    if(!renew&&current.outcome===result.outcome&&current.code===result.code&&JSON.stringify(current.outputs ?? [])===JSON.stringify(result.outputs ?? [])) return;
     const {outcome,outputs,code}=result, observation={outcome,...(outputs?{outputs}:{}),...(code?{code}:{})};
-    const board=await options.service.read(options.boardId), digest=sha256HexSync(JSON.stringify(observation));
-    await options.service.execute(board.id,{operationId:`settle:${dispatch.id}:${digest}`,expectedRevision:board.revision,
+    const digest=sha256HexSync(JSON.stringify(observation));
+    await options.service.execute(board.id,{operationId:`settle:${dispatch.id}:${digest}:${board.revision}`,expectedRevision:board.revision,
         command:{type:'observe-execution',dispatchId:dispatch.id,fence:dispatch.fence,...observation}});
 }
 async function linkSession(options: KanbanExecutionBridgeOptions, dispatch: KanbanDispatch, sessionId?: string): Promise<void> {

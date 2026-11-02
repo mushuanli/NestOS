@@ -91,3 +91,21 @@ it('settles preparation failures as not-started work without calling the executo
     expect((await f.service.item('b', 'first')).item.blocked?.reason).toBe('DEPENDENCY_CONTEXT_TOO_LARGE');
     await bridge.quiesce();
 });
+it('reconciles repeated running/unknown transitions and renews the same fenced owner', async () => {
+    const f = await fixture(); await f.prepare(); const bridge = await f.bridge();
+    await bridge.scan();
+    await bridge.scan();
+    vi.mocked(f.executor.inspect).mockResolvedValueOnce({outcome: 'running'}); await bridge.scan();
+    expect((await f.service.workflow('b')).dispatches.d.outcome).toBe('running');
+    await bridge.scan();
+    expect((await f.service.workflow('b')).dispatches.d).toMatchObject({outcome: 'unknown', code: 'RECEIPT_MISSING'});
+    const before = (await f.service.item('b', 'first')).item.owner!;
+    const time = vi.spyOn(Date, 'now').mockReturnValue(before.leaseUntil + 1);
+    try {
+        await bridge.scan();
+        const after = (await f.service.item('b', 'first')).item.owner!;
+        expect(after.token).toBe(before.token); expect(after.leaseUntil).toBeGreaterThan(Date.now());
+        await f.run({type: 'block-item', itemId: 'first', token: after.token, reason: 'Needs clarification'}, f.worker);
+    } finally {time.mockRestore();}
+    expect(f.executor.start).toHaveBeenCalledTimes(1);
+});

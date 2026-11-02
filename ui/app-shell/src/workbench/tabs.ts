@@ -1,5 +1,5 @@
 import {TabBarViewport} from './tab-bar-viewport';
-import { FILE_ICONS, FILE_BROWSER_ICONS, fileTypeIcon, t } from '@itookit/common';
+import { ACTION_ICONS, FILE_ICONS, FILE_BROWSER_ICONS, fileTypeIcon, t } from '@itookit/common';
 import { decorateButton, decorateResourceButton } from './controls';
 import type { IEditor } from '@itookit/ui-common-adapter';
 import type { WorkbenchSnapshot } from './state';
@@ -35,6 +35,7 @@ export interface WorkbenchTab<T> {
     subscriptions: (() => void)[];
 }
 interface TabActions<T> {
+    toggleSidebar?(): void;
     navigation?: string;
     parent?(tab: WorkbenchTab<T>): Promise<void>;
     canGoUp?(tab: WorkbenchTab<T>): boolean;
@@ -55,6 +56,7 @@ export class WorkbenchTabs<T> {
             container.append(...home.buttons); return () => home.destroy();
         }, onChange: query => {if (this.windows) this.windows.registry.setQuery(query); else {this.openedQuery = query; this.render();}}}});
     private readonly bar = document.createElement('div');
+    private readonly sidebarToggle = document.createElement('button');
     private readonly tabViewport = new TabBarViewport(this.bar);
     private readonly body = document.createElement('div');
     private readonly navigation = document.createElement('div');
@@ -335,6 +337,14 @@ export class WorkbenchTabs<T> {
         for (const changed of this.windowSubscribers) changed();
         for (const [view, label] of this.compactViews) view.update(this.current?.title ?? '', this.windowCount(), undefined, label, this.canGoUp());
         this.bar.replaceChildren(); this.openedDrawer.content.replaceChildren();
+        this.sidebarToggle.type = 'button'; this.sidebarToggle.className = 'workbench-tabs__sidebar-toggle';
+        this.sidebarToggle.innerHTML = ACTION_ICONS.sidebar; this.sidebarToggle.title = t('workspace.sidebar.toggle');
+        this.sidebarToggle.setAttribute('aria-label', this.sidebarToggle.title);
+        this.sidebarToggle.onclick = () => {
+            if (this.actions.toggleSidebar) this.actions.toggleSidebar();
+            else this.container.closest('.mm-layout')?.querySelector('.mm-sidebar')?.classList.toggle('is-collapsed');
+        };
+        this.bar.append(this.sidebarToggle);
         if (this.windows?.registry.error) {
             const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.className = 'workbench-tabs__error';
             notice.textContent = this.windows.registry.error; notice.append(this.button(t('action.close'), () => this.windows?.registry.clearError()));

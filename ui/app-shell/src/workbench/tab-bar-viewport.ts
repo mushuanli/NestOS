@@ -23,7 +23,8 @@ export class TabBarViewport {
         const tab = this.bar.querySelector<HTMLElement>('.is-active[data-tab-id]');
         if (!tab || !this.bar.isConnected || !this.bar.clientWidth) return;
         const viewport = this.bar.getBoundingClientRect(), target = tab.getBoundingClientRect();
-        const left = viewport.left + this.bar.clientLeft, right = left + this.bar.clientWidth;
+        const pinnedWidth = this.bar.querySelector<HTMLElement>('.workbench-tabs__sidebar-toggle')?.offsetWidth ?? 0;
+        const left = viewport.left + this.bar.clientLeft + pinnedWidth, right = viewport.left + this.bar.clientLeft + this.bar.clientWidth;
         const delta = target.left < left || target.width > this.bar.clientWidth ? target.left - left
             : target.right > right ? target.right - right : 0;
         if (!delta) return;

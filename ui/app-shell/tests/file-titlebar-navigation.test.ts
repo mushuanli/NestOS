@@ -6,6 +6,21 @@ import {WorkbenchTabs} from '../src/workbench/tabs';
 import {setupMobileWorkspaceView} from '../src/navigation/mobile-workspace-view';
 
 afterEach(() => {document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals();});
+it('places one sidebar control at the left of the tab bar and marks page navigation for mobile', async () => {
+    const layout = document.createElement('div'), sidebar = document.createElement('aside'), main = document.createElement('main');
+    layout.className = 'mm-layout'; sidebar.className = 'mm-sidebar'; layout.append(sidebar, main); document.body.append(layout);
+    const tabs = new WorkbenchTabs(main, {activate: async () => {}, dispose: async () => {}, empty() {}, error() {}});
+    await tabs.open('/note', 'Note');
+    const slot = document.createElement('header'); tabs.current!.panel.append(slot);
+    const release = tabs.mountTitleBar(slot);
+    try {
+        const bar = main.querySelector('.workbench-tabs__bar')!;
+        expect(bar.firstElementChild?.classList.contains('workbench-tabs__sidebar-toggle')).toBe(true);
+        expect(main.querySelectorAll('.workbench-tabs__sidebar-toggle')).toHaveLength(1);
+        (bar.firstElementChild as HTMLButtonElement).click(); expect(sidebar.classList.contains('is-collapsed')).toBe(true);
+        expect(slot.querySelector('.workbench-content-back')).not.toBeNull();
+    } finally {release(); await tabs.destroy();}
+});
 it('uses the existing file title bar for windows and overflow actions while retaining unsaved content', async () => {
     vi.stubGlobal('matchMedia', () => ({matches: true, addEventListener() {}, removeEventListener() {}}));
     HTMLDialogElement.prototype.showModal ??= function () {this.open = true;};

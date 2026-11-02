@@ -254,3 +254,5 @@ browser/study-sources 将可引用工作区和项目文件视图适配为独立�
 WorkbenchSidebar 只适配 WorkbenchSnapshot 与 vfs-ui SidebarState，页签 DOM、宽度拖拽和对应样式归 vfs-ui.Sidebar。NavigationFilters 只注入文案、图标与业务 content 槽样式，弹窗和筛选标签交互归 vfs-ui.FilterPanel；不在宿主复制公共控件样式。
 
 看板侧栏不挂按编号打开入口。会话链接由 kanban/links 适配 NestOS 路由：执行会话用稳定 ID，原生会话按引用所属 projectId/profileId 解析；普通点击保留应用路由，浏览器修饰键及显式新标签入口不被 click 委托拦截。
+
+桌面显示 WorkbenchTabs 时，折叠侧栏控件仅在标签栏最左侧，固定按钮占用的宽度计入激活标签的可见区域；正文标题栏的返回控件只在手机显示。Shell 不再创建 mm-mobile-back 后备按钮，返回由 nav 或编辑器标题栏提供，禁止额外挂载重复侧栏图标。

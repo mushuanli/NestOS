@@ -1,5 +1,3 @@
-import {installNavigationButtonPresentation} from '@itookit/ui-common-adapter';
-import {backToPreviousPage} from './page-history';
 import { VFS_DOM_EVENTS } from '@itookit/vfs-ui';
 
 function hasEditorContent(editor: HTMLElement): boolean {
@@ -14,11 +12,6 @@ function hasEditorContent(editor: HTMLElement): boolean {
 
 /** Keep list and editor as separate mobile screens within one workspace. */
 export function setupMobileWorkspaceView(layout: HTMLElement, sidebar: HTMLElement, editor: HTMLElement, initialDetail = false): () => void {
-    const back = document.createElement('button');
-    back.type = 'button';
-    back.className = 'mm-mobile-back';
-    const cleanupButton = installNavigationButtonPresentation(back);
-    layout.appendChild(back);
     layout.dataset.mobileView = initialDetail ? 'detail' : 'list';
     let hadContent = false;
     let activation = editor.dataset.workbenchActivation;
@@ -37,12 +30,8 @@ export function setupMobileWorkspaceView(layout: HTMLElement, sidebar: HTMLEleme
     const observer = new MutationObserver(sync);
     observer.observe(editor, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'data-editor-mobile-navigation', 'data-workbench-view', 'data-workbench-activation'] });
     observer.observe(layout, {attributes: true, attributeFilter: ['data-workspace-opening']});
-    const showList = () => {
-        layout.dataset.mobileView = 'list';
-    };
     const showDetail = () => { layout.dataset.mobileView = 'detail'; };
-    back.addEventListener('click', () => backToPreviousPage(showList));
     sidebar.addEventListener(VFS_DOM_EVENTS.resourceActivated, showDetail);
     sync();
-    return () => { cleanupButton(); observer.disconnect(); back.remove(); sidebar.removeEventListener(VFS_DOM_EVENTS.resourceActivated, showDetail); };
+    return () => { observer.disconnect(); sidebar.removeEventListener(VFS_DOM_EVENTS.resourceActivated, showDetail); };
 }

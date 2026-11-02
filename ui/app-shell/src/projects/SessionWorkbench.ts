@@ -318,6 +318,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.sessionsReady = Promise.resolve(options.projects?.sessions ?? this.backend.projectSessions());
         void this.sessionsReady.catch(() => {});
         this.tabs = new WorkbenchTabs(this.container, {
+            toggleSidebar: () => this.toggleSidebar(),
             navigation: t('project.workspace'),
             describe: tab => this.describeOpenTab(tab.id),
             canGoUp: tab => tab.id !== '/' && !tab.id.startsWith('@agent/'),

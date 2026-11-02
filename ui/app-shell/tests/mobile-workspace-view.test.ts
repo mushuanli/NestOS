@@ -18,10 +18,11 @@ it('switches a narrow workspace between the file list and the active editor', as
     const dispose = setupMobileWorkspaceView(layout, sidebar, editor);
     try {
         expect(layout.dataset.mobileView).toBe('list');
+        expect(layout.querySelector('.mm-mobile-back')).toBeNull();
         editor.innerHTML = '<div class="editor">Open file</div>';
         await new Promise(resolve => setTimeout(resolve, 0));
         expect(layout.dataset.mobileView).toBe('detail');
-        layout.querySelector<HTMLButtonElement>('.mm-mobile-back')!.click();
+        layout.dataset.mobileView = 'list';
         expect(layout.dataset.mobileView).toBe('list');
         sidebar.dispatchEvent(new CustomEvent(VFS_DOM_EVENTS.resourceActivated));
         expect(layout.dataset.mobileView).toBe('detail');
@@ -41,7 +42,7 @@ it('keeps initial tabs in the list and enters detail as soon as a resource is ac
         await flush(); expect(layout.dataset.mobileView).toBe('detail');
         first.panel.innerHTML = '<div class="editor">Ready</div>';
         await flush(); expect(layout.dataset.mobileView).toBe('detail');
-        layout.querySelector<HTMLButtonElement>('.mm-mobile-back')!.click();
+        layout.dataset.mobileView = 'list';
         first.panel.firstElementChild!.append(document.createElement('span'));
         await flush(); expect(layout.dataset.mobileView).toBe('list');
         await tabs.open('second', 'Second', false);
@@ -63,7 +64,7 @@ it('keeps detail visible during delayed preview disposal and before the next edi
     const flush = () => new Promise(resolve => setTimeout(resolve, 0));
     try {
         const first = await tabs.open('first', 'First'); first.panel.innerHTML = '<div>First conversation</div>';
-        await flush(); layout.querySelector<HTMLButtonElement>('.mm-mobile-back')!.click();
+        await flush(); layout.dataset.mobileView = 'list';
         sidebar.dispatchEvent(new CustomEvent(VFS_DOM_EVENTS.resourceActivated));
         const states: string[] = [], observer = new MutationObserver(() => {states.push(layout.dataset.mobileView!);});
         observer.observe(layout, {attributes: true, attributeFilter: ['data-mobile-view']});
@@ -71,7 +72,7 @@ it('keeps detail visible during delayed preview disposal and before the next edi
         finish(); const second = await next; await flush(); expect(layout.dataset.mobileView).toBe('detail');
         second.panel.innerHTML = '<div data-editor-mobile-navigation="embedded">Second conversation</div>';
         await flush(); expect(states).not.toContain('list'); observer.disconnect();
-        layout.querySelector<HTMLButtonElement>('.mm-mobile-back')!.click();
+        layout.dataset.mobileView = 'list';
         tabs.activate('second'); await flush(); expect(layout.dataset.mobileView).toBe('detail');
     } finally {finish(); dispose(); await tabs.destroy();}
 });
@@ -124,7 +125,7 @@ it('uses embedded navigation only for the active editor and restores standalone 
     try {
         const chat = await tabs.open('chat', 'Chat', false); chat.panel.innerHTML = '<div data-editor-mobile-navigation="embedded">Chat</div>';
         await flush(); expect(layout.dataset.mobileHeader).toBe('embedded');
-        layout.querySelector<HTMLButtonElement>('.mm-mobile-back')!.click();
+        layout.dataset.mobileView = 'list';
         chat.panel.firstElementChild!.append(document.createElement('span')); await flush();
         expect(layout.dataset.mobileView).toBe('list');
         const doc = await tabs.open('doc', 'Document', false); doc.panel.textContent = 'Document';

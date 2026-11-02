@@ -52,6 +52,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         notice.textContent = error instanceof Error ? error.message : String(error); tabs.content.append(notice);
     };
     const tabs = new WorkbenchTabs<OpenView>(container, {
+        toggleSidebar: () => vfs.toggleSidebar(),
         navigation: navigationLabel,
         describe: async tab => ({ location: tab.id }),
         activate: async id => { if (id === '/') await openDirectory(id); else await openResource(id); }, dispose: disposeTab,

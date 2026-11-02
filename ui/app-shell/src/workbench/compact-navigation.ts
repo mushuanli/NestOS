@@ -6,6 +6,7 @@ import {ACTION_ICONS, t} from '@itookit/common';
 /** Compatibility adapter delegates all content title layout to ui-common. */
 export function compactNavigation(container: HTMLElement, context: string, back: () => void, open: (origin: HTMLButtonElement) => void, actions?: WindowNavigation) {
     const navigate = navigationButton({icon: ACTION_ICONS.sidebar, label: t('workspace.sidebar.toggle'), run: back});
+    navigate.classList.add('workbench-content-back');
     const cleanup = installNavigationButtonPresentation(navigate), opened = openedButton(open);
     const navigation = actions ? windowNavigation(actions) : undefined;
     let view = contentTitleBar({leading: [navigate], trailing: [...(navigation?.buttons ?? []), opened.button]});

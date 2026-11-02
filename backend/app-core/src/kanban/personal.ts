@@ -1,4 +1,5 @@
 import {KanbanAutomationJournal} from './automation-journal';
+import {createRecordExecution, validateRemoteReferences} from './record-execution';
 import {createPersonalKanbanAutomation, type PersonalKanbanAutomationOptions} from './personal-automation';
 import {authorizeAutomation} from './automation-authority';
 import {reportKanbanHealth} from './health-events';
@@ -18,15 +19,22 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     const journal = new KanbanAutomationJournal(fs); await journal.open();
     const base = personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions});
     const service = createNestOSKanban({...base, actor: {kind: 'human', id: 'admin'}});
+    const records = automationOptions?.projects ? createRecordExecution({service, journal, projects: automationOptions.projects, log: base.log}) : undefined;
     const automation = automationOptions ? createPersonalKanbanAutomation({...automationOptions, fs, service, journal, log: base.log,
         serviceFor: actor => createNestOSKanban({...base, actor})}) : undefined;
     try {await service.scan();await reportKanbanHealth(events);}
     catch(error) {await reportKanbanHealth(events,error);}
     return {...service,
+        ...(records ? {recordResources: records.recordResources, runRecord: records.runRecord, recordExecutions: records.recordExecutions} : {}),
         ...(automation ? {automationCatalog: automation.automationCatalog, analysisStatus: automation.analysisStatus} : {}),
-        scan: async () => {await service.scan(); await automation?.scan();},
-        quiesce: async () => {await automation?.quiesce(); await service.quiesce();},
-        dispose: async () => {await automation?.quiesce(); await service.dispose();}};
+        scan: async () => {
+            await service.scan();
+            const results = await Promise.allSettled([records?.scan(), automation?.scan()]);
+            const failures = results.filter(result => result.status === 'rejected');
+            if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'KANBAN_SCAN_FAILED');
+        },
+        quiesce: async () => {await records?.quiesce(); await automation?.quiesce(); await service.quiesce();},
+        dispose: async () => {await records?.quiesce(); await automation?.quiesce(); await service.dispose();}};
 }
 
 
@@ -54,6 +62,10 @@ function personalOptions({store, journal, events, diagnostics, sessions, kernel,
         authorize: async (input: Parameters<import('./module').NestOSKanbanOptions['authorize']>[0]) => {
             const {board, command} = input;
             await authorizeAutomation(input, automationOptions?.catalog);
+            if (command?.type === 'append-record' && command.record.externalRefs?.length) {
+                if (!automationOptions?.projects) throw new KanbanError('PROJECT_SELECTION_UNAVAILABLE');
+                await validateRemoteReferences(automationOptions.projects, command.record);
+            }
             if (board.scope.kind === 'project') throw new KanbanError('PROJECT_STORE_REQUIRED');
             if (command?.type === 'apply-discovery') throw new KanbanError('DISCOVERY_BINDING_REQUIRED');
         },

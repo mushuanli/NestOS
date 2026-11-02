@@ -8,10 +8,11 @@ import {KanbanError} from '@itookit/kanban';
 interface WorkExecutionPolicy {maxDepth: number; timeoutMs?: number | null}
 interface FrozenWork {schema: 1; dispatch: KanbanDispatch; input: IndependentCallInput; policy: WorkExecutionPolicy}
 export interface PublishedKanbanWorkOptions {
+    observe?(dispatch: KanbanDispatch, observation: KanbanExecutionObservation): Promise<KanbanExecutionObservation>;
     calls: Pick<IndependentCallService,'prepareTaskCall'|'submitPreparedTaskCall'|'inspectTaskCallSubmission'|'list'>; kernel: Pick<Kernel,'task'>;
     /** Stable Session preparation is owned by the host's existing session journal. */
     prepareSession(dispatchId: string): Promise<string>;
-    binding(dispatch: KanbanDispatch): Promise<{target: TargetRef; overrides?: IndependentCallInput['request']['overrides']}>;
+    binding(dispatch: KanbanDispatch, item: KanbanItem): Promise<{target: TargetRef; overrides?: IndependentCallInput['request']['overrides']}>;
     context?(dispatch: KanbanDispatch, item: KanbanItem): Promise<unknown>;
     outputs?(dispatch: KanbanDispatch, result: TaskCallResult): Promise<KanbanArtifactRef[]>;
     executionPolicy?: WorkExecutionPolicy;
@@ -20,7 +21,7 @@ export interface PublishedKanbanWorkOptions {
 export function createPublishedKanbanWorkExecutor(options: PublishedKanbanWorkOptions): KanbanExecutionPort {
     return {
         async prepare(dispatch: KanbanDispatch, item: KanbanItem): Promise<FrozenWork> {
-            const sessionId=await options.prepareSession(dispatch.id), binding=await options.binding(dispatch);
+            const sessionId=await options.prepareSession(dispatch.id), binding=await options.binding(dispatch, item);
             const input: IndependentCallInput={title:'Kanban work', request:{expectedSessionId:sessionId,expectedBranch:'main',expectedTarget:binding.target,
                 target:{kind:binding.target.kind,id:binding.target.id,version:binding.target.version},overrides:binding.overrides,
                 source:{kind:'composer',text:JSON.stringify({item,inputs:dispatch.inputs,dependencies:await options.context?.(dispatch,item),planId:dispatch.planId,planRevision:dispatch.planRevision}),attachments:[],values:{}},
@@ -32,9 +33,11 @@ export function createPublishedKanbanWorkExecutor(options: PublishedKanbanWorkOp
             try {await options.calls.prepareTaskCall(frozen.input,frozen.policy);}
             catch(error) {return {outcome:'failed',code:knownCode(error,'WORK_PREPARATION_FAILED')};}
             await options.calls.submitPreparedTaskCall(frozen.input);
-            return inspectWork(options,frozen);
+            const observation = await inspectWork(options,frozen);
+            return options.observe ? options.observe(frozen.dispatch, observation) : observation;
         },
-        inspect: value=>inspectWork(options,validateFrozen(value)),
+        inspect: async value => {const frozen = validateFrozen(value), observation = await inspectWork(options, frozen);
+            return options.observe ? options.observe(frozen.dispatch, observation) : observation;},
     };
 }
 async function inspectWork(options: PublishedKanbanWorkOptions, frozen: FrozenWork): Promise<KanbanExecutionObservation> {

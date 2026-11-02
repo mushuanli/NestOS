@@ -6,13 +6,15 @@ import type { ProjectRemoteMount } from './remote-mounts';
 import type { RemoteFileSystemConfig } from './remote-connections';
 import { safeId } from './harness-connection-store';
 
-const fields = new Set(['id', 'name', 'kind', 'nodeConnectionId', 'projectId', 'profileId', 'enabled', 'selection']);
+const fields = new Set(['id', 'name', 'kind', 'nodeConnectionId', 'projectId', 'profileId', 'enabled', 'selection', 'directory']);
 export function normalizeHarnessConnection(value: HarnessExecutionConnection): HarnessExecutionConnection {
     if (!value || typeof value !== 'object' || Object.keys(value).some(key => !fields.has(key)) || value.kind !== 'harness'
         || typeof value.name !== 'string' || !value.name.trim() || value.name.length > 256
         || typeof value.profileId !== 'string' || !value.profileId.trim() || value.profileId.length > 128 || /\0/.test(value.profileId)
         || value.enabled !== undefined && typeof value.enabled !== 'boolean') throw invalid();
     safeId(value.id); safeId(value.nodeConnectionId); safeId(value.projectId);
+    if (value.directory !== undefined && (typeof value.directory !== 'string' || !value.directory || value.directory.length > 1024
+        || /[\0\\]/.test(value.directory) || value.directory.split('/').some(part => !part || part === '.' || part === '..'))) throw invalid();
     const selection = value.selection;
     if (selection && (typeof selection !== 'object' || Object.keys(selection).some(key => !['modelId', 'reasoningEffort'].includes(key))
         || typeof selection.modelId !== 'string' || !selection.modelId.trim() || selection.modelId.length > 256
@@ -20,7 +22,7 @@ export function normalizeHarnessConnection(value: HarnessExecutionConnection): H
         || selection !== undefined && !selection) throw invalid();
     return { id: value.id, name: value.name.trim(), kind: 'harness', nodeConnectionId: value.nodeConnectionId,
         projectId: value.projectId, profileId: value.profileId, ...(value.enabled !== undefined ? { enabled: value.enabled } : {}),
-        ...(selection ? { selection: structuredClone(selection) } : {}) };
+        ...(selection ? { selection: structuredClone(selection) } : {}), ...(value.directory ? {directory: value.directory} : {}) };
 }
 
 /** The snapshot carries grant identity only; credential references and secrets stay in the host. */

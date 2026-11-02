@@ -16,16 +16,19 @@ export function recordLinks(ui: KanbanPresentation, page: KanbanRecordPage, boar
 export function sourcesView(ui: KanbanPresentation, sources: KanbanSourceRef[]): string {
     return sources.length ? `<ul>${sources.map(source => `<li><button type="button" data-session="${escapeAttr(source.sessionId)}">${escapeHTML(source.sessionId)}</button><small>${escapeHTML(source.messageId)} · ${escapeHTML(source.revision)} · ${escapeHTML(source.role)}</small></li>`).join('')}</ul>` : `<p>${escapeHTML(ui.text('noSources'))}</p>`;
 }
-export function recordForm(ui: KanbanPresentation, kind: KanbanProjectRecord['kind'], board: KanbanBoardSummary, itemId = ''): string {
+export function recordForm(ui: KanbanPresentation, kind: KanbanProjectRecord['kind'], board: KanbanBoardSummary, itemId = '', resources: import('../contracts').KanbanRecordResource[] = []): string {
     return `${panelHeader(ui, ui.text(kind === 'log' ? 'newLog' : 'newDecision'))}<form data-form="record">
         <input type="hidden" name="kind" value="${kind}">${field(ui, 'title', 'name')}${textarea(ui, 'content', 'content')}${kind === 'decision' ? textarea(ui, 'rationale', 'rationale') + suggestionField({name: 'supersedes', label: 'supersedes', kind: 'decision'}) : ''}
+        ${kind === 'decision' && resources.length ? `<label>${escapeHTML(ui.text('recordResources'))}<select name="recordResources" multiple>${resources.map(resource => `<option value="${escapeAttr(JSON.stringify(resource.reference))}">${escapeHTML(resource.label)}</option>`).join('')}</select></label>` : ''}
         ${itemChoices(board, itemId)}<details><summary>${escapeHTML(ui.text('sources'))}</summary>${suggestionField({name: 'sourceSession', label: 'sourceSession', kind: 'session', manual: true})}${field(ui, 'sourceMessage', 'sourceMessage', '', false)}${field(ui, 'sourceRevision', 'sourceRevision', '', false)}</details><button>${escapeHTML(ui.text('save'))}</button></form>`;
 }
-export function recordDetail(ui: KanbanPresentation, record: KanbanProjectRecord, board: KanbanBoardSummary): string {
+export function recordDetail(ui: KanbanPresentation, record: KanbanProjectRecord, board: KanbanBoardSummary, executions?: import('../contracts').KanbanRecordExecution[]): string {
     return `${panelHeader(ui, record.title, board, record)}
         <p>${escapeHTML(ui.text(record.kind))} · ${escapeHTML(ui.text(record.status))} · ${escapeHTML(ui.text(record.origin))}</p><small>${escapeHTML(ui.text('recordId'))}: ${escapeHTML(record.id)}</small><p>${escapeHTML(ui.text('author'))}: ${escapeHTML(record.author.id)} · ${escapeHTML(new Date(record.createdAt).toLocaleString())}</p>
         <section class="kanban__prose"><h4>${escapeHTML(ui.text('content'))}</h4><p>${escapeHTML(record.content)}</p>${record.rationale ? `<h4>${escapeHTML(ui.text('rationale'))}</h4><p>${escapeHTML(record.rationale)}</p>` : ''}</section>
         ${record.status === 'draft' ? `<div class="kanban__actions">${button(ui, 'confirm-record', 'confirmRecord')}${button(ui, 'reject-record', 'rejectRecord')}</div>` : ''}
+        ${record.kind === 'decision' && record.status === 'confirmed' && executions ? `<div class="kanban__actions">${button(ui, 'run-record', 'runRecord')}</div>${executions.map(run => `<p><button type="button" data-board="${escapeAttr(run.boardId)}">${escapeHTML(ui.text('executionBoard'))}</button> · ${escapeHTML(ui.text(run.state))}${run.code ? ` · ${escapeHTML(run.code)}` : ''}</p>`).join('')}` : ''}
+        ${(record.externalRefs ?? []).map(ref => `<p>${escapeHTML(ref.system)}: ${escapeHTML(ref.id)}</p>`).join('')}
         ${record.supersedes ? recordLink(ui, record.supersedes, 'supersedes') : ''}${record.supersededBy ? recordLink(ui, record.supersededBy, 'superseded') : ''}
         <h4>${escapeHTML(ui.text('itemIds'))}</h4>${record.itemIds.map(id => `<button type="button" data-item="${escapeAttr(id)}">${escapeHTML(board.items.find(item => item.id === id)?.title ?? id)}</button>`).join('')}
         <form data-form="record-link">${suggestionField({name: 'itemId', label: 'itemIds', kind: 'item', required: true})}<button>${escapeHTML(ui.text('linkRecord'))}</button></form><h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, record.sources)}`;

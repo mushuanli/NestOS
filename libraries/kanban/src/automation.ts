@@ -4,7 +4,7 @@ import {identity, requireValue, validateBoard} from './rules';
 /** Configuration grants no host authority; every execution still requires host admission. */
 export function configureAutomation(board: KanbanBoard, settings: KanbanAutomationSettings, actor: KanbanActor): void {
     requireValue(settings && typeof settings.enabled === 'boolean' && typeof settings.autoAccept === 'boolean', 'INVALID_AUTOMATION');
-    for (const ref of [settings.planner, settings.executor]) {
+    for (const ref of [settings.planner, settings.executor, ...(settings.preparation ? [settings.preparation] : [])]) {
         requireValue(ref && typeof ref === 'object', 'INVALID_AUTOMATION_TARGET');
         identity(ref.system); identity(ref.id); identity(ref.revision ?? '');
     }

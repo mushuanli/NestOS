@@ -327,3 +327,23 @@ suggest 是已授权看板上的只读元数据查询，支持 item/parent/depen
 侧栏顶部集中看板标题和新建入口，中间列表单独滚动，底部的按编号定位与存储说明默认折叠。主区标题突出看板名称，编号、刷新及复制编号/链接收进同一更多菜单；桌面保留当前页新建操作，手机新建进入菜单。宿主通过 mountNavigation、mountWindowList 插槽复用 WorkbenchTabs 的返回、向上和窗口清单，沿用工作台导航历史并隐藏重复返回行。目录、看板与事项/记录各自保留已打开视图、筛选、滚动和草稿；隐藏窗口暂停读取。向上从详情回到所属看板，从看板回到目录，目录隐藏向上；窗口可切换、固定和关闭，未保存表单不能被批量关闭丢弃。看板、日志、决策页签位于页头下方，切换后保留看板身份及一致的操作位置。搜索与提交单行排列，状态、执行状态、领域和里程碑收进筛选面板；已有筛选显示状态标记，折叠不影响提交。手机横滑切换阶段并按列吸附，不常驻额外的滚动提示与前后阶段按钮；分页入口仍保留。详情中的引用操作也使用同一菜单。
 
 菜单支持原生键盘操作、Escape 关闭并返回触发点，点击外部关闭；菜单内 Escape 不触发详情抽屉关闭。窄屏页头操作换行，页签不折行，菜单及高级筛选限制在视口内；看板列和列内条目继续独立滚动。窄屏有事项时只展示有内容的阶段，避免空列占满首屏；空看板仍保留阶段空态。
+
+
+## 决策开发执行与工作区消息
+
+决策保存宿主提供的不透明 `externalRefs`；NestOS 的 `recordResources` 只列出远程项目，允许多选，后端再次核验。确认决策后 `runRecord` 冻结决策修订和自动化绑定，为该次运行建立独立执行看板。相同决策修订的重复点击返回原运行；不同修订不能越过未收尾运行。决策的 confirmed 表示决策有效，执行进度由 `recordExecutions` 单独投影，避免把决策有效性与开发进度混为一个状态。
+
+自动化设置可以选择不透明的 preparation。产品预设 `nestos-work-preparation/git-worktree@1` 位于 app-core/presets；Kanban 库不认识 Git、Codex 或工作区路径。预设核验选中远程项目和已发布原生 Agent，保存 base commit、分支、创建意图，再调用项目进程端口创建 `_nestos/worktrees/<dispatch-id>`。相对 Git 元数据使进程 `/workspace` 与原生 `/projects/<project-id>` 命名空间可共享工作树。创建结果未知时只核对原工作树，不另建分支。
+
+每次派发保存独立的连接、受管 Agent 发布回执和 NestOS executionSessionId；原生执行本身沿用 Effect journal，终态后将原生 sessionId/turnId 关联到事项。连接的 directory 是项目内已存在的相对目录，需节点正向声明 workingDirectory 能力；旧节点明确拒绝，不能退回主工作区。工作树及历史会话保留供恢复和独立验收，不自动合并或删除。
+
+工作树内使用 `_nestos/kanban/`，不使用 Cells 内部保留的 `.nestos`：
+
+- `protocol.json`：work-message/1、runId、itemId、attemptId 和容量规则。
+- `inbox/<id>.json`：Agent 向宿主发布的不可变 progress、clarification、error、result 消息；临时文件写完后原子重命名。每条消息使用不同 id，正文最多 8000 字符、单文件最多 64 KiB、目录最多 200 项。
+- `outbox/`：预留宿主回复目录，当前尚不自动将回复续发到原生会话。
+- `artifacts/`：开发产物位置；result 只是交付申请，完成仍需真实执行终态、产物核验与独立 accept-execution。
+
+Cells 的作用域目录订阅通过现有 SSE/inotify 唤醒；旧节点或丢失事件时保留宿主扫描作为补偿。消息以持久收据去重，校验文件名、schema 与运行作用域；改写已发布消息报冲突。clarification/error 写入看板消息日志、阻塞事项并发全局通知。当前澄清后自动回复与续轮尚未闭环，不能把收到回复或解除阻塞声称为已完成。诊断仅包含阶段、安全错误码、耗时和关联 ID；消息正文只进入业务记录。
+
+CLI 提供 `kanban list/create/show/targets/resources/execute/record/records/run/runs/workflow/events`、`agent list/show/save/status/publish/receipt/connections/bind` 和 `notify list`。写入命令从 `--file` 读取冻结 JSON；核对沿用原操作身份，未知结果不自动换 ID 重发。

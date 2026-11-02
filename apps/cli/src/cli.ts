@@ -43,12 +43,12 @@ async function main(argv: string[]): Promise<number> {
     }
     // -p / --prompt：直接运行一段 prompt（优先于 command 分发）
     if (parsed.options.prompt) return promptCommand(parsed.options);
-    if (['project', 'session', 'conversation', 'connection', 'mcp', 'task', 'flow-run'].includes(parsed.command ?? '')) {
+    if (['project', 'session', 'conversation', 'connection', 'mcp', 'task', 'flow-run', 'kanban', 'agent', 'notify'].includes(parsed.command ?? '')) {
         const {applicationCommand} = await import('./application-command');
         return applicationCommand(parsed.command!, parsed.positional, parsed.options);
     }
     if (parsed.options.flowArgs !== undefined) throw new Error('--flow-args requires a session prepare/send/call-prepare command');
-    if (parsed.options.connect) throw new Error('--connect is supported by project/session/conversation/connection/mcp/task/flow-run commands');
+    if (parsed.options.connect) throw new Error('--connect is supported by project/session/conversation/connection/mcp/task/flow-run/kanban/agent/notify commands');
     switch (parsed.command) {
         case 'fs': return remoteFilesCommand(parsed.positional, parsed.options);
         case 'twin': return digitalTwinCommand(parsed.positional, parsed.options);
@@ -174,6 +174,13 @@ function help(): string {
         `  nestos session submit|receipt <session-id> <submission.json>\n` +
         `  nestos conversation profiles <project-id> | list <project-id> <profile-id> [cursor]\n` +
         `  nestos conversation create <project-id> <profile-id> <workspace-id>\n` +
+        `  nestos kanban list|principal|targets | create --file board.json\n` +
+        `  nestos kanban show|workflow|records|events <board-id> [after-sequence]\n` +
+        `  nestos kanban item|record <board-id> <id> | execute <board-id> --file request.json\n` +
+        `  nestos kanban resources | runs <board-id> <record-id> | run <board-id> --file request.json\n` +
+        `  nestos agent list|connections|targets | show|status <agent-id>\n` +
+        `  nestos agent save|publish|receipt|bind --file request.json\n` +
+        `  nestos notify list\n` +
         `  nestos conversation query <project-id> <profile-id> <session-id> <command> [query-id]\n` +
         `  nestos conversation reconcile-query <project-id> <profile-id> <session-id> <query-id>\n` +
         `  nestos conversation show|send|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +

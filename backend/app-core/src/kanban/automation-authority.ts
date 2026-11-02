@@ -11,7 +11,7 @@ export async function authorizeAutomation(input: {actor: KanbanActor; board: Kan
         const automation = board.automation;
         requireValue(automation && [automation.coordinator, automation.worker].some(principal => principal.kind === 'service' && principal.id === actor.id), 'FORBIDDEN');
         const allowed = actor.id === automation.coordinator.id
-            ? ['read', 'publish-plan', 'observe-execution', 'link-reference'] : ['read', 'prepare-dispatch', 'renew'];
+            ? ['read', 'publish-plan', 'observe-execution', 'link-reference'] : ['read', 'prepare-dispatch', 'renew', 'message', 'block-item', 'unblock-item'];
         requireValue(allowed.includes(action), 'FORBIDDEN');
         if (['publish-plan', 'prepare-dispatch'].includes(action)) requireValue(automation.enabled, 'AUTOMATION_PAUSED');
     }

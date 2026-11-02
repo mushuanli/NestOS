@@ -94,6 +94,7 @@ export class HarnessConnectionService {
                 || !profile.capabilities.create || !profile.capabilities.history || !profile.capabilities.interrupt)
                 throw new FSError('ECAPABILITY', 'Project-scoped harness execution profile is unavailable');
             if (snapshot.selection) await validateSelection(client, profile, snapshot.selection);
+            if (snapshot.directory && !profile.capabilities.workingDirectory) throw new FSError('ECAPABILITY', 'Native working-directory selection unavailable');
             await this.validate(snapshot);
             return { client, profile: structuredClone(profile), workspaceId, epoch: descriptor.epoch, release };
         } catch (error) {
@@ -117,6 +118,7 @@ function inspectProfile(snapshot: HarnessConnectionSnapshot, descriptor: Awaited
         || !profile.workspaces.some(item => item.id === workspaceId) || !profile.capabilities.create
         || !profile.capabilities.history || !profile.capabilities.interrupt)
         throw new FSError('ECAPABILITY', 'Project-scoped harness inspection profile is unavailable');
+    if (snapshot.directory && !profile.capabilities.workingDirectory) throw new FSError('ECAPABILITY', 'Native working-directory selection unavailable');
     return {profile: structuredClone(profile), workspaceId};
 }
 async function validateSelection(client: HarnessClient, profile: HarnessProfile, selection: NonNullable<HarnessExecutionConnection['selection']>) {

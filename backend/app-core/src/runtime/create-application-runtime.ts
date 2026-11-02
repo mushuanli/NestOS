@@ -2,6 +2,8 @@ import {prepareHarnessDraftConnection} from '../projects/harness-draft-connectio
 import {reportKanbanHealth, kanbanFailureCode} from '../kanban/health-events';
 import {withProjectEnvironment} from '../projects/project-environment';
 import {createPersonalKanban} from '../kanban/personal';
+import {developmentPreparation} from '../presets/kanban-development';
+import {developmentObserver} from '../presets/kanban-development-observer';
 import {startKanbanMonitor} from '@itookit/kanban/execution';
 import {UserEventService} from '../events/service';
 import {attachRuntimeEvents} from '../events/runtime-events';
@@ -558,7 +560,15 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         }
 
         const events = await UserEventService.open(systemFS);
+        let wakeKanban = () => {};
+        const developmentMessages = developmentObserver({fs: systemFS, events, projects, remote: remoteConnections, wake: () => wakeKanban()});
+        cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
+            projects,
+            observeWork: developmentMessages.observe,
+            preparations: remoteConnections ? [{reference: {system: 'nestos-work-preparation', id: 'git-worktree', revision: '1'}, label: t('kanban.gitWorktree')}] : [],
+            prepareWork: remoteConnections && options.remoteSourceProvider ? developmentPreparation({fs: systemFS, agents: agentService,
+                connections: executionConnections, remote: remoteConnections, provider: options.remoteSourceProvider, projects}) : undefined,
             calls: independentCalls, kernel: kernelCore, sessions: sessionRepository,
             ensureReady: initializeProjects,
             prepareSession: async id => {await prepareChildExecution(id); return recovery.acquireLater(id);},
@@ -598,7 +608,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             await initializeProjects();
             if (!startup.active) return;
             kanbanMonitor = startKanbanMonitor({service: {scan:async()=>{await kanban.scan();for(const integration of kanbanIntegrations) await integration.scan();}}, initialScan: kanbanIntegrations.length > 0, subscribeTick: tick => {
-                const timer = setInterval(tick, 5_000); return () => clearInterval(timer);
+                wakeKanban = tick;
+                const timer = setInterval(tick, 5_000); return () => {wakeKanban = () => {}; clearInterval(timer);};
             }, subscribeChanges: tick => systemFS.on('seq:committed', event => {if(event.payload.paths.includes('/var/lib/kanban/boards.seq')) tick();}),
             onSuccess: () => reportKanbanHealth(events), onError: async error => {diagnostics.record({module: 'application', operation: 'kanban.monitor', stage: 'scan', result: 'failure', level: 'warn', code: kanbanFailureCode(error)}); await reportKanbanHealth(events,error);}});
             recovery.startBackground();

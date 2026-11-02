@@ -1,4 +1,6 @@
 import {flowControlCommand} from './application-flow-control';
+import {kanbanCommand} from './application-kanban';
+import {agentCommand} from './application-agent';
 import { getLogger, LogLevel, randomUUID } from '@itookit/common';
 import { recordRuntimeDiagnostic } from './diagnostics';
 import type { ApplicationClient, ProjectConversationPort } from '@itookit/app-contracts/services';
@@ -44,8 +46,12 @@ function recordApplicationDiagnostics(started: number, command: string, action: 
 
 export async function executeApplicationCommand(client: ApplicationClient, command: string, args: string[], options: CommandOptions): Promise<unknown> {
     const [action, id, value] = args;
+    if (command === 'kanban') return kanbanCommand(client, args, options);
+    if (command === 'agent') return agentCommand(client, args, options);
+    if (command === 'notify' && action === 'list' && client.backend.events) return client.backend.events.listNotifications();
     if (command === 'project') {
         if (action === 'list') return client.services.projects.list();
+        if (action === 'nodes') return client.services.projects.remoteMounts?.connections().map(({id, name, endpoint}) => ({id, name, endpoint}));
         if (action === 'create') return client.services.projects.create(required(id, 'project name'));
     }
     if (command === 'connection' && action === 'list') return client.services.llmDriver.getConnections();

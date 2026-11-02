@@ -2,6 +2,7 @@ import type { EffectExecutionContext, JsonValue } from '@itookit/durable-kernel'
 
 /** A named execution target references existing host-owned node credentials and project grants. */
 export interface HarnessExecutionConnection {
+    directory?: string;
     id: string;
     name: string;
     kind: 'harness';

@@ -54,7 +54,8 @@ export async function prepareNativeTurn(run: NativeExecution): Promise<void> {
     const { client, profile, workspaceId } = run.acquired;
     if (run.request.context?.conversation.mode === 'fork') await prepareForkSession(run);
     else if (!run.journal.data.sessionId) {
-        const result = await nativeMutation(run, 'create', options => client.create(profile.id, workspaceId, options));
+        const result = await nativeMutation(run, 'create', options => client.create(profile.id, workspaceId, {...options,
+            ...(run.request.connection.directory ? {directory: run.request.connection.directory} : {})}));
         const id = (result as { session?: { id?: unknown } })?.session?.id;
         if (typeof id !== 'string' || !id) throw executionError('NATIVE_SESSION_INVALID');
         await run.journal.save({ sessionId: id });

@@ -1,11 +1,13 @@
 import type {KanbanExternalReference, KanbanPrincipal} from './configuration';
 
 export interface KanbanAutomationSettings {
+    preparation?: KanbanExternalReference;
     enabled: boolean; planner: KanbanExternalReference; executor: KanbanExternalReference;
     coordinator: KanbanPrincipal; worker: KanbanPrincipal; autoAccept: boolean;
 }
 export interface KanbanAutomationTarget {reference: KanbanExternalReference; label: string}
 export interface KanbanAutomationCatalog {
+    preparations?: KanbanAutomationTarget[];
     targets: KanbanAutomationTarget[]; coordinator: KanbanPrincipal; worker: KanbanPrincipal;
 }
 export interface KanbanAnalysisStatus {
@@ -15,6 +17,6 @@ export interface KanbanAnalysisStatus {
 export function sameAutomationBinding(left?: KanbanAutomationSettings, right?: KanbanAutomationSettings): boolean {
     const signature = (value?: KanbanAutomationSettings) => JSON.stringify([value?.planner?.system, value?.planner?.id, value?.planner?.revision,
         value?.executor?.system, value?.executor?.id, value?.executor?.revision, value?.coordinator?.kind, value?.coordinator?.id,
-        value?.worker?.kind, value?.worker?.id, value?.autoAccept]);
+        value?.worker?.kind, value?.worker?.id, value?.autoAccept, value?.preparation]);
     return signature(left) === signature(right);
 }

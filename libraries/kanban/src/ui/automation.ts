@@ -6,11 +6,11 @@ import {button} from './view';
 
 export function automationForm(ui: KanbanPresentation, board: KanbanBoardSummary, catalog: KanbanAutomationCatalog): string {
     const settings = board.automation;
-    const select = (name: 'planner' | 'executor', label: string) => {
-        const selected = JSON.stringify(settings?.[name]), targets = [...catalog.targets];
+    const select = (name: 'planner' | 'executor' | 'preparation', label: string) => {
+        const selected = JSON.stringify(settings?.[name]), targets = [...(name === 'preparation' ? catalog.preparations ?? [] : catalog.targets)];
         if (settings?.[name] && !targets.some(entry => JSON.stringify(entry.reference) === selected))
             targets.push({reference: settings[name], label: ui.text('automationTargetUnavailable')});
-        return `<label>${escapeHTML(ui.text(label))}<select name="${name}" required><option value="">${escapeHTML(ui.text('automationChoose'))}</option>${targets.map(entry => {
+        return `<label>${escapeHTML(ui.text(label))}<select name="${name}" ${name === 'preparation' ? '' : 'required'}><option value="">${escapeHTML(ui.text('automationChoose'))}</option>${targets.map(entry => {
             const value = JSON.stringify(entry.reference);
             return `<option value="${escapeAttr(value)}" ${value === selected ? 'selected' : ''}>${escapeHTML(entry.label)}</option>`;
         }).join('')}</select></label>`;
@@ -18,7 +18,7 @@ export function automationForm(ui: KanbanPresentation, board: KanbanBoardSummary
     return `${panelHeader(ui, ui.text('automationTitle'))}<form data-form="automation">
         <p>${escapeHTML(ui.text('automationHelp'))}</p>
         <label><input type="checkbox" name="enabled" ${settings?.enabled ? 'checked' : ''}>${escapeHTML(ui.text('automationEnabled'))}</label>
-        ${select('planner', 'automationPlanner')}${select('executor', 'automationExecutor')}
+        ${select('planner', 'automationPlanner')}${select('executor', 'automationExecutor')}${select('preparation', 'automationPreparation')}
         <label><input type="checkbox" name="autoAccept" ${settings?.autoAccept ? 'checked' : ''}>${escapeHTML(ui.text('automationAutoAccept'))}</label>
         <p>${escapeHTML(ui.text('automationReviewHelp'))}</p>
         <div class="kanban__actions"><button>${escapeHTML(ui.text('save'))}</button>${button(ui, 'close-panel', 'close')}</div></form>`;

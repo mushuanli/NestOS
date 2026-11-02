@@ -627,7 +627,7 @@ export class ProjectRemoteMountService {
         const guarded = new Proxy(client, {get: (target, key) => {
             const value = Reflect.get(target, key);
             if (key === 'close' || typeof value !== 'function') return typeof value === 'function' ? value.bind(target) : value;
-            if (key === 'subscribe' || key === 'subscribeDirectory' || key === 'directorySnapshot') return (...args: unknown[]) => {
+            if (key === 'subscribe' || key === 'subscribeDirectory' || key === 'subscribeDirectoryPath' || key === 'directorySnapshot') return (...args: unknown[]) => {
                 this.checkHarnessAccess(projectId, fingerprint, connectionId); return value.apply(target, args);
             };
             return (...args: unknown[]) => this.callHarness(() => value.apply(target, args), String(key), args, projectId, fingerprint, connectionId);

@@ -12,6 +12,12 @@ import {automationCatalog, automationTarget, assertAutomationPrincipals} from '.
 import {requireValue} from './validation';
 
 export interface PersonalKanbanAutomationOptions {
+    preparations?: import('@itookit/kanban/contracts').KanbanAutomationTarget[];
+    observeWork?(input: {boardId: string; dispatch: import('@itookit/kanban/contracts').KanbanDispatch;
+        observation: import('@itookit/kanban/execution').KanbanExecutionObservation; service: KanbanService; worker: KanbanService}): Promise<import('@itookit/kanban/execution').KanbanExecutionObservation>;
+    prepareWork?(input: {dispatch: import('@itookit/kanban/contracts').KanbanDispatch; item: KanbanItem;
+        preparation: import('@itookit/kanban/contracts').KanbanExternalReference; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<import('@itookit/llm-flow/contracts').TargetRef>;
+    projects?: Pick<import('@itookit/app-contracts/services').ProjectService, 'list' | 'get'>;
     calls: IndependentCallService; kernel: Kernel; sessions: SessionRepository;
     prepareSession(id: string): Promise<boolean>; catalog(): Promise<RootTargetCatalog>;
     ensureReady?(): Promise<void>;
@@ -39,7 +45,7 @@ export function createPersonalKanbanAutomation(options: Options) {
         try {await Promise.race([pending?.catch(() => {}), new Promise<void>(resolve => {timer = setTimeout(resolve, 5000);})]);}
         finally {if (timer) clearTimeout(timer); await options.journal.drain();}
     },
-        automationCatalog: async () => {requireValue(!stopped, 'SERVICE_STOPPING'); return automationCatalog(await options.catalog());},
+        automationCatalog: async () => {requireValue(!stopped, 'SERVICE_STOPPING'); return {...automationCatalog(await options.catalog()), preparations: options.preparations};},
         analysisStatus: async (boardId: string, itemId: string) => {await options.service.item(boardId, itemId); return analysisStatus(options.journal, boardId, itemId);},
         verifyOutputs: (outputs: KanbanArtifactRef[]) => options.journal.verify(outputs)};
 }
@@ -82,11 +88,18 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
     const manager = async () => {const board = await options.service.read(boardId); return options.serviceFor(board.automation!.coordinator);};
     const service = await manager();
     const executor = createPublishedKanbanWorkExecutor({...options, prepareSession,
+        observe: options.observeWork ? async (dispatch, observation) => options.observeWork!({boardId, dispatch, observation,
+            service, worker: options.serviceFor(dispatch.principal)}) : undefined,
         context: async (_dispatch, item) => dependencyResults(options, boardId, item),
-        binding: async () => {
+        binding: async (dispatch, item) => {
             const board = await options.service.read(boardId);
             requireValue(board.automation?.enabled, 'AUTOMATION_PAUSED');
-            return {target: automationTarget(board.automation.executor, await options.catalog())};
+            let target = automationTarget(board.automation.executor, await options.catalog());
+            if (board.automation.preparation) {
+                requireValue(options.prepareWork, 'WORK_PREPARATION_UNAVAILABLE');
+                target = await options.prepareWork({dispatch, item, target, preparation: board.automation.preparation});
+            }
+            return {target};
         }, outputs: (dispatch, result) => {requireValue(active(), 'SERVICE_STOPPING'); return options.journal.artifact(dispatch.id, result.exit.output);}});
     return createNestOSKanbanExecutionBridge({fs: options.fs, directory: '/var/lib/kanban/automation/' + encodeURIComponent(boardId), boardId,
         service, worker: async principal => options.serviceFor(principal), executor,

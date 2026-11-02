@@ -15,3 +15,4 @@ export type {KanbanClient, KanbanSessionPhase, KanbanExecutionSession, KanbanSes
 export type {KanbanContent, KanbanContentItem, KanbanContentRecord, KanbanContentAmendment} from './content';
 export type {KanbanAutomationSettings, KanbanAutomationTarget, KanbanAutomationCatalog, KanbanAnalysisStatus} from './automation';
 export {sameAutomationBinding} from './automation';
+export type {KanbanRecordResource, KanbanRecordExecution, KanbanRecordRunRequest} from './record-execution';

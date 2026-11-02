@@ -151,8 +151,9 @@ export class KanbanWorkbench {
     private async showRecord(id: string, generation = this.generation): Promise<void> {
         if (!this.options.service) return;
         const record = await this.options.service.record(this.boardId, id);
+        const executions = await this.options.service.recordExecutions?.(this.boardId, id);
         if (!this.alive(generation)) return;
-        this.recordId = id; this.drawer.show(this.ui.recordDetail(record, this.board!), 'record:' + id); this.options.selected(this.getActiveResourceId());
+        this.recordId = id; this.drawer.show(this.ui.recordDetail(record, this.board!, executions), 'record:' + id); this.options.selected(this.getActiveResourceId());
     }
     private async click(event: Event): Promise<void> {
         const target = (event.target as HTMLElement).closest<HTMLElement>('button'); if (!target || target.matches(':disabled')) return;
@@ -175,7 +176,16 @@ export class KanbanWorkbench {
         if (action === 'reanalyze' && this.item?.planning) {await this.execute({type: 'plan-item', itemId: this.item.id, planning: this.item.planning}); return;}
         if (action === 'new-board') {this.itemId = ''; this.drawer.show(this.ui.newBoardForm(), 'new-board'); this.dirty = true; return;}
         if (action === 'new-item' && this.board) {this.itemId = ''; this.drawer.show(this.ui.newItemForm(this.board), 'new-item'); this.dirty = true; return;}
-        if (action === 'new-log' || action === 'new-decision') {this.recordId = ''; this.drawer.show(this.ui.recordForm(action === 'new-log' ? 'log' : 'decision', this.board!, this.itemId), action); this.dirty = true; return;}
+        if (action === 'new-log' || action === 'new-decision') {
+            const resources = action === 'new-decision' ? await this.options.service?.recordResources?.() : [];
+            this.recordId = ''; this.drawer.show(this.ui.recordForm(action === 'new-log' ? 'log' : 'decision', this.board!, this.itemId, resources), action); this.dirty = true; return;
+        }
+        if (action === 'run-record' && this.options.service?.runRecord) {
+            const record = await this.options.service.record(this.boardId, this.recordId);
+            target.dataset.operationId ??= randomUUID();
+            await this.options.service.runRecord(this.boardId, {operationId: target.dataset.operationId, recordId: record.id, expectedRevision: record.revision});
+            await this.showRecord(record.id); return;
+        }
         if (action === 'scroll-left' || action === 'scroll-right') {const board = this.content().querySelector<HTMLElement>('.kanban__columns'); if (board) board.scrollLeft += board.clientWidth * (action === 'scroll-left' ? -0.8 : 0.8); return;}
         if (action === 'records-next' || action === 'records-first') {this.recordCursor = action === 'records-next' ? this.recordPage?.nextCursor : undefined; await this.refresh(); return;}
         if ((action === 'confirm-record' || action === 'reject-record') && this.recordId) {await this.execute({type: 'review-record', recordId: this.recordId, accept: action === 'confirm-record'}); return;}
@@ -214,6 +224,7 @@ export class KanbanWorkbench {
         }
         if (kind === 'automation' && this.automationCatalog) {
             await this.execute({type: 'configure-automation', settings: {enabled: data.has('enabled'), autoAccept: data.has('autoAccept'),
+                ...(value(data, 'preparation') ? {preparation: JSON.parse(value(data, 'preparation'))} : {}),
                 planner: JSON.parse(value(data, 'planner')), executor: JSON.parse(value(data, 'executor')),
                 coordinator: this.automationCatalog.coordinator, worker: this.automationCatalog.worker}}); return;
         }

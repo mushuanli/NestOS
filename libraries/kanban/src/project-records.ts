@@ -26,8 +26,9 @@ export function applyRecord(state: KanbanState, command: RecordCommand, actor: K
 }
 function append(state: KanbanState, command: Extract<RecordCommand, {type: 'append-record'}>, actor: KanbanActor, now: number, forceDraft: boolean): void {
     validateSources(command.record.sources);
-    const {id, kind, title, content, rationale, itemIds, sources, supersedes, coordination} = command.record;
-    const input = structuredClone({id, kind, title, content, rationale, itemIds, sources: sources.map(source => ({sessionId: source.sessionId, messageId: source.messageId, revision: source.revision, role: source.role})), supersedes, ...(coordination ? {coordination}: {})}); identity(input.id); text(input.title); text(input.content);
+    const {id, kind, title, content, rationale, itemIds, sources, supersedes, coordination, externalRefs} = command.record;
+    const input = structuredClone({id, kind, title, content, rationale, itemIds, sources: sources.map(source => ({sessionId: source.sessionId, messageId: source.messageId, revision: source.revision, role: source.role})), supersedes, ...(coordination ? {coordination}: {}), ...(externalRefs ? {externalRefs} : {})}); identity(input.id); text(input.title); text(input.content);
+    validateRecordReferences(externalRefs);
     requireValue(input.kind === 'log' || input.kind === 'decision', 'INVALID_RECORD_KIND');
     requireValue(!state.records?.some(record => record.id === input.id), 'RECORD_EXISTS');
     requireValue((state.records?.length ?? 0) < 200, 'RECORD_LIMIT'); validateItems(state, input.itemIds); validateSources(input.sources);
@@ -83,7 +84,19 @@ export function queryRecords(state: KanbanState, query: KanbanRecordQuery = {}, 
 
 export function recordFingerprint(record: import('./contracts').KanbanRecordInput): string {
     return sha256HexSync(JSON.stringify({kind: record.kind, title: record.title, content: record.content, rationale: record.rationale ?? null,
-        itemIds: [...record.itemIds].sort(), sources: record.sources.map(source => JSON.stringify([source.sessionId, source.messageId, source.role])).sort(), ...(record.coordination?{coordination:record.coordination}: {})}));
+        itemIds: [...record.itemIds].sort(), sources: record.sources.map(source => JSON.stringify([source.sessionId, source.messageId, source.role])).sort(), ...(record.coordination?{coordination:record.coordination}: {}), ...(record.externalRefs ? {externalRefs: record.externalRefs} : {})}));
+}
+
+function validateRecordReferences(refs: import('./contracts').KanbanExternalReference[] | undefined): void {
+    if (refs === undefined) return;
+    requireValue(Array.isArray(refs) && refs.length <= 100, 'REFERENCE_LIMIT');
+    const keys = new Set<string>();
+    for (const ref of refs) {
+        requireValue(ref && typeof ref === 'object', 'INVALID_REFERENCE');
+        identity(ref.system); identity(ref.id); if (ref.revision !== undefined) text(ref.revision);
+        const key = JSON.stringify([ref.system, ref.id]);
+        requireValue(!keys.has(key), 'DUPLICATE_REFERENCE'); keys.add(key);
+    }
 }
 
 export function recordSummary(record: KanbanProjectRecord): import('./contracts').KanbanRecordSummary {

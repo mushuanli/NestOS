@@ -45,6 +45,7 @@ TODO.md
 prompt.md
 release/
 .nestos/
+_nestos/
 .nestos-http/
 .nestos-prompt/
 .nestos-websearch/

@@ -18,6 +18,7 @@ export function formCommand(kind: string, data: FormData, board: KanbanBoardSumm
         const sessionId = value(data, 'sourceSession'), messageId = value(data, 'sourceMessage'), revision = value(data, 'sourceRevision');
         if ([sessionId, messageId, revision].some(Boolean) && ![sessionId, messageId, revision].every(Boolean)) throw Object.assign(new Error('Missing source fields'), {code: 'SOURCE_FIELDS_REQUIRED'});
         return {type: 'append-record', record: {id, kind: value(data, 'kind') as 'log' | 'decision', title: value(data, 'title'), content: value(data, 'content'),
+            externalRefs: data.getAll('recordResources').map(value => JSON.parse(String(value))),
             itemIds: [...new Set(data.getAll('itemIds').flatMap(value => String(value).split(',')).map(id => id.trim()).filter(Boolean))],
             sources: sessionId ? [{sessionId, messageId, revision, role: 'user'}] : [],
             ...(value(data, 'rationale') ? {rationale: value(data, 'rationale')} : {}), ...(value(data, 'supersedes') ? {supersedes: value(data, 'supersedes')} : {})}};

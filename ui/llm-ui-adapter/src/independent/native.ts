@@ -67,7 +67,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             operationReceipts: nativeReceipts(state, options.operations, options.conversationId),
             operationMessages: [...(nativeQueueMessages(state, options.operations, options.conversationId) ?? []), ...nativeSteeringPreviews(state, options.operations, options.conversationId)],
             submissionMode: capabilities.submissionMode(state),
-            messages: state.messages.filter(message => !message.id.startsWith('steered:')).map(message => nativeMessage(message, options.operations, state, options.conversationId)),
+            messages: nativeMessages(state, options.operations, options.conversationId),
             interactions: state.requests.map(request => interaction(request, requests)),
             loading: false, executionRef: state.observation?.activeTurnId ?? undefined, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
             executionActivity: state.observation?.activity ? {label: t(`harness.activity.${state.observation.activity.phase}`), updatedAt: state.observation.activity.updatedAt} : undefined,
@@ -294,6 +294,17 @@ export async function adoptNativeChatView(view: ChatView, binding: NativeBinding
 }
 export async function createNativeChatView(container: HTMLElement, binding: NativeBinding, options: ImageChatOptions = {}): Promise<NativeChatView> {
     return createChatView(container, prepareNativeView(binding, options));
+}
+
+/** One presentation group per native turn; legacy history uses real user-message boundaries. */
+function nativeMessages(state: NativeSnapshot, operations: OperationLedger, conversationId: string): ChatMessage[] {
+    let boundary = 'history';
+    return state.messages.filter(message => !message.id.startsWith('steered:')).map(message => {
+        if (message.role === 'user') boundary = message.id;
+        const scope = message.turnId && message.turnId !== 'rollout-history' ? ['turn', message.turnId] : ['prompt', boundary];
+        return {...nativeMessage(message, operations, state, conversationId),
+            toolGroupId: message.role === 'tool' ? JSON.stringify(scope) : undefined};
+    });
 }
 
 function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger, state: NativeSnapshot, conversationId: string): ChatMessage {

@@ -255,3 +255,5 @@ steer 接纳不生成 steered: 本地历史消息。适配层在接纳后撤下�
 宿主提供 mountTitleBar 时，本地、原生和草稿改用独立 ChatView.ToolbarContext.header 的公开节点插槽，跨屏幕共用 ui-common 标题布局，不再挂重复的 compact/sidebar/window 控件。原标题输入、项目选择和更多菜单保留节点身份；分支、搜索和状态等次要操作由公共布局在手机收进原菜单。每个 header 的布局租约在重新绑定时同步交接，旧绑定延迟清理不得删除新布局。
 
 会话与草稿宿主 DTO 从 /contracts 公开（ChatEditorOptions 扩展通用 EditorOptions）；状态展示从轻量 /presentation 消费，不加载聊天运行代码。通用 OCR 由独立 ChatView 的 ocr 选项提供，shell/ocr-port 只注入识别服务、授权图片读取与安全日志；不在适配层重复识别状态机。旧输入框只复用库的 OcrReviewPanel，不重复挂载 OCR 模型配置表单。
+
+原生 ChatView 以真实 turnId 为工具展示分组；旧历史缺失 turnId 时以用户消息边界分组。不同工具在执行过程中持续追加到同一折叠记录，助手进度文字与最终答复保留独立展示；新用户轮次必须另起记录。toolGroupId 仅是 UI 投影，不修改原生消息或执行事实。

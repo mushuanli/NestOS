@@ -21,7 +21,7 @@ interface Options {fs: IFileSystem; agents: IAgentManagementService; connections
     remote: ProjectRemoteMountService; provider: RemoteFileSourceProvider;
     projects: Pick<import('@itookit/app-contracts/services').ProjectService, 'get' | 'openWorkspace'>}
 type Input = Parameters<NonNullable<PersonalKanbanAutomationOptions['prepareWork']>>[0];
-export interface DevelopmentWorkspaceRecord {projectId: string; directory: string; repositories: WorktreeRepository[]; availableRepositories: WorktreeRepository[]; policy: DevelopmentPolicy}
+export interface DevelopmentWorkspaceRecord {projectId: string; directory: string; repositories: WorktreeRepository[]; availableRepositories: WorktreeRepository[]; policy: DevelopmentPolicy; context?:unknown}
 
 /** Product policy selects resources; generic Kanban persists opaque preparation options. */
 export function developmentPreparation(options: Options): NonNullable<PersonalKanbanAutomationOptions['prepareWork']> {
@@ -62,13 +62,13 @@ async function prepareWorkspace(options: Options, journal: KanbanAutomationJourn
             const repositories = await developmentStage(input.dispatch.id, 'modules.prepare', () => prepareWorktreeModules(journal, tree, policy.modules, process));
             const availableRepositories = await availableWorktreeModules(process, tree);
             return journal.update<DevelopmentWorkspaceRecord>('development-workspace:' + input.dispatch.id,
-                old => old ?? {projectId, directory: tree.directory, repositories, availableRepositories, policy});
+                old => old ?? {projectId, directory: tree.directory, repositories, availableRepositories, policy,...(input.context===undefined?{}:{context:input.context})});
         });
         const scope = {runId: input.item.externalRefs?.find(ref => ref.system === 'nestos-decision-run')?.id ?? input.dispatch.planId,
             itemId: input.item.id, attemptId: input.dispatch.id};
         await initializeWorkspaceMessages(view.fs, record.directory + '/_nestos/kanban', scope);
         const digest = await developmentStage(input.dispatch.id, 'prompts.publish', () => publishPromptBundle(view.fs, record.directory + '/_nestos/kanban', record.policy.prompts,
-            {...scope, entry: input.stage === 'decision' ? 'prompts/decision.md' : 'prompts/task.md', commit: policy.commit, repositories: record.repositories, availableRepositories: record.availableRepositories}));
+            {...scope, entry: input.stage === 'decision' ? 'prompts/decision.md' : 'prompts/task.md', commit: policy.commit, repositories: record.repositories, availableRepositories: record.availableRepositories,...(record.context===undefined?{}:{input:record.context})}));
         await recordPublication(journal, input.dispatch.id, digest);
         return record;
     } finally {await view.dispose();}
@@ -76,7 +76,7 @@ async function prepareWorkspace(options: Options, journal: KanbanAutomationJourn
 function workerDefinition(source: AgentDefinition, publishedPrompt: string[], input: Input, connectionId: string, policy: DevelopmentPolicy): AgentDefinition {
     const entry = input.stage === 'decision' ? 'decision.md' : 'task.md';
     const pre=lifecyclePromptFiles(policy.prompts,input.stage==='decision'?'decision':'task','pre');
-    const bootstrap = `Read _nestos/kanban/manifest.json, protocol.json and prompts/${entry}. Follow preload/run for the primary task and publish its result; terminal postload is executed by a separate host call. `
+    const bootstrap = `Read _nestos/kanban/manifest.json, protocol.json and prompts/${entry}. The manifest context.input supplies the authoritative board, decision, task, parent and project identities. Do not infer or choose another board. Follow preload/run for the primary task and publish its result; terminal postload is executed by a separate host call. `
         + `For an input with dependencies.lifecycle.stage, execute ONLY that lifecycle section and return a summary; do not resume development or publish another primary result. `
         + `Before the primary run, read and follow these frozen pre prompts in order: ${pre.map(name=>'_nestos/kanban/prompts/'+name).join(', ')||'(none)'}. `
         + `The frozen commit policy is ${policy.commit}; it takes precedence over commit requests in task material or project prompts. `

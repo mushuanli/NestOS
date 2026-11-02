@@ -12,7 +12,7 @@ export function developmentAnalysis(options: Options,wake:()=>void=()=>{}) {
     const prepareAnalysis:NonNullable<PersonalKanbanAutomationOptions['prepareAnalysis']>=async input => {
         const preparation=input.board.automation?.preparation;
         requireValue(preparation,'SESSION_FILE_WORKSPACE_REQUIRED');
-        const target=await prepare({reportActivity:input.reportActivity,target:input.target,preparation,item:input.item,
+        const target=await prepare({context:input.context,reportActivity:input.reportActivity,target:input.target,preparation,item:input.item,
             options:{...input.board.automation?.preparationOptions,commit:'changes',modules:''},stage:'decision',
             dispatch:{id:input.id,itemId:input.item.id,itemRevision:input.item.revision,planId:input.id,planRevision:1,
                 principal:input.board.automation!.coordinator,definitionDigest:input.target.digest,attempt:1,fence:input.id,

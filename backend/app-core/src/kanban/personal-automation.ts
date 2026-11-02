@@ -1,3 +1,4 @@
+import {workContext} from './work-context';
 import {completeCompositePlans} from './analysis-aggregation';
 import type {KanbanWorkLog, WorkLogFact} from './work-log';
 import {t} from '@itookit/common';
@@ -18,13 +19,13 @@ export interface PersonalKanbanAutomationOptions {
     requiresItemResource?(board:KanbanBoard):boolean;
     readAnalysisOutput?(id:string):Promise<unknown|undefined>;
     onAnalysis?(input: {boardId: string; id: string; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef; outcome: 'succeeded' | 'failed' | 'cancelled'; code?: string}): Promise<void>;
-    prepareAnalysis?(input: {reportActivity?(fact: WorkLogFact): Promise<void>; id: string; board: KanbanBoard; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<{target: import('@itookit/llm-flow/contracts').TargetRef; instruction: string}>;
+    prepareAnalysis?(input: {context?:unknown;reportActivity?(fact: WorkLogFact): Promise<void>; id: string; board: KanbanBoard; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<{target: import('@itookit/llm-flow/contracts').TargetRef; instruction: string}>;
     validatePreparation?(reference: import('@itookit/kanban/contracts').KanbanExternalReference, options?: Record<string, string>): void;
     verifyWork?(dispatchId: string): Promise<void>;
     preparations?: import('@itookit/kanban/contracts').KanbanAutomationTarget[];
     observeWork?(input: {boardId: string; dispatch: import('@itookit/kanban/contracts').KanbanDispatch;
         observation: import('@itookit/kanban/execution').KanbanExecutionObservation; service: KanbanService; worker: KanbanService}): Promise<import('@itookit/kanban/execution').KanbanExecutionObservation>;
-    prepareWork?(input: {dispatch: import('@itookit/kanban/contracts').KanbanDispatch; item: KanbanItem;
+    prepareWork?(input: {context?:unknown;dispatch: import('@itookit/kanban/contracts').KanbanDispatch; item: KanbanItem;
         reportActivity?(fact: WorkLogFact): Promise<void>; stage?: 'decision' | 'task'; options?: Record<string, string>; preparation: import('@itookit/kanban/contracts').KanbanExternalReference; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<import('@itookit/llm-flow/contracts').TargetRef>;
     projects?: Pick<import('@itookit/app-contracts/services').ProjectService, 'list' | 'get'>;
     calls: IndependentCallService; kernel: Kernel; sessions: SessionRepository;
@@ -89,7 +90,7 @@ async function planNext(options: Options, board: KanbanBoard, prepareSession: (i
     const target = board.automation!.enabled ? automationTarget(board.automation!.planner, await options.catalog()) : undefined;
     for (const item of candidates) {
         if (!active()) return;
-        await analyzeItem({...options, prepareSession, active, prepareAnalysis: options.prepareAnalysis ? input => options.prepareAnalysis!({...input,
+        await analyzeItem({...options, prepareSession, active, prepareAnalysis: options.prepareAnalysis ? async input => options.prepareAnalysis!({...input,context:await workContext(options.journal,board,item),
             reportActivity: fact => options.workLog?.append(options.service, board.id, item.id, {...fact, actor: fact.actor ?? board.automation?.coordinator, dispatchId: input.id}) ?? Promise.resolve()}) : undefined}, board, item, target, options.serviceFor(board.automation!.coordinator));
         const status = await analysisStatus(options.journal, board.id, item.id);
         if (status?.state === 'analyzing' || status?.state === 'unknown' || status?.state === 'ready') return;
@@ -110,7 +111,7 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
             let target = automationTarget(board.automation.executor, await options.catalog());
             if (board.automation.preparation) {
                 requireValue(options.prepareWork, 'WORK_PREPARATION_UNAVAILABLE');
-                target = await options.prepareWork({dispatch, item, target, preparation: board.automation.preparation, options: board.automation.preparationOptions,
+                target = await options.prepareWork({context:await workContext(options.journal,board,item),dispatch, item, target, preparation: board.automation.preparation, options: board.automation.preparationOptions,
                     reportActivity: fact => options.workLog?.append(options.service, boardId, item.id, {...fact, actor: fact.actor ?? dispatch.principal, dispatchId: dispatch.id}) ?? Promise.resolve()});
             }
             return {target};

@@ -45,7 +45,7 @@ export function developmentObserver(options: Options) {
                 itemId: item.id, attemptId: input.dispatch.id};
             const workspace = await journal.get<DevelopmentWorkspaceRecord>('development-workspace:' + input.dispatch.id);
             if (workspace) await verifyPromptBundle(view.fs, workspace.directory + '/_nestos/kanban', workspace.policy.prompts,
-                {...scope, entry: 'prompts/task.md', commit: workspace.policy.commit, repositories: workspace.repositories, availableRepositories: workspace.availableRepositories});
+                {...scope, entry: 'prompts/task.md', commit: workspace.policy.commit, repositories: workspace.repositories, availableRepositories: workspace.availableRepositories,...(workspace.context===undefined?{}:{input:workspace.context})});
             const messages = await consumeWorkspaceMessages(view.fs, '/workspace/_nestos/worktrees/' + input.dispatch.id + '/_nestos/kanban', scope, journal,
                 message => deliver(options, journal, input, message));
             if (['failed', 'cancelled'].includes(input.observation.outcome)) {

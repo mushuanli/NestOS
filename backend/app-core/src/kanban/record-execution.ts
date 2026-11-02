@@ -96,6 +96,7 @@ async function prepare(options: Options, boardId: string, request: KanbanRecordR
         requireValue((previous?.length ?? 0) < 100, 'RECORD_EXECUTION_LIMIT');
         return [...previous ?? [], newRun(board, record, request, id)];
     });
+    await options.journal.update('record-context:'+id,old=>old??{sourceBoardId:boardId,recordId:record.id,recordRevision:record.revision,runId:id});
     const original = saved.find(row => row.id === id || row.recordId === record.id && decisionSignature(row.record) === decisionSignature(record))!;
     return freezeOperation(options, request, original);
 }

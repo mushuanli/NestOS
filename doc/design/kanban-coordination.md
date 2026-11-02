@@ -516,3 +516,9 @@ C4Container
 全局位置 `/var/lib/kanban/policies/<profile>/`，项目位置 `/workspace/_nestos/kanban/policies/<profile>/`；逐文件项目优先，缺失则继承全局。基础默认内置，可选文件不存在就不运行该定制。所有选中文件在尝试开始前冻结、计算摘要，传送至工作树 `_nestos/kanban/prompts/` 并列入 manifest；执行中的源文件改动只影响新尝试。14 个基础和可选文件落在既有 16 文件限制内。
 
 主 Session 先读取基础文件和 pre 文件；正式执行结束后，以独立且稳定身份的 Session 调用按 `post → succ/fail/cancel → clear` 读取文件，禁止重新执行原任务。clear 用于总结和非破坏性清理，不删除工作树、历史或绕过冻结的 commit 策略。已有基础 Markdown 的 preload/postload 状态章节继续使用同一生命周期执行器。聊天内容仅供阅读，业务交付仍需写入协议指定文件。
+
+### 宿主提供执行上下文
+
+决策创建、确认、运行与项目选择由 Kanban 宿主持久化；Agent 不负责查询这些身份。`work-context.ts` 从看板事实和决策运行记录组装 board（id/title）、decision（sourceBoardId/recordId/recordRevision/runId）、task（id/parentId/title/responsibility/acceptance/dependencies）、projects。规划和开发共用该上下文构造器，子任务通过同一 runId 继承决策来源。
+
+准备工作区时将上下文随执行策略冻结，写入 `_nestos/kanban/manifest.json` 的 `context.input`。同一 manifest 还包含 runId、itemId、attemptId 及协议与仓库范围；重启核对完整 manifest，不能在旧尝试中替换当前看板或决策。Session prompt 只要求读取该文件并遵循文件协议。来源身份由宿主负责，VFS 和通用文件交换不识别 Kanban 字段，Agent 无须调用 Kanban API。

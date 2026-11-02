@@ -1,0 +1,45 @@
+import {afterEach, expect, it} from 'vitest';
+import {createVFS, MemoryBackend} from '@itookit/vfs-core';
+import {KanbanAutomationJournal} from '../src/kanban/automation-journal';
+import {developmentPolicy} from '../src/presets/kanban-development-policy';
+import {publishPromptBundle, hasMarkdownSection} from '../src/run/prompt-bundle';
+const closes: Array<() => Promise<void>> = [];
+afterEach(async () => {for (const close of closes.splice(0)) await close();});
+async function fixture() {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()}); closes.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/'), journal = new KanbanAutomationJournal(fs); await journal.open();
+    return {fs, journal};
+}
+it('resolves project overrides, freezes original contents and verifies remote publication on recovery', async () => {
+    const {fs, journal} = await fixture();
+    await fs.driver.createFile({parentPath: '/workspace/_nestos/kanban/policies/development', name: 'task.md', content: '# Project task', recursive: true});
+    const first = await developmentPolicy(journal, fs, fs, 'attempt', {commit: 'changes', modules: 'libraries/editor'});
+    expect(first.prompts.files.find(file => file.name === 'task.md')).toMatchObject({content: '# Project task', source: expect.stringContaining('project:')});
+    expect(first.prompts.files.find(file => file.name === 'decision.md')?.source).toContain('nestos:');
+    const directory = '/workspace/work/_nestos/kanban';
+    const digest = await publishPromptBundle(fs, directory, first.prompts, {commit: first.commit});
+    await fs.driver.writeContent('/workspace/_nestos/kanban/policies/development/task.md', 'New task');
+    const restored = await developmentPolicy(journal, fs, fs, 'attempt', {commit: 'worktree'});
+    expect(restored).toEqual(first);
+    expect(await publishPromptBundle(fs, directory, restored.prompts, {commit: restored.commit})).toBe(digest);
+    await fs.driver.writeContent(directory + '/prompts/task.md', 'Tampered');
+    await expect(publishPromptBundle(fs, directory, restored.prompts, {commit: restored.commit})).rejects.toMatchObject({code: 'PROMPT_SNAPSHOT_CHANGED'});
+});
+it('defaults to uncommitted changes and rejects invalid paths and options', async () => {
+    const {fs, journal} = await fixture();
+    expect((await developmentPolicy(journal, fs, fs, 'default')).commit).toBe('changes');
+    await expect(developmentPolicy(journal, fs, fs, 'bad-profile', {profile: '../escape'})).rejects.toMatchObject({code: 'DEVELOPMENT_POLICY_INVALID'});
+    await expect(developmentPolicy(journal, fs, fs, 'bad-module', {modules: '../other'})).rejects.toMatchObject({code: 'MODULE_PATH_INVALID'});
+    await expect(developmentPolicy(journal, fs, fs, 'bad-mode', {commit: 'push'})).rejects.toMatchObject({code: 'DEVELOPMENT_POLICY_INVALID'});
+});
+it('publishes the manifest only after all files and rejects oversized authoring content', async () => {
+    const {fs, journal} = await fixture();
+    await fs.driver.createFile({parentPath: '/workspace/_nestos/kanban/policies/development', name: 'task.md', content: 'x'.repeat(65537), recursive: true});
+    await expect(developmentPolicy(journal, fs, fs, 'large')).rejects.toMatchObject({code: 'PROMPT_FILE_INVALID'});
+    expect(await fs.driver.exists('/workspace/work/_nestos/kanban/manifest.json')).toBe(false);
+});
+
+it('ignores lifecycle headings inside fenced Markdown examples', () => {
+    expect(hasMarkdownSection('```md\n## postload.cancelled\n```', 'postload.cancelled')).toBe(false);
+    expect(hasMarkdownSection('```md\n## fake\n```\n## postload.cancelled\nSummary', 'postload.cancelled')).toBe(true);
+});

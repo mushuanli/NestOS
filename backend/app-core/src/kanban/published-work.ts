@@ -8,6 +8,7 @@ import {KanbanError} from '@itookit/kanban';
 interface WorkExecutionPolicy {maxDepth: number; timeoutMs?: number | null}
 interface FrozenWork {schema: 1; dispatch: KanbanDispatch; input: IndependentCallInput; policy: WorkExecutionPolicy}
 export interface PublishedKanbanWorkOptions {
+    title?(dispatch: KanbanDispatch): string;
     observe?(dispatch: KanbanDispatch, observation: KanbanExecutionObservation): Promise<KanbanExecutionObservation>;
     calls: Pick<IndependentCallService,'prepareTaskCall'|'submitPreparedTaskCall'|'inspectTaskCallSubmission'|'list'>; kernel: Pick<Kernel,'task'>;
     /** Stable Session preparation is owned by the host's existing session journal. */
@@ -22,7 +23,7 @@ export function createPublishedKanbanWorkExecutor(options: PublishedKanbanWorkOp
     return {
         async prepare(dispatch: KanbanDispatch, item: KanbanItem): Promise<FrozenWork> {
             const sessionId=await options.prepareSession(dispatch.id), binding=await options.binding(dispatch, item);
-            const input: IndependentCallInput={title:'Kanban work', request:{expectedSessionId:sessionId,expectedBranch:'main',expectedTarget:binding.target,
+            const input: IndependentCallInput={title:options.title?.(dispatch) ?? 'Kanban work', request:{expectedSessionId:sessionId,expectedBranch:'main',expectedTarget:binding.target,
                 target:{kind:binding.target.kind,id:binding.target.id,version:binding.target.version},overrides:binding.overrides,
                 source:{kind:'composer',text:JSON.stringify({item,inputs:dispatch.inputs,dependencies:await options.context?.(dispatch,item),planId:dispatch.planId,planRevision:dispatch.planRevision}),attachments:[],values:{}},
                 submission:{id:dispatch.id,source:{kind:'conversation',ownerId:sessionId,id:dispatch.id}}}};

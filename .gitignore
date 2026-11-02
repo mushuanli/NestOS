@@ -45,7 +45,10 @@ TODO.md
 prompt.md
 release/
 .nestos/
-_nestos/
+_nestos/*
+!_nestos/kanban/
+_nestos/kanban/*
+!_nestos/kanban/policies/
 .nestos-http/
 .nestos-prompt/
 .nestos-websearch/

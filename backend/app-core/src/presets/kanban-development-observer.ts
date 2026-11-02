@@ -1,3 +1,5 @@
+import {verifyPromptBundle} from '../run/prompt-bundle';
+import type {DevelopmentWorkspaceRecord} from './kanban-development';
 import {readContextCatalog, type ContextInspector} from '../projects/harness-context-catalog';
 import type {PreparedWorktree} from '../projects/worktree-preparation';
 import {journalCommand} from '../kanban/journal-command';
@@ -11,7 +13,9 @@ import type {PersonalKanbanAutomationOptions} from '../kanban/personal-automatio
 import type {UserEventService} from '../events/service';
 
 type Input = Parameters<NonNullable<PersonalKanbanAutomationOptions['observeWork']>>[0];
-interface Options {kernel: ContextInspector; fs: IFileSystem; events: UserEventService; projects: Pick<ProjectService, 'get' | 'openWorkspace'>;
+interface Options {verifyDelivery?(dispatchId: string): Promise<void>;
+    lifecycle?: Pick<ReturnType<typeof import('./kanban-development-lifecycle').developmentLifecycle>, 'enqueue' | 'scan' | 'dispose' | 'settled'>;
+    kernel: ContextInspector; fs: IFileSystem; events: UserEventService; projects: Pick<ProjectService, 'get' | 'openWorkspace'>;
     remote?: Pick<import('../projects/remote-mounts').ProjectRemoteMountService, 'projectHarness'>; wake(): void}
 
 export function developmentObserver(options: Options) {
@@ -37,17 +41,37 @@ export function developmentObserver(options: Options) {
         try {
             const scope = {runId: item.externalRefs?.find(ref => ref.system === 'nestos-decision-run')?.id ?? input.dispatch.planId,
                 itemId: item.id, attemptId: input.dispatch.id};
+            const workspace = await journal.get<DevelopmentWorkspaceRecord>('development-workspace:' + input.dispatch.id);
+            if (workspace) await verifyPromptBundle(view.fs, workspace.directory + '/_nestos/kanban', workspace.policy.prompts,
+                {...scope, entry: 'prompts/task.md', commit: workspace.policy.commit, repositories: workspace.repositories, availableRepositories: workspace.availableRepositories});
             const messages = await consumeWorkspaceMessages(view.fs, '/workspace/_nestos/worktrees/' + input.dispatch.id + '/_nestos/kanban', scope, journal,
                 message => deliver(options, journal, input, message));
-            if (['failed', 'cancelled'].includes(input.observation.outcome)) await close(input.dispatch.id);
+            if (['failed', 'cancelled'].includes(input.observation.outcome)) {
+                await options.lifecycle?.enqueue(input.boardId, input.dispatch, item, input.observation);
+                await close(input.dispatch.id);
+            }
             if (input.observation.outcome !== 'succeeded') return input.observation;
             if (messages.some(message => ['clarification', 'error'].includes(message.type))) return {...input.observation, outcome: 'running', outputs: undefined, code: 'WORKSPACE_INPUT_REQUIRED'};
             if (!messages.some(message => message.type === 'result')) return {...input.observation, outcome: 'unknown', outputs: undefined, code: 'WORKSPACE_RESULT_MISSING'};
+            try {await options.verifyDelivery?.(input.dispatch.id);}
+            catch (error) {
+                const raw = (error as {code?: unknown})?.code;
+                const code = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'DELIVERY_VERIFICATION_FAILED';
+                await journal.update('delivery-blocked:' + input.dispatch.id, () => ({code}));
+                await deliver(options, journal, input, {schema: 'work-message/1', ...scope, id: 'delivery-' + code, type: 'error', content: code});
+                return {...input.observation, outcome: 'unknown', outputs: undefined, code};
+            }
+            const {item: current} = await input.worker.item(input.boardId, input.dispatch.itemId);
+            if (current.blocked?.reason === 'WORKSPACE_ERROR_REPORTED' && await journal.get('delivery-blocked:' + input.dispatch.id))
+                await once(journal, input, 'delivery-unblock', {type: 'unblock-item', itemId: current.id, token: input.dispatch.fence});
+            await options.lifecycle?.enqueue(input.boardId, input.dispatch, item, input.observation);
+            if (options.lifecycle && !await options.lifecycle.settled(input.dispatch.id, input.observation.outcome))
+                return {...input.observation, outcome: 'running', outputs: undefined, code: 'LIFECYCLE_PENDING'};
             await close(input.dispatch.id); return input.observation;
         } finally {await view.dispose();}
     };
     async function close(id: string) {const release = watches.get(id); watches.delete(id); await release?.();}
-    return {observe, async dispose() {stopped = true; await Promise.allSettled([...watches.keys()].map(close));}};
+    return {observe, scan: () => options.lifecycle?.scan(), async quiesce() {stopped = true; await options.lifecycle?.dispose();}, async dispose() {stopped = true; await options.lifecycle?.dispose(); await Promise.allSettled([...watches.keys()].map(close));}};
 }
 
 async function linkResult(options: Options, journal: KanbanAutomationJournal, input: Input, projectId: string): Promise<void> {

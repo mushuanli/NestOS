@@ -91,3 +91,21 @@ it('configures published AI targets through the board menu and defaults to indep
     expect(board.members?.find(member => member.id === 'worker')?.roles).toContain('worker');
     expect(root.querySelector<HTMLElement>('[data-panel]')!.hidden).toBe(true);
 });
+it('shows host preparation choices when selected and persists explicit commit policy', async () => {
+    const {root, service} = await fixture();
+    const reference = {system: 'host-preparation', id: 'isolated', revision: '1'};
+    const catalog = {targets: [{label: 'Agent', reference: {system: 'published', id: 'agent', revision: '1'}}],
+        preparations: [{label: 'Workspace', reference, options: [{name: 'commit', label: 'Commit policy', defaultValue: 'changes', choices: [
+            {value: 'changes', label: 'Keep changes'}, {value: 'worktree', label: 'Commit in task branch'}]}]}],
+        coordinator: {kind: 'service' as const, id: 'planner'}, worker: {kind: 'service' as const, id: 'worker'}};
+    Object.assign(service, {automationCatalog: async () => catalog});
+    await click(root, '[data-action=new-board]'); fill(root, 'title', 'Policy'); await submit(root, 'board');
+    await click(root, '[data-action=automation]');
+    const preparation = root.querySelector<HTMLSelectElement>('[name=preparation]')!;
+    preparation.value = JSON.stringify(reference); preparation.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(root.querySelector<HTMLSelectElement>('[name=preparation-option-commit]')?.value).toBe('changes');
+    fill(root, 'preparation-option-commit', 'worktree');
+    fill(root, 'planner', JSON.stringify(catalog.targets[0].reference)); fill(root, 'executor', JSON.stringify(catalog.targets[0].reference));
+    await submit(root, 'automation');
+    expect((await service.list())[0].automation).toMatchObject({preparation: reference, preparationOptions: {commit: 'worktree'}});
+});

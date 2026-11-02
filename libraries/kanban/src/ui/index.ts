@@ -1,4 +1,4 @@
-import {automationForm, analysisView} from './automation';
+import {automationForm, analysisView, preparationFields} from './automation';
 import {KanbanSuggestions} from './suggestions';
 import {mountTitleBar as mountSharedTitleBar} from '@itookit/ui-common';
 import {KanbanDrawer, drawerMarkup, preserveBoardScroll} from './drawer';
@@ -67,6 +67,13 @@ export class KanbanWorkbench {
         }, {signal});
         sidebar.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
         editor.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
+        editor.addEventListener('change', event => {
+            const target = event.target as HTMLSelectElement;
+            if (target.name === 'preparation' && this.board && this.automationCatalog) {
+                const container = editor.querySelector('[data-preparation-options]');
+                if (container) container.innerHTML = preparationFields(this.board, this.automationCatalog, target.value ? JSON.parse(target.value) : null);
+            }
+        }, {signal});
         editor.addEventListener('input', event => {if ((event.target as HTMLElement).closest('[data-panel]')) {this.dirty = true; this.options.changed?.();}}, {signal});
         if (this.options.service?.queryActivity) this.activityTimer=setInterval(()=>{if(this.visible&&!document.hidden&&!this.busy&&!this.dirty&&(this.board?.automation?.enabled||this.page?.items.some(item=>item.execution)||this.query.execution&&this.query.execution!=='all')) this.invalidateFromEvents();},15000);
         if (this.options.initialResource !== undefined) await this.openResource(this.options.initialResource);
@@ -224,7 +231,9 @@ export class KanbanWorkbench {
         }
         if (kind === 'automation' && this.automationCatalog) {
             await this.execute({type: 'configure-automation', settings: {enabled: data.has('enabled'), autoAccept: data.has('autoAccept'),
-                ...(value(data, 'preparation') ? {preparation: JSON.parse(value(data, 'preparation'))} : {}),
+                ...(value(data, 'preparation') ? {preparation: JSON.parse(value(data, 'preparation')),
+                    preparationOptions: Object.fromEntries([...data.entries()].filter(([key]) => key.startsWith('preparation-option-'))
+                        .map(([key, value]) => [key.slice('preparation-option-'.length), String(value)]))} : {}),
                 planner: JSON.parse(value(data, 'planner')), executor: JSON.parse(value(data, 'executor')),
                 coordinator: this.automationCatalog.coordinator, worker: this.automationCatalog.worker}}); return;
         }

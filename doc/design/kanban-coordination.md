@@ -356,3 +356,89 @@ CLI 提供 `kanban list/create/show/targets/resources/execute/record/records/run
 第一轮继承 30 秒超时并确认取消后才重新派发，失败记录保留。实际链路促成精确范围读取、消息字段示例、初版 body 兼容及重复 running/unknown 观察回执修复。活跃派发的权威观察续持原 fence 租约，不据此制造 Session 活动或重派；同一观察再次出现按看板修订区分状态写入。原生最后一轮 completed、activeTurnId 为空，保留历史与工作树供后续恢复。
 
 完整身份、提交、验证范围和限制见 [验收证据](fixtures/kanban-ai-cloze-20261102.json)。部署健康检查版本为 `20261102T084549-e2c9f5e9`；工作区 `_nestos/acceptance/kanban-ai/` 保存冻结 CLI 请求与返回值，工作树 artifacts 保留测试日志、补丁和子模块 bundle。未进行人工浏览器点击验收；澄清回复的自动续轮仍未实现。
+
+## 提示词分层、生命周期与用户提交策略（2026-11-02）
+
+### 审查结论与职责
+
+旧开发适配器把执行指导写在内置 JSON，并把“是否提交”留给任务正文；子模块也没有统一的任务分支登记。现改为一条可核对的链：选择策略 → 冻结资源 → 准备仓库 → 上传并验证 → 正式调用 → 终态收尾 → Git 事实验收。Kanban 库只保存不透明的 preparation 与 preparationOptions，平台权限和状态转换不由 Markdown 决定。
+
+| 层级 | 职责 | 优先关系 |
+| --- | --- | --- |
+| NestOS 默认 | 产品携带的默认 Markdown、通信协议和生命周期约定 | 默认内容首次使用时写入当前用户的策略资源，不覆盖用户修改 |
+| 用户全局 | `/var/lib/kanban/policies/<profile>/decision.md`、`task.md` | 当前用户 VFS；用户之间保持隔离 |
+| 项目 | `_nestos/kanban/policies/<profile>/decision.md`、`task.md` | 项目同名文件整体覆盖全局文件；自定义 profile 必须能解析两份文件 |
+| 看板 | 选择 profile、提交方式和提前准备的模块 | 保存通用选项；决策运行冻结绑定，已开始的运行不跟随修改 |
+| Agent | 正式发布的角色和能力配置 | 角色指导追加；不能授予 Markdown 未获授权的能力 |
+| 任务 | 本次责任、验收与依赖材料 | 不得覆盖本次冻结的提交策略 |
+
+源 Markdown 可纳入版本控制；`.gitignore` 仅忽略 `_nestos` 的运行目录，保留 `kanban/policies/` 可跟踪。默认模板正文声明源为产品资源 `kanban-development-prompts.json`，执行时解析得到真实 MD 文件。
+
+### 执行路径与快照
+
+```text
+<项目>/_nestos/kanban/policies/<profile>/   # 可编辑的项目策略源
+  decision.md
+  task.md
+
+<工作树>/_nestos/kanban/                   # 本次执行的冻结副本
+  manifest.json
+  protocol.json
+  prompts/decision.md
+  prompts/task.md
+  inbox/
+  outbox/
+  artifacts/
+```
+
+工作树仍是 `_nestos/worktrees/<dispatch-id>`。宿主进程通过 `/workspace` 使用授权文件系统，Cells 原生会话使用其项目命名空间；Agent 从工作树读取相对路径，不依赖宿主物理路径。
+
+策略先写持久 journal，然后逐文件临时写入、完整读取核对、原子重命名，最后发布 manifest。manifest 保存入口、scope、每个文件的来源与 SHA-256、提交模式、仓库基础提交与任务分支。发布摘要另外入账；全部成功后才发布受管 Agent 并允许调用。恢复重新传送原快照，不读取最新源 MD；已存在文件必须逐字匹配。执行观察也核对已发布快照，改写提示或 manifest 不能改变当前授权。
+
+`decision.md` 用于规划/依赖分析调用。普通模型从冻结输入读取正文；选择原生规划 Agent 时，同样先准备独立工作树并把 MD 同步到 Cells。规划调用强制使用 changes 模式。`task.md` 用于开发执行；两份文件都随开发工作树上传。
+
+### 生命周期
+
+推荐章节为 `## preload`、`## run`、`## postload.succeeded`、`## postload.failed`、`## postload.cancelled`、`## cleanup`。代码围栏中的示例标题不视为声明。决策默认模板保留结构化规划结果要求，项目可增加具体终态章节。
+
+- preload/run：开始时读取冻结提示及 manifest；任务主调用按 protocol 发布结果。
+- postload：真实主调用终态确认后，使用原正式发布目标开启独立 Task-call；规划与任务分别读取 decision.md/task.md 的对应章节。用户未声明对应章节时跳过。
+- failed/cancelled：不能向已经结束或取消的原生轮次继续发送；收尾只总结原因、保留内容和恢复信息，不重启开发或提交。
+- cleanup：与终态收尾一起读取非破坏性清理指导；平台关闭自己持有的观察与文件/进程能力。删除工作树、分支、会话和推送并非 cleanup 的默认权限。
+
+每个独立收尾使用 `<execution-id>-postload-<outcome>` 的稳定身份，先保存冻结请求和 submitting，再调用既有 published Task-call 入口。unknown 只核对原身份。待启动的收尾遵守看板暂停；已接纳的调用继续核对。主任务成功后等待已声明收尾结算，再进入 review；收尾失败单独记录、通知，不伪造主执行失败或成功。收尾输出保存在独立调用历史，通知可返回原看板。
+
+决策 confirmed 仍表示决策有效，决策执行 completed 仍由执行看板的独立验收投影。规划调用的生命周期与整个决策目标的完成是两个概念。
+
+### 用户控制提交
+
+看板 AI 配置的 preparationOptions 示例：
+
+```json
+{
+  "profile": "development",
+  "commit": "changes",
+  "modules": "libraries/mdxeditor,libraries/ui-common"
+}
+```
+
+| commit | 行为与验收 |
+| --- | --- |
+| changes（默认） | 保留工作树修改；所有参与仓库 HEAD 必须仍为登记的基础提交，擅自提交会阻塞验收 |
+| worktree | Agent 在各仓库的任务分支提交，先子模块、后父仓库 gitlink；提交须继承登记基础提交，工作区须干净 |
+
+Git 的 commit 落在仓库分支上，worktree 是该分支的检出目录。因此“只提交到 worktree”具体指只更新 `work/<dispatch-id>`，并不修改用户原分支。模式控制由用户选定、宿主冻结、Agent 执行，宿主再核验；这是一项工作流约束，不是对任意 Shell Git 命令的安全拦截器。合并、推送、创建 PR 和删除工作树为后续独立动作，本链不自动执行。将来发布多仓库提交时，应先保证子模块提交在对应远端可达，再发布父仓库指针。
+
+### 子模块分支与延迟准备
+
+普通目录属于父仓库。Git 子模块是独立仓库，必须有自己的任务分支；不同仓库可同名 `work/<dispatch-id>`。登记信息包括项目内路径、父仓库锁定的 commit、任务分支及交付 HEAD。
+
+准备时只读枚举父提交中的 gitlink，保存为 manifest.availableRepositories，不克隆所有模块。`modules` 是可选的提前准备清单：宿主只初始化这些路径，从父提交锁定的 commit 建立分支，并在响应丢失后核对原分支。其他模块由 Agent 在需要时按 manifest 的候选信息延迟初始化和建分支；声明之外的独立仓库需要先澄清。测试覆盖了父目录重定位后子模块依然可用，避免 `/workspace` 与 Cells 原生命名空间切换导致 Git 元数据失效。
+
+### 交付核验与关闭
+
+核验以实际 Git 状态为准：检查父/子仓库分支、基础提交关系、HEAD、脏状态、已跟踪差异以及未跟踪文件内容摘要；包括仅有未跟踪文件变化的子模块。变化的模块必须属于被冻结的候选集合。进入 review 前保存交付证据，用户 accept-execution 时通过同一 verifyOutputs 端口再次核对。提交或文件内容变化产生 DELIVERY_CHANGED_AFTER_VERIFICATION，不能凭旧测试结果完成验收。
+
+提示词/策略错误、模块初始化错误、分支不符、未授权提交、未提交修改、提示快照改写和交付变化具有独立错误码。关键阶段记录 operationId、stage、结果、耗时及安全错误分类，不记录 MD 正文、完整参数或密钥。提交违规会阻塞事项并去重通知；原执行事实和工作树保留。
+
+关闭时立即停止新准备及收尾准入，等待已经接纳的完整准备/验证操作退出，再释放 VFS。目录事件只是唤醒，持久快照、正式回执和消息收据才是恢复依据；不新增第二套模型或 Git 执行器。

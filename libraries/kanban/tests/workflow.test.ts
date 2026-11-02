@@ -6,7 +6,7 @@ afterEach(async()=>{for(const close of closes.splice(0)) await close();});
 async function fixture() {
     const backend=new MemoryBackend(),{manager}=await createVFS({rootBackend:backend});closes.push(()=>manager.dispose());
     const fs=await manager.openFileSystem('/'),store=await SeqKanbanStore.open(fs);
-    const log=vi.fn(); const api=(id:string)=>createKanbanModule({store,actor:{kind:'service',id},authorize:async()=>{},verifyOutputs:async()=>true,log});
+    const log=vi.fn(), verifyOutputs=vi.fn(async (_input: unknown)=>true); const api=(id:string)=>createKanbanModule({store,actor:{kind:'service',id},authorize:async()=>{},verifyOutputs,log});
     const managerApi=api('manager'),worker=api('worker');
     await managerApi.create({id:'b',title:'Work',scope:{kind:'system'},members:[{kind:'service',id:'manager',responsibility:'Manage',roles:['coordinator','reviewer']},{kind:'service',id:'worker',responsibility:'Build',roles:['worker']},{kind:'human',id:'reviewer',responsibility:'Review',roles:['reviewer']},{kind:'service',id:'other-manager',responsibility:'Other',roles:['coordinator']}],policy:{requireEstimate:false,review:'independent'}});
     let serial=0;
@@ -15,7 +15,7 @@ async function fixture() {
         {id:'api',title:'Implement',responsibility:'Implement the contract',acceptance:'Tests pass',assignee:{kind:'service',id:'worker'},dependsOn:['schema'],inputs:{schema:{fromItemId:'schema',output:'schema'}}},
         {id:'schema',title:'Contract',responsibility:'Define contract',acceptance:'Reviewed',assignee:{kind:'service',id:'worker'},dependsOn:[],outputs:['schema']},
     ]};
-    return {fs,store,api,managerApi,worker,run,plan,log,backend};
+    return {fs,store,api,managerApi,worker,run,plan,log,backend,verifyOutputs};
 }
 it('publishes an unordered DAG atomically, pins inputs and advances only after independent acceptance',async()=>{
     const f=await fixture();await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});
@@ -134,4 +134,16 @@ it('adopts existing unassigned work atomically without changing its identity or 
     const adopted = (await f.managerApi.item('b', 'second')).item;
     expect(adopted).toMatchObject({id: original.id, number: original.number, createdAt: original.createdAt, planning: {priority: 1, dependencies: ['first']}});
     expect((await f.managerApi.workflow('b')).ready).toEqual([]);
+});
+
+it('revalidates delivery at independent acceptance and leaves review pending if it changed', async () => {
+    const f = await fixture(); await f.run(f.managerApi, {type: 'publish-plan', plan: f.plan});
+    await f.run(f.worker, {type: 'prepare-dispatch', itemId: 'schema', dispatchId: 'delivery'});
+    const dispatch = (await f.managerApi.workflow('b')).dispatches.delivery;
+    const outputs = [{name: 'schema', ref: 'artifact:one', sha256: 'a'.repeat(64), bytes: 10}];
+    await f.run(f.managerApi, {type: 'observe-execution', dispatchId: dispatch.id, fence: dispatch.fence, outcome: 'succeeded', outputs});
+    f.verifyOutputs.mockResolvedValueOnce(false);
+    await expect(f.run(f.managerApi, {type: 'accept-execution', dispatchId: dispatch.id, accept: true})).rejects.toMatchObject({code: 'OUTPUT_VERIFICATION_REQUIRED'});
+    expect((await f.managerApi.item('b', 'schema')).item.status).toBe('review');
+    expect(f.verifyOutputs.mock.calls.at(-1)?.[0]).toMatchObject({stage: 'accept', dispatchId: dispatch.id});
 });

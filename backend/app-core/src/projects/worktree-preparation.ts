@@ -30,6 +30,8 @@ export async function prepareWorktree(journal: Journal, id: string, directory: s
 
 async function git(process: RemoteProcessHandle, args: string[]): Promise<string> {
     const result = await process.nativeShell.exec('git', args, {cwd: '/workspace', timeoutMs: 120000});
-    if (result.code !== 0) throw Object.assign(new FSError('EIO', 'Git worktree operation failed'), {stage: args[0], exitCode: result.code});
+    if (result.code !== 0) throw Object.assign(new Error('Git worktree operation failed'), {
+        code: args[0] === 'rev-parse' ? 'GIT_BASE_READ_FAILED' : args[1] === 'add' ? 'GIT_WORKTREE_CREATE_FAILED' : 'GIT_WORKTREE_QUERY_FAILED',
+        stage: args[0], exitCode: result.code});
     return result.stdout;
 }

@@ -10,7 +10,7 @@ import {developmentObserver} from '../src/presets/kanban-development-observer';
 
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of closes.splice(0).reverse()) await close();});
-async function fixture() {
+async function fixture(verifyDelivery?: (dispatchId: string) => Promise<void>, lifecycle?: Parameters<typeof developmentObserver>[0]['lifecycle']) {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); closes.push(() => manager.dispose());
     const fs = await manager.openFileSystem('/'), store = await SeqKanbanStore.open(fs), journal = new KanbanAutomationJournal(fs);
     await journal.open();
@@ -31,7 +31,7 @@ async function fixture() {
     await journal.update('worktree:attempt', () => ({directory: '/workspace/_nestos/worktrees/attempt', branch: 'work/attempt', baseCommit: 'a'.repeat(40)}));
     await initializeWorkspaceMessages(fs, directory, scope);
     const events = await UserEventService.open(fs);
-    const observer = developmentObserver({fs, events, kernel: {inspectSession: async () => ({getShared: async () => undefined})},
+    const observer = developmentObserver({fs, events, verifyDelivery, lifecycle, kernel: {inspectSession: async () => ({getShared: async () => undefined})},
         projects: {get: async () => ({path: '/project'}) as never, openWorkspace: async () => ({fs, dispose: async () => {}}) as never}, wake() {}});
     closes.push(() => observer.dispose());
     const publish = (id: string, type: string) => fs.driver.createFile({parentPath: directory + '/inbox', name: id + '.json',
@@ -54,4 +54,24 @@ it('blocks clarification, emits one global notification, and does not let a resu
     expect((await f.events.listNotifications()).items.filter(row => row.event.value.type === 'kanban.workspace.clarification')).toHaveLength(1);
     await f.publish('result', 'result');
     expect(await f.observe('succeeded')).toMatchObject({outcome: 'running', code: 'WORKSPACE_INPUT_REQUIRED'});
+});
+
+it('blocks policy violations and allows review only after successful verification', async () => {
+    let allowed = false;
+    const f = await fixture(async () => {if (!allowed) throw Object.assign(new Error('Unauthorized commit'), {code: 'UNAUTHORIZED_COMMIT'});});
+    await f.publish('result', 'result');
+    expect(await f.observe('succeeded')).toMatchObject({outcome: 'unknown', code: 'UNAUTHORIZED_COMMIT'});
+    expect((await f.service.item('board', 'item')).item.blocked).toBeDefined();
+    allowed = true;
+    expect(await f.observe('succeeded')).toMatchObject({outcome: 'succeeded'});
+    expect((await f.service.item('board', 'item')).item.blocked).toBeUndefined();
+});
+
+it('waits for declared terminal finalization before reporting successful delivery', async () => {
+    let settled = false;
+    const f = await fixture(undefined, {enqueue: async () => {}, scan: async () => {}, dispose: async () => {}, settled: async () => settled});
+    await f.publish('result', 'result');
+    expect(await f.observe('succeeded')).toMatchObject({outcome: 'running', code: 'LIFECYCLE_PENDING'});
+    settled = true;
+    expect(await f.observe('succeeded')).toMatchObject({outcome: 'succeeded'});
 });

@@ -77,9 +77,13 @@ class KanbanModule implements KanbanService {
         const state = await this.readState(boardId);
         await this.authorize(state.board, request.command.type, request.command);
         await this.verifyRelease(state.board, request.command);
-        if (request.command.type === 'observe-execution' && request.command.outcome === 'succeeded' && request.command.outputs?.length) {
+        const verifyStage = request.command.type === 'observe-execution' && request.command.outcome === 'succeeded' ? 'observe'
+            : request.command.type === 'accept-execution' && request.command.accept ? 'accept' : undefined;
+        if (verifyStage && 'dispatchId' in request.command) {
             const dispatch = state.workflow?.dispatches[request.command.dispatchId]; requireValue(dispatch, 'DISPATCH_NOT_FOUND');
-            requireValue(await this.options.verifyOutputs?.({board:state.board,itemId:dispatch.itemId,dispatchId:dispatch.id,outputs:structuredClone(request.command.outputs)}), 'OUTPUT_VERIFICATION_REQUIRED');
+            const outputs = request.command.type === 'observe-execution' ? request.command.outputs : dispatch.outputs;
+            if (outputs?.length) requireValue(await this.options.verifyOutputs?.({stage: verifyStage, board: state.board, itemId: dispatch.itemId,
+                dispatchId: dispatch.id, outputs: structuredClone(outputs)}), 'OUTPUT_VERIFICATION_REQUIRED');
         }
         const restore = request.command.type === 'restore-item' ? await this.options.store.archived(boardId, request.command.itemId) : undefined;
         const result = await this.options.store.update(boardId, request.operationId, JSON.stringify({ actor: this.actor, request }), current => {

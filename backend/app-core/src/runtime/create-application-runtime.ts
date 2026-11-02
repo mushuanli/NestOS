@@ -1,3 +1,9 @@
+import {OperationLifetime} from '../run/operation-lifetime';
+import {developmentAnalysis} from '../presets/kanban-development-analysis';
+import {developmentDelivery} from '../presets/kanban-development-delivery';
+import {developmentLifecycle} from '../presets/kanban-development-lifecycle';
+import {KanbanAutomationJournal} from '../kanban/automation-journal';
+import {developmentCatalog, validateDevelopmentOptions} from '../presets/kanban-development-policy';
 import {prepareHarnessDraftConnection} from '../projects/harness-draft-connection';
 import {reportKanbanHealth, kanbanFailureCode} from '../kanban/health-events';
 import {withProjectEnvironment} from '../projects/project-environment';
@@ -561,14 +567,44 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
 
         const events = await UserEventService.open(systemFS);
         let wakeKanban = () => {};
-        const developmentMessages = developmentObserver({kernel: kernelCore, fs: systemFS, events, projects, remote: remoteConnections, wake: () => wakeKanban()});
+        const developmentOperations = new OperationLifetime();
+        cleanupFns.push(() => developmentOperations.close());
+        const developmentBindings = remoteConnections && options.remoteSourceProvider ? {fs: systemFS, agents: agentService,
+            connections: executionConnections, remote: remoteConnections, provider: options.remoteSourceProvider, projects} : undefined;
+        const prepareDevelopment = developmentBindings ? developmentPreparation(developmentBindings) : undefined;
+        const analyzeDevelopment = developmentBindings ? developmentAnalysis(developmentBindings) : undefined;
+        const verifyDevelopment = developmentBindings ? developmentDelivery(systemFS, developmentBindings.remote, developmentBindings.provider) : undefined;
+        const lifecycle = independentCalls ? developmentLifecycle({journal: new KanbanAutomationJournal(systemFS), events, calls: independentCalls, kernel: kernelCore,
+            authorize: async (boardId): Promise<boolean> => (await kanban.read(boardId)).automation?.enabled === true,
+            prepareSession: async id => {
+                await initializeProjects(); await sessionRepository.ensureSession(id, t('kanban.automationTitle'));
+                await prepareChildExecution(id);
+                if (!await recovery.acquireLater(id)) throw Object.assign(new Error('Lifecycle Session is owned'), {code: 'AUTOMATION_SESSION_OWNED'});
+                return id;
+            }}) : undefined;
+        const developmentMessages = developmentObserver({kernel: kernelCore, fs: systemFS, events, projects, remote: remoteConnections, lifecycle,
+            verifyDelivery: verifyDevelopment ? id => developmentOperations.run(() => verifyDevelopment(id)) : undefined,
+            wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
             projects,
-            observeWork: developmentMessages.observe,
-            preparations: remoteConnections ? [{reference: {system: 'nestos-work-preparation', id: 'git-worktree', revision: '1'}, label: t('kanban.gitWorktree')}] : [],
-            prepareWork: remoteConnections && options.remoteSourceProvider ? developmentPreparation({fs: systemFS, agents: agentService,
-                connections: executionConnections, remote: remoteConnections, provider: options.remoteSourceProvider, projects}) : undefined,
+            validatePreparation: (reference, settings) => {
+                if (reference.system !== 'nestos-work-preparation' || reference.id !== 'git-worktree' || reference.revision !== '1')
+                    throw Object.assign(new Error('Unsupported preparation'), {code: 'WORK_PREPARATION_UNSUPPORTED'});
+                validateDevelopmentOptions(settings);
+            },
+            onAnalysis: lifecycle ? input => developmentOperations.run(async () => {
+                if (input.outcome === 'succeeded') await verifyDevelopment?.(input.id);
+                await lifecycle.enqueue(input.boardId, {id: input.id, itemId: input.item.id, itemRevision: input.item.revision,
+                planId: input.id, planRevision: 1, principal: {kind: 'service', id: 'kanban-planner'}, definitionDigest: input.target.digest,
+                attempt: 1, fence: input.id, preparedAt: 0, outcome: 'prepared', inputs: {}}, input.item,
+                {outcome: input.outcome, code: input.code}, 'decision', input.target);
+            }) : undefined,
+            prepareAnalysis: analyzeDevelopment ? input => developmentOperations.run(() => analyzeDevelopment(input)) : undefined,
+            observeWork: input => developmentOperations.run(() => developmentMessages.observe(input)),
+            verifyWork: verifyDevelopment ? id => developmentOperations.run(() => verifyDevelopment(id)) : undefined,
+            preparations: remoteConnections ? developmentCatalog() : [],
+            prepareWork: prepareDevelopment ? input => developmentOperations.run(() => prepareDevelopment(input)) : undefined,
             calls: independentCalls, kernel: kernelCore, sessions: sessionRepository,
             ensureReady: initializeProjects,
             prepareSession: async id => {await prepareChildExecution(id); return recovery.acquireLater(id);},
@@ -596,7 +632,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             const errors: unknown[] = [];
             const stoppingStartup = startup.close();
             const stoppingKanban = kanban.quiesce();
-            const stopping = await Promise.allSettled([kanbanMonitor?.dispose(), ...stopKanbanIntegrations.map(close=>close()), stoppingKanban, stoppingStartup]);
+            const stoppingDevelopment = developmentMessages.quiesce();
+            const drainingDevelopment = developmentOperations.close();
+            const stopping = await Promise.allSettled([kanbanMonitor?.dispose(), ...stopKanbanIntegrations.map(close=>close()), stoppingKanban, stoppingStartup, stoppingDevelopment, drainingDevelopment]);
             for (const result of stopping) if (result.status === 'rejected') errors.push(result.reason);
             try {await executionActivity.dispose();} catch(error) {errors.push(error);}
             for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
@@ -607,7 +645,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         await startup.schedule(policy.workers, 'runtime.workers', async () => {
             await initializeProjects();
             if (!startup.active) return;
-            kanbanMonitor = startKanbanMonitor({service: {scan:async()=>{await kanban.scan();for(const integration of kanbanIntegrations) await integration.scan();}}, initialScan: kanbanIntegrations.length > 0, subscribeTick: tick => {
+            kanbanMonitor = startKanbanMonitor({service: {scan:async()=>{const results = await Promise.allSettled([kanban.scan(), developmentMessages.scan(), ...kanbanIntegrations.map(integration => integration.scan())]);
+                const failures = results.filter(result => result.status === 'rejected');
+                if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'KANBAN_SCAN_FAILED');}}, initialScan: kanbanIntegrations.length > 0, subscribeTick: tick => {
                 wakeKanban = tick;
                 const timer = setInterval(tick, 5_000); return () => {wakeKanban = () => {}; clearInterval(timer);};
             }, subscribeChanges: tick => systemFS.on('seq:committed', event => {if(event.payload.paths.includes('/var/lib/kanban/boards.seq')) tick();}),

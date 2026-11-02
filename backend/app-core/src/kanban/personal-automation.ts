@@ -12,11 +12,15 @@ import {automationCatalog, automationTarget, assertAutomationPrincipals} from '.
 import {requireValue} from './validation';
 
 export interface PersonalKanbanAutomationOptions {
+    onAnalysis?(input: {boardId: string; id: string; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef; outcome: 'succeeded' | 'failed' | 'cancelled'; code?: string}): Promise<void>;
+    prepareAnalysis?(input: {id: string; board: KanbanBoard; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<{target: import('@itookit/llm-flow/contracts').TargetRef; instruction: string}>;
+    validatePreparation?(reference: import('@itookit/kanban/contracts').KanbanExternalReference, options?: Record<string, string>): void;
+    verifyWork?(dispatchId: string): Promise<void>;
     preparations?: import('@itookit/kanban/contracts').KanbanAutomationTarget[];
     observeWork?(input: {boardId: string; dispatch: import('@itookit/kanban/contracts').KanbanDispatch;
         observation: import('@itookit/kanban/execution').KanbanExecutionObservation; service: KanbanService; worker: KanbanService}): Promise<import('@itookit/kanban/execution').KanbanExecutionObservation>;
     prepareWork?(input: {dispatch: import('@itookit/kanban/contracts').KanbanDispatch; item: KanbanItem;
-        preparation: import('@itookit/kanban/contracts').KanbanExternalReference; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<import('@itookit/llm-flow/contracts').TargetRef>;
+        stage?: 'decision' | 'task'; options?: Record<string, string>; preparation: import('@itookit/kanban/contracts').KanbanExternalReference; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<import('@itookit/llm-flow/contracts').TargetRef>;
     projects?: Pick<import('@itookit/app-contracts/services').ProjectService, 'list' | 'get'>;
     calls: IndependentCallService; kernel: Kernel; sessions: SessionRepository;
     prepareSession(id: string): Promise<boolean>; catalog(): Promise<RootTargetCatalog>;
@@ -97,7 +101,7 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
             let target = automationTarget(board.automation.executor, await options.catalog());
             if (board.automation.preparation) {
                 requireValue(options.prepareWork, 'WORK_PREPARATION_UNAVAILABLE');
-                target = await options.prepareWork({dispatch, item, target, preparation: board.automation.preparation});
+                target = await options.prepareWork({dispatch, item, target, preparation: board.automation.preparation, options: board.automation.preparationOptions});
             }
             return {target};
         }, outputs: (dispatch, result) => {requireValue(active(), 'SERVICE_STOPPING'); return options.journal.artifact(dispatch.id, result.exit.output);}});

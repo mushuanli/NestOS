@@ -30,7 +30,7 @@ export interface KanbanStore {
 export interface KanbanModuleOptions {
     /** Host supplies metadata within the authorized user's/project's session scope. */
     suggestions?(board: KanbanBoard, kind: import('./contracts').KanbanSuggestionKind, search: string, limit: number): Promise<import('./contracts').KanbanSuggestion[] | undefined>;
-    verifyOutputs?(input: {board: KanbanBoard; itemId: string; dispatchId?: string; outputs: import('./contracts').KanbanArtifactRef[]}): Promise<boolean>;
+    verifyOutputs?(input: {stage?: 'observe' | 'accept'; board: KanbanBoard; itemId: string; dispatchId?: string; outputs: import('./contracts').KanbanArtifactRef[]}): Promise<boolean>;
     onCommitted?(boardId: string, service: import('./contracts').KanbanService, now: number): Promise<void>;
     store: KanbanStore;
     /** Trusted identity resolved by the host, never from command payloads. */

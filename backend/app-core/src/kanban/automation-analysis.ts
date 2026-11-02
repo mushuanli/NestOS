@@ -10,10 +10,13 @@ import preset from '../presets/kanban-planning.json';
 
 export interface AnalysisResult {ready: boolean; dependencies: string[]; reason: string; estimate?: KanbanEstimate}
 interface Job {
+    terminalOutcome?: 'succeeded' | 'failed' | 'cancelled';
     id: string; itemRevision: number; signature: string; input: IndependentCallInput;
     phase: 'prepared' | 'submitting' | 'settled'; status: KanbanAnalysisStatus; result?: AnalysisResult;
 }
 export interface AnalysisOptions {
+    onAnalysis?: import('./personal-automation').PersonalKanbanAutomationOptions['onAnalysis'];
+    prepareAnalysis?: import('./personal-automation').PersonalKanbanAutomationOptions['prepareAnalysis'];
     journal: KanbanAutomationJournal; calls: IndependentCallService; kernel: Pick<Kernel, 'task'>;
     prepareSession(id: string): Promise<string>; active(): boolean;
     log(input: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; durationMs: number}): void;
@@ -35,6 +38,7 @@ export async function analyzeItem(options: AnalysisOptions, board: KanbanBoard, 
     if (job.phase === 'prepared') job = await submitAnalysis(options, key, job);
     if (!options.active()) return;
     if (job.phase === 'submitting') job = await observeAnalysis(options, key, job);
+    job = await finalizeAnalysis(options, board.id, item, key, job);
     if (job.result?.ready && job.status.state === 'ready' && board.automation?.enabled && options.active()) {
         try {await adoptAnalysis(board, item, job, service);}
         catch (error) {await saveFailure(options, key, job, safeCode(error, 'AUTOMATION_PLAN_REJECTED'));}
@@ -43,27 +47,39 @@ export async function analyzeItem(options: AnalysisOptions, board: KanbanBoard, 
     const status = (await options.journal.get<Job>(key))?.status;
     options.log({operationId: job.id, stage: 'automation.analysis', result: status?.state === 'failed' || status?.state === 'unknown' ? 'failure' : 'success', code: status?.code, durationMs: Date.now() - started});
 }
+async function finalizeAnalysis(options: AnalysisOptions, boardId: string, item: KanbanItem, key: string, job: Job): Promise<Job> {
+    if (!options.active() || job.phase !== 'settled' || !options.onAnalysis) return job;
+    try {
+        await options.onAnalysis({boardId, id: job.id, item, target: job.input.request.expectedTarget!,
+            outcome: job.terminalOutcome ?? (job.status.state === 'failed' ? 'failed' : 'succeeded'), code: job.status.code});
+        return job;
+    } catch (error) {return options.active() ? saveFailure(options, key, job, safeCode(error, 'AUTOMATION_ANALYSIS_FINALIZATION_FAILED')) : job;}
+}
 async function loadJob(options: AnalysisOptions, board: KanbanBoard, item: KanbanItem, target?: TargetRef) {
     requireValue(board.items.length <= 200, 'AUTOMATION_CONTEXT_LIMIT');
     const signature = analysisSignature(board), currentKey = await options.journal.get<string>(keyFor(board.id, item.id));
     const currentJob = currentKey ? await options.journal.get<Job>(currentKey) : undefined;
     if (!board.automation?.enabled && currentJob?.phase !== 'submitting') return;
     const key = currentJob?.phase === 'submitting' ? currentKey! : 'analysis:' + sha256HexSync(JSON.stringify([board.id, item.id, item.revision, signature]));
-    const job = await options.journal.update<Job>(key, previous => {
-        if (previous) return previous;
-        requireValue(target, 'AUTOMATION_TARGET_CHANGED'); return newJob(board, item, target, signature);
-    });
+    let job = await options.journal.get<Job>(key);
+    if (!job) {
+        requireValue(target, 'AUTOMATION_TARGET_CHANGED');
+        const id = await options.journal.update<string>('analysis-identity:' + key, old => old ?? randomUUID());
+        const prepared = await options.prepareAnalysis?.({id, board, item, target});
+        const candidate = newJob(board, item, prepared?.target ?? target, signature, id, prepared?.instruction);
+        job = await options.journal.update<Job>(key, previous => previous ?? candidate);
+    }
     if (!options.active()) return;
     await options.journal.update(keyFor(board.id, item.id), () => key);
     if (!options.active()) return;
     return {key, job};
 }
-function newJob(board: KanbanBoard, item: KanbanItem, target: TargetRef, signature: string): Job {
-    const id = randomUUID(), context = board.items.map(({id, title, responsibility, acceptance, planning, status}) => ({id, title, responsibility, acceptance, planning, status}));
+function newJob(board: KanbanBoard, item: KanbanItem, target: TargetRef, signature: string, id = randomUUID(), instruction = preset.instruction): Job {
+    const context = board.items.map(({id, title, responsibility, acceptance, planning, status}) => ({id, title, responsibility, acceptance, planning, status}));
     return {id, signature, itemRevision: item.revision, phase: 'prepared', status: {itemId: item.id, state: 'analyzing'},
         input: {title: t('kanban.automationAnalysis'), request: {expectedSessionId: id, expectedBranch: 'main', expectedTarget: target,
             target: {kind: target.kind, id: target.id, version: target.version},
-            source: {kind: 'composer', text: JSON.stringify({instruction: preset.instruction, snapshot: {item, items: context}}), attachments: [], values: {}},
+            source: {kind: 'composer', text: JSON.stringify({instruction, snapshot: {item, items: context}}), attachments: [], values: {}},
             submission: {id, source: {kind: 'conversation', ownerId: id, id}}}}};
 }
 async function submitAnalysis(options: AnalysisOptions, key: string, job: Job): Promise<Job> {
@@ -89,7 +105,7 @@ async function observeAnalysis(options: AnalysisOptions, key: string, job: Job):
     if (!options.active()) return job;
     if (!taskStat(record).settled) return job;
     const result = record.exit?.output as TaskCallResult | undefined;
-    if (record.exit?.status !== 'succeeded' || result?.exit.status !== 'succeeded') return saveFailure(options, key, job, 'AUTOMATION_ANALYSIS_FAILED');
+    if (record.exit?.status !== 'succeeded' || result?.exit.status !== 'succeeded') return saveFailure(options, key, job, 'AUTOMATION_ANALYSIS_FAILED', record.exit?.status === 'cancelled' || result?.exit.status === 'cancelled' ? 'cancelled' : 'failed');
     try {
         const analysis = parseAnalysis(result.exit.output);
         return options.journal.update<Job>(key, current => ({...current!, phase: 'settled', result: analysis,
@@ -119,8 +135,8 @@ async function adoptAnalysis(snapshot: KanbanBoard, item: KanbanItem, job: Job, 
             expectedRevision: job.itemRevision, assignee: board.automation.worker, dependsOn: dependencies, outputs: ['result']}],
     }}});
 }
-function saveFailure(options: AnalysisOptions, key: string, job: Job, code: string): Promise<Job> {
-    return options.journal.update<Job>(key, current => ({...current!, phase: 'settled', status: {itemId: job.status.itemId, state: 'failed', code}}));
+function saveFailure(options: AnalysisOptions, key: string, job: Job, code: string, terminalOutcome: 'failed' | 'cancelled' = 'failed'): Promise<Job> {
+    return options.journal.update<Job>(key, current => ({...current!, phase: 'settled', terminalOutcome, status: {itemId: job.status.itemId, state: 'failed', code}}));
 }
 export function safeCode(error: unknown, fallback: string): string {
     const code = (error as {code?: unknown})?.code; return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : fallback;

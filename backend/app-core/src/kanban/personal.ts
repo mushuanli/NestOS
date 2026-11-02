@@ -57,11 +57,15 @@ function personalOptions({store, journal, events, diagnostics, sessions, kernel,
         store, verifyOutputs: async ({board, itemId, dispatchId, outputs}: Parameters<NonNullable<import('./module').NestOSKanbanOptions['verifyOutputs']>>[0]) => {
             const state = await store.read(board.id);
             const dispatch = dispatchId ? state?.workflow?.dispatches[dispatchId] : undefined;
-            return dispatch?.itemId === itemId && journal.verify(outputs, dispatch.id);
+            if (dispatch?.itemId !== itemId || !await journal.verify(outputs, dispatch.id)) return false;
+            await automationOptions?.verifyWork?.(dispatch.id);
+            return true;
         },
         authorize: async (input: Parameters<import('./module').NestOSKanbanOptions['authorize']>[0]) => {
             const {board, command} = input;
             await authorizeAutomation(input, automationOptions?.catalog);
+            if (command?.type === 'configure-automation' && command.settings.preparation)
+                automationOptions?.validatePreparation?.(command.settings.preparation, command.settings.preparationOptions);
             if (command?.type === 'append-record' && command.record.externalRefs?.length) {
                 if (!automationOptions?.projects) throw new KanbanError('PROJECT_SELECTION_UNAVAILABLE');
                 await validateRemoteReferences(automationOptions.projects, command.record);

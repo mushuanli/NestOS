@@ -1,4 +1,4 @@
-import {DEFAULT_KANBAN_WORK_TYPES} from './contracts';
+import {DEFAULT_KANBAN_WORK_TYPES, executableWorkItem} from './contracts';
 import type {KanbanBoard, KanbanPolicy, KanbanWorkType} from './contracts';
 import {identity, requireValue, text} from './rules';
 import {principalKey, roster} from './identity';
@@ -11,8 +11,9 @@ export function workTypes(board: KanbanBoard): readonly KanbanWorkType[] {return
 export function workType(board: KanbanBoard, id: string): KanbanWorkType {
     const found = workTypes(board).find(type => type.id === id); requireValue(found, 'UNKNOWN_WORK_TYPE'); return found;
 }
-export function executable(board: KanbanBoard, item: {planning?: {kind: string}}): boolean {
-    return workType(board, item.planning?.kind ?? board.defaultWorkType ?? 'task').executable;
+export function executable(board: KanbanBoard, item: {planning?: {kind: string; execution?: 'direct'|'children'}}): boolean {
+    workType(board, item.planning?.kind ?? board.defaultWorkType ?? 'task');
+    return executableWorkItem(board,item);
 }
 export function validateConfiguration(board: KanbanBoard): void {
     const types = workTypes(board); requireValue(types.length > 0 && types.length <= 20, 'WORK_TYPE_LIMIT');

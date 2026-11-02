@@ -55,6 +55,11 @@ export class KanbanWorkbench {
             if (!(opened instanceof HTMLDetailsElement) || !opened.open || !opened.hasAttribute('data-popover')) return;
             for (const menu of editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (menu !== opened) menu.open = false;
         }, {capture: true, signal});
+        editor.addEventListener('change',event=>{
+            const target=event.target;if(!(target instanceof HTMLSelectElement)||target.name!=='kind')return;
+            const resource=target.closest('form')?.querySelector<HTMLSelectElement>('select[name="itemResource"]');
+            if(resource)resource.required=resource.dataset.resourceRequired==='true'&&target.selectedOptions[0]?.dataset.executable==='true';
+        },{signal});
         editor.addEventListener('keydown', event => {
             const menu = editor.querySelector<HTMLDetailsElement>('[data-popover][open]');
             if (event.key === 'Escape' && menu) {event.preventDefault(); event.stopPropagation(); menu.open = false; menu.querySelector<HTMLElement>('summary')?.focus(); return;}
@@ -229,9 +234,9 @@ export class KanbanWorkbench {
         if (action === 'new-board') {this.showBoardForm(); return;}
         if (action === 'children-next' || action === 'children-first') {await this.showChildren(this.generation, action === 'children-next' ? target.dataset.cursor : undefined); return;}
         if (action === 'new-child' && this.board && this.item && childType(this.board, this.item)) {
-            const parent = this.item; this.itemId = ''; this.drawer.show(this.ui.newItemForm(this.board, parent), 'new-child'); this.dirty = true; return;
+            await this.showItemForm(this.item);return;
         }
-        if (action === 'new-item' && this.board) {this.itemId = ''; this.drawer.show(this.ui.newItemForm(this.board), 'new-item'); this.dirty = true; return;}
+        if (action === 'new-item' && this.board) {await this.showItemForm();return;}
         if (action === 'new-log' || action === 'new-decision') {
             const resources = action === 'new-decision' ? await this.options.service?.recordResources?.() : [];
             this.recordId = ''; this.drawer.show(this.ui.recordForm(action === 'new-log' ? 'log' : 'decision', this.board!, this.itemId, resources), action); this.dirty = true; return;
@@ -294,6 +299,12 @@ export class KanbanWorkbench {
             }
             await this.execute(formCommand(kind, data, this.board, this.item, form.dataset.resourceId));
         }
+    }
+    private async showItemForm(parent?:KanbanItem):Promise<void> {
+        const board=this.board,generation=this.generation;if(!board)return;
+        const resources=await this.options.service?.itemResources?.(board.id,parent?.id);
+        if(this.abort.signal.aborted||generation!==this.generation)return;
+        this.itemId='';this.drawer.show(this.ui.newItemForm(board,parent,resources),parent?'new-child':'new-item');this.dirty=true;
     }
     private async execute(command: KanbanCommand): Promise<void> {
         if (!this.board || !this.options.service) return;

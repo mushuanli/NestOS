@@ -1,9 +1,11 @@
+import {completeCompositePlans} from './analysis-aggregation';
 import type {KanbanWorkLog, WorkLogFact} from './work-log';
 import {t} from '@itookit/common';
 import type {IFileSystem} from '@itookit/vfs-core';
 import type {IndependentCallService, SessionRepository} from '@itookit/llm-session';
 import type {Kernel} from '@itookit/durable-kernel';
 import type {RootTargetCatalog} from '@itookit/llm-session/contracts';
+import {executableWorkItem} from '@itookit/kanban/contracts';
 import type {KanbanActor, KanbanBoard, KanbanItem, KanbanService, KanbanArtifactRef} from '@itookit/kanban/contracts';
 import {createNestOSKanbanExecutionBridge} from './module';
 import {createPublishedKanbanWorkExecutor} from './published-work';
@@ -13,6 +15,7 @@ import {automationCatalog, automationTarget, assertAutomationPrincipals} from '.
 import {requireValue} from './validation';
 
 export interface PersonalKanbanAutomationOptions {
+    requiresItemResource?(board:KanbanBoard):boolean;
     onAnalysis?(input: {boardId: string; id: string; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef; outcome: 'succeeded' | 'failed' | 'cancelled'; code?: string}): Promise<void>;
     prepareAnalysis?(input: {reportActivity?(fact: WorkLogFact): Promise<void>; id: string; board: KanbanBoard; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<{target: import('@itookit/llm-flow/contracts').TargetRef; instruction: string}>;
     validatePreparation?(reference: import('@itookit/kanban/contracts').KanbanExternalReference, options?: Record<string, string>): void;
@@ -69,6 +72,7 @@ async function scanBoards(options: Options, bridges: Map<string, Awaited<ReturnT
             if (!active()) return;
             await planNext(options, await options.service.read(board.id), prepareSession, active);
             if (active()) await bridge.scan();
+            if(active())await completeCompositePlans(options.service,options.journal,board.id,options.serviceFor);
             options.log({operationId: board.id, boardId: board.id, stage: 'automation.scan', result: 'success', durationMs: Date.now() - started});
         } catch (error) {
             options.log({operationId: entry.id, boardId: entry.id, stage: 'automation.scan', result: 'failure', code: safeCode(error, 'AUTOMATION_SCAN_FAILED'), durationMs: Date.now() - started});
@@ -80,7 +84,7 @@ async function scanBoards(options: Options, bridges: Map<string, Awaited<ReturnT
 async function planNext(options: Options, board: KanbanBoard, prepareSession: (id: string) => Promise<string>, active: () => boolean): Promise<void> {
     const workflow = await options.service.workflow(board.id), planned = new Set(Object.values(workflow.plans).flatMap(plan => plan.itemIds));
     const candidates = board.items.filter(item => !planned.has(item.id) && ['backlog', 'open'].includes(item.status) && !item.owner && !item.blocked
-        && (board.workTypes?.find(type => type.id === item.planning?.kind)?.executable ?? (item.planning?.kind ?? 'task') === 'task'));
+        && executableWorkItem(board,item));
     const target = board.automation!.enabled ? automationTarget(board.automation!.planner, await options.catalog()) : undefined;
     for (const item of candidates) {
         if (!active()) return;
@@ -118,6 +122,8 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
         log: event => options.log({...event, boardId})});
 }
 async function estimateFor(journal: KanbanAutomationJournal, boardId: string, item: KanbanItem) {
+    const decomposed=await journal.get<import('@itookit/kanban/contracts').KanbanEstimate>('decomposition-estimate:'+JSON.stringify([boardId,item.id]));
+    if(decomposed)return decomposed;
     const key = await journal.get<string>('analysis-current:' + JSON.stringify([boardId, item.id]));
     return key ? (await journal.get<{result?: {estimate?: import('@itookit/kanban/contracts').KanbanEstimate}}>(key))?.result?.estimate : undefined;
 }

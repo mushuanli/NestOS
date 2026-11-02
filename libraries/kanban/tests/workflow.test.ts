@@ -147,3 +147,30 @@ it('revalidates delivery at independent acceptance and leaves review pending if 
     expect((await f.managerApi.item('b', 'schema')).item.status).toBe('review');
     expect(f.verifyOutputs.mock.calls.at(-1)?.[0]).toMatchObject({stage: 'accept', dispatchId: dispatch.id});
 });
+
+it('publishes typed subtasks atomically while keeping their parent non-executable until all children are accepted',async()=>{
+    const f=await fixture(),reference={system:'remote-project',id:'project-one'};
+    await f.run(f.managerApi,{type:'create-item',item:{id:'parent',title:'Parent',responsibility:'Deliver',acceptance:'All children accepted',externalRefs:[reference]}});
+    const plan:KanbanWorkPlan={...f.plan,id:'children',rootItemId:'parent',items:[
+        {id:'child-a',workType:'subtask',title:'A',responsibility:'First',acceptance:'Verified',externalRefs:[reference],assignee:{kind:'service',id:'worker'},dependsOn:[]},
+        {id:'child-b',workType:'subtask',title:'B',responsibility:'Second',acceptance:'Verified',externalRefs:[reference],assignee:{kind:'service',id:'worker'},dependsOn:['child-a']}]};
+    await f.run(f.managerApi,{type:'publish-plan',plan});
+    expect((await f.managerApi.item('b','parent')).item.planning?.execution).toBe('children');
+    expect((await f.managerApi.item('b','child-a')).item).toMatchObject({planning:{kind:'subtask',parentId:'parent'},externalRefs:[reference]});
+    await expect(f.run(f.worker,{type:'claim',itemId:'parent'})).rejects.toMatchObject({code:'PLAN_NOT_EXECUTABLE'});
+    await expect(f.run(f.managerApi,{type:'close-plan',itemId:'parent',resultRef:'premature'})).rejects.toMatchObject({code:'CHILDREN_UNFINISHED'});
+    for(const id of ['child-a','child-b']) {
+        await f.run(f.worker,{type:'prepare-dispatch',itemId:id,dispatchId:id});const dispatch=(await f.managerApi.workflow('b')).dispatches[id];
+        await f.run(f.managerApi,{type:'observe-execution',dispatchId:id,fence:dispatch.fence,outcome:'succeeded'});
+        await expect(f.run(f.managerApi,{type:'close-plan',itemId:'parent',resultRef:'premature'})).rejects.toMatchObject({code:'CHILDREN_UNFINISHED'});
+        await f.run(f.managerApi,{type:'accept-execution',dispatchId:id,accept:true});
+    }
+    await f.run(f.managerApi,{type:'close-plan',itemId:'parent',resultRef:'children-reviewed'});
+    expect((await f.managerApi.item('b','parent')).item.status).toBe('completed');expect((await f.managerApi.workflow('b')).ready).toEqual([]);
+});
+it('rolls back invalid subtask plans without converting the parent or creating partial children',async()=>{
+    const f=await fixture();await f.run(f.managerApi,{type:'create-item',item:{id:'parent',title:'Parent',responsibility:'Deliver',acceptance:'Verified'}});
+    const before=await f.store.read('b');
+    await expect(f.run(f.managerApi,{type:'publish-plan',plan:{...f.plan,rootItemId:'parent'}})).rejects.toMatchObject({code:'INVALID_PARENT_KIND'});
+    expect(await f.store.read('b')).toEqual(before);
+});

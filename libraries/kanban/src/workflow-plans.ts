@@ -20,6 +20,11 @@ export function publishPlan(state: KanbanState, plan: KanbanWorkPlan, actor: Kan
         requireValue(decision, 'DECISION_NOT_CONFIRMED');
         if(decision.coordination) requireValue(principalKey(decision.coordination.manager)===principalKey(principal(actor)), 'DECISION_MANAGER_REQUIRED');
     }
+    if(plan.rootItemId) {
+        const root=state.board.items.find(item=>item.id===plan.rootItemId);
+        requireValue(root&&!root.owner&&['backlog','open'].includes(root.status),'PLAN_ROOT_UNAVAILABLE');
+        if(root.planning?.execution!=='children')apply({type:'plan-item',itemId:root.id,planning:{...planning(root),execution:'children'}});
+    }
     const ordered = orderWork(plan.items, state), definitions: KanbanPublishedPlan['definitions'] = {};
     for (const item of ordered) {
         const digest = sha256HexSync(JSON.stringify(item));
@@ -29,8 +34,8 @@ export function publishPlan(state: KanbanState, plan: KanbanWorkPlan, actor: Kan
             requireValue(!previous?.definitions[item.id], 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
             adoptItem(state, item, apply);
         }
-        if (!exists) apply({type:'create-item', item:{id:item.id,title:item.title,responsibility:item.responsibility,acceptance:item.acceptance,eligiblePrincipals:[item.assignee]},
-            planning:{kind:state.board.defaultWorkType ?? 'task',priority:2,dependencies:item.dependsOn,references:[],...(plan.rootItemId ? {parentId:plan.rootItemId}: {})}});
+        if (!exists) apply({type:'create-item', item:{id:item.id,title:item.title,responsibility:item.responsibility,acceptance:item.acceptance,eligiblePrincipals:[item.assignee],externalRefs:item.externalRefs},
+            planning:{kind:item.workType??state.board.defaultWorkType ?? 'task',priority:2,dependencies:item.dependsOn,references:[],...(plan.rootItemId ? {parentId:plan.rootItemId}: {})}});
         definitions[item.id] = {digest, inputs:item.inputs, outputs:item.outputs ?? []};
     }
     workflow.plans[plan.id] = {schema:plan.schema,id:plan.id,revision:plan.revision,decisionId:plan.decisionId,rootItemId:plan.rootItemId,sealed:plan.sealed,itemIds:ordered.map(item=>item.id),definitions};
@@ -39,6 +44,8 @@ function adoptItem(state: KanbanState, definition: KanbanWorkDefinition, apply: 
     const item = state.board.items.find(item => item.id === definition.id);
     requireValue(item && definition.expectedRevision === item.revision && ['backlog', 'open'].includes(item.status)
         && !item.owner && !item.blocked, 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
+    requireValue(!definition.workType||definition.workType===item.planning?.kind,'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
+    requireValue(!definition.externalRefs||definition.externalRefs.every(ref=>item.externalRefs?.some(existing=>JSON.stringify(existing)===JSON.stringify(ref))),'PLAN_RESOURCE_MISMATCH');
     requireValue(item.title === definition.title && item.responsibility === definition.responsibility
         && item.acceptance === definition.acceptance, 'PLAN_ITEM_CHANGED_REQUIRES_NEW_ID');
     requireValue(planning(item).dependencies.every(id => definition.dependsOn.includes(id)), 'EXISTING_DEPENDENCY_REQUIRED');

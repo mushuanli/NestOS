@@ -12,6 +12,7 @@ interface SavedRun extends KanbanRecordExecution {
     placement?: KanbanRecordRunRequest['placement']; requestRevision?: number; taskKind?: string; parentKind?: string;
     sourceBoardId: string; record: KanbanProjectRecord; automation: NonNullable<KanbanBoard['automation']>}
 interface Options {
+    requiresItemResource?(board:KanbanBoard):boolean;
     service: KanbanClient; journal: KanbanAutomationJournal; projects: Pick<ProjectService, 'list' | 'get'>;
     log(input: {operationId: string; boardId: string; stage: string; result: 'success' | 'failure'; code?: string; durationMs: number}): void;
 }
@@ -25,6 +26,13 @@ export function createRecordExecution(options: Options) {
         return job;
     };
     return {
+        itemResources:async(boardId:string,parentId?:string)=>{
+            const board=await options.service.read(boardId),parent=parentId?(await options.service.item(boardId,parentId)).item:undefined;
+            const refs=parent?.externalRefs?.filter(ref=>ref.system===REMOTE_PROJECT_REFERENCE)??[];
+            const resources=(await options.projects.list()).filter(row=>row.project?.source?.kind==='remote')
+                .map(row=>({reference:{system:REMOTE_PROJECT_REFERENCE,id:row.project!.id},label:row.displayName??row.name}));
+            return {resources,selected:refs.length===1?refs[0]:undefined,readonly:refs.length===1,required:refs.length===1||options.requiresItemResource?.(board)===true};
+        },
         recordResources: async () => (await options.projects.list()).filter(row => row.project?.source?.kind === 'remote')
             .map(row => ({reference: {system: REMOTE_PROJECT_REFERENCE, id: row.project!.id}, label: row.displayName ?? row.name})),
         runRecord: async (boardId: string, request: KanbanRecordRunRequest) => {

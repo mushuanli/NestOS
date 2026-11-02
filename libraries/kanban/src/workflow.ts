@@ -1,5 +1,5 @@
 import type {KanbanActor, KanbanCommand, KanbanWorkflowCommand, KanbanDispatch, KanbanArtifactRef} from './contracts';
-import {sameAutomationBinding} from './contracts';
+import {sameAutomationBinding, executableWorkItem} from './contracts';
 import type {KanbanState} from './ports';
 import {identity, requireValue} from './rules';
 import {principal} from './identity';
@@ -84,6 +84,6 @@ export function validateOutputs(outputs: KanbanArtifactRef[]): void {
 export function refreshReady(state: KanbanState): void {
     if(!state.workflow) return; const all=catalog(state), included=new Set(Object.values(state.workflow.plans).filter(plan=>plan.sealed).flatMap(plan=>plan.itemIds));
     state.workflow.completedPlans=Object.values(state.workflow.plans).filter(plan=>plan.sealed&&plan.itemIds.every(id=>all.find(item=>item.id===id)?.status==='completed')).map(plan=>plan.id);
-    state.workflow.ready=state.board.items.filter(item=>included.has(item.id)&&['backlog','open'].includes(item.status)&&!item.owner&&!item.blocked
+    state.workflow.ready=state.board.items.filter(item=>included.has(item.id)&&executableWorkItem(state.board,item)&&['backlog','open'].includes(item.status)&&!item.owner&&!item.blocked
         &&(item.planning?.dependencies ?? []).every(id=>all.find(other=>other.id===id)?.status==='completed')).map(item=>item.id);
 }

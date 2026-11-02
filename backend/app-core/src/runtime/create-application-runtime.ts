@@ -3,7 +3,7 @@ import {developmentAnalysis} from '../presets/kanban-development-analysis';
 import {developmentDelivery} from '../presets/kanban-development-delivery';
 import {developmentLifecycle} from '../presets/kanban-development-lifecycle';
 import {KanbanAutomationJournal} from '../kanban/automation-journal';
-import {developmentCatalog, validateDevelopmentOptions} from '../presets/kanban-development-policy';
+import {developmentCatalog, validateDevelopmentOptions, requiresDevelopmentProject} from '../presets/kanban-development-policy';
 import {prepareHarnessDraftConnection} from '../projects/harness-draft-connection';
 import {reportKanbanHealth, kanbanFailureCode} from '../kanban/health-events';
 import {withProjectEnvironment} from '../projects/project-environment';
@@ -587,7 +587,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
-            projects,
+            projects, requiresItemResource:requiresDevelopmentProject,
             validatePreparation: (reference, settings) => {
                 if (reference.system !== 'nestos-work-preparation' || reference.id !== 'git-worktree' || reference.revision !== '1')
                     throw Object.assign(new Error('Unsupported preparation'), {code: 'WORK_PREPARATION_UNSUPPORTED'});

@@ -44,10 +44,11 @@ it('exposes user-bound Kanban commands, queries and system notifications through
         expect(JSON.stringify(execution)).not.toContain('taskId');
         const current = await kanban.read(board.id);
         await kanban.execute(board.id, {operationId: 'record-log', expectedRevision: current.revision, command: {type: 'append-record', record: {id: 'log', kind: 'log', title: 'Work evidence', content: 'PRIVATE_LOG_BODY', itemIds: ['card'], sources: []}}});
-        expect((await kanban.records(board.id, {itemId: 'card'})).items).toHaveLength(1);
+        expect((await kanban.records(board.id, {itemId: 'card'})).items).toEqual(expect.arrayContaining([expect.objectContaining({id: 'log', kind: 'log'})]));
         expect((await kanban.record(board.id, 'log')).content).toBe('PRIVATE_LOG_BODY');
         expect(JSON.stringify(await remote.backend.events.listNotifications())).not.toContain('PRIVATE_LOG_BODY');
         expect((await kanban.workflow(board.id)).ready).toEqual([]);
+        const resources=await kanban.itemResources(board.id);expect(Array.isArray(resources.resources)).toBe(true);
         await kanban.execute(board.id,{operationId:'publish-work',expectedRevision:(await kanban.read(board.id)).revision,command:{type:'publish-plan',plan:{schema:'kanban.plan/1',id:'work',revision:1,sealed:true,items:[{id:'action',title:'Action',responsibility:'Build',acceptance:'Verified',assignee:actor,dependsOn:[]}]}}});
         expect((await kanban.workflow(board.id)).ready).toEqual(['action']);
         await kanban.execute(board.id,{operationId:'dispatch-work',expectedRevision:(await kanban.read(board.id)).revision,command:{type:'prepare-dispatch',itemId:'action',dispatchId:'dispatch'}});

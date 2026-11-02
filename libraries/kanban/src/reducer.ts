@@ -56,6 +56,10 @@ function createItem(state: KanbanState, command: Extract<KanbanCommand, { type: 
     const references = item.externalRefs ?? []; item.externalRefs = [];
     for (const reference of references) attachReference(item, reference);
     validateCandidates(board, item, executable(board, item)); validatePlan(state, item, item.planning);
+    if(item.planning.parentId) {
+        const parent=board.items.find(parent=>parent.id===item.planning!.parentId)!;
+        if(parent.planning?.execution!=='children') {parent.planning={...plan(parent),execution:'children'};parent.updatedAt=now;parent.revision++;}
+    }
     if (actor.sessionId) participant(item.participants, actor.sessionId, actor.agentId, 'creator', true, now); board.items.push(item);
     if (command.stage === 'open') setStage(state, item, 'open', now);
 }

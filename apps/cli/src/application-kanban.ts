@@ -18,6 +18,7 @@ export async function kanbanCommand(client: ApplicationClient, args: string[], o
         return service.automationCatalog();
     }
     if (!boardId) throw new Error('Missing board id');
+    if (action === 'item-resources' && service.itemResources) return service.itemResources(boardId, itemId);
     if (action === 'show') return service.read(boardId);
     if (action === 'workflow') return service.workflow(boardId);
     if (action === 'records') return service.records(boardId);

@@ -21,13 +21,15 @@ export function validatePlan(state: KanbanState, item: KanbanItem, value: Kanban
     requireValue(Array.isArray(value.dependencies) && value.dependencies.length <= 100 && Array.isArray(value.references) && value.references.length <= 100, 'PLANNING_LIMIT');
     value.dependencies.forEach(identity); value.references.forEach(text);
     if (value.area !== undefined) identity(value.area); if (value.milestone !== undefined) identity(value.milestone);
+    requireValue(value.execution===undefined||['direct','children'].includes(value.execution),'INVALID_EXECUTION_MODE');
     const type = workType(state.board, value.kind);
     if (value.dueAt !== undefined) requireValue(Number.isFinite(value.dueAt) && value.dueAt >= 0, 'INVALID_DUE_DATE');
     const all = catalog(state), parent = all.find(i => i.id === value.parentId);
     if (value.parentId) {
-        identity(value.parentId); requireValue(parent && !parent.archivedAt && !terminal(parent), 'PARENT_UNAVAILABLE');
+        identity(value.parentId); requireValue(parent && !parent.archivedAt && !terminal(parent) && !['claimed','review'].includes(parent.status), 'PARENT_UNAVAILABLE');
         requireValue(parent.id !== item.id && workType(state.board, parent.planning.kind).rank < type.rank, 'INVALID_PARENT_KIND');
     }
+    requireValue(value.execution==='children'||!all.some(child=>child.planning.parentId===item.id),'CHILDREN_REQUIRE_AGGREGATION');
     requireValue(!all.some(child => child.planning.parentId === item.id && workType(state.board, child.planning.kind).rank <= type.rank), 'INVALID_CHILD_KIND');
     for (const id of value.dependencies) requireValue(id !== item.id && all.some(i => i.id === id), 'INVALID_DEPENDENCY');
     const visited = new Set<string>(), pending = [...value.dependencies];

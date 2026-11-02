@@ -1,3 +1,5 @@
+import {DEFAULT_KANBAN_WORK_TYPES} from '@itookit/kanban/contracts';
+import {adoptDecomposition, validateSubtasks, type AnalysisSubtask} from './analysis-decomposition';
 import {randomUUID, sha256HexSync, t} from '@itookit/common';
 import {taskStat, type Kernel, type TaskCallResult} from '@itookit/durable-kernel';
 import type {IndependentCallService} from '@itookit/llm-session';
@@ -8,7 +10,7 @@ import type {KanbanAutomationJournal} from './automation-journal';
 import {requireValue} from './validation';
 import preset from '../presets/kanban-planning.json';
 
-export interface AnalysisResult {ready: boolean; dependencies: string[]; reason: string; estimate?: KanbanEstimate}
+export interface AnalysisResult {ready: boolean; dependencies: string[]; reason: string; estimate?: KanbanEstimate; subtasks?:AnalysisSubtask[]}
 interface Job {
     terminalOutcome?: 'succeeded' | 'failed' | 'cancelled';
     id: string; itemRevision: number; signature: string; input: IndependentCallInput;
@@ -24,7 +26,7 @@ export interface AnalysisOptions {
 const keyFor = (board: string, item: string) => 'analysis-current:' + JSON.stringify([board, item]);
 export async function analysisStatus(journal: KanbanAutomationJournal, board: string, item: string): Promise<KanbanAnalysisStatus | null> {
     const key = await journal.get<string>(keyFor(board, item));
-    return key ? (await journal.get<Job>(key))?.status ?? null : null;
+    return key ? (await journal.get<Job>(key))?.status ?? null : await journal.get<KanbanAnalysisStatus>('decomposition-status:'+JSON.stringify([board,item]))??null;
 }
 export function analysisSignature(board: KanbanBoard): string {
     return sha256HexSync(JSON.stringify([board.automation, board.items.map(item => [item.id, item.title, item.responsibility, item.acceptance, item.planning])]));
@@ -40,7 +42,7 @@ export async function analyzeItem(options: AnalysisOptions, board: KanbanBoard, 
     if (job.phase === 'submitting') job = await observeAnalysis(options, key, job);
     job = await finalizeAnalysis(options, board.id, item, key, job);
     if (job.result?.ready && job.status.state === 'ready' && board.automation?.enabled && options.active()) {
-        try {await adoptAnalysis(board, item, job, service);}
+        try {await adoptAnalysis(options.journal, board, item, job, service);}
         catch (error) {await saveFailure(options, key, job, safeCode(error, 'AUTOMATION_PLAN_REJECTED'));}
     }
     if (!options.active()) return;
@@ -79,7 +81,7 @@ function newJob(board: KanbanBoard, item: KanbanItem, target: TargetRef, signatu
     return {id, signature, itemRevision: item.revision, phase: 'prepared', status: {itemId: item.id, state: 'analyzing'},
         input: {title: t('kanban.automationAnalysis'), request: {expectedSessionId: id, expectedBranch: 'main', expectedTarget: target,
             target: {kind: target.kind, id: target.id, version: target.version},
-            source: {kind: 'composer', text: JSON.stringify({instruction, snapshot: {item, items: context}}), attachments: [], values: {}},
+            source: {kind: 'composer', text: JSON.stringify({instruction, snapshot: {item, items: context, workTypes:board.workTypes??DEFAULT_KANBAN_WORK_TYPES, defaultWorkType:board.defaultWorkType??'task'}}), attachments: [], values: {}},
             submission: {id, source: {kind: 'conversation', ownerId: id, id}}}}};
 }
 async function submitAnalysis(options: AnalysisOptions, key: string, job: Job): Promise<Job> {
@@ -121,14 +123,16 @@ export function parseAnalysis(output: unknown): AnalysisResult {
     requireValue(Array.isArray(result.dependencies) && result.dependencies.length <= 100 && result.dependencies.every(id => typeof id === 'string' && id.length > 0 && id.length <= 256), 'AUTOMATION_DEPENDENCIES_INVALID');
     if (result.estimate) requireValue(['low', 'medium', 'high'].includes(result.estimate.confidence)
         && [result.estimate.complexity, result.estimate.workUnits, result.estimate.durationMs].every(value => Number.isFinite(value) && value > 0), 'AUTOMATION_ESTIMATE_INVALID');
-    return {ready: result.ready, reason: result.reason, dependencies: [...new Set(result.dependencies)], ...(result.estimate ? {estimate: result.estimate} : {})};
+    const subtasks=validateSubtasks(result.subtasks);
+    return {ready: result.ready, reason: result.reason, dependencies: [...new Set(result.dependencies)], ...(subtasks?{subtasks}:{}), ...(result.estimate ? {estimate: result.estimate} : {})};
 }
-async function adoptAnalysis(snapshot: KanbanBoard, item: KanbanItem, job: Job, service: KanbanService): Promise<void> {
-    if ((await service.workflow(snapshot.id)).plans[job.id]?.itemIds.includes(item.id)) return;
+async function adoptAnalysis(journal:KanbanAutomationJournal, snapshot: KanbanBoard, item: KanbanItem, job: Job, service: KanbanService): Promise<void> {
+    if ((await service.workflow(snapshot.id)).plans[job.id]) return;
     const board = await service.read(snapshot.id), current = board.items.find(candidate => candidate.id === item.id);
     requireValue(board.automation?.enabled && current?.revision === job.itemRevision && analysisSignature(board) === job.signature, 'AUTOMATION_ANALYSIS_STALE');
     requireValue(board.policy.requireEstimate === false || job.result?.estimate, 'ESTIMATE_REQUIRED');
     const dependencies = [...new Set([...(item.planning?.dependencies ?? []), ...job.result!.dependencies])];
+    if(job.result?.subtasks?.length) return adoptDecomposition(journal,board,item,{id:job.id,reason:job.result.reason,dependencies,subtasks:job.result.subtasks},service);
     await service.execute(board.id, {operationId: 'analysis-plan:' + job.id, expectedRevision: board.revision, command: {type: 'publish-plan', plan: {
         schema: 'kanban.plan/1', id: job.id, revision: 1, sealed: true,
         items: [{id: item.id, title: item.title, responsibility: item.responsibility, acceptance: item.acceptance,

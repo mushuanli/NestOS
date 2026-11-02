@@ -154,3 +154,10 @@ it('uses configured work type ranks instead of requiring feature/task identifier
     expect(board.items.filter(item => run.itemIds!.includes(item.id)).every(item => item.planning?.kind === 'action' && item.planning.parentId === run.rootItemId)).toBe(true);
     await f.open().scan(); expect((await f.service.read(run.boardId)).items).toHaveLength(3);
 });
+
+it('provides a single resource selector that inherits and locks the parent project',async()=>{
+    const f=await fixture(),reference={system:'nestos-remote-project',id:'one'};
+    await f.command({type:'create-item',item:{id:'parent',title:'Parent',responsibility:'Work',acceptance:'Verified',externalRefs:[reference]}});
+    expect(await f.open().itemResources('source','parent')).toMatchObject({selected:reference,required:true,readonly:true,resources:[
+        {reference:{system:'nestos-remote-project',id:'one'}},{reference:{system:'nestos-remote-project',id:'two'}}]});
+});

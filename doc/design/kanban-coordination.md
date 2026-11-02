@@ -113,7 +113,7 @@ workflow(boardId) 读取计划、派发、ready 和 completedPlans。核心只�
 
 个人看板的更多菜单提供「AI 协作」：选择已发布的规划与执行 Agent/Flow 后启用。默认关闭，不因绑定执行 Session 或打开页面启动模型；启用会处理该看板已有及新增的可执行待办。看板配置保存冻结的发布版本与摘要、协调/执行主体及验收模式，RPC 公开 automationCatalog 和 analysisStatus；核心只保存通用外部引用，不导入模型或 Session。
 
-规划调用通过现有 IndependentCallService 执行，产品分析指令位于 `backend/app-core/src/presets/kanban-planning.json`。输入包含当前事项及最多 200 项的活动看板快照；超过上限明确报告 AUTOMATION_CONTEXT_LIMIT，不静默截断后声称已分析全部依赖。规划者应返回 JSON `{ready, dependencies, reason, estimate?}`；Flow 可从返回节点的 analysis/result 输出此对象，Agent 使用消息正文。ready=false 保留待澄清原因，不派发；格式、引用、自依赖、环路和估算失败保留具体错误。规划结果只能增加前置依赖，不能移除人工依赖。角色提示要求只分析，所选发布目标仍使用其正式授权与工具配置，宿主不把提示词当作权限隔离。
+规划调用通过现有 IndependentCallService 执行，产品分析指令位于 `backend/app-core/src/presets/kanban-planning.json`。输入包含当前事项及最多 200 项的活动看板快照；超过上限明确报告 AUTOMATION_CONTEXT_LIMIT，不静默截断后声称已分析全部依赖。规划者应返回 JSON `{ready, dependencies, reason, estimate?, subtasks?}`；Flow 可从返回节点的 analysis/result 输出此对象，Agent 使用消息正文。ready=false 保留待澄清原因，不派发；格式、引用、自依赖、环路和估算失败保留具体错误。规划结果只能增加前置依赖，不能移除人工依赖。角色提示要求只分析，所选发布目标仍使用其正式授权与工具配置，宿主不把提示词当作权限隔离。
 
 分析记录位于用户 `/var/lib/kanban/automation.seq`，冻结调用身份、原输入、事项修订、规划快照签名、阶段与结果。先保存 prepared，再原子取得 submitting，才提交模型调用；响应丢失及重启仅核对同一身份，不重新发送。事项或规划快照变化时拒绝迟到结果，再按新修订分析。已在途的原分析优先观察，不同时为同一事项启动替代分析。分析依据由 analysisStatus 返回，不写入诊断正文。
 
@@ -467,3 +467,11 @@ NestOS 将已提交的看板事件投影到独立的 `/var/lib/kanban/work-log.s
 旧版完成事件缺少结果字段时，工作日志按版本升级已有快照：仅当正式 workflow 的派发已 accepted 且事项已 completed，才以批次与阶段的稳定身份补齐完成记录；优先使用 closedAt，未保存历史时间时只记录当前观测时间。修复不重放执行、不提交协调命令、不更改事项状态，与新事件生成的完成日志共用身份而不重复计数。
 
 排查执行使用 CLI 的 `session calls <caller-session-id> [--branch name]` 查看 caller、执行会话与执行树的正式回执，再用 `task show <session-id> <task-id>` 查看具体退出错误。阶段操作成功、执行成功待验收与事项验收完成分别展示，不能从准备成功或历史 unknown 记录判断当前任务需重派。
+
+### 决策、项目与自动拆分
+
+决策表单通过 `recordResources()` 提供远程项目多选；NestOS 校验所选项目真实存在且来源为 remote。决策运行可明确选择新看板；多项目生成汇总目标与每项目一个任务。开发任务通过 `itemResources(boardId, parentId?)` 提供单选项目，子任务继承并锁定父任务项目；HTTP 与 CLI 命令同样复验，不能绕过界面限制。资源约束属于 NestOS 应用策略，独立 Kanban 库仅保存不透明引用。
+
+默认层级包含 goal、group、task、subtask。复杂任务的分析结果可返回 2–16 个 subtasks，各项包含局部 key、title、responsibility、acceptance、dependsOn 和可选 estimate；估算策略启用时每项均须估算。宿主校验依赖闭环，生成稳定子任务身份，继承项目并原子发布计划。模型不能为子任务指定其他项目。父任务持久保存 `planning.execution: children`，不再领取或执行；只对依赖满足的叶子任务创建 Agent、worktree 和 Session。所有子任务独立验收完成后自动汇总关闭父任务；失败、取消、待验收均不冒充完成，重启不重新执行父任务。
+
+新的执行尝试使用更新后的内置默认提示词；仅识别原始内置内容摘要，保留用户和项目覆盖及已冻结尝试。支持条件替换的存储通过 revision 安全升级原文件；旧存储只冻结有效的新默认内容，不覆盖原文件。通信继续使用工作树下 `_nestos/kanban`，实际路径写入 protocol 与 manifest。

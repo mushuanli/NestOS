@@ -3,7 +3,7 @@ import {randomUUID} from '../utils';
 export const value = (data: FormData, key: string) => String(data.get(key) ?? '').trim();
 export function readPlan(data: FormData, previous?: KanbanPlanning): KanbanPlanning {
     const area = value(data, 'area'), milestone = value(data, 'milestone'), parentId = value(data, 'parentId'), dueAt = value(data, 'dueAt');
-    return {kind: value(data, 'kind'), priority: Number(value(data, 'priority')), references: previous?.references ?? [],
+    return {kind: value(data, 'kind'), ...(previous?.execution ? {execution:previous.execution} : {}), priority: Number(value(data, 'priority')), references: previous?.references ?? [],
         dependencies: [...new Set(data.getAll('dependencies').flatMap(value => String(value).split(',')).map(id => id.trim()).filter(Boolean))],
         ...(area ? {area} : {}), ...(milestone ? {milestone} : {}), ...(parentId ? {parentId} : {}), ...(dueAt ? {dueAt: new Date(dueAt).getTime()} : {})};
 }
@@ -13,7 +13,7 @@ export function boardInput(data: FormData, actor: KanbanPrincipal, id: string) {
         policy: {requireEstimate: data.has('requireEstimate'), review: 'assignee' as const}};
 }
 export function formCommand(kind: string, data: FormData, board: KanbanBoardSummary, item?: KanbanItem, id = randomUUID()): KanbanCommand {
-    if (kind === 'item') return {type: 'create-item', item: {id, title: value(data, 'title'), responsibility: value(data, 'responsibility'), acceptance: value(data, 'acceptance')}, planning: readPlan(data)};
+    if (kind === 'item') return {type: 'create-item', item: {id, title: value(data, 'title'), responsibility: value(data, 'responsibility'), acceptance: value(data, 'acceptance'),...(value(data,'itemResource')?{externalRefs:[JSON.parse(value(data,'itemResource'))]}:{})}, planning: readPlan(data)};
     if (kind === 'record') {
         const sessionId = value(data, 'sourceSession'), messageId = value(data, 'sourceMessage'), revision = value(data, 'sourceRevision');
         if ([sessionId, messageId, revision].some(Boolean) && ![sessionId, messageId, revision].every(Boolean)) throw Object.assign(new Error('Missing source fields'), {code: 'SOURCE_FIELDS_REQUIRED'});

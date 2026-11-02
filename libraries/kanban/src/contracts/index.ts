@@ -2,7 +2,7 @@ export type {KanbanPlanning, KanbanItemSummary, KanbanArchivedItem, KanbanItemQu
 export type {KanbanReferenceTarget} from './references';
 export {kanbanReference} from './references';
 export type {KanbanPrincipal, KanbanMember, KanbanWorkType, KanbanColumn, KanbanNotificationPolicy, KanbanExternalReference} from './configuration';
-export {DEFAULT_KANBAN_WORK_TYPES} from './configuration';
+export {DEFAULT_KANBAN_WORK_TYPES, executableWorkItem} from './configuration';
 export type {KanbanActor, KanbanEstimate, KanbanPolicy, KanbanParticipant, KanbanAssignment, KanbanItem, KanbanBoard, KanbanEvent, KanbanCommand, KanbanRequest, KanbanBoardSummary, KanbanService, KanbanBoardInput} from './contracts';
 export type {KanbanSuggestionKind, KanbanSuggestionQuery, KanbanSuggestion, KanbanSuggestionPage} from './suggestions';
 export type {KanbanSourceRef, KanbanDiscoveryChange, KanbanDiscoveryBatch} from './source';
@@ -15,4 +15,4 @@ export type {KanbanClient, KanbanSessionPhase, KanbanExecutionSession, KanbanSes
 export type {KanbanContent, KanbanContentItem, KanbanContentRecord, KanbanContentAmendment} from './content';
 export type {KanbanAutomationSettings, KanbanAutomationOption, KanbanAutomationTarget, KanbanAutomationCatalog, KanbanAnalysisStatus} from './automation';
 export {sameAutomationBinding} from './automation';
-export type {KanbanRecordResource, KanbanRecordExecution, KanbanRecordRunRequest} from './record-execution';
+export type {KanbanItemResourceCatalog, KanbanRecordResource, KanbanRecordExecution, KanbanRecordRunRequest} from './record-execution';

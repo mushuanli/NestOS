@@ -1,4 +1,4 @@
-import type {KanbanItem} from './contracts';
+import type {KanbanItem, KanbanBoard} from './contracts';
 
 export interface KanbanPrincipal {kind: 'agent' | 'human' | 'service'; id: string}
 export interface KanbanMember extends KanbanPrincipal {
@@ -11,6 +11,13 @@ export const DEFAULT_KANBAN_WORK_TYPES: readonly KanbanWorkType[] = [
     {id: 'initiative', label: 'Goal', rank: 0, executable: false},
     {id: 'feature', label: 'Group', rank: 1, executable: false},
     {id: 'task', label: 'Action', rank: 2, executable: true},
+    {id: 'subtask', label: 'Subtask', rank: 3, executable: true},
 ];
 
 export interface KanbanExternalReference {system: string; id: string; revision?: string}
+
+/** A composite work item delegates execution to its children. */
+export function executableWorkItem(board:Pick<KanbanBoard,'workTypes'|'defaultWorkType'>, item:{planning?:{kind:string;execution?:'direct'|'children'}}):boolean {
+    return item.planning?.execution!=='children'&&(board.workTypes??DEFAULT_KANBAN_WORK_TYPES)
+        .some(type=>type.id===(item.planning?.kind??board.defaultWorkType??'task')&&type.executable);
+}

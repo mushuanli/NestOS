@@ -1,8 +1,8 @@
-import type {KanbanPrincipal} from './configuration';
+import type {KanbanPrincipal, KanbanExternalReference} from './configuration';
 import type {KanbanEstimate} from './contracts';
 export interface KanbanArtifactRef {name: string; ref: string; sha256: string; bytes: number}
 export interface KanbanWorkDefinition {
-    expectedRevision?: number;
+    expectedRevision?: number; workType?:string; externalRefs?:KanbanExternalReference[];
     id: string; title: string; responsibility: string; acceptance: string; assignee: KanbanPrincipal;
     dependsOn: string[]; inputs?: Record<string, {fromItemId: string; output: string}>; outputs?: string[];
 }

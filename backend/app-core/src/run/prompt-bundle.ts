@@ -5,10 +5,10 @@ export interface PromptFile {name: string; content: string; sha256: string; sour
 export interface PromptBundle {version: 1; files: PromptFile[]}
 export interface PromptJournal {get<T>(key: string): Promise<T | undefined>; update<T>(key: string, change: (old: T | undefined) => T): Promise<T>}
 
-export async function readPrompt(fs: IFileSystem, path: string): Promise<string> {
+export async function readPrompt(fs: IFileSystem, path: string, onRevision?: (revision: string | undefined) => void): Promise<string> {
     const node = await fs.driver.getNode(path);
     if (node?.type !== 'file' || node.size < 1 || node.size > 65536) throw failure('PROMPT_FILE_INVALID');
-    const bytes = await fs.driver.readContent(path, {encoding: 'binary', length: node.size});
+    const bytes = await fs.driver.readContent(path, {encoding: 'binary', length: node.size, onRevision});
     const after = await fs.driver.getNode(path);
     if (bytes.byteLength !== node.size || after?.type !== 'file' || after.revision !== node.revision || after.size !== node.size || after.modifiedAt !== node.modifiedAt)
         throw failure('PROMPT_READ_CONFLICT');

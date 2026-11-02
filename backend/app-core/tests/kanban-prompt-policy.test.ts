@@ -1,3 +1,5 @@
+import previousDefaults from './fixtures/kanban-default-prompts-v1.json';
+import defaults from '../src/presets/kanban-development-prompts.json';
 import {afterEach, expect, it} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {KanbanAutomationJournal} from '../src/kanban/automation-journal';
@@ -42,4 +44,15 @@ it('publishes the manifest only after all files and rejects oversized authoring 
 it('ignores lifecycle headings inside fenced Markdown examples', () => {
     expect(hasMarkdownSection('```md\n## postload.cancelled\n```', 'postload.cancelled')).toBe(false);
     expect(hasMarkdownSection('```md\n## fake\n```\n## postload.cancelled\nSummary', 'postload.cancelled')).toBe(true);
+});
+
+it('upgrades only unchanged shipped defaults for new attempts and preserves user prompt edits',async()=>{
+    const {fs,journal}=await fixture();
+    for(const name of ['decision.md','task.md'] as const)await fs.driver.createFile({parentPath:'/var/lib/kanban/policies/development',name,content:previousDefaults[name],recursive:true});
+    const policy=await developmentPolicy(journal,fs,fs,'upgraded');
+    expect(policy.prompts.files.find(file=>file.name==='decision.md')?.content).toBe(defaults['decision.md']);
+    expect(policy.prompts.files.find(file=>file.name==='task.md')?.content).toBe(defaults['task.md']);
+    await fs.driver.writeContent('/var/lib/kanban/policies/development/decision.md','User planning policy');
+    expect((await developmentPolicy(journal,fs,fs,'custom')).prompts.files.find(file=>file.name==='decision.md')?.content).toBe('User planning policy');
+    expect(await developmentPolicy(journal,fs,fs,'upgraded')).toEqual(policy);
 });

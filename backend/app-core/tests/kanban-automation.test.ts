@@ -12,7 +12,7 @@ import type {PersonalKanbanAutomationOptions} from '../src/kanban/personal-autom
 
 const disposers: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of disposers.splice(0)) await close();});
-async function fixture(autoAccept = false) {
+async function fixture(autoAccept = false, analysis?:unknown) {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); disposers.push(() => manager.dispose());
     const fs = await manager.openFileSystem('/'), events = await UserEventService.open(fs);
     const submitted = new Map<string, IndependentCallInput>(), completed = new Set<string>();
@@ -34,7 +34,7 @@ async function fixture(autoAccept = false) {
     const kernel = {task: vi.fn(async (_session: string, id: string) => {
         const input = submitted.get(id)!, planner = input.request.expectedTarget!.id === 'planner';
         const item = planner ? JSON.parse(input.request.source.text).snapshot.item : undefined;
-        const output = planner ? {message: {content: invalid ? 'INVALID PRIVATE' : JSON.stringify({ready: true, dependencies: item.id === 'second' ? ['first'] : [], reason: 'Uses the prerequisite result',
+        const output = planner ? {message: {content: invalid ? 'INVALID PRIVATE' : JSON.stringify(analysis??{ready: true, dependencies: item.id === 'second' ? ['first'] : [], reason: 'Uses the prerequisite result',
             estimate: {complexity: 1, workUnits: 1, durationMs: 60000, confidence: 'high'}})}} : {message: {content: 'Verified result'}};
         return {id, sessionId: _session, version: 1, effects: {}, exit: {status: 'succeeded', output: {exit: {status: 'succeeded', output}}}} as unknown as TaskRecord;
     })} as unknown as PersonalKanbanAutomationOptions['kernel'];
@@ -164,4 +164,33 @@ it('never resubmits successful or accepted work during polling and host recovery
     await f.service.dispose();const reopened=await f.open();disposers.push(()=>reopened.dispose());
     for(let index=0;index<3;index++)await reopened.scan();
     expect(await reopened.workflow('board')).toEqual(workflow);expect(f.calls.submitPreparedTaskCall).toHaveBeenCalledTimes(submissions);
+});
+
+it('decomposes complex work into single-project subtasks, gates dependencies on acceptance and completes only the parent aggregate',async()=>{
+    const estimate={complexity:2,workUnits:1,durationMs:60000,confidence:'high'};
+    const f=await fixture(false,{ready:true,dependencies:[],reason:'Separate verifiable outputs',estimate,
+        subtasks:[{key:'parse',title:'Parser',responsibility:'Verify parser',acceptance:'Parser checks pass',dependsOn:[],estimate,projectId:'untrusted-other-project'},
+            {key:'render',title:'Renderer',responsibility:'Verify display',acceptance:'Display checks pass',dependsOn:['parse'],estimate}]});
+    const reference={system:'nestos-remote-project',id:'one'};
+    await f.command({type:'create-item',item:{id:'parent',title:'Parent',responsibility:'Complex work',acceptance:'Children accepted',externalRefs:[reference]}});
+    await f.service.scan();const board=await f.service.read('board'),children=board.items.filter(item=>item.planning?.parentId==='parent');
+    expect(children).toHaveLength(2);expect(children.every(item=>item.planning?.kind==='subtask'&&JSON.stringify(item.externalRefs?.filter(ref=>ref.system==='nestos-remote-project'))===JSON.stringify([reference]))).toBe(true);
+    expect(f.executions()).toHaveLength(1);expect((await f.service.item('board','parent')).item.planning?.execution).toBe('children');
+    const first=f.executions()[0][0];f.completed.add(first);await f.service.scan();expect(f.executions()).toHaveLength(1);
+    expect((await f.service.item('board','parent')).item.status).not.toBe('completed');
+    await f.command({type:'accept-execution',dispatchId:first,accept:true});await f.service.scan();expect(f.executions()).toHaveLength(2);
+    const second=f.executions()[1][0];f.completed.add(second);await f.service.scan();
+    expect((await f.service.item('board','parent')).item.status).not.toBe('completed');
+    await f.command({type:'accept-execution',dispatchId:second,accept:true});await f.service.scan();
+    expect((await f.service.item('board','parent')).item.status).toBe('completed');
+    await f.service.dispose();const reopened=await f.open();disposers.push(()=>reopened.dispose());await reopened.scan();
+    expect(f.executions()).toHaveLength(2);expect((await reopened.workflow('board')).ready).toEqual([]);
+});
+it('rejects cyclic model decomposition before creating any children or starting execution',async()=>{
+    const estimate={complexity:2,workUnits:1,durationMs:60000,confidence:'high'};
+    const f=await fixture(false,{ready:true,dependencies:[],reason:'Invalid cycle',subtasks:[
+        {key:'a',title:'A',responsibility:'Work',acceptance:'Checked',dependsOn:['b'],estimate},
+        {key:'b',title:'B',responsibility:'Work',acceptance:'Checked',dependsOn:['a'],estimate}]});
+    await f.item('parent');await f.service.scan();expect((await f.service.read('board')).items).toHaveLength(1);expect(f.executions()).toHaveLength(0);
+    expect(await f.service.analysisStatus!('board','parent')).toMatchObject({state:'failed',code:'DEPENDENCY_CYCLE'});
 });

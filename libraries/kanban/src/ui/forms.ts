@@ -1,10 +1,11 @@
+import {executableWorkItem, DEFAULT_KANBAN_WORK_TYPES} from '../contracts';
 import type {KanbanPresentation} from './ports';
 import {childType} from './children';
 import {panelHeader} from './panel-header';
 import {suggestionField, selectedItems} from './suggestion-field';
 import {amendmentsView, sourcesView} from './context-view';
 import {escapeHTML, escapeAttr} from './html';
-import type {KanbanBoardSummary, KanbanEvent, KanbanItem, KanbanPrincipal, KanbanPlanning} from '../contracts';
+import type {KanbanBoardSummary, KanbanEvent, KanbanItem, KanbanPrincipal, KanbanPlanning, KanbanItemResourceCatalog} from '../contracts';
 import {button, field, textarea, owns} from './view';
 
 export function newBoardForm(ui: KanbanPresentation): string {
@@ -12,14 +13,14 @@ export function newBoardForm(ui: KanbanPresentation): string {
         <label><input name="requireEstimate" type="checkbox">${escapeHTML(ui.text('requireEstimate'))}</label>
         ${save(ui)}</form>`;
 }
-export function newItemForm(ui: KanbanPresentation, board: KanbanBoardSummary, parent?: KanbanItem): string {
+export function newItemForm(ui: KanbanPresentation, board: KanbanBoardSummary, parent?: KanbanItem, resources?:KanbanItemResourceCatalog): string {
     const preset: KanbanPlanning | undefined = parent ? {kind: childType(board, parent)!, parentId: parent.id, priority: parent.planning?.priority ?? 2, dependencies: [], references: []} : undefined;
     return `${panelHeader(ui, ui.text('newItem'))}<form data-form="item">${field(ui, 'title', 'name')}
-        ${textarea(ui, 'responsibility', 'responsibility')}${textarea(ui, 'acceptance', 'acceptance')}${planningFields(ui, board, undefined, preset)}${save(ui)}</form>`;
+        ${textarea(ui, 'responsibility', 'responsibility')}${textarea(ui, 'acceptance', 'acceptance')}${planningFields(ui, board, undefined, preset)}${itemResourceField(ui,resources,(board.workTypes??DEFAULT_KANBAN_WORK_TYPES).some(type=>type.id===(preset?.kind??board.defaultWorkType??'task')&&type.executable))}${save(ui)}</form>`;
 }
 function planningFields(ui: KanbanPresentation, board: KanbanBoardSummary, item?: KanbanItem, preset?: KanbanPlanning): string {
-    const plan = preset ?? item?.planning, types = board.workTypes ?? [{id: 'initiative', label: ui.text('goal')}, {id: 'feature', label: ui.text('group')}, {id: 'task', label: ui.text('action')}];
-    return `<label>${escapeHTML(ui.text('type'))}<select name="kind">${types.map(type => `<option value="${escapeAttr(type.id)}" ${type.id === (plan?.kind ?? board.defaultWorkType ?? 'task') ? 'selected' : ''}>${escapeHTML(type.label)}</option>`).join('')}</select></label>
+    const plan = preset ?? item?.planning, types = board.workTypes ?? DEFAULT_KANBAN_WORK_TYPES;
+    return `<label>${escapeHTML(ui.text('type'))}<select name="kind">${types.map(type => `<option data-executable="${type.executable}" value="${escapeAttr(type.id)}" ${type.id === (plan?.kind ?? board.defaultWorkType ?? 'task') ? 'selected' : ''}>${escapeHTML(type.label)}</option>`).join('')}</select></label>
         ${field(ui, 'priority', 'priority', String(plan?.priority ?? 2), true, 'number')}
         ${suggestionField({name: 'area', label: 'area', kind: 'area', free: true, selected: plan?.area ? [{id: plan.area, label: plan.area}] : []})}${suggestionField({name: 'milestone', label: 'milestone', kind: 'milestone', free: true, selected: plan?.milestone ? [{id: plan.milestone, label: plan.milestone}] : []})}
         ${suggestionField({name: 'parentId', label: 'parent', kind: 'parent', excludeItemId: item?.id, selected: selectedItems(board, plan?.parentId ? [plan.parentId] : [])})}${suggestionField({name: 'dependencies', label: 'dependencies', kind: 'dependency', multiple: true, excludeItemId: item?.id, selected: selectedItems(board, plan?.dependencies ?? [])})}
@@ -49,7 +50,7 @@ export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, it
 function controls(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean): string {
     if (archived) return button(ui, 'restore', 'restore');
     if (['completed', 'cancelled'].includes(item.status)) return button(ui, 'archive', 'archiveItem');
-    const executable = board.workTypes?.find(type => type.id === item.planning?.kind)?.executable ?? item.planning?.kind === 'task';
+    const executable = executableWorkItem(board,item);
     let result = item.status === 'proposed' ? button(ui, 'publish', 'publish') : item.status === 'backlog' && executable ? button(ui, 'ready', 'ready') : item.status === 'open' ? button(ui, 'defer', 'defer') : '';
     if (owns(item, actor) && item.status === 'claimed') result += button(ui, 'renew', 'renew');
     if (item.status === 'review' && !owns(item, actor)) result += button(ui, 'accept', 'accept') + button(ui, 'reject', 'reject');
@@ -60,7 +61,7 @@ function controls(ui: KanbanPresentation, board: KanbanBoardSummary, item: Kanba
 function detailForms(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor?: KanbanPrincipal): string {
     if (['completed', 'cancelled'].includes(item.status)) return '';
     let forms = '';
-    const executable = board.workTypes?.find(type => type.id === item.planning?.kind)?.executable ?? item.planning?.kind === 'task';
+    const executable = executableWorkItem(board,item);
     if (!executable && ['backlog', 'proposed', 'open'].includes(item.status)) forms += `<form data-form="close-plan">${field(ui, 'resultRef', 'result')}<button>${escapeHTML(ui.text('closePlan'))}</button></form>`;
     if (executable && item.status === 'open' && !item.blocked) forms += `<form data-form="claim">${board.policy.requireEstimate !== false ? estimates(ui) : ''}<button>${escapeHTML(ui.text('claim'))}</button></form>`;
     if (item.status === 'claimed' && owns(item, actor)) forms += `<form data-form="submit">${field(ui, 'resultRef', 'result')}<button>${escapeHTML(ui.text('submit'))}</button></form>`;
@@ -75,4 +76,13 @@ function detailForms(ui: KanbanPresentation, board: KanbanBoardSummary, item: Ka
 function estimates(ui: KanbanPresentation): string {
     return `${field(ui, 'complexity', 'complexity', '1', true, 'number')}${field(ui, 'workUnits', 'workUnits', '1', true, 'number')}
         ${field(ui, 'duration', 'duration', '30', true, 'number')}<label>${escapeHTML(ui.text('confidence'))}<select name="confidence">${['low', 'medium', 'high'].map(value => `<option value="${value}">${escapeHTML(ui.text(value))}</option>`).join('')}</select></label>`;
+}
+
+function itemResourceField(ui:KanbanPresentation,catalog:KanbanItemResourceCatalog|undefined,executable:boolean):string {
+    if(!catalog||!catalog.resources.length&&!catalog.selected)return '';
+    const options=[...catalog.resources],selected=catalog.selected?JSON.stringify(catalog.selected):'';
+    if(catalog.selected&&!options.some(option=>option.reference.system===catalog.selected!.system&&option.reference.id===catalog.selected!.id))options.push({reference:catalog.selected,label:catalog.selected.id});
+    return `<label>${escapeHTML(ui.text('itemResource'))}<select name="itemResource" data-resource-required="${catalog.required===true}" ${catalog.required&&executable?'required':''} ${catalog.readonly?'disabled':''}>
+        <option value="">${escapeHTML(ui.text('none'))}</option>${options.map(option=>`<option value="${escapeAttr(JSON.stringify(option.reference))}" ${JSON.stringify(option.reference)===selected?'selected':''}>${escapeHTML(option.label)}</option>`).join('')}</select>
+        ${catalog.readonly?`<input type="hidden" name="itemResource" value="${escapeAttr(selected)}">`:''}</label>`;
 }

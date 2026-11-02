@@ -1,3 +1,4 @@
+import {validateWorkProjects} from './task-projects';
 import {KanbanWorkLog} from './work-log';
 import {KanbanAutomationJournal} from './automation-journal';
 import {createRecordExecution, validateRemoteReferences} from './record-execution';
@@ -22,7 +23,7 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     const workLog = new KanbanWorkLog(fs, events, base.log); await workLog.open();
     const withLogs = {...base, onCommitted: (boardId: string, source: import('@itookit/kanban/contracts').KanbanService) => workLog.synchronize(boardId, source)};
     const service = createNestOSKanban({...withLogs, actor: {kind: 'human', id: 'admin'}});
-    const records = automationOptions?.projects ? createRecordExecution({service, journal, projects: automationOptions.projects, log: base.log}) : undefined;
+    const records = automationOptions?.projects ? createRecordExecution({service, journal, projects: automationOptions.projects, requiresItemResource:automationOptions.requiresItemResource, log: base.log}) : undefined;
     const automation = automationOptions ? createPersonalKanbanAutomation({...automationOptions, fs, service, journal, workLog, log: base.log,
         serviceFor: actor => createNestOSKanban({...withLogs, actor})}) : undefined;
     try {await service.scan();await reportKanbanHealth(events);}
@@ -30,7 +31,7 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     return {...service,
         records: (boardId: string, query?: import('@itookit/kanban/contracts').KanbanRecordQuery) => workLog.records(service, boardId, query),
         record: (boardId: string, recordId: string) => workLog.record(service, boardId, recordId),
-        ...(records ? {recordResources: records.recordResources, runRecord: records.runRecord, recordExecutions: async (boardId: string, recordId: string) => (await workLog.record(service, boardId, recordId)).kind === 'decision' ? records.recordExecutions(boardId, recordId) : []} : {}),
+        ...(records ? {itemResources: records.itemResources, recordResources: records.recordResources, runRecord: records.runRecord, recordExecutions: async (boardId: string, recordId: string) => (await workLog.record(service, boardId, recordId)).kind === 'decision' ? records.recordExecutions(boardId, recordId) : []} : {}),
         ...(automation ? {automationCatalog: automation.automationCatalog, analysisStatus: automation.analysisStatus} : {}),
         scan: async () => {
             await service.scan();
@@ -69,6 +70,7 @@ function personalOptions({store, journal, events, diagnostics, sessions, kernel,
         authorize: async (input: Parameters<import('./module').NestOSKanbanOptions['authorize']>[0]) => {
             const {board, command} = input;
             await authorizeAutomation(input, automationOptions?.catalog);
+            if(command&&automationOptions?.projects)await validateWorkProjects(automationOptions.projects,board,command,automationOptions.requiresItemResource?.(board)===true);
             if (command?.type === 'configure-automation' && command.settings.preparation)
                 automationOptions?.validatePreparation?.(command.settings.preparation, command.settings.preparationOptions);
             if (command?.type === 'append-record' && command.record.id.startsWith('activity-')) throw new KanbanError('RESERVED_RECORD_ID');

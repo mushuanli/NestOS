@@ -192,3 +192,19 @@ it('returns an updated log view to the first page when background activity inval
     expect(f.root.querySelector('[data-action=records-first]')).toBeNull();
     expect(f.root.querySelector('[data-error]')?.textContent).toBe('');
 });
+
+it('uses a single locked resource for a task child and keeps decision resource selection multiple',async()=>{
+    const f=await fixture(),reference={system:'project',id:'one'},resources=[{reference,label:'One'},{reference:{system:'project',id:'two'},label:'Two'}];
+    Object.assign(f.service,{itemResources:vi.fn(async()=>({resources,selected:reference,required:true,readonly:true})),recordResources:async()=>resources});
+    const board=await f.service.create({id:'resource-work',title:'Work',scope:{kind:'system'},members:[{kind:'human',id:'person',responsibility:'Manage'}]});
+    await f.service.execute(board.id,{operationId:'create-parent',expectedRevision:board.revision,command:{type:'create-item',item:{id:'parent',title:'Parent',responsibility:'Work',acceptance:'Reviewed',externalRefs:[reference]}}});
+    await f.view.openResource('/board/resource-work/parent');await click(f.root,'[data-action=new-child]');
+    const form=f.root.querySelector<HTMLFormElement>('[data-form=item]')!,select=form.querySelector<HTMLSelectElement>('[name=itemResource]')!;
+    expect(select.multiple).toBe(false);expect(select.disabled).toBe(true);expect(new FormData(form).get('kind')).toBe('subtask');
+    expect(JSON.parse(String(new FormData(form).get('itemResource')))).toEqual(reference);
+    fill(f.root,'title','Child');fill(f.root,'responsibility','Only child work');fill(f.root,'acceptance','Checked');await submit(f.root,'item');
+    const child=(await f.service.read(board.id)).items.find(item=>item.title==='Child')!;
+    expect(child.externalRefs).toEqual([reference]);expect(child.planning?.parentId).toBe('parent');
+    await f.view.openResource('/board/resource-work/@decision');await click(f.root,'[data-action=new-decision]');
+    expect(f.root.querySelector<HTMLSelectElement>('[name=recordResources]')?.multiple).toBe(true);
+});

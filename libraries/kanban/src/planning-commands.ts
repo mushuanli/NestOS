@@ -54,6 +54,8 @@ function updatePlan(state: KanbanState, item: KanbanItem, command: PlanCommand, 
         requireValue(catalog(state).filter(i => i.planning.parentId === item.id).every(terminal), 'CHILDREN_UNFINISHED');
         if (command.type === 'close-plan') {
             requireValue(!executable(state.board, item), 'TASK_REQUIRES_REVIEW'); text(command.resultRef);
+            const children=catalog(state).filter(child=>child.planning.parentId===item.id);
+            if(item.planning?.execution==='children')requireValue(children.length>0&&children.every(child=>child.status==='completed'),'CHILDREN_UNFINISHED');
             item.status = 'completed'; item.resultRef = command.resultRef;
         } else {text(command.reason); item.status = 'cancelled'; item.closureReason = command.reason;}
         item.closedAt = now;

@@ -35,7 +35,7 @@ it('does not treat a missing receipt, pending effects or failed child result as 
 it('prepares before submission and propagates response loss for unknown reconciliation',async()=>{
     const f=await fixture();f.calls.submitPreparedTaskCall.mockRejectedValueOnce(new Error('response lost'));
     await expect(f.executor.start(f.frozen)).rejects.toThrow('response lost');
-    expect(f.calls.prepareTaskCall).toHaveBeenCalledWith(f.frozen.input,{maxDepth:4});
+    expect(f.calls.prepareTaskCall).toHaveBeenCalledWith(f.frozen.input,{maxDepth:4, timeoutMs:null});
     expect(f.calls.submitPreparedTaskCall).toHaveBeenCalledWith(f.frozen.input);
     f.calls.prepareTaskCall.mockRejectedValueOnce(Object.assign(new Error('private parameters'),{code:'TARGET_NOT_PUBLISHED'}));
     expect(await f.executor.start(f.frozen)).toEqual({outcome:'failed',code:'TARGET_NOT_PUBLISHED'});expect(f.calls.submitPreparedTaskCall).toHaveBeenCalledTimes(1);

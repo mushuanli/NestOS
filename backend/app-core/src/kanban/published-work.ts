@@ -26,7 +26,7 @@ export function createPublishedKanbanWorkExecutor(options: PublishedKanbanWorkOp
                 target:{kind:binding.target.kind,id:binding.target.id,version:binding.target.version},overrides:binding.overrides,
                 source:{kind:'composer',text:JSON.stringify({item,inputs:dispatch.inputs,dependencies:await options.context?.(dispatch,item),planId:dispatch.planId,planRevision:dispatch.planRevision}),attachments:[],values:{}},
                 submission:{id:dispatch.id,source:{kind:'conversation',ownerId:sessionId,id:dispatch.id}}}};
-            return {schema:1,dispatch:structuredClone(dispatch),input,policy:structuredClone(options.executionPolicy ?? {maxDepth:4})};
+            return {schema:1,dispatch:structuredClone(dispatch),input,policy:structuredClone(options.executionPolicy ?? {maxDepth:4, timeoutMs: null})};
         },
         async start(value) {
             const frozen=validateFrozen(value);
@@ -51,10 +51,10 @@ async function inspectWork(options: PublishedKanbanWorkOptions, frozen: FrozenWo
     if(!treeSettled(view)) return {...session,outcome:'unknown',code:'WORK_EXECUTION_UNSETTLED'};
     const record=await options.kernel.task(admission.submission.task.sessionId,admission.submission.task.taskId), stat=taskStat(record);
     if(!stat.settled||!record.exit) return {...session,outcome:'unknown',code:'WORK_CALLER_UNSETTLED'};
-    if(record.exit!.status!=='succeeded') return {...session,outcome:record.exit!.status==='cancelled'?'cancelled':'failed',code:'WORK_CALLER_FAILED'};
+    if(record.exit!.status!=='succeeded') return {...session,outcome:record.exit!.status==='cancelled'?'cancelled':'failed',code:knownCode(record.exit.error,'WORK_CALLER_FAILED')};
     const result=record.exit!.output as TaskCallResult|undefined;
     if(!result?.exit) return {...session,outcome:'unknown',code:'WORK_RESULT_MISSING'};
-    if(result.exit.status!=='succeeded') return {...session,outcome:result.exit.status==='cancelled'?'cancelled':'failed',code:'WORK_EXECUTION_FAILED'};
+    if(result.exit.status!=='succeeded') return {...session,outcome:result.exit.status==='cancelled'?'cancelled':'failed',code:knownCode(result.exit.error,'WORK_EXECUTION_FAILED')};
     return {...session,outcome:'succeeded',outputs:await options.outputs?.(frozen.dispatch,result) ?? []};
 }
 function treeSettled(view: IndependentCallView): boolean {return view.callerState?.settled===true&&view.executionTree?.settled===true;}

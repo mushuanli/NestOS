@@ -1,3 +1,5 @@
+import {readContextCatalog, type ContextInspector} from '../projects/harness-context-catalog';
+import type {PreparedWorktree} from '../projects/worktree-preparation';
 import {journalCommand} from '../kanban/journal-command';
 import type {IFileSystem} from '@itookit/vfs-core';
 import type {ProjectService} from '@itookit/app-contracts/services';
@@ -9,7 +11,7 @@ import type {PersonalKanbanAutomationOptions} from '../kanban/personal-automatio
 import type {UserEventService} from '../events/service';
 
 type Input = Parameters<NonNullable<PersonalKanbanAutomationOptions['observeWork']>>[0];
-interface Options {fs: IFileSystem; events: UserEventService; projects: Pick<ProjectService, 'get' | 'openWorkspace'>;
+interface Options {kernel: ContextInspector; fs: IFileSystem; events: UserEventService; projects: Pick<ProjectService, 'get' | 'openWorkspace'>;
     remote?: Pick<import('../projects/remote-mounts').ProjectRemoteMountService, 'projectHarness'>; wake(): void}
 
 export function developmentObserver(options: Options) {
@@ -17,7 +19,8 @@ export function developmentObserver(options: Options) {
     const watches = new Map<string, () => Promise<void>>(); let stopped = false;
     const observe: NonNullable<PersonalKanbanAutomationOptions['observeWork']> = async input => {
         if (stopped) return input.observation;
-        if (!await journal.get('worktree:' + input.dispatch.id)) return input.observation;
+        const worktree = await journal.get<PreparedWorktree>('worktree:' + input.dispatch.id);
+        if (!worktree) return input.observation;
         const {item} = await input.service.item(input.boardId, input.dispatch.itemId);
         const projectId = item.externalRefs?.find(ref => ref.system === REMOTE_PROJECT_REFERENCE)?.id;
         if (!projectId) throw Object.assign(new Error('Missing workspace project binding'), {code: 'WORKSPACE_PROJECT_MISSING'});
@@ -27,7 +30,9 @@ export function developmentObserver(options: Options) {
             const stop = client.subscribeDirectoryPath?.('_nestos/worktrees/' + input.dispatch.id + '/_nestos/kanban/inbox', options.wake);
             watches.set(input.dispatch.id, async () => {stop?.(); await client.close();});
         }
-        await linkResult(journal, input, projectId);
+        await linkReference(journal, input, {system: 'nestos-worktree', id: input.dispatch.id,
+            revision: JSON.stringify({projectId, directory: worktree.directory, branch: worktree.branch, baseCommit: worktree.baseCommit})});
+        await linkResult(options, journal, input, projectId);
         const folder = await options.projects.get(projectId), view = await options.projects.openWorkspace(folder.path);
         try {
             const scope = {runId: item.externalRefs?.find(ref => ref.system === 'nestos-decision-run')?.id ?? input.dispatch.planId,
@@ -45,17 +50,21 @@ export function developmentObserver(options: Options) {
     return {observe, async dispose() {stopped = true; await Promise.allSettled([...watches.keys()].map(close));}};
 }
 
-async function linkResult(journal: KanbanAutomationJournal, input: Input, projectId: string): Promise<void> {
-    const ref = input.observation.outputs?.find(output => output.name === 'result');
-    if (!ref) return;
-    const raw = await journal.get<string>('artifact:' + ref.sha256);
-    const native = raw ? (JSON.parse(raw) as {harness?: {sessionId?: string; turnId?: string}}).harness : undefined;
-    if (!native?.sessionId || !native.turnId) return;
-    const board = await input.service.read(input.boardId), item = board.items.find(item => item.id === input.dispatch.itemId)!;
-    if (item.externalRefs?.some(ref => ref.system === 'nestos-native-session' && ref.id === native.sessionId)) return;
-    await input.service.execute(input.boardId, {operationId: 'native-result:' + input.dispatch.id, expectedRevision: board.revision,
-        command: {type: 'link-reference', itemId: item.id, reference: {system: 'nestos-native-session', id: native.sessionId,
-            revision: JSON.stringify({projectId, connectionId: 'work-' + input.dispatch.id, turnId: native.turnId, dispatchId: input.dispatch.id})}}});
+async function linkResult(options: Options, journal: KanbanAutomationJournal, input: Input, projectId: string): Promise<void> {
+    const sessionId = input.observation.executionSessionId;
+    if (!sessionId) return;
+    const catalog = await readContextCatalog(options.kernel, sessionId);
+    const binding = Object.values(catalog.value.bindings).find(binding => binding.connectionId === 'work-' + input.dispatch.id);
+    if (!binding?.nativeRef?.sessionId) return;
+    await linkReference(journal, input, {system: 'nestos-native-session', id: binding.nativeRef.sessionId,
+        revision: JSON.stringify({projectId, connectionId: binding.connectionId, profileId: binding.nativeRef.profileId,
+            turnId: binding.knownHeadRef, dispatchId: input.dispatch.id})});
+}
+async function linkReference(journal: KanbanAutomationJournal, input: Input, reference: import('@itookit/kanban/contracts').KanbanExternalReference): Promise<void> {
+    const {item} = await input.service.item(input.boardId, input.dispatch.itemId);
+    if (item.externalRefs?.some(ref => JSON.stringify(ref) === JSON.stringify(reference))) return;
+    const key = 'workspace-reference:' + input.dispatch.id + ':' + reference.system + ':' + (reference.revision ?? '');
+    await journalCommand(journal, input.service, input.boardId, key, {type: 'link-reference', itemId: item.id, reference});
 }
 
 async function deliver(options: Options, journal: KanbanAutomationJournal, input: Input, message: WorkspaceMessage): Promise<void> {

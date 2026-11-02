@@ -335,7 +335,7 @@ suggest 是已授权看板上的只读元数据查询，支持 item/parent/depen
 
 自动化设置可以选择不透明的 preparation。产品预设 `nestos-work-preparation/git-worktree@1` 位于 app-core/presets；Kanban 库不认识 Git、Codex 或工作区路径。预设核验选中远程项目和已发布原生 Agent，保存 base commit、分支、创建意图，再调用项目进程端口创建 `_nestos/worktrees/<dispatch-id>`。相对 Git 元数据使进程 `/workspace` 与原生 `/projects/<project-id>` 命名空间可共享工作树。创建结果未知时只核对原工作树，不另建分支。
 
-每次派发保存独立的连接、受管 Agent 发布回执和 NestOS executionSessionId；原生执行本身沿用 Effect journal，终态后将原生 sessionId/turnId 关联到事项。连接的 directory 是项目内已存在的相对目录，需节点正向声明 workingDirectory 能力；旧节点明确拒绝，不能退回主工作区。工作树及历史会话保留供恢复和独立验收，不自动合并或删除。
+开发调用显式使用持久等待策略（调用层 timeoutMs=null），不继承通用 Effect 的 30 秒超时；原生执行器自身仍有明确超时与取消收尾机制。每次派发保存独立的连接、受管 Agent 发布回执和 NestOS executionSessionId；原生执行本身沿用 Effect journal，执行观察通过已持久化的上下文绑定将原生 sessionId 及时关联到事项，终态补充 turnId。连接的 directory 是项目内已存在的相对目录，需节点正向声明 workingDirectory 能力；旧节点明确拒绝，不能退回主工作区。工作树及历史会话保留供恢复和独立验收，不自动合并或删除。
 
 工作树内使用 `_nestos/kanban/`，不使用 Cells 内部保留的 `.nestos`：
 

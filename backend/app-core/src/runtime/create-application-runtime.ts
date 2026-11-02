@@ -561,7 +561,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
 
         const events = await UserEventService.open(systemFS);
         let wakeKanban = () => {};
-        const developmentMessages = developmentObserver({fs: systemFS, events, projects, remote: remoteConnections, wake: () => wakeKanban()});
+        const developmentMessages = developmentObserver({kernel: kernelCore, fs: systemFS, events, projects, remote: remoteConnections, wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
             projects,

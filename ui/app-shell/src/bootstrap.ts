@@ -48,8 +48,8 @@ import type { VFSNodeUI } from '@itookit/vfs-ui';
 import type { EditorFileType as FileTypeDefinition } from './browser/types';
 import { connectEditorLifecycle } from './browser/editor-connector';
 import {NavigationRequest, NAVIGATION_EVENTS, formatDefaultFileTitle, traceBoot, setBootTraceEnabled} from '@itookit/common';
-import { MenuItem } from '@itookit/ui-common';
-import { EditorFactory } from '@itookit/ui-common';
+import { MenuItem } from '@itookit/ui-common-adapter';
+import { EditorFactory } from '@itookit/ui-common-adapter';
 import { Workbench } from './core/Workbench';
 import { setupMobileWorkspaceView } from './navigation/mobile-workspace-view';
 import { installMobileViewport } from './navigation/mobile-viewport';
@@ -349,6 +349,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         if (strategyType === 'kanban') {
             const module = createKanbanWorkspace({service: services.kanban, sidebar: sidebarEl, editor: editorEl,
+                windows: windowBinding, initialResource,
                 selected: path => selectionHistory(elementId, path, 'replace'),
                 openSession: id => handleNavigationRequest({target: 'chat', resourceId: id})});
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);

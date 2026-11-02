@@ -1,4 +1,4 @@
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 // @file llm-ui/editors/MCPSettingsEditor.ts
 import {
     generateShortUUID,
@@ -9,7 +9,7 @@ import {
     STATUS_META,
     ENTITY_ICONS
 } from '@itookit/common';
-import { BaseSettingsEditor, Toast, Modal } from '@itookit/ui-common';
+import { BaseSettingsEditor, Toast, Modal } from '@itookit/ui-common-adapter';
 import type { MCPServer, MCPDiscovery } from '@itookit/tools/mcp-contracts';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import { bindMCPContent, renderMCPPrompts, parseMCPStringMap } from './mcp-content';
@@ -17,7 +17,7 @@ import { mcpConfiguration, mcpTimeoutMs } from '@itookit/tools/mcp-contracts';
 
 
 
-export type MCPConfigurationControls = import('@itookit/ui-common').ConfigurationFormControls<MCPServer,MCPDiscovery>;
+export type MCPConfigurationControls = import('@itookit/ui-common-adapter').ConfigurationFormControls<MCPServer,MCPDiscovery>;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ function statusBadge(status?: MCPServer['status']): string {
 // ─── MCPSettingsEditor ────────────────────────────────────────────────────────
 
 export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementService> {
-    constructor(container: HTMLElement, service: IAgentManagementService, options: import('@itookit/ui-common').EditorOptions,
+    constructor(container: HTMLElement, service: IAgentManagementService, options: import('@itookit/ui-common-adapter').EditorOptions,
         private readonly controls?: MCPConfigurationControls) { super(container,service,options); }
     async destroy(): Promise<void> { await super.destroy(); this.controls?.dispose?.(); }
     private selectedId: string | null = null;

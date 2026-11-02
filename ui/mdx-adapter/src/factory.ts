@@ -4,7 +4,7 @@ import {studyIndex} from './study-index';
 import { createMDxEditor as createEditor, defaultEditorFactory as createDefaultEditor, fileReference,
     type MDxEditor, type PluginConfig, type MDxEditorFactoryConfig } from '@itookit/mdxeditor';
 import { t, createModuleLogger, randomUUID } from '@itookit/common';
-import { installNavigationButtonPresentation, editorFilePath, normalizeEditorOptions, type EditorOptions } from '@itookit/ui-common';
+import { installNavigationButtonPresentation, editorFilePath, normalizeEditorOptions, type EditorOptions } from '@itookit/ui-common-adapter';
 import { createAdapterStore } from './srs-store';
 import { createAssetProvider } from './assets';
 import { createDocumentHost } from './document-host';
@@ -36,6 +36,7 @@ function pluginDefaults(options: MDxAdapterOptions, path?: string, getPath: () =
     defaults['interaction:codeblock-controls'] = {wrapText: t('editor.wrap.label'), ...defaults['interaction:codeblock-controls']};
     const titlebar = (defaults['core:titlebar'] ?? {}) as Record<string, unknown>;
     defaults['core:titlebar'] = { ...titlebar,
+        mountTitleBar: titlebar.mountTitleBar ?? options.mountTitleBar,
         aiCallback: titlebar.aiCallback ?? (path && options.hostContext?.chatFromFile ? async (editor: MDxEditor) => {
             const reference = fileReference(editor); await editor.flushPendingSave();
             await options.hostContext!.chatFromFile!(reference);
@@ -56,7 +57,7 @@ function pluginDefaults(options: MDxAdapterOptions, path?: string, getPath: () =
             if (!navigation && typeof provided !== 'function') return;
             return () => {navigation?.(); if (typeof provided === 'function') provided();};
         },
-        mountActions: titlebar.mountActions ?? (options.mountWindowList ? (container: HTMLElement) => {
+        mountActions: titlebar.mountActions ?? (!options.mountTitleBar && options.mountWindowList ? (container: HTMLElement) => {
             container.dataset.editorMobileNavigation = 'embedded';
             const cleanup = options.mountWindowList!(container);
             return () => {cleanup(); delete container.dataset.editorMobileNavigation;};

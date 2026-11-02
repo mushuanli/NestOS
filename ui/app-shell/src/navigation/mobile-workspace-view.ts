@@ -1,4 +1,4 @@
-import {installNavigationButtonPresentation} from '@itookit/ui-common';
+import {installNavigationButtonPresentation} from '@itookit/ui-common-adapter';
 import {backToPreviousPage} from './page-history';
 import { VFS_DOM_EVENTS } from '@itookit/vfs-ui';
 

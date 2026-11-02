@@ -28,7 +28,8 @@
   "dependencies": {
     "@itookit/app-contracts": "workspace:*",
     "@itookit/app-transport": "workspace:*",
-    "@itookit/kanban": "workspace:*"
+    "@itookit/kanban": "workspace:*",
+    "@itookit/ui-common": "workspace:*"
   },
   "peerDependencies": {
     "@itookit/app-settings": "workspace:*",
@@ -40,7 +41,7 @@
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/vfs-ui": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*"
   },
   "devDependencies": {
@@ -60,7 +61,7 @@
     "typescript": "^5.9.3",
     "@types/node": "^20.19.25",
     "vitest": "^3.2.4",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "jsdom": "^27.4.0",
     "tsx": "^4.20.6",
     "@itookit/mdx-adapter": "workspace:*",

@@ -1,6 +1,6 @@
 // @file: app-settings/editors/storage/MigrationSection.ts
 
-import { Toast, Modal } from '@itookit/ui-common';
+import { Toast, Modal } from '@itookit/ui-common-adapter';
 import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 import { SettingsState } from '../../types/types';
 import { StorageUtils } from './StorageUtils';

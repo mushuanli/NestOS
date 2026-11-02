@@ -32,6 +32,10 @@ node:renamed
       └─ RoundLog / manifest 路径缓存
 ```
 
+项目文件打开通过 `ProjectService.openWorkspace(folder, {initialPath})` 同时取得文件系统租约、节点元数据和只读能力；`ProjectWorkspaceSource` RPC 保留这组初始元数据，正文仍经二进制端口按需读取。文件缺失时明确返回空节点，不能再次读取并把它当作旧服务；旧宿主没有 `initialFile` 时保留原读取路径。工作台只在同一次串行打开中复用项目查询，后续导航重新读取，不跨导航缓存授权。目录列表读取直接子节点和显示策略所需元数据，不预读子文件正文。
+
+刷新文件目录不会清空会话导航缓存或重新查询项目导航；隐藏侧栏不读取其目录树。目录和侧栏可消费同一份有修订约束的节点种子，保持外部新增文件可见；侧栏显示时仍保留现有树状态恢复流程。
+
 ## 2. LLM Chat 链（Direct 会话）
 
 HTTP 冷启动会话深链由 `workbenchView({initialSessionId})` 并行准备工作台和一个 `initialSession`，旧视图保存后才 `activate`。配置选择器消费 `chat.configuration` 的已就绪快照与共享订阅；主题和工作台 UI 文档按路由合并预取。事件注册后直接消费同会话的已观察快照，避免额外 GetSnapshot；普通切换保持 openSessionView → 保存/释放旧视图 → activate 的顺序。

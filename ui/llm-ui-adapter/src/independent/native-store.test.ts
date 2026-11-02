@@ -1,7 +1,8 @@
+import type {ConversationControls} from '@itookit/ui-common-adapter';
 import {expect, it, vi} from 'vitest';
 import {randomUUID} from '@itookit/common';
 import {NativeChatStore} from './native-store';
-import type {ConversationControls} from '@itookit/ui-common';
+
 import {DEFAULT_IMAGE_SPEC} from '@itookit/image-parser';
 function fixture(document: object = {}) {
     let state = {revision: '0', data: Object.keys(document).length ? JSON.stringify(document) : '', acceptedOperationIds: [] as string[]};

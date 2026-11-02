@@ -1,5 +1,5 @@
 // @file: app-settings/editors/AboutSettingsEditor.ts
-import { BaseSettingsEditor } from '@itookit/ui-common';
+import { BaseSettingsEditor } from '@itookit/ui-common-adapter';
 import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 1
 export class AboutSettingsEditor extends BaseSettingsEditor<SettingsService> {

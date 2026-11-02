@@ -1,13 +1,16 @@
 import {TabBarViewport} from './tab-bar-viewport';
 import { FILE_ICONS, FILE_BROWSER_ICONS, fileTypeIcon, t } from '@itookit/common';
 import { decorateButton, decorateResourceButton } from './controls';
-import type { IEditor } from '@itookit/ui-common';
+import type { IEditor } from '@itookit/ui-common-adapter';
 import type { WorkbenchSnapshot } from './state';
 import {backToPreviousPage} from '../navigation/page-history';
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import {windowNavigation} from './window-navigation';
 import {openedButton} from './opened-button';
 import {compactNavigation} from './compact-navigation';
+import {mountContentTitleBar} from './content-titlebar';
+import type {ContentTitleBarParts} from '@itookit/ui-common-adapter';
+import {MOBILE_NAVIGATION_QUERY} from '@itookit/ui-common-adapter';
 import { Drawer } from '@itookit/vfs-ui';
 import type { WorkbenchWindowBinding, WorkbenchWindow } from './windows';
 import {captureEditor, restoreEditor, type EditorRecoveryState} from './recovery';
@@ -66,10 +69,11 @@ export class WorkbenchTabs<T> {
     private activation = 0;
     private readonly closing = new Map<string, Promise<void>>();
     private readonly abort = new AbortController();
-    private readonly compactViews = new Set<ReturnType<typeof compactNavigation>>();
+    private readonly compactViews = new Map<ReturnType<typeof compactNavigation>, HTMLElement | undefined>();
     private openedDialog?: HTMLDialogElement;
     private readonly windowButtons = new Set<ReturnType<typeof openedButton>>();
     private readonly navigationViews = new Set<ReturnType<typeof windowNavigation>>();
+    private readonly titleBars = new Set<ReturnType<typeof mountContentTitleBar>>();
     private openedQuery = '';
     private describing?: Promise<void>;
     private readonly editors = new Map<WorkbenchTab<T>, IEditor>();
@@ -98,10 +102,23 @@ export class WorkbenchTabs<T> {
         this.render();
     }
     get current(): WorkbenchTab<T> | undefined { return this.currentId ? this.entries.get(this.currentId) : undefined; }
-    mountCompactNavigation(container: HTMLElement, context: string, back: () => void): () => void {
+    mountTitleBar(container: HTMLElement, parts: ContentTitleBarParts = {}, back?: () => void): () => void {
+        const view = mountContentTitleBar(container, parts, at => this.mountWindowList(at), back); this.titleBars.add(view);
+        view.update({title: this.current?.title ?? '', context: this.current?.context, dirty: this.current?.dirty});
+        return () => {this.titleBars.delete(view); view.destroy();};
+    }
+    mountCompactNavigation(container: HTMLElement, context: string, back: () => void, label?: HTMLElement): () => void {
         const view = compactNavigation(container, context, back, origin => this.showOpened(origin), this.navigationActions());
-        this.compactViews.add(view); view.update(this.current?.title ?? '', this.windowCount(), undefined, undefined, this.canGoUp());
-        return () => { this.compactViews.delete(view); view.destroy(); };
+        const anchor = document.createComment('draft title'), media = label && typeof window.matchMedia === 'function' ? window.matchMedia(MOBILE_NAVIGATION_QUERY) : undefined;
+        label?.before(anchor);
+        const update = () => {
+            if (label && !media?.matches) anchor.after(label);
+            const custom = media?.matches ? label : undefined;
+            this.compactViews.set(view, custom); view.update(this.current?.title ?? '', this.windowCount(), undefined, custom, this.canGoUp());
+        };
+        media?.addEventListener('change', update); update();
+        return () => {media?.removeEventListener('change', update); if (label) anchor.replaceWith(label);
+            this.compactViews.delete(view); view.destroy();};
     }
     mountWindowList(container: HTMLElement, withNavigation = true): () => void {
         const navigation = withNavigation ? windowNavigation(this.navigationActions()) : undefined;
@@ -306,9 +323,10 @@ export class WorkbenchTabs<T> {
     private renderShared(): void {
         this.syncViewState();
         this.standalone.update(this.current?.title ?? '', this.windowCount(), this.current?.context, this.current?.navigationLabel, this.canGoUp());
+        for (const view of this.titleBars) view.update({title: this.current?.title ?? '', context: this.current?.context, dirty: this.current?.dirty});
         for (const view of this.navigationViews) view.update(this.canGoUp());
         for (const view of this.windowButtons) view.update(this.windowCount());
-        for (const view of this.compactViews) view.update(this.current?.title ?? '', this.windowCount(), undefined, undefined, this.canGoUp());
+        for (const [view, label] of this.compactViews) view.update(this.current?.title ?? '', this.windowCount(), undefined, label, this.canGoUp());
         this.bar.replaceChildren(); this.openedDrawer.content.replaceChildren();
         if (this.windows?.registry.error) {
             const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.className = 'workbench-tabs__error';
@@ -477,6 +495,7 @@ export class WorkbenchTabs<T> {
         for (const tab of this.values()) await this.close(tab.id, false);
         for (const view of this.windowButtons) view.button.remove(); this.windowButtons.clear();
         for (const view of this.navigationViews) view.destroy(); this.navigationViews.clear();
+        for (const view of this.titleBars) view.destroy(); this.titleBars.clear();
         this.abort.abort(); this.openedDrawer.destroy(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
         delete this.container.dataset.workbenchView;
         delete this.container.dataset.workbenchActivation;

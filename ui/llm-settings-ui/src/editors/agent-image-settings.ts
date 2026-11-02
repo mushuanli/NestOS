@@ -1,7 +1,7 @@
 import {escapeHTML, t} from '@itookit/common';
 import type {ImageProcessingPreference} from '@itookit/kernel-adapters/contracts';
 import {isImageResizePolicy} from '@itookit/kernel-adapters/contracts';
-import {SettingsValidationError} from '@itookit/ui-common';
+import {SettingsValidationError} from '@itookit/ui-common-adapter';
 
 export function renderAgentImageSettings(value?: ImageProcessingPreference): string {
     const mode = value?.resize?.mode ?? 'inherit';

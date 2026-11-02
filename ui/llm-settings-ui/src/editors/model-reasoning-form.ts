@@ -1,6 +1,6 @@
 import { escapeAttr, t } from '@itookit/common';
 import { isReasoningCapabilities, type LLMModel } from '@itookit/driver-llm/contracts';
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 
 export function renderReasoningDeclaration(model: LLMModel, draft?: string, protocolsDraft?: string): string {
     return `<details class="provider-settings__reasoning"><summary>${t('provider.reasoning.title')}</summary>

@@ -1,4 +1,4 @@
-// @itookit/ui-common — shared UI components, contracts, and browser utilities.
+// @itookit/ui-common-adapter — shared UI components, contracts, and browser utilities.
 
 // ── Editor / UI contracts ──
 export {
@@ -32,7 +32,6 @@ export {
 // ── UI components ──
 export * from './components/BaseSettingsEditor';
 export * from './components/UIComponents';
-export { installResponsiveActions, type ResponsiveActionsOptions } from './components/responsive-actions';
 
 // ── Browser utilities ──
 export { copyText } from './utils/clipboard';
@@ -52,3 +51,4 @@ export type { ConversationCommandOutputRef, ConversationCommandOutput, Conversat
 export { conversationStatus } from './utils/conversation-status';
 
 export { installNavigationButtonPresentation } from './components/navigation-button';
+export * from '@itookit/ui-common';

@@ -12,6 +12,7 @@ const fileSystem: CapabilitySchema = {
 };
 
 export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
+    "ProjectWorkspaceSource": {markers: ['fs', 'initialFile', 'dispose'], fields: ['fs', 'initialFile'], methods: {dispose: 'async'}},
     "OpenedApplicationView": {markers: ['workbench', 'observation', 'cursor', 'dispose'],
         domain: 'opened-view', invalidates: [],
         fields: ['documents', 'workbench', 'initial', 'taskAttachmentKey', 'connectionInterests', 'observation', 'cursor'], methods: {dispose: 'async'}},
@@ -23,7 +24,7 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
         methods: { "getConfigurationSnapshot": "snapshot", "subscribe": "subscribe", "dispose": "async" } },
     "SessionBrowserPort": { markers: ["fs", "transferItems", "readFileDirectory", "invalidateNavigation"], fields: ["fs"],
         invalidates: ['projects', 'session', 'files'], domain: 'projects',
-        methods: { "dispose": "async", "transferItems": "async", "readFileDirectory": "query", "invalidateNavigation": "async", "setSessionFilter": "async" } },
+        methods: { "dispose": "async", "transferItems": "async", "readDirectory": "query", "readFileDirectory": "query", "invalidateNavigation": "async", "setSessionFilter": "async" } },
     "IFSDriver": { scopedObserver: true, binary: true, observer: 'onAny', invalidates: ['files', 'settings'], domain: 'files', markers: ["getChildren", "writeContent", "search", "getNode"], fields: ["capabilities"],
         methods: {"getNode": "query", "getNodeType": "query", "getChildren": "query", "readContent": "query", "resolvePath": "query", "exists": "query", "walkTree": "query", "search": "query", "getStats": "query", "createFile": "async", "createDirectory": "async", "writeContent": "async", "appendContent": "async", "rename": "async", "move": "async", "delete": "async", "updateMetadata": "async", "copy": "async", "symlink": "async", "readlink": "query", "hardlink": "async", "transaction": "async", "on": "subscribe", "onAny": "subscribe"} },
     "IAssetOperations": { domain: "files", invalidates: ["files", "settings"], markers: ["putAsset"], fields: [],
@@ -84,8 +85,8 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
         methods: {"snapshot": "snapshot", "subscribe": "subscribe", "list": "refresh", "hasSession": "lookup", "has": "lookup", "toggle": "async", "remove": "async", "include": "async", "deleteFiles": "async", "moveFiles": "async", "deleteNativeSessions": "async", "updateNativeSession": "async"} },
     "ProjectDraftService": { markers: ["onPromoted"], fields: [],
         methods: {"open": "async", "ensure": "async", "onPromoted": "subscribe", "submissionForSession": "async", "submitted": "async", "recover": "async", "reconcile": "async"} },
-    "ProjectDraftComposer": { markers: ["initialData", "prepare"], fields: ["id", "attachments", "initialData"],
-        methods: {"save": "async", "clear": "async", "prepare": "async", "refresh": "async"} },
+    "ProjectDraftComposer": { markers: ["initialData", "prepare"], fields: ["id", "locked", "attachments", "initialData"],
+        methods: {"move": "async", "save": "async", "clear": "async", "prepare": "async", "refresh": "async"} },
     "ProjectRemoteMountService": { lookupDefaults: { list: [], projectOffline: false, degraded: false, connectionName: { $undefined: true } }, observer: 'onChange', invalidates: ['projects', 'session', 'files'], domain: 'projects', markers: ["projectConversation", "connections"], fields: ["sessionStatus", "diagnostics", "loadWarnings"],
         methods: {"inspectRemoteProjects": "async", "init": "async", "executionCapabilities": "async", "list": "lookup", "connections": "snapshot", "connectionName": "lookup", "connectionDiagnostic": "lookup", "harness": "async", "connection": "lookup", "resolveConnection": "async", "checkConnection": "async", "checkDraft": "async", "browseDirectories": "async", "saveConnection": "async", "removeConnection": "async", "reconcileMCPReferences": "async", "mcpReferences": "query", "removeMCPReferences": "async", "refreshMCPConnections": "async", "discoverMCP": "async", "forgetProject": "async", "findRemoteProject": "query", "bindProject": "async", "projectHarness": "async", "projectModels": "query", "executionSettings": "async", "setExecution": "async", "remountProject": "async", "refreshProjectBinding": "async", "searchFiles": "async", "projectConversation": "async", "projectOffline": "lookup", "degraded": "lookup", "status": "lookup", "connectionStatus": "lookup", "projectStatus": "query", "inspectProjectAccess": "async", "assertUnmountable": "async", "onChange": "subscribe", "checkConnections": "async", "add": "async", "remove": "async", "reconnect": "async"} },
     "RemoteSessionStatus": { lookupDefaults: { fileVersion: { $undefined: true } }, lazyLookups: true, invalidates: ['projects', 'session', 'files'], domain: 'projects', markers: ["fileVersion", "record"], fields: [],

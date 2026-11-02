@@ -1,7 +1,7 @@
 // @file: llm-ui/components/history/EventDispatcher.ts
 
 import {EventCleanup, TimerManager} from '@itookit/llm-ui';
-import { copyText, showConfirmDialog } from '@itookit/ui-common';
+import { copyText, showConfirmDialog } from '@itookit/ui-common-adapter';
 import type { SessionRenderer } from './SessionRenderer';
 import type { StreamController } from './StreamController';
 import type { CollapseController } from './CollapseController';

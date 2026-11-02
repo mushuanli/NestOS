@@ -1,7 +1,7 @@
 // @file: apps-settings/editors/ContactSettingsEditor.ts
 import { Contact } from '../types/types';
 import {generateShortUUID} from '@itookit/common';
-import { BaseSettingsEditor, Modal, Toast } from '@itookit/ui-common';
+import { BaseSettingsEditor, Modal, Toast } from '@itookit/ui-common-adapter';
 import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 
 export class ContactSettingsEditor extends BaseSettingsEditor<SettingsService> {

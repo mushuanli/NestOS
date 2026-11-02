@@ -1,6 +1,6 @@
 import {createModuleLogger, randomUUID, t} from '@itookit/common';
 import type {ApplicationBackend, EditorSwap} from '@itookit/app-contracts/services';
-import type {EditorFactory} from '@itookit/ui-common';
+import type {EditorFactory} from '@itookit/ui-common-adapter';
 import {canPreserveRefreshBackup} from '../persistence/file-recovery-store';
 
 const log = createModuleLogger('editor-swap');

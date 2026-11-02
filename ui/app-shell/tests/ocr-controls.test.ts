@@ -1,3 +1,5 @@
+import type {OcrControls} from '@itookit/ui-common-adapter';
+
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
@@ -5,7 +7,7 @@ import { MemoryBackend } from '@itookit/vfs-core';
 import { OcrService, createApplicationRuntime, type ApplicationRuntime } from '@itookit/app-core';
 import { t } from '@itookit/common';
 import { type ILLMService } from '@itookit/driver-llm/contracts';
-import type { OcrControls } from '@itookit/ui-common';
+
 import { createOcrControls } from '../src/configuration/ocr-controls';
 import { ConfigurationDeletionDialog } from '../src/configuration/delete-dialog';
 import { AttachmentManager } from '../../llm-ui-adapter/src/components/input/AttachmentManager';

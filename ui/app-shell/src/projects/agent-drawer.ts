@@ -3,7 +3,7 @@ import { Drawer, createVFSBrowser, createDeleteOperation, describeErrorReason, t
 import { FILE_BROWSER_ICONS, TOOLBOX_ICONS, createModuleLogger, randomUUID, t, type NavigationRequest } from '@itookit/common';
 import { toolboxPath, ungroupedId } from '@itookit/app-contracts';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
-import type { EditorOptions } from '@itookit/ui-common';
+import type { EditorOptions } from '@itookit/ui-common-adapter';
 import { lazyResource } from '../lifecycle/lazy-resource';
 import { showNameDialog } from '../files/project-dialog';
 import { nestOSVFSPresentation } from '../browser/vfs-presentation';

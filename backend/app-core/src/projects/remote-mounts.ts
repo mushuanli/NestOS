@@ -567,10 +567,10 @@ export class ProjectRemoteMountService {
             return await this.guardHarness(client, projectId, fingerprint, root.connectionId!).models!(profile.id, undefined, options);
         } finally {await client.close();}
     }
-    async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string): Promise<ProjectConversationPort> {
-        if (!sessionId) return this.createProjectConversation(projectId, profileId, sessionId, options, readOnly, draftId);
+    async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string, draftTitle?: string): Promise<ProjectConversationPort> {
+        if (!sessionId) return this.createProjectConversation(projectId, profileId, sessionId, options, readOnly, draftId, draftTitle);
         const key = JSON.stringify([projectId, profileId, sessionId, readOnly, this.list(projectId)]);
-        return this.conversations.acquire(key, () => this.createProjectConversation(projectId, profileId, sessionId, options, readOnly, draftId));
+        return this.conversations.acquire(key, () => this.createProjectConversation(projectId, profileId, sessionId, options, readOnly, draftId, draftTitle));
     }
     async recoverConversations(): Promise<void> {
         if (this.closed) return;
@@ -592,7 +592,7 @@ export class ProjectRemoteMountService {
             throw new FSError('ECONFLICT', 'Remote queue conversation identity changed');
         return this.projectConversation(target.projectId, target.profileId, target.sessionId, {timeoutMs: 10000});
     }
-    private async createProjectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string): Promise<ProjectConversationPort> {
+    private async createProjectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string, draftTitle?: string): Promise<ProjectConversationPort> {
         if (draftId !== undefined && !/^[a-zA-Z0-9_-]+$/.test(draftId)) throw new FSError('EINVAL', 'Invalid draft identity');
         if (!this.provider.conversation) throw new FSError('ECAPABILITY', 'Conversation adapter unavailable');
         const client = await this.projectHarness(projectId, options);
@@ -607,7 +607,7 @@ export class ProjectRemoteMountService {
                 profileId: profile.id, nativeSessionId: sessionId}) : draftId;
             const target = {connectionId: root.connectionId!, serverProjectId: root.serverProjectId!,
                 ...(root.authorization ? {principalId: root.authorization.principalId} : {}), profileId: conversationId ? profile.id : profileId};
-            if (draftId) await prepareRemoteDraft(this.store, projectId, draftId, target);
+            const preparedDraft = draftId ? await prepareRemoteDraft(this.store, projectId, draftId, target, draftTitle) : undefined;
             const guarded = this.guardHarness(client, projectId, fingerprint, root.connectionId!);
             const checkAccess = () => {
                 if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
@@ -617,7 +617,7 @@ export class ProjectRemoteMountService {
                 remoteConversationJournal(recovery, descriptor.epoch, !sessionId && !draftId, checkAccess));
             const composer = new ConversationComposerStore(this.store, projectId,
                 remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'), !readOnly, checkAccess);
-            const observed = observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage, conversationId,
+            const observed = observeConversation(sessionId ? conversation : draftConversation(conversation, recovery, preparedDraft?.title), this.estimateUsage, conversationId,
                 () => { void this.sessionStatus.refresh(projectId); });
             return withConversationComposer(observed, composer);
         } catch (error) { await client.close(); throw error; }

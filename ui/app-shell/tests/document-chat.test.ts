@@ -3,7 +3,7 @@ import {expect, it, vi} from 'vitest';
 import {createDocumentChatFactory} from '../src/browser/document-chat';
 import type {AiChatHost} from '@itookit/mdxeditor';
 import type {ApplicationBackend, ApplicationServices} from '@itookit/app-contracts/services';
-import type {EditorFactory} from '@itookit/ui-common';
+import type {EditorFactory} from '@itookit/ui-common-adapter';
 
 const entry = (id: string, kind: 'agent' | 'flow' = 'agent') => ({name: id, target: {kind, id, version: '1', digest: id}});
 async function fixture(session = true) {

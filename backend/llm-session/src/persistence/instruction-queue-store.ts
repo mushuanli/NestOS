@@ -1,3 +1,4 @@
+import {isHarnessConnectionSnapshot} from '../session/harness-binding';
 import {isAttachmentContentIdentity} from '../contracts/chat';
 import type { JsonValue, Kernel } from '@itookit/durable-kernel';
 import type { SessionInstructionQueue } from '../contracts/instruction-queue';
@@ -69,6 +70,7 @@ function validateQueue(value: StoredInstructionQueue & {schemaVersion?: number},
             || item.connectionBinding.agent !== undefined && !isQueuedAgent(item.connectionBinding.agent, item.agentId)
             || item.connectionBinding.harnessAgent !== undefined && (!isHarnessAgentSnapshot(item.connectionBinding.harnessAgent)
                 || item.connectionBinding.harnessAgent.id !== item.agentId)
+            || item.connectionBinding.harnessConnection !== undefined && !isHarnessConnectionSnapshot(item.connectionBinding.harnessConnection)
             || item.connectionBinding.connectionId !== undefined && typeof item.connectionBinding.connectionId !== 'string'
             || item.connectionBinding.connections !== undefined && !isFlowConnectionSnapshot(item.connectionBinding.connections))) invalid();
         ids.add(item.id);

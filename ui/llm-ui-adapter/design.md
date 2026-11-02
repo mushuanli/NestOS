@@ -372,7 +372,7 @@ interface IEditorEventBus {
 | `IBranchStore` | `BranchStore`(services 层) |
 | `IStreamableEditor` | `MDxController` |
 | `IEditorEventBus` | `EditorEventBus`(shell 层) |
-| `IEditor`(外部 `@itookit/ui-common`) | `LLMWorkspaceEditor` + `@itookit/llm-settings-ui` 的编辑器 |
+| `IEditor`(外部 `@itookit/ui-common-adapter`) | `LLMWorkspaceEditor` + `@itookit/llm-settings-ui` 的编辑器 |
 
 ---
 
@@ -1191,7 +1191,7 @@ export {
 
 ### 15.3 IEditor 契约实现
 
-`LLMWorkspaceEditor` implements `IEditor`(来自 `@itookit/ui-common`)。关键方法:
+`LLMWorkspaceEditor` implements `IEditor`(来自 `@itookit/ui-common-adapter`)。关键方法:
 
 ```
 init / destroy / waitUntilReady / getText / setText / setTextAsync

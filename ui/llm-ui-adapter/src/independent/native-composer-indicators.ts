@@ -1,5 +1,5 @@
 import type {ComposerIndicator} from '@itookit/llm-ui';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 import {getLocale, t} from '@itookit/common';
 import {conversationBudget} from '../shell/conversation-budget';
 import {conversationContext} from '../shell/conversation-metrics';

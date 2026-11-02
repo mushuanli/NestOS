@@ -2,7 +2,7 @@
  * @file mdx/plugins/ui/asset-manager.ui.ts
  * @desc 独立的资源管理器 UI 类，不绑定 MDxPlugin 上下文
  */
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import { guessMimeType, type IFileSystem, type FSNode, type FSFileNode } from '@itookit/vfs-core';
 import type { MDxEditor } from '@itookit/mdxeditor';
 import {

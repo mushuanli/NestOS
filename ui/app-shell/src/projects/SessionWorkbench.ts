@@ -17,7 +17,7 @@ import { ViewRefresh } from '../lifecycle/view-refresh';
 import {createRecoverableFileEditor} from '../browser/file-recovery';
 import { harnessObservation, remoteSessionSources } from '@itookit/app-contracts';
 import { projectTwinTarget, twinSourceMenu } from '../digital-twin/source-menu';
-import { withInitialDirectory } from '../browser/initial-directory';
+import {directorySnapshot} from '../browser/directory-snapshot';
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
@@ -52,7 +52,8 @@ import { projectDirectoryNodes } from './project-directory';
 import { conversationResourcePath, projectConversationsPath } from '@itookit/app-contracts';
 import { WORKSPACE_PATH, projectRelativePath, reportRemoteFailure } from '@itookit/app-contracts';
 import { createProjectDraftControls } from './project-draft-editor';
-import type { SessionOpenView, WorkbenchChatControls, ProjectFolder } from '@itookit/app-contracts/services';
+import {remoteDraftCatalog} from './remote-draft-catalog';
+import type { SessionOpenView, WorkbenchChatControls, ProjectFolder, ProjectNavigationView, SessionDirectoryView } from '@itookit/app-contracts/services';
 import type { ConversationManifest } from '@itookit/llm-session/contracts';
 import { EditorLease } from '../browser/editor-lease';
 import { openProjectFileEditor, localizeRemoteWriteError } from './project-file-editor';
@@ -70,7 +71,7 @@ import { showNameDialog, showProjectDialog } from '../files/project-dialog';
 import { showMountDialog } from '../files/mount-dialog';
 import { localizeMountError } from '../files/localize-mount-error';
 
-import type { EditorFactory, IEditor, EditorHostContext, EditorOptions, ContextMenuConfig, MenuItem } from '@itookit/ui-common';
+import type { EditorFactory, IEditor, EditorHostContext, EditorOptions, ContextMenuConfig, MenuItem } from '@itookit/ui-common-adapter';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { KernelViewPort as Kernel } from '@itookit/durable-kernel/contracts';
 import { describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
@@ -186,7 +187,7 @@ interface RetainedEditor {
     previewCleanup?: () => void; renameCleanup?: () => void;
     active: string | null; branch?: string; cancel?: () => void; lease?: EditorLease;
     skills?: { sessionId: string; path: string };
-    draft?: {id: string; projectId: string; remote?: import('@itookit/ui-common').ConversationControls};
+    draft?: {id: string; projectId: string; remote?: import('@itookit/ui-common-adapter').ConversationControls};
 }
 
 /** vfs-ui owns the sidebar; this host owns business views and their file leases. */
@@ -212,6 +213,8 @@ export class SessionWorkbench implements WorkspaceController {
     private assets?: FileSystemView;
     private browser?: Awaited<ReturnType<ApplicationBackend['workbenchView']>>['browser'];
     private navigationFiles?: FileSystemView;
+    private directorySeeds?: ReturnType<typeof directorySnapshot>;
+    private readonly directoryNavigation = new WeakMap<HTMLElement, {view: SessionDirectoryView; revision: number}>();
     private sidebarUI?: VFSUIShell;
     private sidebarStarting = true;
     private navigationVisible: boolean;
@@ -228,6 +231,7 @@ export class SessionWorkbench implements WorkspaceController {
     private activeBranch?: string;
     private closed = false;
     private tail: Promise<void> = Promise.resolve();
+    private openingProjects?: Map<string | null | undefined, Promise<ProjectFolder | null | undefined>>;
     private readonly subscriptions = new SubscriptionScope();
     private contentVersion = 0;
     private readonly taskView: SessionTaskView;
@@ -372,9 +376,12 @@ export class SessionWorkbench implements WorkspaceController {
         this.lifecycle = view.lifecycle;
         this.search = view.search;
         this.navigationFiles = createFileSystemView({ viewId: 'session-navigation:admin', mounts: [
-            { mountId: 'sessions', at: '/', fs: view.directory ? withInitialDirectory(this.browser.fs, view.directory) : this.browser.fs, access: 'rw' },
+            { mountId: 'sessions', at: '/', fs: this.browser.fs, access: 'rw' },
             ...(this.flows && !this.projects ? [{ mountId: 'flows', at: '/@flows', fs: this.flows.fs, access: 'rw' as const }] : []),
         ] });
+        this.directorySeeds = directorySnapshot(this.navigationFiles);
+        this.navigationFiles = this.directorySeeds.files as FileSystemView;
+        if (view.directory) this.directorySeeds.seed([{...view.directory, path: '/', revision: this.navigationFiles.revision}]);
         const tree = document.createElement('div'); tree.className = 'project-workbench__tree';
         if (this.projects) {
             this.searchPanel = new ProjectSearchPanel(view.search!, (row, query) => this.openSearchMatch(row, query), folder => this.openResource(remoteSessionPath(folder)), {
@@ -850,12 +857,20 @@ export class SessionWorkbench implements WorkspaceController {
         void tracked.finally(() => this.readCleanup.delete(tracked));
     }
     private openIntent = 0;
+    /** Share project metadata only within one serialized open; the next navigation reads it afresh. */
+    private projectForOpen(folder?: string | null): Promise<ProjectFolder | null | undefined> {
+        const cached = this.openingProjects?.get(folder);
+        if (cached) return cached;
+        const read = this.projects?.forFolder(folder) ?? Promise.resolve(undefined);
+        this.openingProjects?.set(folder, read);
+        return read;
+    }
     private async checkRemoteFiles(path: string, target: ReturnType<typeof resolveBrowserTarget>, load: ViewLoad): Promise<boolean> {
         const remote = this.projects?.remoteMounts;
         this.container.inert = false; this.container.classList.remove('project-workbench--offline'); this.container.setAttribute('aria-disabled', 'false');
         if (!remote || target.kind !== 'project-files' && target.kind !== 'files') return true;
         const folder = browserTargetFolder(target, path, target.kind === 'files' ? (await this.repository.getManifest(target.sessionId)).folder : undefined);
-        const project = await this.projects!.forFolder(folder); load.check();
+        const project = await this.projectForOpen(folder); load.check();
         if (!project) return true;
         try {
             if (remote.list(project.project.id).some(mount => remote.status(mount.mountId) !== 'online'))
@@ -923,6 +938,7 @@ export class SessionWorkbench implements WorkspaceController {
         const operation = this.tail.then(async () => {
             if (this.closed) throw new Error('Session workspace closed');
             load.check();
+            this.openingProjects = new Map();
             if (id === this.active && !options.reload && !this.tabs.current?.failed && (branch === undefined || branch === this.activeBranch)) {
                 if (target.kind === 'project-files' || target.kind === 'files') this.scheduleFileNavigation(path, options.fileNavigation);
                 else if (directoryTarget) {
@@ -975,8 +991,8 @@ export class SessionWorkbench implements WorkspaceController {
                 this.activeBranch = undefined;
                 if (!options.preserveProject) this.projectNavigation?.selectScope(path);
                 this.onSelect(id); this.message(t('status.loading'));
-                this.scheduleNavigation(path, {reveal: true, preserveProject: options.preserveProject});
                 await load.read(() => this.showDirectory(path)); load.check();
+                this.scheduleNavigation(path, {reveal: true, preserveProject: options.preserveProject});
                 return;
             }
             if (target.kind === 'project-files') {
@@ -1001,6 +1017,7 @@ export class SessionWorkbench implements WorkspaceController {
                     const serverName = this.projects!.remoteMounts!.connectionName(root.connectionId!) ?? project.displayName ?? project.name;
                     remoteEditor = await this.factory(mount, {conversation: controls, signal: load.signal,
                         conversationSource: {kind: controls.kind, label: harnessPresentation(controls.kind, target.profileId).label},
+                        mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts, () => this.toggleSidebar()),
                         mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project.displayName ?? project.name, () => this.toggleSidebar()),
                         onStartConversationDraft: input => this.startSessionDraft(folderBrowserPath(target.folder), input),
                         hostContext: {...this.hostContext, toggleSidebar: () => this.toggleSidebar(),
@@ -1082,6 +1099,7 @@ export class SessionWorkbench implements WorkspaceController {
                         } else {
                             const readOnly = (await context.context.fs.capabilitiesAt(target.path)).readonly;
                             editor = await load.read(async () => editor = await createRecoverableFileEditor(this.fileFactory, mount!, { ...fileContentFormat(target.path), target: { kind: 'file', path: target.path, sessionId: target.sessionId }, files: context.context,
+                                mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts, () => this.toggleSidebar()),
                                 mountWindowList: container => this.tabs.mountWindowList(container),
                                 initialContent: content, signal: load.signal, title: target.path.split('/').pop(), readOnly,
                                 hostContext: { chatFromFile: this.hostContext?.chatFromFile
@@ -1147,6 +1165,7 @@ export class SessionWorkbench implements WorkspaceController {
             }
             if (this.closed) throw new Error('Session workspace closed');
         }).finally(async () => {
+            this.openingProjects = undefined;
             const cleanup = load.drain().then(async () => { await opened?.dispose(); });
             if (load.signal.aborted) this.finishReads(cleanup); else await cleanup;
             if (this.viewLoads.isCurrent(load)) this.pendingTarget = undefined;
@@ -1239,15 +1258,35 @@ export class SessionWorkbench implements WorkspaceController {
         mount.replaceChildren(panel);
         return () => URL.revokeObjectURL(url);
     }
+    private async readDirectoryData(path: string, source?: {fs?: IFileSystem; node?: FSNode; signal?: AbortSignal}, refresh = false) {
+        const target = resolveBrowserTarget(path), tab = this.tabs.current;
+        const revision = this.navigationFiles?.revision;
+        if (this.projects && this.browser?.readDirectory && !['project-files', 'files'].includes(target.kind)) {
+            const data = await this.browser.readDirectory(path, {refresh});
+            if (!this.closed && this.tabs.current === tab && tab) {
+                this.directoryNavigation.set(tab.panel, {view: data, revision: this.navigationFiles!.revision});
+                this.directorySeeds?.seed(data.directories.map(directory => ({...directory,
+                    nodes: directory.nodes ?? (directory.entryIndices ?? []).map(index => data.nodes[index]), revision: this.navigationFiles!.revision,
+                    stale: directory.stale || revision !== this.navigationFiles?.revision})));
+            }
+            return data;
+        }
+        const files = target.kind === 'project-files' || target.kind === 'files';
+        if (refresh && !files) await this.browser?.invalidateNavigation();
+        const folder = browserTargetFolder(target, path);
+        const [directory, project] = await Promise.all([
+            files ? this.browser!.readFileDirectory(path, source) : Promise.all([projectDirectoryNodes(this.navigationFiles!, path), this.navigationFiles!.driver.getNode(path)])
+                .then(([nodes, node]) => ({nodes, node})),
+            folder && this.projects ? this.projectForOpen(folder) : undefined,
+        ]);
+        return {...directory, project: project ?? null};
+    }
     private async showDirectory(path: string, source?: {fs?: IFileSystem; node?: FSNode; signal?: AbortSignal}): Promise<void> {
         if (!this.browser) throw new Error('Session browser not started');
         const target = resolveBrowserTarget(path);
         if (target.kind === 'tasks') return this.showTasks(target.sessionId);
         const generation = ++this.contentVersion;
-        const {nodes, node: directoryNode} = target.kind === 'project-files' || target.kind === 'files'
-            ? await traceBoot('projectDirectory.read', () => this.browser!.readFileDirectory(path, source))
-            : await Promise.all([projectDirectoryNodes(this.navigationFiles!, path), this.navigationFiles!.driver.getNode(path)])
-                .then(([nodes, node]) => ({nodes, node}));
+        const {nodes, node: directoryNode, project} = await traceBoot('projectDirectory.read', () => this.readDirectoryData(path, source));
         if (this.closed || generation !== this.contentVersion) return;
         const panel = document.createElement('div'); panel.className = 'session-detail session-detail--directory';
         const heading = document.createElement('h2');
@@ -1255,7 +1294,6 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.closed || generation !== this.contentVersion) return;
         panel.append(heading);
         if (this.projects && target.kind === 'folder') {
-            const project = await this.projects.forFolder(folderPathFromBrowserPath(path));
             if (this.closed || generation !== this.contentVersion) return;
             if (project) {
                 const directory = document.createElement('p'); directory.className = 'project-workbench__directory';
@@ -1282,11 +1320,11 @@ export class SessionWorkbench implements WorkspaceController {
         const actions = await projectDirectoryActions(path, directoryNode, this.projects, {
             session: folder => this.startSessionDraft(folder), project: () => this.createProject('/'),
             entry: (directory, type) => this.createDirectoryEntry(directory, type), report: error => this.report(error),
-        });
+        }, project);
         if ((target.kind === 'project-files' || target.kind === 'files') && directoryNode?.type === 'directory') actions.push({id: 'upload-file', label: t('project.uploadFile'), icon: PROJECT_ACTION_ICONS.upload, disabled: directoryNode.metadata._readOnly === true || directoryNode.metadata._disabled === true, run: () => this.uploadProjectFiles(path)});
         if (this.closed || generation !== this.contentVersion) return;
         const search = this.projects && this.search ? await createProjectDirectorySearch(path, this.projects, this.search,
-            (row, query) => this.openSearchMatch(row, query)) : undefined;
+            (row, query) => this.openSearchMatch(row, query), project) : undefined;
         search?.setSessionFilter(this.agentFilter);
         if (this.closed || generation !== this.contentVersion) { search?.destroy(); return; }
         if (search) this.tabs.current!.subscriptions.push(() => search.destroy());
@@ -1315,14 +1353,19 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.sidebarUI) this.tabs.current!.subscriptions.push(watchDirectorySelection(panel, this.sidebarUI));
         this.tabs.setIcon(this.tabs.current!.id, this.sidebarUI?.getNode(path)?.icon ?? FILE_ICONS.folder);
         if (!this.closed) this.tabs.content.replaceChildren(panel);
+        const owner = this.tabs.current;
         if (this.navigationFiles?.on && target.kind !== 'files' && target.kind !== 'project-files')
-            this.tabs.current!.subscriptions.push(watchDirectoryList(this.navigationFiles, panel, error => this.report(error), () => this.visible && !this.closed && this.tabs.current?.panel === panel));
+            owner!.subscriptions.push(watchDirectoryList(this.navigationFiles, panel, error => this.report(error), () => this.visible && !this.closed && this.tabs.current === owner));
     }
     private async directoryEntries(path: string, update?: (nodes: FSNode[]) => void) {
-        await this.browser?.invalidateNavigation();
-        const nodes = await projectDirectoryNodes(this.navigationFiles!, path);
+        const {nodes, node} = await this.readDirectoryData(path, undefined, true);
         update?.(nodes);
-        if (this.active === path) {
+        const target = resolveBrowserTarget(path), files = target.kind === 'project-files' || target.kind === 'files';
+        if (files && node && this.navigationFiles) {
+            this.directorySeeds?.seed([{path, node, nodes, revision: this.navigationFiles.revision}]);
+            if (this.active === path && this.resourceNavigationVisible && this.navigationReady)
+                await this.sidebarUI?.refresh();
+        } else if (this.active === path) {
             await this.sidebarUI?.refresh();
             if (this.active === path) await this.projectNavigation?.refresh();
         }
@@ -1417,14 +1460,23 @@ export class SessionWorkbench implements WorkspaceController {
         if (!this.resourceNavigationVisible || !this.navigationReady) return;
         const revision = ++this.fileNavigationRevision, active = this.active, selection = this.directorySelectionRevision;
         const current = () => !this.closed && this.visible && this.resourceNavigationVisible && revision === this.fileNavigationRevision && this.active === active;
+        const prepared = this.preparedDirectoryNavigation(path, options);
         this.sidebarLayout.navigation.inert = true;
         this.fileNavigation = this.fileNavigation.then(async () => {
             if (!current()) return;
-            await traceBoot('projectFile.navigation', async () => this.projectNavigation?.sync(path, options));
+            await traceBoot('projectFile.navigation', async () => this.projectNavigation?.sync(path, options, prepared));
             if (current() && !this.editor && !this.previewCleanup && !this.tabs.current?.failed && !this.container.inert) await this.sidebarUI?.expandPath(path);
             if (current() && select && selection === this.directorySelectionRevision) await this.selectPath(path);
             if (current()) this.pendingNavigation = undefined;
         }).catch(error => { if (current()) this.report(error); }).finally(() => { if (revision === this.fileNavigationRevision) this.sidebarLayout.navigation.inert = false; });
+    }
+    private preparedDirectoryNavigation(path: string, options: ProjectNavigationOptions): ProjectNavigationView | undefined {
+        const cached = this.tabs.current && this.directoryNavigation.get(this.tabs.current.panel);
+        const view = cached?.view, snapshot = view?.navigation;
+        if (!snapshot || snapshot.path !== path || cached?.revision !== this.navigationFiles?.revision || view?.directories.some(directory => directory.stale)) return;
+        const project = options.project ?? (options.preserveProject
+            ? snapshot.projects.find(item => item.project.id === this.projectNavigation?.currentProject()?.project.id) : view?.project ?? undefined);
+        return {...snapshot, project, loadPaths: project ? [projectConversationsPath(project.path, {recent: true})] : []};
     }
     /**
      * Follow a favorite row to its live resource. Returns false when the route is not a
@@ -1642,7 +1694,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private async editorMount(folder?: string | null, sessionId?: string, prepared?: { manifest: ConversationManifest; project?: ProjectFolder | null }): Promise<HTMLElement> {
         const mount = document.createElement('div'); mount.className = 'session-editor-mount';
-        const project = prepared && 'project' in prepared ? prepared.project : await this.projects?.forFolder(folder);
+        const project = prepared && 'project' in prepared ? prepared.project : await this.projectForOpen(folder);
         const manifest = prepared?.manifest ?? (sessionId ? await this.sessions.get(sessionId) : undefined);
         this.tabs.content.replaceChildren();
         if (this.tabs.current) {
@@ -1656,8 +1708,9 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private async openProjectFile(_path: string, target: { folder: string; path: string }, load: ViewLoad): Promise<void> {
         if (!this.projects) throw new Error('Projects unavailable');
-        const project = await this.projects.forFolder(target.folder); load.check();
+        const project = await this.projectForOpen(target.folder); load.check();
         const opened = await openProjectFileEditor(this.projects, target, load, {
+            mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts, () => this.toggleSidebar()),
             mountWindowList: container => this.tabs.mountWindowList(container),
             factory: (mount, options) => this.fileFactory(mount, {...options, defaultPluginOptions: {...options.defaultPluginOptions,
                 'interaction:ai-chat': {association: {projectFolder: target.folder}}}}), recoveryScope: 'project:' + (project?.project.id ?? target.folder), mount: () => this.editorMount(target.folder),
@@ -1733,22 +1786,12 @@ export class SessionWorkbench implements WorkspaceController {
         this.fileRenameCleanup = () => stops.forEach(stop => stop());
     }
 
-    private remoteAgentControls(folder?: string | null, initialProject?: SessionOpenView['project']): import('@itookit/ui-common').RemoteAgentControls | undefined {
+    private remoteAgentControls(folder?: string | null, initialProject?: SessionOpenView['project']): import('@itookit/ui-common-adapter').RemoteAgentControls | undefined {
         if (!folder || !this.projects?.remoteMounts) return;
         const projects = this.projects;
-        const profiles = async () => {
-            const project = initialProject !== undefined ? initialProject : await projects.forFolder(folder), remote = projects.remoteMounts!;
-            initialProject = undefined;
-            const mount = project && remote.list(project.project.id).find(m => m.at === '/' && m.serverProjectId && m.access === 'rw');
-            if (!project || !mount) return [];
-            const client = await remote.projectHarness(project.project.id, {timeoutMs: 3000});
-            try { return (await client.profiles({timeoutMs: 3000})).profiles.filter(p => p.projectRuntime && p.capabilities.create)
-                .map(p => ({id: 'remote:' + encodeURIComponent(JSON.stringify([mount.connectionId, mount.serverProjectId, p.id])), name: `${remote.connectionName(mount.connectionId!) ?? project.displayName ?? project.name} · ${p.kind} · ${p.id}`,
-                    icon: ENTITY_ICONS.remoteAgent, category: t('harness.remoteAgents'), supportsModels: !!p.capabilities.models, attachmentKinds: p.capabilities.attachments}));
-            } finally { await client.close(); }
-        };
-        return {list: async () => { try { return await profiles(); } catch { return []; } }, models: id => this.remoteAgentModels(folder, id, profiles), send: async (id, text, nativeSelection, files) => {
-            if (!(await profiles()).some(p => p.id === id)) throw new Error(t('toolbox.unavailable'));
+        const catalog = remoteDraftCatalog(projects, folder, initialProject);
+        return {...catalog, send: async (id, text, nativeSelection, files) => {
+            if (!(await catalog.list()).some(p => p.id === id)) throw new Error(t('toolbox.unavailable'));
             const [connectionId, serverProjectId, profileId] = JSON.parse(decodeURIComponent(id.slice('remote:'.length))) as [string, string, string];
             const project = await projects.forFolder(folder);
             if (!project) throw new Error(t('toolbox.unavailable'));
@@ -1758,13 +1801,6 @@ export class SessionWorkbench implements WorkspaceController {
             if (!this.editor?.commands.sendMessage) throw new Error('Remote conversation editor unavailable');
             if (await this.editor.commands.sendMessage({text, ...(files?.length ? {files} : {}), ...(nativeSelection ? {nativeSelection} : {})}) === false) throw new Error(t('toolbox.unavailable'));
         }};
-    }
-    private async remoteAgentModels(folder: string, id: string, profiles: () => Promise<Array<{id: string; supportsModels?: boolean}>>): Promise<import('@itookit/ui-common').ConversationModelCatalog> {
-        if (!(await profiles()).some(profile => profile.id === id && profile.supportsModels)) return {models: []};
-        const projects = this.projects!, project = await projects.forFolder(folder);
-        if (!project) throw new Error(t('toolbox.unavailable'));
-        const [, , profileId] = JSON.parse(decodeURIComponent(id.slice('remote:'.length))) as string[];
-        return projects.remoteMounts!.projectModels(project.project.id, profileId!, {timeoutMs: 30000});
     }
     private isRemoteProject(project: ProjectFolder): boolean {
         return project.project.source?.kind === 'remote' || !!this.projects?.remoteMounts?.list(project.project.id).some(mount => mount.at === '/');
@@ -1790,7 +1826,7 @@ export class SessionWorkbench implements WorkspaceController {
         const projects = this.projects;
         const mountSettings: NonNullable<EditorOptions['mountSettings']> = element => mountAgentProjectSettings(element, agentId, projects,
             this.agentProjects, projectId => this.showAgentSessions(agentId, projectId), project => {
-                if (!agentId.startsWith('remote:')) return !this.isRemoteProject(project);
+                if (!agentId.startsWith('remote:')) return true;
                 const [connection] = JSON.parse(agentId.slice(7)) as string[];
                 return !!projects.remoteMounts?.list(project.project.id).some(item => item.at === '/' && item.connectionId === connection);
             }, !agentId.startsWith('remote:'));
@@ -1805,12 +1841,13 @@ export class SessionWorkbench implements WorkspaceController {
         this.tabs.title('@agent/' + encodeURIComponent(agentId), definition.name);
         return this.agentOptions.createEditor(mount, {target: {kind: 'entity', entityType: 'agent', id: agentId}, signal,
             initialContent: JSON.stringify(definition), title: definition.name, hostContext: this.hostContext, mountSettings,
+            mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts, () => this.toggleSidebar()),
             mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, t('toolbox.agents'), () => this.toggleSidebar()),
             onStartConversation: () => this.startAgentDraft(agentId)});
     }
     private async showAgentSessions(agentId: string, projectId?: string): Promise<void> {
         const configured = projectId ?? await this.agentProjects.read(agentId);
-        const project = configured ? await this.projects!.get(configured) : await this.projects!.personal();
+        const project = configured ? await this.projects!.get(configured) : await this.projects!.getDefaultProject() ?? await this.projects!.personal();
         this.sidebarLayout.selectView('navigation');
         await this.setAgentFilter(agentId);
         await this.openResource(folderBrowserPath(project.path), {reload: true});
@@ -1843,7 +1880,6 @@ export class SessionWorkbench implements WorkspaceController {
             const project = await this.agentDraftProject(agentId);
             if (!current()) return;
             stage = 'project.validate';
-            if (this.isRemoteProject(project)) throw new Error(t('agentWorkspace.localAgentProject'));
             stage = 'draft.open';
             await this.startSessionDraft(folderBrowserPath(project.path), undefined, agentId, undefined, current);
             if (!current() || !this.active?.startsWith('draft:')) return;
@@ -1860,8 +1896,9 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
     private async agentDraftProject(agentId: string): Promise<ProjectFolder> {
+        const current = this.projectNavigation?.currentProject(); if (current) return current;
         const configured = await this.agentProjects.read(agentId);
-        return this.projectNavigation?.currentProject() ?? (configured ? await this.projects!.get(configured) : await this.projects!.personal());
+        return (configured ? await this.projects!.get(configured) : await this.projects!.getDefaultProject()) ?? await this.projects!.personal();
     }
     private async restoreAgentLaunch(origin: WorkbenchTab<RetainedEditor> | undefined, scope: string): Promise<void> {
         if (!origin?.value || this.tabs.get(origin.id) !== origin) return;
@@ -1871,8 +1908,8 @@ export class SessionWorkbench implements WorkspaceController {
         await this.restoreNavigationScope(scope);
         this.onSelect(origin.id, 'replace');
     }
-    private draftPresentation(project: ProjectFolder): Pick<import('@itookit/ui-common').SessionDraftControls, 'scope' | 'executorScope'> {
-        return {executorScope: this.isRemoteProject(project) ? 'remote' : 'local', scope: {
+    private draftPresentation(project: ProjectFolder): Pick<import('@itookit/ui-common-adapter').SessionDraftControls, 'scope' | 'executorScope' | 'promptHarness'> {
+        return {promptHarness: this.isRemoteProject(project), executorScope: this.isRemoteProject(project) ? 'remote' : 'local', scope: {
             id: project.project.id, label: project.displayName ?? project.name,
             choices: async () => (await this.projects!.list()).map(item => ({id: item.project.id, label: item.displayName ?? item.name,
                 disabled: !!sessionCreationReason(this.projects!, item.project.id)})),
@@ -1889,6 +1926,7 @@ export class SessionWorkbench implements WorkspaceController {
         const manifest = prepared.manifest, id = manifest.id, project = prepared.project;
         return {signal,
             mountMoreMenu: this.familyActions ? container => this.familyActions!.mount(container, manifest) : undefined,
+            mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts, () => this.toggleSidebar()),
             mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project?.displayName ?? project?.name ?? '', () => this.toggleSidebar()),
             onStartConversationDraft: manifest.folder ? input => this.startSessionDraft(folderBrowserPath(manifest.folder), input) : undefined,
             initialData: await this.activatePrepared(prepared, branch), remoteAgents: this.remoteAgentControls(manifest.folder, project), initialInputState,
@@ -1930,13 +1968,13 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
     private async prepareRemoteDraft(tab: WorkbenchTab<RetainedEditor>, project: ProjectFolder, draftId: string,
-        request: import('@itookit/ui-common').SessionDraftMaterialization, signal: AbortSignal, nativeId?: string): Promise<IEditor> {
+        request: import('@itookit/ui-common-adapter').SessionDraftMaterialization, signal: AbortSignal, nativeId?: string): Promise<IEditor> {
         const choices = await this.remoteAgentControls(project.path)!.list();
         if (!choices.some(choice => choice.id === request.agentId)) throw new Error(t('toolbox.unavailable'));
         const [connectionId, serverProjectId, profileId] = JSON.parse(decodeURIComponent(request.agentId!.slice(7))) as string[];
         const root = this.projects!.remoteMounts!.list(project.project.id).find(item => item.at === '/');
         if (root?.connectionId !== connectionId || root.serverProjectId !== serverProjectId) throw new Error(t('toolbox.unavailable'));
-        const controls = await this.projects!.remoteMounts!.projectConversation(project.project.id, profileId!, nativeId, {signal, timeoutMs: 3000}, false, nativeId ? undefined : draftId);
+        const controls = await this.projects!.remoteMounts!.projectConversation(project.project.id, profileId!, nativeId, {signal, timeoutMs: 3000}, false, nativeId ? undefined : draftId, request.title);
         if (tab.value?.draft) tab.value.draft.remote = controls;
         let editor: IEditor | undefined;
         try {
@@ -1944,6 +1982,7 @@ export class SessionWorkbench implements WorkspaceController {
                 conversationSource: {kind: controls.kind, label: harnessPresentation(controls.kind, profileId).label},
                 title: choices.find(choice => choice.id === request.agentId)!.name, initialInputState: {agentId: request.agentId},
                 onStartConversationDraft: input => this.startSessionDraft(folderBrowserPath(project.path), input),
+                mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts, () => this.toggleSidebar()),
                 mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project.displayName ?? project.name, () => this.toggleSidebar()),
                 hostContext: {...this.hostContext!, toggleSidebar: () => this.toggleSidebar()},
                 onConversationSession: () => {void this.projects!.drafts.reconcile(project.project.id).catch(error => this.report(error));}});
@@ -1977,7 +2016,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (replaceActive) {this.tabs.activate(path); await this.restoreEditor(value); this.onSelect(this.getActiveResourceId()!, 'replace');}
     }
     async startSessionDraft(parent?: string, input?: {text: string; files: File[]}, agentId?: string,
-        preferences?: import('@itookit/ui-common').SessionDraftPreferences, navigationCurrent?: () => boolean): Promise<void> {
+        preferences?: import('@itookit/ui-common-adapter').SessionDraftPreferences, navigationCurrent?: () => boolean): Promise<void> {
         const folder = await this.creationFolder(parent);
         if (navigationCurrent && !navigationCurrent()) return;
         this.cancelViewLoad(); const load = this.viewLoads.begin();
@@ -2013,9 +2052,19 @@ export class SessionWorkbench implements WorkspaceController {
                     if (!this.editor) throw new Error('Session editor unavailable');
                     return this.editor;
                 },
-            }, this.draftPresentation(project));
+            }, {...this.draftPresentation(project), scope: {...this.draftPresentation(project).scope!, move: async id => {
+                const target = await this.projects!.get(id);
+                if (!composer.move) throw new Error(t('project.draftProjectLocked'));
+                await composer.move(id);
+                await this.startSessionDraft(folderBrowserPath(target.path));
+                this.projectNavigation?.selectScope(folderBrowserPath(target.path));
+                await this.tabs.close(draftId, false);
+            }}, presentation: {titleChanged: title => {
+                this.tabs.title(draftId, title.trim() || t('project.createSession'));
+            }}});
             const editor = await this.factory(mount, { signal: load.signal, hostContext: {...this.hostContext!, toggleSidebar: () => this.toggleSidebar()},
-                mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project.displayName ?? project.name, () => this.toggleSidebar()), sessionDraft: draftOptions, remoteAgents: this.remoteAgentControls(folder) });
+                mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts, () => this.toggleSidebar()),
+                mountCompactNavigation: (container, label) => this.tabs.mountCompactNavigation(container, project.displayName ?? project.name, () => this.toggleSidebar(), label), sessionDraft: draftOptions, remoteAgents: this.remoteAgentControls(folder, project) });
             try { load.check(); } catch (error) { await editor.destroy(); mount.remove(); throw error; }
             this.editor = receiver = editor; this.active = draftId; this.editor.focus?.();
             tab.conversationId = composer.id; tab.panel.dataset.conversationId = composer.id;

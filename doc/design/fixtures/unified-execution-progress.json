@@ -2205,7 +2205,7 @@
             [
               "pnpm",
               "--filter",
-              "@itookit/ui-common",
+              "@itookit/ui-common-adapter",
               "typecheck"
             ],
             [

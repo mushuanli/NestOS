@@ -42,3 +42,24 @@ it('uploads an unchanged original once while retaining its editing metadata', as
     await host.port.uploaded!(prepared, ref, {signal}); expect(host.upload).toHaveBeenCalledOnce();
     expect(host.metadata.get(ref.id)?.original).toEqual(ref); await host.port.dispose();
 });
+
+it('uploads only the prepared image and uses it as the editing source', async () => {
+    const host = fixture(async source => output(source)), signal = new AbortController().signal;
+    const original = new File(['full-resolution'], 'photo.png', {type: 'image/png'});
+    const prepared = await host.port.prepare!(original, {signal});
+    expect(prepared).not.toBe(original);
+    const ref = await host.upload(prepared);
+    await host.port.uploaded!(prepared, ref, {signal});
+    expect(host.upload).toHaveBeenCalledExactlyOnceWith(prepared);
+    expect(host.assets.size).toBe(1);
+    expect(host.metadata.get(ref.id)?.original).toEqual(ref);
+    await host.port.dispose();
+});
+it('uses a color-preserving JPEG recipe for photos', async () => {
+    const process = vi.fn(async (source: ImageSource) => output(source)), host = fixture(process);
+    await host.port.prepare!(new File(['photo'], 'photo.jpg', {type: 'image/jpeg'}), {signal: new AbortController().signal});
+    expect(process).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
+        recipe: {version: 1, resize: {mode: 'max-edge', maxEdge: 1024}, color: 'preserve', output: {mimeType: 'image/jpeg', quality: 0.82}},
+    }));
+    await host.port.dispose();
+});

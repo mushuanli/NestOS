@@ -1,3 +1,4 @@
+import {promptHarnessIdentity} from './prompt-harness';
 import {applyHarnessOverrides, applyOverrides, assertContextSelection} from './execution-overrides';
 import {independentPreparationInstruction, independentPreparationError} from './independent-call-preparation';
 import { prepareFlowConnections } from './flow-connections';
@@ -127,7 +128,7 @@ export class SessionRunCoordinator {
     }
 
     async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
-        const identity = await this.resolveSelectedIdentity(item);
+        const identity = await this.resolveSelectedIdentity({...item, sessionId});
         return this.bindSelectedInstruction(sessionId, item, identity);
     }
 
@@ -148,7 +149,7 @@ export class SessionRunCoordinator {
         if (manifest.parentSessionId !== request.submission!.source.ownerId || manifest.currentBranch !== item.branch
             || manifest.branches[item.branch] !== null) throw independentPreparationError('CALL_PREPARATION_SCOPE_MISMATCH');
         await this.assertCanSubmit(sessionId);
-        const identity = await this.resolveSelectedIdentity(item);
+        const identity = await this.resolveSelectedIdentity({...item, sessionId});
         if (identity.target?.kind === 'agent' && !await this.agents.publishedTarget(identity.target)) throw independentPreparationError('CALL_PUBLISHED_TARGET_REQUIRED');
         const bound = await this.bindSelectedInstruction(sessionId, item, identity);
         const task = await this.prepareTask({...bound, sessionId, invocation, instructionId: bound.id, instructionBranch: bound.branch,
@@ -176,7 +177,7 @@ export class SessionRunCoordinator {
 
     publishedAgentTarget(target?: import('@itookit/llm-flow/contracts').TargetRef) {return this.agents.publishedTarget(target);}
 
-    private async resolveSelectedIdentity(input: Pick<TaskInput, 'agentId' | 'target' | 'expectedTarget' | 'source' | 'sendIntent'>): Promise<ExecutorConfig> {
+    private async resolveSelectedIdentity(input: Pick<TaskInput, 'agentId' | 'target' | 'expectedTarget' | 'source' | 'sendIntent' | 'sessionId'>): Promise<ExecutorConfig> {
         const target = input.target;
         let identity: ExecutorConfig;
         if (target?.kind === 'flow') {
@@ -193,7 +194,8 @@ export class SessionRunCoordinator {
         if (input.source && identity.execution?.kind !== 'flow'
             && (input.source.kind !== 'composer' || Object.keys(input.source.values ?? {}).length))
             throw Object.assign(new Error('This Agent does not accept structured arguments'), {code: 'CALL_INPUT_UNBOUND'});
-        return identity;
+        const connectionId = (await this.engine.getSessionSettings(input.sessionId)).harnessConnectionId;
+        return connectionId ? promptHarnessIdentity(identity, await this.agents.resolveHarnessConnection(connectionId)) : identity;
     }
     private async assertPublishedImplementation(input: Pick<TaskInput, 'sendIntent'>, identity: ExecutorConfig): Promise<void> {
         const execution = input.sendIntent?.execution;
@@ -474,6 +476,9 @@ export class SessionRunCoordinator {
             ?? readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.resolveSelectedIdentity(input));
         if (identity.execution?.kind === 'harness') return applyHarnessOverrides({ ...identity,
             harnessConnection: await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection) }, input);
+        const selectedHarness = input.instructionConnectionBinding?.harnessConnection ?? identity.harnessConnection;
+        if (selectedHarness) return applyOverrides(promptHarnessIdentity(identity,
+            await this.agents.resolveHarnessConnection(selectedHarness.id, selectedHarness)), input.overrides ?? {});
         const connectionId = input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
             : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId;
         const snapshot = input.instructionConnectionBinding?.connections;
@@ -514,6 +519,7 @@ export class SessionRunCoordinator {
             const harnessConnection = await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection);
             return {identityVersion: 1 as const, defaults: {}, harnessAgent: {...structuredClone(identity), harnessConnection}};
         }
+        if (identity.harnessConnection) return {identityVersion: 1 as const, defaults: {}, harnessConnection: identity.harnessConnection};
         const started = Date.now(), operationId = input.instructionId ?? ulid();
         let stage = 'defaults';
         try {

@@ -5,7 +5,7 @@ import {RemoteConversationStore} from '../src/projects/remote-conversation-store
 import {draftConversation, draftHarness, remoteConversationJournal} from '../src/projects/remote-draft-conversation';
 import {interceptConversationTransactions} from './remote-conversation-faults';
 
-async function fixture() {
+async function fixture(draftTitle?: string) {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()});
     const fault = interceptConversationTransactions(await manager.openFileSystem('/'));
     const {fs} = fault, recovery = new RemoteConversationStore(fs, 'draft');
@@ -18,7 +18,7 @@ async function fixture() {
         rename: vi.fn(async (_profile, _session, name) => ({session: {...session, title: name}})),
         eventSnapshot: vi.fn(async () => ({epoch: 'events', cursor: 0, gap: false, events: [], requests: []}))} as unknown as HarnessClient;
     const open = () => draftConversation(new HarnessConversation(draftHarness(client, recovery), profile, 'w', undefined, true,
-        remoteConversationJournal(recovery, 'epoch', true)), recovery);
+        remoteConversationJournal(recovery, 'epoch', true)), recovery, draftTitle);
     return {manager, recovery, client, open, fs, fault};
 }
 
@@ -151,5 +151,12 @@ it('retries a rejected initial title on a later refresh using the same default n
         const title = vi.mocked(f.client.rename!).mock.calls[0][2];
         await view.refresh(); expect(f.client.rename).toHaveBeenCalledTimes(2);
         expect(vi.mocked(f.client.rename!).mock.calls[1][2]).toBe(title); expect(f.client.turn).toHaveBeenCalledOnce();
+    } finally {await view.close(); await f.manager.dispose();}
+});
+it('uses the custom draft title after the first native turn is accepted', async () => {
+    const f = await fixture('手机照片记录'), view = f.open();
+    try {
+        await view.read(); await view.send('Keep the photo');
+        expect(f.client.rename).toHaveBeenCalledWith('p', 'native', '手机照片记录', expect.anything());
     } finally {await view.close(); await f.manager.dispose();}
 });

@@ -1,6 +1,6 @@
 import { escapeHTML, escapeAttr, t } from '@itookit/common';
 import { type RestorableItem, type IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import { BaseSettingsEditor, Toast, Modal, type EditorOptions } from '@itookit/ui-common';
+import { BaseSettingsEditor, Toast, Modal, type EditorOptions } from '@itookit/ui-common-adapter';
 import { InitialFilesSection, type InitialFilesPort } from './initial-files';
 
 type ItemType = RestorableItem['type'];

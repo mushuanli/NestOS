@@ -7,7 +7,7 @@ import { Command } from './Command';
 import { dispatchDirectCommand } from './direct-command';
 import { randomUUID, t } from '@itookit/common';
 import type { ChatSubmission } from '../domain/submission';
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import { ErrorHandler } from '../utils/errorHandler';
 import type { ChatOverrides } from '../domain/types';
 import type {PreparedAttachmentUpload} from '../services/AssetService';

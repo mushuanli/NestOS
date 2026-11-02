@@ -113,5 +113,8 @@
         }
       }
     }
+  },
+  "dependencies": {
+    "@itookit/ui-common": "^0.1.0"
   }
 }

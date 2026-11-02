@@ -1,6 +1,6 @@
 import {getLocale, t} from '@itookit/common';
 import type {ChatMessage, ConversationSnapshot, OperationLedger} from '@itookit/llm-ui';
-import type {ConversationInstructionQueue, ConversationSnapshot as NativeSnapshot} from '@itookit/ui-common';
+import type {ConversationInstructionQueue, ConversationSnapshot as NativeSnapshot} from '@itookit/ui-common-adapter';
 
 /** Queue edits change previews, never the immutable submitted input or its receipt. */
 export function nativeQueueMessages(state: NativeSnapshot, operations: OperationLedger, conversationId: string): ConversationSnapshot['operationMessages'] {

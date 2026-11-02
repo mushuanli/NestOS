@@ -1,10 +1,12 @@
+import {resolveChatImageResize} from '../components/input/image-processing-session';
+import {mountEditorTitleBar} from './content-titlebar';
 import {chatAttachmentMenu} from './chat-attachment-menu';
 import {mountChatInputMenu} from './chat-input-menu';
 import {refreshDraftTarget, restoreDraftTarget} from '../independent/restore-draft-target';
 import {mountExecutionDraftAction} from './chat-execution-draft';
 import {workspaceInputPlugins} from './workspace-input-plugins';
 import {SharedChatOcr} from './SharedChatOcr';
-import {resolveResize} from '@itookit/image-parser';
+
 import {SharedChatCommands} from './SharedChatCommands';
 import {SharedChatTaskPanel} from './SharedChatTaskPanel';
 import {chatSettings, chatSelectors, mountChatSettings} from './chat-settings';
@@ -15,7 +17,7 @@ import {SessionRunsPanel} from '../flows/SessionRunsPanel';
 import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
 import {ACTION_ICONS, CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, randomUUID, t} from '@itookit/common';
-import {BaseSettingsEditor, Toast, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common';
+import {BaseSettingsEditor, Toast, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common-adapter';
 import type {ChatView, ChatSubmission, ComposerDraft} from '@itookit/llm-ui';
 import {SessionCommand, type RootTargetCatalog, type SubmissionRequest} from '@itookit/llm-session/contracts';
 import {createAssetProvider} from '@itookit/mdx-adapter';
@@ -192,7 +194,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         const images = store.images.host(() => {
             const input = this.view?.getDraft(), settings = chatSettings(input?.selection, this.settings);
             const agent = this.config.agentService.listAgents().find(item => item.id === input?.target?.id);
-            return resolveResize(settings.imageResize, agent?.config.imageProcessing?.resize);
+            return resolveChatImageResize(settings.imageResize, agent?.config.imageProcessing?.resize);
         }, resize => {const view = this.view; if (!view) return; const current = view.getDraft();
             view.configureInput({selection: {...current.selection, imageResize: JSON.stringify(resize)}}, current.revision);});
         const ocr = this.config.ocr ? new SharedChatOcr(this.config.ocr, () => this.view,
@@ -207,7 +209,10 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             onError: error => this.fail(error), onDiagnostic: event => log.info('chat.operation', {...event, sessionId: this.config.sessionId}),
             onBindingDiagnostic: event => log.info('chat.binding', {...event, sessionId: this.config.sessionId}),
             mountComposerMenu: (root, context) => {
-                const before = new Set(root.childNodes), release = mountChatSettings(root, () => this.view, () => chatSettings(this.view?.getDraft().selection, this.settings), error => this.fail(error));
+                const before = new Set(root.childNodes), release = mountChatSettings(root, () => this.view, () => chatSettings(this.view?.getDraft().selection, this.settings), error => this.fail(error), () => {
+                    const target = this.view?.getDraft().target;
+                    return !this.settings.harnessConnectionId && target?.kind !== 'flow' && this.config.agentService.findAgent(target?.id ?? '')?.execution?.kind !== 'flow';
+                });
                 inputCommands?.mountSkills(root);
                 const menu = mountChatInputMenu(root, {view: context.view, settings: () => chatSettings(context.view.getDraft().selection, this.settings),
                     prompts: () => this.config.agentService.findAgent(context.view.getDraft().target?.id ?? '')?.defaultPrompts ?? [],
@@ -218,7 +223,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
                     () => this.current() && this.active && !this.config.readOnly, error => this.fail(error));
                 const owned = [...root.childNodes].filter(node => !before.has(node));
                 return {update: () => menu.update?.(context), destroy: () => {release(); releaseTransfer(); menu.destroy(); owned.forEach(node => node.remove());}};
-            }, mountHeader: (root, context) => this.toolbar(root, taskPanel, context.headerMenu)};
+            }, mountHeader: (root, context) => this.toolbar(root, taskPanel, context)};
     }
     private trackUsage(operations: import('@itookit/llm-ui').OperationLedger): () => void {
         const accepted = new Set(operations.getSnapshot().filter(item => item.status === 'accepted').map(item => item.context.operationId));
@@ -246,7 +251,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             && choice.target.version === request.expectedTarget.version && choice.target.digest === request.expectedTarget.digest);
         if (!choice) throw new Error(t('callable.catalog.changed'));
         return prepareSessionChatRequest({commands: this.config.commandBus!, agents: this.config.agentService, choice, request, input,
-            files: await store.files(input.attachments, signal), assets: this.config.assets, signal});
+            files: await store.files(input.attachments, signal), assets: this.config.assets, harnessConnectionId: this.settings.harnessConnectionId, signal});
     }
     private current(): boolean {return !this.closed && this.config.sessionManager.id === this.config.sessionId
         && (this.config.sessionManager.getSnapshot?.().view?.manifest.currentBranch ?? this.branch) === this.branch;}
@@ -270,6 +275,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         this.connections = connections; await this.binding?.refreshTargets();
     }
     private selectors() {
+        if (this.settings.harnessConnectionId) return [];
         const target = this.view?.getDraft().target ?? this.store?.draft.target;
         if (target?.kind === 'flow') return [];
         const agent = this.config.agentService.findAgent(target?.id ?? '');
@@ -278,16 +284,17 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         const connections = preferred ? this.connections.map(item => ({...item, isDefault: item.id === preferred})) : this.connections;
         return chatSelectors(connections, chatSettings(this.view?.getDraft().selection, this.settings));
     }
-    private toolbar(root: HTMLElement, taskPanel?: SharedChatTaskPanel, menuHost?: HTMLElement) {
+    private toolbar(root: HTMLElement, taskPanel: SharedChatTaskPanel | undefined, context: import('@itookit/llm-ui').ToolbarContext) {
+        const menuHost = context.headerMenu;
         const releases: (() => void)[] = [], previous = new Set(root.childNodes);
         if (taskPanel) root.append(taskPanel.element);
-        for (const [mount, className] of [[this.config.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
+        for (const [mount, className] of [[this.config.mountTitleBar ? undefined : this.config.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
             if (!mount) continue; const slot = document.createElement('div'); slot.className = className;
             if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); releases.push(mount(slot), () => slot.remove());
         }
-        if (this.config.hostContext?.toggleSidebar) {const button = document.createElement('button'); button.type = 'button'; presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
+        if (!this.config.mountTitleBar && this.config.hostContext?.toggleSidebar) {const button = document.createElement('button'); button.type = 'button'; presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
             button.classList.add('llm-chat__sidebar'); button.onclick = () => this.config.hostContext!.toggleSidebar(); root.append(button);}
-        const branches = document.createElement('select'); branches.className = 'llm-chat__branch'; branches.dataset.chatOverflow = ''; branches.setAttribute('aria-label', t('flow.output.branch')); root.append(branches);
+        const branches = document.createElement('select'); branches.className = 'llm-chat__branch'; branches.dataset.chatOverflow = ''; branches.setAttribute('aria-label', t('flow.output.branch')); (context.header?.extra ?? root).append(branches);
         const refresh = async () => {const manifest = this.initialManifest ?? this.config.sessionManager.getSnapshot?.().view?.manifest ?? await this.service.getManifest(this.config.sessionId); if (this.closed || !branches.isConnected) return;
             branches.replaceChildren(...Object.keys(manifest.branches).map(name => {const option = document.createElement('option'); option.value = name; option.textContent = name; return option;})); branches.value = this.branch; branches.hidden = branches.options.length <= 1;};
         void refresh().catch(error => this.fail(error));
@@ -299,11 +306,12 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         const runs = new SessionRunsPanel(this.config.commandBus!, this.config.sessionId, body, undefined, false);
         this.sessionRunsPanel = runs; releases.push(() => runs.destroy());
         const toggle = () => runs.setVisible(menu.open && this.active); menu.addEventListener('toggle', toggle); releases.push(() => menu.removeEventListener('toggle', toggle));
-        for (const mount of [this.config.mountWindowList, this.config.mountConversationNavigation, this.config.mountMoreMenu]) {
+        for (const mount of [this.config.mountTitleBar ? undefined : this.config.mountWindowList, this.config.mountConversationNavigation, this.config.mountMoreMenu]) {
             if (mount) releases.push(mount(body));
         }
+        const releaseTitle = mountEditorTitleBar(root, this.config, context);
         const owned = [...root.childNodes].filter(node => !previous.has(node));
-        return {destroy: () => {try {releases.forEach(release => release());} finally {owned.forEach(node => node.remove());}}};
+        return {destroy: () => {try {releaseTitle(); releases.forEach(release => release());} finally {owned.forEach(node => node.remove()); branches.remove();}}};
     }
     private async observeBranch(): Promise<void> {
         const branch = this.config.sessionManager.getSnapshot?.().view?.manifest.currentBranch;

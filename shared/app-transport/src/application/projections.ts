@@ -2,9 +2,11 @@ import { createFile } from '@itookit/vfs-core';
 import { favoriteKey, projectNavigation, projectFileSource, projectWorkspaceAccess, toolGrant } from '@itookit/app-contracts';
 import type { ProjectFavoriteTarget } from '@itookit/app-contracts/services';
 import {readSessionHistory} from './session-history';
+import {shareFileObservers} from './file-observers';
 
 /** Synchronous UI reads project already loaded snapshots; writes always cross the port. */
 export function installViewProjections(kind: string, proxy: any): void {
+    if (['IFileSystem', 'FileSystemView', 'IFSDriver'].includes(kind)) shareFileObservers(proxy);
     if (kind === 'SessionManagementPort') {
         const read = proxy.getSnapshot;
         proxy.getSnapshot = () => readSessionHistory(read());

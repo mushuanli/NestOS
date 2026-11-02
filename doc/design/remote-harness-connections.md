@@ -42,6 +42,14 @@ Flow 使用标准 `builtin.agent` 节点。`config.agentId` 引用该 Agent；�
 
 Composite 可以使用本地模型主持者和远程成员。成员结果沿现有委派汇总链返回。远程主持者目前明确拒绝，因为原生 harness 尚未桥接本地委派工具。
 
+## 远程项目的提示词与执行器选择
+
+远程项目草稿把目标与执行器分开：目标可选原生直接对话或已发布 NestOS Agent/Flow；执行器及模型仍来自本项目授权的远程 harness 目录。选择 Agent 时只使用其系统提示词、共享提示词引用和本次输入/附件，不展开其直接工具、MCP、Skill 工具或记忆授权。Flow 继续由 NestOS 编排，将普通 Agent 节点绑定到所选 harness，各节点具有独立原生会话；显式 Tool 节点保留自身配置与授权，不会作为 Agent 工具传到远端。需要本地委派工具的主持节点继续明确拒绝，不能把整个 Flow 拼成 prompt。
+
+首次提交通过草稿 `prepare({harness: {profileId, expectedProject?, selection?}})` 核对客户端已选的连接与远程项目身份，重新核验项目根挂载、远程项目注册和 profile 的 create/history/interrupt 能力。宿主复用按项目、profile 和模型选择生成的具名执行连接，定义不含凭据。草稿 CAS 先固定 `harnessConnectionId`，再以原草稿 UUID 创建本地编排 Session、保存执行设置和准备 Kernel 存储；普通无绑定的远程草稿仍不能创建本地 Session。重试保持原 Session、提交身份和执行器，不覆盖已发布 Agent/Flow，也不向项目写入指令文件。
+
+会话的执行器固定，后续可更换提示词目标；已接纳队列保存冻结提示词身份和连接快照，Flow 的执行计划也保存逐节点的冻结目标。授权或连接修订变化时明确拒绝，不能改投默认模型或其他项目。原生直接对话继续走原远程 journal 及接纳转正规则；NestOS 编排会话按正式 Session 提交证据转正，并进入项目混合会话目录。
+
 ## 配置管理契约
 
 `IAgentManagementService` 提供以下可选管理方法，已进入应用 RPC 显式方法表；未装配的宿主应隐藏管理入口：

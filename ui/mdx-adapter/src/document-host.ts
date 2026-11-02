@@ -1,5 +1,5 @@
 import { buildRenamedFilename } from '@itookit/common';
-import { Toast, type EditorOptions } from '@itookit/ui-common';
+import { Toast, type EditorOptions } from '@itookit/ui-common-adapter';
 import type { EditorHost } from '@itookit/mdxeditor';
 import type { IFileSystem } from '@itookit/vfs-core';
 

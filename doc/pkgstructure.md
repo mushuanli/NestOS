@@ -1,17 +1,17 @@
 
 ## Workspace Structure
 
-pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `nestos-web`）。十三个独立库（包括 llm-ui、mdxeditor、vfs-ui、kanban）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
+pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `nestos-web`）。十四个独立库（包括 llm-ui、mdxeditor、vfs-ui、kanban）均位于 `libraries/`。ui-common 为零运行时依赖的独立 UI 基础库；原应用编辑器与会话契约位于 ui-common-adapter。
 
 | 目录 | 模块 |
 |---|---|
-| `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common |
+| `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common-adapter |
 | `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters |
 | `shared/` | app-contracts、common、app-transport |
-| `libraries/` | driver-llm、cells-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser、durable-kernel、device-tty、kanban |
+| `libraries/` | driver-llm、cells-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser、durable-kernel、device-tty、kanban、ui-common |
 | `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
 
-19 个业务/共享包 + 13 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 `tools/cells` Rust 工具子模块（包名与命令为 `cells`），寓意蜂房中的单个巢室，将信息与 Agent 集成为 NestOS 的单个智能节点。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
+19 个业务/共享包 + 14 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 `tools/cells` Rust 工具子模块（包名与命令为 `cells`），寓意蜂房中的单个巢室，将信息与 Agent 集成为 NestOS 的单个智能节点。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -48,7 +48,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/vfs-ui` | 独立文件/资源浏览 UI：目录导航、标签、内容大纲；仅依赖 vfs-core，通过公开接口注入数据源、动作、展示和持久化。 |
 | `@itookit/mdxeditor` | 独立 CodeMirror 6 编辑器（[独立仓库](https://github.com/mushuanli/mdxeditor)，源码工作区接入），不依赖其他内部包；宿主通过公共附件、存储、导航和保存接口注入能力。 |
 | `@itookit/mdx-adapter` | NestOS 编辑器适配：VFS/namespace/Session 校验、文件格式、插件元数据、笔记挖空复习状态的共享 seqfile（路径作用域、评分时按卡写入）、附件管理 UI、文件聊天引用及会话打印。 |
-| `@itookit/ui-common` | 共享 UI 组件、契约、浏览器工具。 |
+| `@itookit/ui-common-adapter` | NestOS 编辑器/会话契约、业务表单和宿主适配；通用导航由独立 ui-common 提供。 |
 | `@itookit/app-settings` | 设置 UI 与导航投影：SettingsEngine；技能文件系统、持久化、标签和维护用例归 app-core，Web 快照归宿主。 |
 | `@itookit/kanban` | 独立协调库，仅依赖 vfs-core：责任、计划 DAG、产物引用、派发意图、验收、SeqFile 原子事件与回执、条件事务存储、来源扫描、执行恢复与 DOM UI；Session/Flow/Kernel/notify 接入归 app-core，呈现和导航接线归 app-shell。 |
 | `@itookit/app-contracts` | 共享应用 DTO、事件、设置端口、身份与纯变换；不加载后端执行或 UI 实现。 |

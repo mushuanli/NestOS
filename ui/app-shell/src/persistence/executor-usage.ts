@@ -1,4 +1,4 @@
-import type { EditorOptions } from '@itookit/ui-common';
+import type { EditorOptions } from '@itookit/ui-common-adapter';
 import type { VfsJsonStore } from './vfs-json-store';
 
 import {EXECUTOR_USAGE_DOCUMENT} from './documents';

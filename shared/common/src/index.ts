@@ -1,6 +1,6 @@
 // shared/common/src/index.ts
 
-// ── UI 契约已迁移至 @itookit/ui-common（IEditor/ISessionUI/EditorFactory 及 UI 组件）──
+// ── UI 契约已迁移至 @itookit/ui-common-adapter（IEditor/ISessionUI/EditorFactory 及 UI 组件）──
 
 // ── 日志 ──
 export {

@@ -34,15 +34,36 @@ export function chatSelectors(connections: readonly ConnectionOption[], settings
     }));
     return [{id: 'connectionId', placement: 'end', combineWith: 'modelTier', label: t('chatInput.model'), value: settings.connectionId ?? '', choices: [follow,
         ...connections.filter(item => item.enabled !== false && item.credentialsReady !== false).map(item => ({id: item.id, label: `${item.name}${item.providerName ? ' · ' + item.providerName : ''}`}))]},
-        {id: 'modelTier', label: t('chatSettings.tier'), value: settings.modelTier ?? 'auto', choices: [], variants: {selectorId: 'connectionId', values: variants}},
-        ...(!settings.executionModeLocked ? [{id: 'executionMode', label: t('chatInput.executionMode.label'), value: settings.executionMode ?? 'chat', disabled: settings.executionModeLocked,
-            choices: [{id: 'chat', label: t('chatInput.executionMode.chat')}, {id: 'agent', label: t('chatInput.executionMode.agent')}]}] : [])];
+        {id: 'modelTier', label: t('chatSettings.tier'), value: settings.modelTier ?? 'auto', choices: [], variants: {selectorId: 'connectionId', values: variants}}];
 }
-export function mountChatSettings(root: HTMLElement, view: () => ChatView | undefined, settings: () => ChatInputSettings, error: (error: unknown) => void) {
+export function mountChatSettings(root: HTMLElement, view: () => ChatView | undefined, settings: () => ChatInputSettings, error: (error: unknown) => void, supportsTools: () => boolean = () => !settings().flowId) {
     const details = document.createElement('details'), summary = document.createElement('summary'), form = document.createElement('form');
     details.className = 'llm-chat__host-menu'; details.dataset.chatSettings = ''; summary.className = 'llm-chat__menu-action'; summary.innerHTML = ChatInputTemplates.sliderIcon();
     const title = document.createElement('span'); title.textContent = t('chatSettings.title'); summary.append(title);
-    const fields: FormParameter[] = [
+    const fields = settingsFields();
+    const apply = document.createElement('button'), feedback = document.createElement('p'); apply.type = 'submit'; apply.textContent = t('action.save');
+    details.append(summary, form); root.append(details);
+    details.ontoggle = () => {
+        if (!details.open) return;
+        form.innerHTML = renderParameterFields(fields, {mode: 'defaults', values: settings()});
+        if (supportsTools()) form.prepend(toolPermission(settings()));
+        form.append(apply, feedback);
+    };
+    form.onsubmit = event => {
+        event.preventDefault(); const current = view(); if (!current) return;
+        try {
+            const values = readParameterFields(form, fields, {mode: 'defaults'}), draft = current.getDraft();
+            const selection = {...draft.selection, ...Object.fromEntries(fields.map(field => [field.name, values[field.name] === undefined ? '' : String(values[field.name])]))};
+            const toggle = form.querySelector<HTMLInputElement>('[name=allowTools]');
+            if (toggle && supportsTools() && !settings().executionModeLocked) selection.executionMode = toggle.checked ? 'agent' : 'chat';
+            current.configureInput({selection}, draft.revision); details.open = false; feedback.textContent = '';
+        } catch (failure) {feedback.textContent = String(failure); error(failure);}
+    };
+    return () => {details.remove();};
+}
+
+function settingsFields(): FormParameter[] {
+    return [
         {name: 'historyLength', type: 'number', label: t('chatSettings.history'), integer: true, minimum: -1},
         {name: 'temperature', type: 'number', label: t('agent.layout.temperature'), minimum: 0, maximum: 2},
         {name: 'streamMode', type: 'boolean', label: t('flow.settings.streaming')},
@@ -51,16 +72,14 @@ export function mountChatSettings(root: HTMLElement, view: () => ChatView | unde
         {name: 'reasoningEffort', type: 'string', label: t('thinking.effort.label'), options: ['auto', 'low', 'medium', 'high', 'xhigh']},
         {name: 'systemPromptAppend', type: 'string', widget: 'textarea', label: t('chatSettings.instructions')},
     ];
-    const apply = document.createElement('button'), feedback = document.createElement('p'); apply.type = 'submit'; apply.textContent = t('action.save');
-    details.append(summary, form); root.append(details);
-    details.ontoggle = () => {if (details.open) {form.innerHTML = renderParameterFields(fields, {mode: 'defaults', values: settings()}); form.append(apply, feedback);}};
-    form.onsubmit = event => {
-        event.preventDefault(); const current = view(); if (!current) return;
-        try {
-            const values = readParameterFields(form, fields, {mode: 'defaults'}), draft = current.getDraft();
-            const selection = {...draft.selection, ...Object.fromEntries(fields.map(field => [field.name, values[field.name] === undefined ? '' : String(values[field.name])]))};
-            current.configureInput({selection}, draft.revision); details.open = false; feedback.textContent = '';
-        } catch (failure) {feedback.textContent = String(failure); error(failure);}
-    };
-    return () => {details.remove();};
+}
+
+function toolPermission(settings: ChatInputSettings): HTMLElement {
+    const label = document.createElement('label'), toggle = document.createElement('input');
+    toggle.type = 'checkbox'; toggle.name = 'allowTools'; toggle.checked = settings.executionMode === 'agent';
+    toggle.disabled = !!settings.executionModeLocked;
+    toggle.title = toggle.disabled ? t('chatInput.executionMode.locked') : '';
+    label.append(toggle, t('chatSettings.allowTools'));
+    if (toggle.disabled) {const hint = document.createElement('small'); hint.textContent = toggle.title; label.append(hint);}
+    return label;
 }

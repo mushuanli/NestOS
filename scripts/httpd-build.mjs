@@ -7,6 +7,7 @@ import { copyLibrarySnapshot, copyNativeRuntimes, copySource, freezeWorkspaceDep
 import { acquireBuildLock, artifactContext, buildEnvironment, dependencyInputs, digest, fileHash, graphInputs, readJSON, restoreArtifact, storeArtifact, treeRecords } from './httpd-build-cache.mjs';
 import state from './local-library-state.mjs';
 import { preparedSnapshot } from './local-library-plan.mjs';
+import {retainUiAssets} from './httpd-ui-assets.mjs';
 
 const run = (command, args, cwd, env = process.env) => execFileSync(command, args, {cwd, env, stdio: 'inherit'});
 /** Run a command while keeping its output readable for failure classification. */
@@ -187,6 +188,8 @@ function buildRelease(context, activate) {
     try {
         captured = workspace(context); deployment(context, captured.source, staging);
         compile(context, captured.source, staging, 'ui'); compile(context, captured.source, staging, 'server');
+        const retained = stage('retain-ui-assets', () => retainUiAssets(releases, staging));
+        console.log(`[HTTPBuild] operationId=${operationId} stage=retain-ui-assets result=retained count=${retained.retained} generations=${retained.generations}`);
         stage('validate', () => {
             assertDependencies(path.join(staging, 'node_modules'), staging);
             run(process.execPath, [path.join(staging, 'server/main.js'), '--help'], staging);
@@ -194,7 +197,7 @@ function buildRelease(context, activate) {
         });
         const files = ['server', 'dist'].flatMap(folder => treeRecords(staging, folder));
         writeFileSync(path.join(staging, 'release.json'), JSON.stringify({id, commit, dirty, builtAt: new Date().toISOString(),
-            buildKey: key, librarySnapshot: snapshot.id, nodeMajor: Number(process.versions.node.split('.')[0]), files}, null, 2) + '\n');
+            buildKey: key, librarySnapshot: snapshot.id, nodeMajor: Number(process.versions.node.split('.')[0]), uiAssets: retained.uiAssets, files}, null, 2) + '\n');
         renameSync(staging, path.join(releases, id)); if (activate) activate(id);
         writeFileSync(path.join(context.cacheDirectory, 'last-release.json'), JSON.stringify({id}));
         return id;

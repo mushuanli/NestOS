@@ -16,7 +16,7 @@ import type { DurableFlowSnapshot } from '@itookit/llm-flow/contracts';
 import { FlowCommand, isRootCallable } from '@itookit/llm-flow/contracts';
 import type { TaskSnapshot, TaskStatus } from '@itookit/durable-kernel/contracts';
 import {ACTION_ICONS, escapeHTML, randomUUID, t} from '@itookit/common';
-import { showConfirmDialog, Toast } from '@itookit/ui-common';
+import { showConfirmDialog, Toast } from '@itookit/ui-common-adapter';
 import { DagDraftController, createFlowEdge } from './dag/DagDraftController';
 import { SchemaForm } from './dag/SchemaForm';
 import { DagCanvas } from './dag/DagCanvas';

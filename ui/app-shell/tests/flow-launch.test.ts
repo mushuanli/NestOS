@@ -249,7 +249,7 @@ it('retains slot requirements but clears obsolete snapshots and descriptions whe
 
 it('restores the builtin library from System Recovery without duplicate requests', async () => {
     const { RecoverySettingsEditor } = await import('../../app-settings/src/editors/RecoverySettingsEditor');
-    const { Toast } = await import('@itookit/ui-common');
+    const { Toast } = await import('@itookit/ui-common-adapter');
     const notice = vi.spyOn(Toast, 'success').mockImplementation(() => undefined);
     let finish!: (count: number) => void;
     const restore = vi.fn(() => new Promise<number>(resolve => { finish = resolve; }));

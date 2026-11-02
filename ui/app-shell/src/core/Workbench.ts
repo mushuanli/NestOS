@@ -13,7 +13,7 @@ import { VFSUIShell } from '@itookit/vfs-ui';
 import { lazyMdxEditorFactory as defaultEditorFactory } from '../browser/lazy-mdx';
 import type { WorkbenchConfig } from '../types';
 import { t, ACTION_ICONS, createModuleLogger, randomUUID, NavigationRequest} from '@itookit/common';
-import { EditorOptions, IEditor, EditorHostContext } from '@itookit/ui-common';
+import { EditorOptions, IEditor, EditorHostContext } from '@itookit/ui-common-adapter';
 import {FSError} from '@itookit/vfs-core';
 import type {StudyDraft} from '@itookit/mdxeditor';
 import type { IFileSystem } from '@itookit/vfs-core';

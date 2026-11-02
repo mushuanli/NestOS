@@ -50,3 +50,4 @@ overrides:
   "@itookit/vfsdriver-indexeddb": "workspace:*"
   "@itookit/vfsdriver-local": "workspace:*"
   "@itookit/durable-kernel": "workspace:*"
+  "@itookit/ui-common": "workspace:*"

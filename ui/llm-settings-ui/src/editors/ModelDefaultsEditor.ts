@@ -1,5 +1,5 @@
 import { ACTION_ICONS, escapeAttr, escapeHTML, t } from '@itookit/common';
-import { BaseSettingsEditor, OcrSettingsForm, type EditorOptions, type OcrControls } from '@itookit/ui-common';
+import { BaseSettingsEditor, OcrSettingsForm, type EditorOptions, type OcrControls } from '@itookit/ui-common-adapter';
 import { MODEL_OPERATIONS, hasConnectionCredentials, modelForOperation, type IConnectionService, type ModelDefaults, type ModelOperation } from '@itookit/kernel-adapters/contracts';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import { modelPriceLabel } from '../utils/modelChoice';

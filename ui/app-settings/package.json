@@ -37,7 +37,7 @@
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@itookit/vfs-ui": "workspace:*",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*"
   },
   "devDependencies": {
@@ -49,7 +49,7 @@
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
     "vite-plugin-dts": "^4.5.4",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*",
     "@itookit/driver-llm": "workspace:*",
     "@itookit/tools": "workspace:*",

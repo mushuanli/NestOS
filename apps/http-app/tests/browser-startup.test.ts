@@ -44,3 +44,10 @@ it('dismisses the skeleton and shows one visible retry action even when external
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Still unavailable');
     expect(document.querySelectorAll('.app-startup button')).toHaveLength(1);
 });
+it.each(['Importing a module script failed.', 'Failed to fetch dynamically imported module: https://example.test/assets/chat-abcdefgh.js'])(
+    'provides an actionable module loading error for %s', message => {
+        createStartupStatus().fail(new TypeError(message));
+        expect(document.querySelector('.app-startup p')?.textContent).toContain('重新加载');
+        expect(document.querySelector('.app-startup p')?.textContent).not.toContain('example.test');
+        expect(document.querySelectorAll('.app-startup button')).toHaveLength(1);
+    });

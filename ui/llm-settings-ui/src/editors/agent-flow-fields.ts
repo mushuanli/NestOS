@@ -1,5 +1,5 @@
 import { escapeHTML, t } from '@itookit/common';
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 import { renderParameterFields, readParameterFields, type FormParameter, type ParameterFormOptions } from '@itookit/llm-ui/forms';
 import type { AgentFlowConnection, AgentFlowDefinition } from './agent-execution-options';
 

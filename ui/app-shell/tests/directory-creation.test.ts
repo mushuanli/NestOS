@@ -28,7 +28,7 @@ it('creates files and conversations with styled icon buttons on fixed directory 
         await workbench.start(); await workbench.setNavigationVisible(false); await workbench.openResource(path + '/@files');
         expect(getComputedStyle(panel().querySelector<HTMLElement>('.workbench-directory__heading')!).display).toBe('none');
         expect(panel().textContent).not.toContain('搜索目录及子目录');
-        const navigation = main.querySelector('.workbench-tabs__navigation .workbench-compact-navigation__label')!;
+        const navigation = main.querySelector('.workbench-tabs__navigation .ui-content-titlebar__custom-title')!;
         expect(navigation.querySelector('strong')).toBeNull();
         expect(navigation.querySelector('[aria-current="page"]')?.textContent).toBe('文件');
         expect(navigation.textContent).toContain('所有项目');

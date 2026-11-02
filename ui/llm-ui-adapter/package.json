@@ -113,7 +113,7 @@
     "@itookit/durable-kernel": "workspace:*",
     "@itookit/llm-flow": "workspace:*",
     "@itookit/llm-session": "workspace:*",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "js-yaml": "^4.1.1",
     "marked": "^16.4.2",

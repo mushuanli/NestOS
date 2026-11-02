@@ -22,7 +22,7 @@ export default defineConfig({
         alias: workspaceAliases(__dirname),
         dedupe: ['@codemirror/state', '@codemirror/view'],
     },
-    // Open pages may still import lazy chunks from the previous build.
+    // Isolated releases retain previous hashed assets after compilation.
     build: { target: 'esnext', emptyOutDir: false },
     optimizeDeps: { exclude: workspaceExcludes() },
 });

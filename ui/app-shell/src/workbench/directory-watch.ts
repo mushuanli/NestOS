@@ -9,6 +9,8 @@ export function watchDirectoryList(fs: IFileSystem, panel: HTMLElement, error: (
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => { if (visible() && panel.isConnected && !panel.closest('[hidden]')) void refreshDirectoryList(panel).catch(error); }, 30);
     };
-    const stops = (['node:created', 'node:deleted', 'node:moved', 'node:renamed'] as const).map(type => fs.on(type, refresh));
+    const types = ['node:created', 'node:deleted', 'node:moved', 'node:renamed'] as const;
+    const stops = fs.onAny ? [fs.onAny(event => {if ((types as readonly string[]).includes(event.type)) refresh();})]
+        : types.map(type => fs.on(type, refresh));
     return () => { if (timer) clearTimeout(timer); stops.forEach(stop => stop()); };
 }

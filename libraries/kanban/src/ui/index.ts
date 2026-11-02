@@ -1,4 +1,5 @@
 import {KanbanSuggestions} from './suggestions';
+import {mountTitleBar as mountSharedTitleBar} from '@itookit/ui-common';
 import {KanbanDrawer, drawerMarkup, preserveBoardScroll} from './drawer';
 import {escapeHTML} from './html';
 import {randomUUID} from '../utils';
@@ -31,6 +32,8 @@ export class KanbanWorkbench {
     private invalid = false;
     private pending?: {boardId: string; fingerprint: string; request: KanbanRequest};
     private readonly ui;
+    private releaseNavigation?: () => void;
+    private readonly windowMounts = new Map<HTMLElement, () => void>();
     constructor(private readonly options: KanbanUIOptions, private readonly container?: HTMLElement) {this.ui = createRenderer(options.presentation);}
     async start(): Promise<void> {
         const {sidebar, editor} = this.options, signal = this.abort.signal;
@@ -51,7 +54,7 @@ export class KanbanWorkbench {
             if (event.key === 'Escape' && menu) {event.preventDefault(); event.stopPropagation(); menu.open = false; menu.querySelector<HTMLElement>('summary')?.focus(); return;}
 
             this.drawer.keydown(event);
-            if (event.key === 'Escape' && this.drawer.open) {event.preventDefault(); void this.run(async () => {if (this.dirty) throw new Error(this.ui.label('unsaved')); this.closePanel();});}
+            if (event.key === 'Escape' && this.drawer.open) {event.preventDefault(); void this.run(() => this.requestClose(false));}
         }, {signal});
         for (const element of [sidebar, editor]) element.addEventListener('click', event => {
             if (!(event.target as HTMLElement).closest('[data-action], [data-board], [data-item], [data-session], [data-record], [data-context]')) return;
@@ -62,9 +65,10 @@ export class KanbanWorkbench {
         }, {signal});
         sidebar.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
         editor.addEventListener('submit', event => {event.preventDefault(); void this.run(() => this.submit(event));}, {signal});
-        editor.addEventListener('input', event => {if ((event.target as HTMLElement).closest('[data-panel]')) this.dirty = true;}, {signal});
+        editor.addEventListener('input', event => {if ((event.target as HTMLElement).closest('[data-panel]')) {this.dirty = true; this.options.changed?.();}}, {signal});
         if (this.options.service?.queryActivity) this.activityTimer=setInterval(()=>{if(this.visible&&!document.hidden&&!this.busy&&!this.dirty&&(this.page?.items.some(item=>item.execution)||this.query.execution&&this.query.execution!=='all')) this.invalidateFromEvents();},15000);
-        await this.run(() => this.refresh());
+        if (this.options.initialResource !== undefined) await this.openResource(this.options.initialResource);
+        else await this.run(() => this.refresh());
     }
     open(target: {boardId?: string; itemId?: string; recordId?: string}): Promise<void> {
         const path = target.boardId ? `/board/${encodeURIComponent(target.boardId)}${target.recordId ? '/@record/' + encodeURIComponent(target.recordId) : target.itemId ? '/' + encodeURIComponent(target.itemId) : ''}` : '/';
@@ -83,11 +87,16 @@ export class KanbanWorkbench {
         this.query = {view: 'all', limit: 50}; await this.run(() => this.refresh());
     }
     getActiveResourceId(): string {return this.boardId ? `/board/${encodeURIComponent(this.boardId)}${this.recordId ? '/@record/' + encodeURIComponent(this.recordId) : this.itemId ? '/' + encodeURIComponent(this.itemId) : this.recordKind ? '/@' + this.recordKind : ''}` : '/';}
+    getViewState() {
+        return {title: this.drawer?.open ? this.panel().querySelector('h3')?.textContent ?? this.board?.title : this.board?.title ?? this.ui.label('title'),
+            context: this.board?.title, dirty: this.dirty, busy: this.busy};
+    }
     captureRecovery(): unknown {if (this.busy || this.dirty) throw new Error(this.ui.label('unsaved')); return null;}
     restoreRecovery(): void {}
     suspendForRecovery(): void {this.generation++; this.abort.abort(); this.suggestions?.destroy();if(this.activityTimer) clearInterval(this.activityTimer);}
     async destroy(): Promise<void> {
-        this.suspendForRecovery(); this.suggestions?.destroy(); this.drawer?.destroy(); this.options.sidebar.replaceChildren(); this.options.editor.replaceChildren(); this.options.editor.inert = false;
+        for (const release of this.windowMounts.values()) release(); this.windowMounts.clear();
+        this.suspendForRecovery(); this.releaseNavigation?.(); this.releaseNavigation = undefined; this.suggestions?.destroy(); this.drawer?.destroy(); this.options.sidebar.replaceChildren(); this.options.editor.replaceChildren(); this.options.editor.inert = false;
         this.options.editor.classList.remove('kanban'); this.options.sidebar.classList.remove('kanban__sidebar');
         this.container?.replaceChildren(); this.container?.classList.remove('kanban-layout');
     }
@@ -102,7 +111,7 @@ export class KanbanWorkbench {
         const [boards, actor] = await Promise.all([service.catalog?.() ?? service.list(), service.currentPrincipal()]);
         if (!this.alive(generation)) return;
         this.actor = actor;
-        if (!this.boardId) this.boardId = boards[0]?.id ?? '';
+        if (!this.boardId && this.options.initialResource === undefined) this.boardId = boards[0]?.id ?? '';
         this.board = boards.find(board => board.id === this.boardId);
         if (this.boardId && !this.board) throw new Error('BOARD_NOT_FOUND');
         if(this.query.execution&&this.query.execution!=='all'&&!service.queryActivity) throw Object.assign(new Error('Execution Session projection unavailable'),{code:'EXECUTION_SESSION_UNAVAILABLE'});
@@ -110,8 +119,12 @@ export class KanbanWorkbench {
         if (!this.alive(generation)) return;
         this.page = page; this.invalid = events !== this.eventGeneration;
         this.options.sidebar.innerHTML = this.ui.navigation(boards, this.boardId);
-        preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity) : `<p>${escapeHTML(this.ui.label('emptyBoards'))}</p>${this.ui.button('new-board', 'newBoard')}`;});
+        preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity) : this.ui.catalogView(boards);});
         if (this.recordKind) await this.showRecords(generation);
+        if (!this.alive(generation)) return;
+        this.releaseNavigation?.(); this.releaseNavigation = undefined;
+        const navigation = this.content().querySelector<HTMLElement>('[data-navigation]');
+        if (navigation && !this.options.mountTitleBar) this.releaseNavigation = this.options.mountNavigation?.(navigation);
         if (this.recordId) await this.showRecord(this.recordId, generation);
         else if (this.itemId) await this.showItem(generation);
         this.options.selected(this.getActiveResourceId());
@@ -143,12 +156,14 @@ export class KanbanWorkbench {
         for (const menu of this.options.editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (!menu.contains(target)) menu.open = false;
         if (target.dataset.session) {await this.options.openSession(target.dataset.session); return;}
         if (this.dirty && !['close-panel', 'copy-reference', 'copy-link'].includes(target.dataset.action ?? '')) throw new Error(this.ui.label('unsaved'));
+        const path = this.navigationTarget(target);
+        if (path && this.options.navigate) {await this.options.navigate(path); return;}
         if (target.dataset.board) {await this.navigate(target.dataset.board); return;}
         if (target.dataset.context) {this.recordKind = target.dataset.context === 'board' ? undefined : target.dataset.context as 'log' | 'decision'; this.recordCursor = undefined; this.closePanel(); await this.refresh(); return;}
         if (target.dataset.record) {this.itemId = ''; this.item = undefined; await this.showRecord(target.dataset.record); return;}
         if (target.dataset.item) {this.recordId = ''; this.itemId = target.dataset.item; await this.showItem(); return;}
         const action = target.dataset.action;
-        if (action === 'close-panel' || action === 'dismiss-panel') {this.closePanel(); this.options.selected(this.getActiveResourceId()); return;}
+        if (action === 'close-panel' || action === 'dismiss-panel') {await this.requestClose(action === 'close-panel'); return;}
         if (action === 'copy-reference' || action === 'copy-link') {await this.ui.copyReference(target.closest<HTMLElement>('[data-action]')!); return;}
         if (action === 'new-board') {this.itemId = ''; this.drawer.show(this.ui.newBoardForm(), 'new-board'); this.dirty = true; return;}
         if (action === 'new-item' && this.board) {this.itemId = ''; this.drawer.show(this.ui.newItemForm(this.board), 'new-item'); this.dirty = true; return;}
@@ -163,6 +178,10 @@ export class KanbanWorkbench {
     private async openReference(reference: string): Promise<void> {
         if (this.dirty) throw new Error(this.ui.label('unsaved'));
         const target = await this.options.service!.resolve(reference);
+        if (this.options.navigate) {
+            const leaf = target.recordId ? '/@record/' + encodeURIComponent(target.recordId) : target.itemId ? '/' + encodeURIComponent(target.itemId) : '';
+            await this.options.navigate(`/board/${encodeURIComponent(target.boardId)}${leaf}`); return;
+        }
         this.closePanel(); this.boardId = target.boardId; this.itemId = target.itemId ?? ''; this.recordId = target.recordId ?? '';
         this.recordKind = undefined; this.recordCursor = undefined; this.query = {view: 'all', limit: 50};
         await this.refresh();
@@ -224,12 +243,63 @@ export class KanbanWorkbench {
         finally {
             this.busy = false;
             if (!this.abort.signal.aborted) {
-                this.status(''); this.options.editor.removeAttribute('aria-busy'); this.options.editor.inert = false; this.drawer.flushFocus();
+                this.status(''); this.options.editor.removeAttribute('aria-busy'); this.options.editor.inert = false; this.mountHeaderActions(); this.drawer.flushFocus(); this.options.changed?.();
                 if (succeeded && this.invalid && this.visible && !this.dirty) void this.run(() => this.refresh());
             }
         }
     }
+    private navigationTarget(target: HTMLElement): string | undefined {
+        if (target.dataset.board) return `/board/${encodeURIComponent(target.dataset.board)}`;
+        const board = `/board/${encodeURIComponent(this.boardId)}`;
+        if (target.dataset.item) return `${board}/${encodeURIComponent(target.dataset.item)}`;
+        if (target.dataset.record) return `${board}/@record/${encodeURIComponent(target.dataset.record)}`;
+        if (target.dataset.context) return board + (target.dataset.context === 'board' ? '' : '/@' + target.dataset.context);
+    }
+    private mountHeaderActions(): void {
+        for (const [slot, release] of this.windowMounts) if (!this.options.editor.contains(slot)) {release(); this.windowMounts.delete(slot);}
+        if (this.options.mountTitleBar) {
+            for (const header of this.options.editor.querySelectorAll<HTMLElement>('[data-titlebar]')) if (!this.windowMounts.has(header)) this.mountTitleBar(header);
+            return;
+        }
+        for (const slot of this.options.editor.querySelectorAll<HTMLElement>('[data-window-navigation]')) {
+            if (!this.windowMounts.has(slot) && this.options.mountWindowList) this.windowMounts.set(slot, this.options.mountWindowList(slot));
+        }
+        for (const header of this.options.editor.querySelectorAll<HTMLElement>('[data-titlebar]')) if (!this.windowMounts.has(header)) this.mountDefaultTitleBar(header);
+    }
+    private mountDefaultTitleBar(header: HTMLElement): void {
+        const back = header.querySelector<HTMLElement>('[data-titlebar-back]') ?? undefined;
+        const title = header.querySelector<HTMLElement>('[data-titlebar-title]') ?? undefined;
+        back?.classList.add('ui-nav-button'); header.querySelector('.kanban__menu > summary')?.classList.add('ui-nav-button');
+        const view = mountSharedTitleBar(header, {
+            title, back,
+            leading: [...header.querySelectorAll<HTMLElement>('[data-navigation] > button')],
+            trailing: [...header.querySelectorAll<HTMLElement>('[data-window-navigation]')],
+            actions: [...header.querySelectorAll<HTMLElement>('.kanban__desktop-create, :scope > [data-action=new-board]')],
+            menu: header.querySelector<HTMLElement>('.kanban__menu') ?? undefined,
+        });
+        view.element.dataset.titlebarSlot = ''; header.dataset.titlebarHost = 'true';
+        view.update({title: title?.textContent ?? ''});
+        this.windowMounts.set(header, () => {view.destroy(); delete header.dataset.titlebarHost;});
+    }
+    private mountTitleBar(header: HTMLElement): void {
+        const slot = document.createElement('div'); slot.dataset.titlebarSlot = ''; header.prepend(slot); header.dataset.titlebarHost = 'true';
+        const release = this.options.mountTitleBar!(slot, {
+            title: header.querySelector<HTMLElement>('[data-titlebar-title]') ?? undefined,
+            back: header.querySelector<HTMLElement>('[data-titlebar-back]') ?? undefined,
+            menu: header.querySelector<HTMLElement>('.kanban__menu') ?? undefined,
+            actions: [...header.querySelectorAll<HTMLElement>('.kanban__desktop-create, :scope > [data-action=new-board]')],
+        });
+        this.windowMounts.set(header, () => {release(); slot.remove(); delete header.dataset.titlebarHost;});
+    }
     private closePanel(): void {this.dirty = false; this.itemId = ''; this.recordId = ''; this.item = undefined; this.drawer.close();}
+    private async requestClose(explicit: boolean): Promise<void> {
+        if (this.dirty && !explicit) throw new Error(this.ui.label('unsaved'));
+        if (this.options.navigate && this.boardId) {
+            if (this.dirty) this.closePanel();
+            await this.options.navigate(`/board/${encodeURIComponent(this.boardId)}`); return;
+        }
+        this.closePanel(); this.options.selected(this.getActiveResourceId());
+    }
     private alive(generation: number): boolean {return generation === this.generation && !this.abort.signal.aborted;}
     private content(): HTMLElement {return this.options.editor.querySelector('[data-content]')!;}
     private panel(): HTMLElement {return this.options.editor.querySelector('[data-panel]')!;}

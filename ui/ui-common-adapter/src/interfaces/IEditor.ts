@@ -112,10 +112,12 @@ export interface ConfigurationFormControls<T, TDiscovery> {
 }
 
 export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
+    /** Mount the complete host title bar, preserving supplied editor controls. */
+    mountTitleBar?(container: HTMLElement, parts?: import('@itookit/ui-common').ContentTitleBarParts): () => void;
     /** Execution source shown independently of the editable conversation name. */
     conversationSource?: {kind: string; label?: string};
     /** Mount host navigation in the editor header on narrow screens; return its cleanup. */
-    mountCompactNavigation?(container: HTMLElement): () => void;
+    mountCompactNavigation?(container: HTMLElement, label?: HTMLElement): () => void;
     /** Mount a window switcher into an existing editor title bar; return its cleanup. */
     mountWindowList?(container: HTMLElement): () => void;
     /** Mount a host-owned related-conversation switcher in the existing title bar. */

@@ -3,7 +3,7 @@
 
 import { SessionCommand, type SessionGroup } from '@itookit/llm-session/contracts';
 import { Command } from './Command';
-import { copyText, Toast } from '@itookit/ui-common';
+import { copyText, Toast } from '@itookit/ui-common-adapter';
 import { extractExecutionOutput } from '../utils/textUtils';
 
 

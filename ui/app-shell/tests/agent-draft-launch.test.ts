@@ -33,7 +33,7 @@ it('omits project selection in project drafts and restricts remote drafts to rem
         remoteAgents: {list: async () => [{id: 'remote:codex', name: 'Codex'}], send: vi.fn()}} as never);
     try {
         await editor.init(host);
-        const mode = host.querySelector<HTMLElement>('.llm-input__execution-picker')!;
+        const mode = host.querySelector<HTMLElement>('.llm-input__tool-execution-setting')!;
         expect(host.querySelector('.llm-draft-scope')).toBeNull(); expect(mode.hidden).toBe(true);
         expect(host.querySelector('.llm-input__agent-trigger')?.textContent).toContain('Codex');
         await expect(editor.commands.selectDraftAgent('writer')).rejects.toThrow();

@@ -320,7 +320,10 @@ export class RpcPeer {
             };
             else if (mode === 'lookup') proxy[name] = (...args: unknown[]) => this.lookup(descriptor.id, name, args);
             else if (mode === 'notify') proxy[name] = (...args: unknown[]) => { void this.invoke(descriptor.id, name, args).catch(this.report); };
-            else if (mode === 'subscribe') proxy[name] = (...args: unknown[]) => this.subscription(descriptor.id, name, args).stop;
+            else if (mode === 'subscribe') proxy[name] = (...args: unknown[]) => {
+                const binding = this.subscription(descriptor.id, name, args);
+                return Object.assign(binding.stop, {ready: binding.ready});
+            };
             else if (mode === 'async-subscribe') proxy[name] = (...args: unknown[]) => {
                 const binding = this.subscription(descriptor.id, name, args); return binding.ready.then(() => binding.stop);
             };

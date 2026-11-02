@@ -143,3 +143,24 @@ it('accepts legacy persisted origin through the receipt adapter without leaking 
         expect((await new ProjectDraftStore(f.fs, 'p').load()).id).not.toBe(f.intent.id);
     } finally { await f.manager.dispose(); }
 });
+
+it('pins a host-authorized harness to a durable draft without changing its stable Session id', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const fs = await manager.openFileSystem('/'), repo = new SessionRepository(fs); await repo.init();
+    const authorize = vi.fn(async (_id: string, request?: {harness?: {profileId: string}}) => {
+        if (!request?.harness) throw Object.assign(new Error('Remote executor required'), {code: 'EACCES'});
+        return request.harness.profileId;
+    });
+    const service = new ProjectDraftService(id => new ProjectDraftStore(fs, id), repo, async () => ['p'], authorize);
+    try {
+        await repo.createFolder('/remote');
+        const draft = await service.open('p', '/remote');
+        await expect(draft.prepare()).rejects.toMatchObject({code: 'EACCES'});
+        const first = await draft.prepare({harness: {profileId: 'chosen'}});
+        expect(first.sessionId).toBe(draft.id);
+        expect((await repo.getSessionSettings(first.sessionId)).harnessConnectionId).toBe('chosen');
+        expect(await draft.prepare({harness: {profileId: 'chosen'}})).toMatchObject({sessionId: first.sessionId});
+        await expect(draft.prepare({harness: {profileId: 'other'}})).rejects.toMatchObject({code: 'ECONFLICT'});
+        const saved = await new ProjectDraftStore(fs, 'p').load(); expect(saved.harnessConnectionId).toBe('chosen');
+    } finally {await manager.dispose();}
+});

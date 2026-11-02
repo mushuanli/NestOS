@@ -1,5 +1,5 @@
 import {t} from '@itookit/common';
-import type {IEditor} from '@itookit/ui-common';
+import type {IEditor} from '@itookit/ui-common-adapter';
 
 export interface RecoveryParticipant {
     captureRecovery?(): unknown;

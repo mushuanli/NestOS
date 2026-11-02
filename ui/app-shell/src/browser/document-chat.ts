@@ -3,7 +3,7 @@ import {createModuleLogger, t, type NavigationRequest} from '@itookit/common';
 import {SessionCommand, type RootCallTarget, type RootTargetCatalog, type SubmissionRequest, type SubmissionReceipt} from '@itookit/llm-session/contracts';
 import type {AiChatHost, AiChatSubmitRequest} from '@itookit/mdxeditor';
 import type {ApplicationBackend, ApplicationServices, DocumentChatFile, DocumentChatLink} from '@itookit/app-contracts/services';
-import type {EditorFactory, IEditor} from '@itookit/ui-common';
+import type {EditorFactory, IEditor} from '@itookit/ui-common-adapter';
 import type {AppUI} from '../types';
 
 const log = createModuleLogger('document-chat');

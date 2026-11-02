@@ -1,6 +1,6 @@
 import { AgentConfigEditor, SkillSettingsEditor, type AgentCapabilityOptions } from '@itookit/llm-settings-ui';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import type { EditorFactory } from '@itookit/ui-common';
+import type { EditorFactory } from '@itookit/ui-common-adapter';
 
 export { ConnectionSettingsEditor, ProviderSettingsEditor, MCPSettingsEditor,
     SkillSettingsEditor, CostEditor, SystemPromptSettingsEditor } from '@itookit/llm-settings-ui';

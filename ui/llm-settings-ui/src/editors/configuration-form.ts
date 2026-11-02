@@ -1,5 +1,5 @@
 import { FILE_BROWSER_ICONS, randomUUID, t } from '@itookit/common';
-import { Modal, SettingsAutoSave } from '@itookit/ui-common';
+import { Modal, SettingsAutoSave } from '@itookit/ui-common-adapter';
 
 interface FormOptions {
     width: string;

@@ -97,6 +97,8 @@ export interface AgentDefinition {
 
     /** Tool & MCP capability declarations. */
     capabilityPolicy?: {
+        /** Explicitly combine host defaults with toolIds; omitted preserves legacy list semantics. */
+        inheritDefaultTools?: boolean;
         /** Undefined selects host defaults; an empty array grants no direct tools. */
         toolIds?: string[];
         /** Static skill references (complements trigger-based progressive disclosure). */

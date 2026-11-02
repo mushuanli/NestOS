@@ -8,7 +8,7 @@ export default defineConfig({
     sourcemap: true,
     external: [
         '@itookit/common',
-        '@itookit/ui-common',
+        '@itookit/ui-common-adapter',
         '@itookit/driver-llm',
         '@itookit/vfs-core',
     ],

@@ -479,3 +479,38 @@ it('freezes a queued fork selection but revalidates source revision before dispa
     const tasks = await f.runtime.kernel.kernel.listSessionTasks(first.id);
     expect(tasks.some(task => task.status === 'failed' && JSON.stringify(task.exit).includes('CONTEXT_BINDING_CHANGED'))).toBe(true);
 }, 20000);
+
+it('executes a NestOS prompt Agent on the Session harness while ignoring its local tools', async () => {
+    const f = await setup();
+    await f.runtime.agentService.saveAgent({id: 'prompt-writer', name: 'Prompt writer', type: 'agent', config: {},
+        systemPrompt: 'PROMPT_ONLY_POLICY', capabilityPolicy: {toolIds: ['TaskList'], mcpProfileIds: []}});
+    const id = await f.runtime.sessionRepository.createSession('Prompt harness');
+    await f.runtime.sessionRepository.saveSessionSettings(id, {harnessConnectionId: 'remote'});
+    await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId: id});
+    await f.runtime.commandBus.execute(SessionCommand.Submit, {target: {kind: 'agent', id: 'prompt-writer'},
+        source: {kind: 'composer', text: 'PROMPT_ONLY_INPUT', values: {}, attachments: []}});
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(id)).rounds[0]?.status).toBe('completed'), {timeout: 10_000});
+    expect(f.prompts[0]).toContain('PROMPT_ONLY_POLICY'); expect(f.prompts[0]).toContain('PROMPT_ONLY_INPUT');
+    expect(f.prompts[0]).not.toContain('TaskList'); expect(f.fetch).not.toHaveBeenCalled();
+    expect((await f.runtime.kernel.kernel.listSessionTasks(id)).map(task => task.program.kind)).toContain('kernel-adapters.harness');
+});
+
+it('executes a published NestOS Flow through the Session harness without any model connection', async () => {
+    const f = await setup();
+    await f.runtime.agentService.saveAgent({id: 'prompt-reviewer', name: 'Prompt reviewer', type: 'agent', config: {}, systemPrompt: 'NODE_PROMPT_ONLY',
+        capabilityPolicy: {toolIds: ['TaskList'], mcpProfileIds: []}});
+    const flow: FlowDraft = {id: 'prompt-workers', name: 'Prompt workers', draftVersion: 1, updatedAt: 0,
+        connections: [{name: 'old-model-slot', required: true}], nodes: ['one', 'two'].map(id => ({id, name: id,
+            plugin: 'builtin.agent', pluginVersion: '1.0.0', config: {agentId: 'prompt-reviewer', instruction: `PROMPT_STEP_${id}`, connectionSlot: 'old-model-slot'}, inputs: {}})),
+        edges: [], outputs: {first: {value: '${nodes.one.outputs.result}'}, second: {value: '${nodes.two.outputs.result}'}}} as FlowDraft;
+    await f.runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
+    const id = await f.runtime.sessionRepository.createSession('Prompt Flow harness');
+    await f.runtime.sessionRepository.saveSessionSettings(id, {harnessConnectionId: 'remote'});
+    await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId: id});
+    await f.runtime.commandBus.execute(SessionCommand.Submit, {target: {kind: 'flow', id: flow.id, version: '1'}, source: {kind: 'arguments', value: {}}});
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(id)).rounds[0]?.status).toBe('completed'), {timeout: 10_000});
+    expect(f.sessions).toHaveLength(2); expect(f.prompts).toHaveLength(2);
+    expect(f.prompts.every(prompt => prompt.includes('NODE_PROMPT_ONLY') && !prompt.includes('TaskList'))).toBe(true);
+    expect(f.prompts.join('\n')).toContain('PROMPT_STEP_one'); expect(f.prompts.join('\n')).toContain('PROMPT_STEP_two');
+    expect(f.fetch).not.toHaveBeenCalled();
+});

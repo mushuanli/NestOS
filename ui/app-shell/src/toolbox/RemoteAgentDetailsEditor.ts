@@ -1,4 +1,4 @@
-import { BaseSettingsEditor, editorFilePath, type EditorOptions } from '@itookit/ui-common';
+import { BaseSettingsEditor, editorFilePath, type EditorOptions } from '@itookit/ui-common-adapter';
 import { remoteSessionPath } from '@itookit/app-contracts';
 import type { ProjectService, ToolboxInventory } from '@itookit/app-contracts/services';
 import { t } from '@itookit/common';

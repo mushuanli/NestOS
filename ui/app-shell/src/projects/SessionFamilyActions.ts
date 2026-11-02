@@ -1,6 +1,6 @@
 import { showNameDialog } from '../files/project-dialog';
 import { t } from '@itookit/common';
-import { setTimePresentation } from '@itookit/ui-common';
+import { setTimePresentation } from '@itookit/ui-common-adapter';
 import type { ProjectSessions } from '@itookit/app-contracts/services';
 import type { ConversationManifest, SessionSummary } from '@itookit/llm-session/contracts';
 

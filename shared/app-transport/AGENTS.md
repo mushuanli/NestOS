@@ -6,6 +6,7 @@
 
 - rpc/ 仅负责协议、句柄、回调、快照和资源机制，通过注入获取应用描述；禁止反向导入 application/。
 - application/ 负责能力分类和同步 selector；业务授权、发送与回执策略留在后端端口。
+- 文件系统及 driver 的事件回调在 application/file-observers 按远程能力对象共享一条 onAny；类型过滤、重复监听及释放仍按各自注册管理，不按 viewId 跨实例或用户合并。描述符重建保留监听组；最后一个监听退出后才释放远程连接，旧连接的迟到事件不能进入新监听。RPC subscribe 返回函数的 ready 仅供本地适配识别登记失败，不改变线协议。
 - http/ 实现有界查询/订阅批次、SSE、文件字节传输；fetch 和断线通知由宿主注入。
 - 不自动重放写命令；跨传输保留稳定 code、remoteCode、outcome、requestId 和经过格式校验的 field，不序列化整个异常对象。
 - SSE 短暂中断按最后接收序号恢复同一视图，首次立即重连，连续失败按 1/2/4/8/15 秒退避，响应头成功后立即 EOF 也累计退避；连接持续 15 秒后重置，online/focus 可提前唤醒；宿主在 visible/pageshow 时也可调用 retryConnection，30 秒无流活动时立即替换旧流，健康流保持。45 秒无心跳重连，重连不重复 bootstrap 或业务写入，销毁后不再订阅。视图过期停止旧句柄的查询、命令和文件请求，由宿主处理重载。

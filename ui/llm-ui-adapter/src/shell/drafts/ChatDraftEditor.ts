@@ -1,13 +1,18 @@
+import {mountDraftHeader} from './draft-header';
+import {mountEditorTitleBar} from '../content-titlebar';
+import {draftLoading} from './draft-loading';
+import {remotePromptTargets, draftHarnessTarget} from './remote-prompt-targets';
+import {resolveChatImageResize} from '../../components/input/image-processing-session';
 import {chatAttachmentMenu} from '../chat-attachment-menu';
 import {mountChatInputMenu} from '../chat-input-menu';
 import {refreshDraftTarget, restoreDraftTarget} from '../../independent/restore-draft-target';
 import {workspaceInputPlugins} from '../workspace-input-plugins';
 import {SharedChatOcr} from '../SharedChatOcr';
-import {resolveResize} from '@itookit/image-parser';
+
 import {prepareImageChatOptions} from '../../independent/image-chat-view';
 import type {ImageEditingHost} from '../../independent/image-editing';
 import {createChatView, createOperationLedger, type ChatOptions, type ChatView, type ChatSubmission, type ComposerDraft, type SelectorView, type SendPreparation} from '@itookit/llm-ui';
-import {BaseSettingsEditor, Toast, type EditorOptions, type EditorFactory, type IEditor, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common';
+import {BaseSettingsEditor, Toast, type EditorOptions, type EditorFactory, type IEditor, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common-adapter';
 import {createModuleLogger, getLocale, randomUUID, escapeHTML, t} from '@itookit/common';
 import type {IAgentConfigService, ChatConfigurationView} from '@itookit/kernel-adapters/contracts';
 import type {ICommandBus} from '@itookit/llm-session/contracts';
@@ -37,12 +42,15 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     private selectorTarget?: string;
     private remoteExecutor?: string;
     private delegate?: IEditor;
+    private draftHeader?: ReturnType<typeof mountDraftHeader>;
     private prepared?: Promise<Materialized>;
     private resume?: (createEditor?: EditorFactory) => Promise<IEditor>;
     private closed = false;
     private active = true;
     private transferred = false;
     private rebuilding = false;
+    private preparing = false;
+    private submissionStarted = false;
     private owned = true;
     private closing?: Promise<void>;
     private readonly beforeUnload = (event: BeforeUnloadEvent) => {
@@ -54,24 +62,30 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     private readonly stops: (() => void)[] = [];
     private readonly events = new Map<EditorEvent, Set<(payload: unknown) => void>>();
     private connections: Awaited<ReturnType<typeof buildConnectionOptions>> = [];
-    private readonly nativeModels = new Map<string, import('@itookit/ui-common').ConversationModelCatalog>();
+    private readonly nativeModels = new Map<string, import('@itookit/ui-common-adapter').ConversationModelCatalog>();
     private executors: Awaited<ReturnType<typeof buildExecutorOptions>> = [];
     constructor(container: HTMLElement, agents: IAgentConfigService, private config: Options,
         private readonly factory: (container: HTMLElement, options: EditorOptions, handoff: RetainedWorkspaceHandoff) => Promise<IEditor>,
-        private readonly controls: {commands?: ICommandBus; configuration?: ChatConfigurationView; ocr?: import('@itookit/ui-common').OcrControls}) {
+        private readonly controls: {commands?: ICommandBus; configuration?: ChatConfigurationView; ocr?: import('@itookit/ui-common-adapter').OcrControls}) {
         super(container, agents, config);
         if (!config.sessionDraft) throw new Error('Project draft controls are required');
         this.store = new ChatDraftStore(config.sessionDraft);
         this.source = new ChatProjection(config.sessionDraft.id ?? randomUUID(), error => this.emit('error', error));
-        if (controls.commands && config.sessionDraft.executorScope !== 'remote') this.targets = new SessionCallTargets(controls.commands, () => {
-            if (!this.closed && !this.transferred && this.active) refreshDraftTarget(this.view, this.targets?.getSnapshot());
+        if (controls.commands && (config.sessionDraft.executorScope !== 'remote' || config.sessionDraft.promptHarness)) this.targets = new SessionCallTargets(controls.commands, () => {
+            if (!this.closed && !this.transferred && this.active) refreshDraftTarget(this.view, this.callTargets());
             this.publish();
         }, false);
     }
     async init(container: HTMLElement): Promise<void> {this.container = container; await this.render();}
     async render(): Promise<void> {
-        await this.store.open(); await this.refreshConfiguration(); await this.targets?.refresh(); this.check(); this.publish();
+        const loading = draftLoading(this.container, this.config.signal);
+        await loading.read('attachments', () => this.store.open());
+        await loading.read('configuration', () => this.refreshConfiguration(false));
+        await loading.read('targets', async () => {await this.targets?.refresh();}); this.check(); this.publish();
         this.view = await createChatView(this.container, this.viewOptions());
+        loading.finish();
+        this.selectorTarget = JSON.stringify(this.view.getDraft().target);
+        this.config.sessionDraft?.presentation?.titleChanged(this.draftTitle());
         const changed = () => {void this.refreshConfiguration().then(() => this.publish()).catch(error => this.report(error));};
         this.offConfiguration = this.controls.configuration?.subscribe(changed) ?? this.service.onChange(changed);
         window.addEventListener('beforeunload', this.beforeUnload);
@@ -81,7 +95,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         const store = this.store;
         this.imageHost = store.images.host(() => {
             const preferences = store.preferences(this.view?.getDraft() ?? store.draft);
-            return resolveResize(preferences.settings.imageResize, this.executors.find(item => item.id === preferences.agentId)?.imageProcessing?.resize);
+            return resolveChatImageResize(preferences.settings.imageResize, this.executors.find(item => item.id === preferences.agentId)?.imageProcessing?.resize);
         }, resize => {const view = this.view; if (!view) return; const draft = view.getDraft();
             view.configureInput({selection: {...draft.selection, imageResize: JSON.stringify(resize)}}, draft.revision);});
         const images = this.imageHost;
@@ -90,13 +104,18 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         this.ocr = ocr;
         return prepareImageChatOptions({inputPresentation: 'host', attachmentMenu: chatAttachmentMenu(true), plugins: workspaceInputPlugins(this.controls.commands, {navigation: 'projects', projectId: this.config.sessionDraft?.scope?.id},
             () => this.store.preferences(this.view?.getDraft()).agentId), attachmentActions: item => ocr?.actions(item) ?? [],
-            setActive: active => ocr?.setActive(active), release: () => ocr?.destroy(),source: this.source, operations: this.ledger, locale: getLocale(), initialDraft: restoreDraftTarget(this.store.draft, this.targets?.getSnapshot(), undefined, store.preferences().agentId),
+            setActive: active => ocr?.setActive(active), release: () => ocr?.destroy(),source: this.source, operations: this.ledger, locale: getLocale(), initialDraft: restoreDraftTarget(this.store.draft, this.callTargets(), undefined, this.config.sessionDraft?.promptHarness && !store.draft.target
+                ? this.executors.find(item => item.id.startsWith('remote:'))?.id : store.preferences().agentId),
             actions: {send: async () => {throw new Error('Draft must materialize before dispatch');}, prepareSend: (input, draft) => this.prepare(input, draft),
                 reconcile: async operationId => ({status: 'unknown', operationId, message: t('chat.submission.unconfirmed')})},
             upload: this.config.sessionDraft?.attachments ? (file, options) => this.store.upload(file, options) : undefined,
             assets: {read: id => this.store.read(id)}, saveDraft: draft => this.save(draft), onDraftChange: () => this.draftChanged(),
             mountComposerMenu: (root, context) => {
-                const release = mountChatSettings(root, () => this.view, () => this.store.preferences(this.view?.getDraft()).settings, failure => this.report(failure));
+                const release = mountChatSettings(root, () => this.view, () => this.store.preferences(this.view?.getDraft()).settings, failure => this.report(failure), () => {
+                    const target = this.view?.getDraft().target;
+                    return this.config.sessionDraft?.executorScope !== 'remote' && target?.kind !== 'flow'
+                        && this.executors.find(agent => agent.id === target?.id)?.execution?.kind !== 'flow';
+                });
                 const actions = this.draftActions(root), menu = mountChatInputMenu(root, {view: context.view,
                     settings: () => store.preferences(context.view.getDraft()).settings,
                     prompts: () => this.executors.find(agent => agent.id === context.view.getDraft().target?.id)?.defaultPrompts ?? [],
@@ -106,17 +125,21 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
                     hasFiles: !!this.controls.commands, report: error => this.report(error)});
                 return {update: () => menu.update?.(context), destroy: () => {release(); actions.destroy(); menu.destroy();}};
             },
-            mountHeader: root => this.toolbar(root), onError: error => this.report(error),
+            mountHeader: (root, context) => this.toolbar(root, context), onError: error => this.report(error),
             onDiagnostic: event => log.info('chat.draft.operation', event)}, this.imageHost);
     }
     private publish(): void {
         if (this.closed || this.transferred) return;
-        this.source.publish({title: t('project.createSession'), messages: [], interactions: [], loading: false, execution: 'idle', connection: 'online', hasEarlier: false,
-            allowed: this.config.readOnly || this.config.sessionDraft?.executorScope === 'remote' && !this.executors.length ? [] : ['send'], selectors: this.selectors(), ...(this.targets ? {callTargets: this.targets.getSnapshot()} : {})});
+        this.source.publish({title: this.draftTitle() || t('project.createSession'), messages: [], interactions: [], loading: false, execution: 'idle', connection: 'online', hasEarlier: false,
+            allowed: this.config.readOnly || this.config.sessionDraft?.executorScope === 'remote' && !this.executors.some(item => item.id.startsWith('remote:')) ? [] : ['send'], selectors: this.selectors(), ...(this.targets ? {callTargets: this.callTargets()} : {})});
+    }
+    private callTargets() {
+        const catalog = this.targets?.getSnapshot();
+        return catalog && this.config.sessionDraft?.executorScope === 'remote' ? remotePromptTargets(catalog, this.executors) : catalog;
     }
     private selectors(): SelectorView[] {
         const preferences = this.store.preferences(this.view?.getDraft() ?? this.store.draft);
-        if (this.config.sessionDraft?.executorScope === 'remote') return this.remoteSelectors(preferences.agentId);
+        if (this.config.sessionDraft?.executorScope === 'remote') return this.remoteSelectors(this.view?.getDraft().selection?.executorId ?? this.store.draft.selection?.executorId ?? preferences.agentId);
         const target = this.view?.getDraft().target ?? this.store.draft.target;
         if (target?.kind === 'flow' || target?.kind === 'agent' && this.executors.find(agent => agent.id === target.id)?.execution?.kind === 'flow') return [];
         return [...(!this.targets ? [{id: 'executorId', label: t('chatInput.assistants'), value: preferences.agentId,
@@ -125,11 +148,13 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     }
 
     private remoteSelectors(agentId: string): SelectorView[] {
-        const effective = this.executors.some(item => item.id === agentId) ? agentId : this.executors[0]?.id ?? '';
+        const native = this.executors.filter(item => item.id.startsWith('remote:'));
+        const stale = agentId.startsWith('remote:') && !native.some(item => item.id === agentId);
+        const effective = stale || native.some(item => item.id === agentId) ? agentId : native[0]?.id ?? '';
         this.remoteExecutor ??= effective;
         const catalog = this.nativeModels.get(effective);
-        const selectors: SelectorView[] = [{id: 'executorId', label: t('harness.remoteAgents'), value: effective,
-            choices: this.executors.map(item => ({id: item.id, label: item.name}))}];
+        const selectors: SelectorView[] = [{id: 'executorId', label: t(this.config.sessionDraft?.promptHarness ? 'harness.executor' : 'harness.remoteAgents'), value: effective,
+            choices: [...(stale ? [{id: agentId, label: t('harness.executorInvalid')}] : []), ...native.map(item => ({id: item.id, label: item.name}))]}];
         if (!catalog?.models.length) return selectors;
         const current = catalog.current ?? catalog.default, models = catalog.models;
         selectors.push({id: 'modelId', placement: 'end', label: t('chatInput.model'), value: current?.modelId ?? models[0].id,
@@ -139,20 +164,22 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
                 choices: [{id: '', label: t('chatSettings.followDefault')}, ...model.reasoningEfforts]}]))}});
         return selectors;
     }
-    private async refreshConfiguration(): Promise<void> {
+    private async refreshConfiguration(withTargets = true): Promise<void> {
         const generation = ++this.configurationGeneration;
         const remote = this.config.sessionDraft?.executorScope === 'remote';
-        const [executors, connections] = await Promise.all([remote ? this.config.remoteAgents?.list() ?? [] : buildExecutorOptions(this.service),
-            remote ? [] : buildConnectionOptions(this.service)]);
+        const configuration = this.controls.configuration?.getConfigurationSnapshot();
+        const [executors, connections] = await Promise.all([remote ? this.config.sessionDraft?.promptHarness
+            ? buildExecutorOptions(this.service, this.config.remoteAgents, configuration) : this.config.remoteAgents?.list() ?? [] : buildExecutorOptions(this.service, undefined, configuration),
+            remote ? [] : buildConnectionOptions(this.service, configuration)]);
         this.check(); if (generation !== this.configurationGeneration) return; if (!this.transferred) {this.executors = executors; this.connections = connections;}
         if (remote && this.config.remoteAgents?.models) {
             const selected = this.view?.getDraft().selection?.executorId ?? this.store.preferences().agentId;
-            const executor = executors.find(item => item.id === selected) ?? executors[0];
+            const executor = executors.find(item => item.id === selected && item.id.startsWith('remote:')) ?? executors.find(item => item.id.startsWith('remote:'));
             if (executor?.supportsModels !== false && executor && !this.nativeModels.has(executor.id)) {
                 const catalog = await this.loadRemoteModels(executor.id); this.check(); if (generation !== this.configurationGeneration) return; this.nativeModels.set(executor.id, catalog);
             }
         }
-        await this.targets?.refresh();
+        if (withTargets) await this.targets?.refresh();
     }
     private async loadRemoteModels(executorId: string) {
         const started = Date.now(), operationId = randomUUID();
@@ -167,13 +194,22 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         }
     }
     private draftChanged(): void {
-        this.emit('interactiveChange', undefined);
-        const target = JSON.stringify(this.view?.getDraft().target);
-        if (this.view && this.selectorTarget !== target) {this.selectorTarget = target; this.publish();}
-        if (this.config.sessionDraft?.executorScope !== 'remote' || this.transferred) return;
-        const selected = this.view?.getDraft().selection?.executorId;
-        if (selected && selected !== this.remoteExecutor) {this.switchRemoteExecutor(selected); return;}
-        if (selected && !this.nativeModels.has(selected))
+        this.emit('interactiveChange', undefined); this.draftHeader?.update();
+        this.config.sessionDraft?.presentation?.titleChanged(this.draftTitle());
+        const draft = this.view?.getDraft(), target = JSON.stringify(draft?.target);
+        const targetChanged = this.selectorTarget !== target;
+        if (this.view && targetChanged) {this.selectorTarget = target; this.publish();}
+        if (!draft || this.config.sessionDraft?.executorScope !== 'remote' || this.transferred) return;
+        const nativeTarget = draft.target?.id.startsWith('remote:') ? draft.target.id : undefined;
+        const selected = targetChanged && nativeTarget ? nativeTarget : draft.selection?.executorId;
+        if (selected?.startsWith('remote:') && selected !== this.remoteExecutor) {
+            if (nativeTarget && nativeTarget !== selected) {
+                const target = this.callTargets()?.entries.find(entry => entry.target.id === selected)?.target;
+                if (target) {this.view.configureInput({target}, draft.revision); return;}
+            }
+            this.switchRemoteExecutor(selected); return;
+        }
+        if (selected?.startsWith('remote:') && !this.nativeModels.has(selected))
             void this.refreshConfiguration().then(() => this.publish()).catch(error => this.report(error));
     }
     private switchRemoteExecutor(executorId: string): void {
@@ -182,7 +218,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         const model = catalog?.models.find(item => item.id === current?.modelId) ?? catalog?.models[0];
         this.publish();
         const draft = this.view.getDraft();
-        const selection = {...draft.selection}; delete selection.modelId; delete selection.reasoningEffort;
+        const selection: Record<string, string> = {...draft.selection, executorId}; delete selection.modelId; delete selection.reasoningEffort;
         if (model) {selection.modelId = model.id;
             selection.reasoningEffort = current?.modelId === model.id ? current.reasoningEffort ?? model.defaultReasoningEffort ?? '' : model.defaultReasoningEffort ?? '';}
         this.view.configureInput({selection}, draft.revision);
@@ -195,34 +231,39 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
     }
     private async prepare(input: ChatSubmission, draft: ComposerDraft): Promise<SendPreparation | null> {
         this.check(); if (!this.active) throw new Error('Project draft is hidden');
+        this.preparing = true; this.submissionStarted = true; this.draftHeader?.update();
+        try {
         await this.view.flushDraft();
-        const agentId = input.target?.kind === 'agent' ? input.target.id : input.selection?.executorId ?? draft.selection?.executorId ?? this.store.preferences(draft).agentId;
-        if (this.config.sessionDraft?.executorScope === 'remote' && !this.executors.some(item => item.id === agentId))
+        const agentId = input.target?.kind === 'flow' ? undefined : input.target?.kind === 'agent' ? input.target.id : input.selection?.executorId ?? draft.selection?.executorId ?? this.store.preferences(draft).agentId;
+        if (this.config.sessionDraft?.executorScope === 'remote' && input.target?.kind !== 'flow' && !this.executors.some(item => item.id === agentId))
             throw new Error(t('toolbox.unavailable'));
-        const target = await this.materialize(agentId); this.check();
+        const target = await this.materialize(agentId, draft); this.check();
         if (target.resumeOnly || await target.editor.commands.prepareChatInput?.(input, draft)) return null;
         const prepared = await target.editor.commands.preparedSubmission?.();
         const submission = target.submission ?? prepared as SessionSubmission | undefined;
         return {operationId: submission?.id ?? randomUUID(), viewId: this.bindingViewId()};
+        } finally {this.preparing = false; this.draftHeader?.update();}
     }
     private bindingViewId(): string {
         const binding = this.delegate?.commands.chatBindingIdentity?.() as {viewId: string} | undefined;
         if (!binding) throw Object.assign(new Error('Formal editor did not adopt the prepared ChatView'), {code: 'HANDOFF_NOT_COMMITTED'});
         return binding.viewId;
     }
-    private materialize(agentId?: string): Promise<Materialized> {
-        return this.prepared ??= this.bind(agentId).catch(async error => {
+    private materialize(agentId?: string, draft?: ComposerDraft): Promise<Materialized> {
+        return this.prepared ??= this.bind(agentId, draft).catch(async error => {
             this.prepared = undefined;
             if (!this.closed && !this.transferred) {try {await this.view.replaceBinding(this.viewOptions());}
                 catch (cleanup) {throw new AggregateError([error, cleanup], 'Draft handoff and restoration failed');}}
             throw error;
         });
     }
-    private async bind(agentId?: string): Promise<Materialized> {
+    private async bind(agentId?: string, draft?: ComposerDraft): Promise<Materialized> {
         const handoff: RetainedWorkspaceHandoff = {kind: 'chat-view', view: this.view, read: this.store.read, conversationId: this.source.conversationId, images: this.imageHost};
         const createEditor: EditorFactory = (container, options) => this.factory(container, options, handoff);
+        const harness = this.resume ? undefined : this.harnessForDraft(agentId, draft);
         const target = this.resume ? {editor: await this.resume(createEditor), resumeOnly: false}
-            : await this.config.sessionDraft!.materialize({container: this.container, agentId, createEditor});
+            : await this.config.sessionDraft!.materialize({container: this.container, agentId, title: this.draftTitle() || undefined, createEditor,
+                ...(harness ? {harness} : {})});
         if (this.closed) {await target.editor.destroy(); throw new Error('Project draft closed during materialization');}
         this.delegate = target.editor; this.transferred = true;
         target.editor.commands.takeViewOwnership?.(); this.owned = false;
@@ -233,10 +274,35 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         log.info('chat.draft.handoff', {operationId: randomUUID(), stage: 'commit', result: 'success', conversationId: handoff.conversationId});
         return target;
     }
-    private toolbar(root: HTMLElement) {
-        const cleanups: (() => void)[] = [];
-        if (this.config.mountCompactNavigation) cleanups.push(this.config.mountCompactNavigation(root));
-        return {destroy: () => cleanups.forEach(stop => stop())};
+    private harnessForDraft(agentId?: string, draft?: ComposerDraft) {
+        if (!this.config.sessionDraft?.promptHarness || agentId?.startsWith('remote:')) return;
+        const executorId = draft?.selection?.executorId?.startsWith('remote:') ? draft.selection.executorId : this.remoteExecutor;
+        return draftHarnessTarget(executorId, draft?.selection, this.nativeModels.get(executorId ?? ''));
+    }
+    private draftTitle(): string {return this.view?.getDraft().selection?.draftTitle ?? this.store.draft?.selection?.draftTitle ?? '';}
+    private toolbar(root: HTMLElement, context: import('@itookit/llm-ui').ToolbarContext) {
+        const view = context.view;
+        const header = mountDraftHeader(root, {controls: this.config.sessionDraft!, title: () => this.draftTitle(),
+            busy: () => !!this.config.sessionDraft?.locked || this.submissionStarted || this.transferred || this.rebuilding || this.preparing || view.inputBusy || !!this.prepared,
+            changeTitle: title => {const draft = view.getDraft(); view.configureInput({selection: {...draft.selection, draftTitle: title}}, draft.revision);
+                this.config.sessionDraft?.presentation?.titleChanged(title);},
+            changeProject: id => this.changeProject(id), report: error => this.report(error)});
+        this.draftHeader = header;
+        if (this.config.mountTitleBar) {
+            const release = mountEditorTitleBar(root, this.config, context, header.label);
+            return {update: header.update, destroy: () => {release(); header.destroy(); if (this.draftHeader === header) this.draftHeader = undefined;}};
+        }
+        const slot = document.createElement('div'); slot.className = 'llm-workspace-titlebar__compact-navigation'; slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot);
+        const cleanup = this.config.mountCompactNavigation?.(slot, header.label);
+        if (!cleanup) slot.remove();
+        return {destroy: () => {cleanup?.(); slot.remove(); header.destroy(); if (this.draftHeader === header) this.draftHeader = undefined;}};
+    }
+    private async changeProject(id: string): Promise<void> {
+        if (this.config.sessionDraft?.locked || this.submissionStarted || this.view.inputBusy || this.preparing || this.transferred || this.prepared || !this.config.sessionDraft?.scope?.move)
+            throw Object.assign(new Error(t('project.draftProjectLocked')), {code: 'DRAFT_PROJECT_LOCKED'});
+        await this.view.flushDraft(); this.check(); this.rebuilding = true;
+        try {await this.config.sessionDraft.scope.move(id);}
+        catch (error) {this.rebuilding = false; throw error;}
     }
     private draftActions(root: HTMLElement) {
         const cleanups: (() => void)[] = [];
@@ -257,7 +323,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         if (this.view.inputBusy || this.transferred) return;
         await this.flushPendingSave(); this.rebuilding = true;
         try {
-            await this.config.sessionDraft?.clear?.();
+            await this.config.sessionDraft?.clear?.(); this.submissionStarted = false;
             this.store = new ChatDraftStore({...this.config.sessionDraft!, initialData: undefined}); await this.store.open(); this.remoteExecutor = undefined;
             this.source = new ChatProjection(this.config.sessionDraft?.id ?? randomUUID(), error => this.report(error)); this.publish();
             await this.view.replaceBinding(this.viewOptions(), {draft: this.store.draft});
@@ -267,19 +333,20 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
         const revision = this.view.getDraft().revision; await this.refreshConfiguration(); this.check();
         if (this.transferred || this.view.inputBusy) throw new Error(t('chatInput.switchUnavailable'));
         if (!this.executors.some(item => item.id === id)) throw new Error(t('toolbox.unavailable'));
-        const target = this.targets?.getSnapshot().entries.find(item => item.target.kind === 'agent' && item.target.id === id)?.target;
-        this.view.configureInput({selection: {...this.view.getDraft().selection, executorId: id}, ...(this.targets ? {target} : {})}, revision);
+        const target = this.callTargets()?.entries.find(item => item.target.kind === 'agent' && item.target.id === id)?.target;
+        this.view.configureInput({selection: {...this.view.getDraft().selection, ...(!this.config.sessionDraft?.promptHarness || id.startsWith('remote:') ? {executorId: id} : {})}, ...(this.targets ? {target} : {})}, revision);
         await this.view.flushDraft();
     }
-    private async inherit(preferences: import('@itookit/ui-common').SessionDraftPreferences): Promise<void> {
+    private async inherit(preferences: import('@itookit/ui-common-adapter').SessionDraftPreferences): Promise<void> {
         if (this.transferred || !this.active || this.view.inputBusy) return;
         const draft = this.view.getDraft(); await this.refreshConfiguration(); this.check();
         if (this.transferred || !this.active || this.view.getDraft().revision !== draft.revision) return;
         const config = inheritDraftPreferences(this.store.preferences(draft), preferences, this.executors, this.connections,
             this.config.sessionDraft?.executorScope === 'remote');
-        const target = this.targets?.getSnapshot().entries.find(item => item.target.kind === 'agent' && item.target.id === config.agentId)?.target;
+        const target = this.callTargets()?.entries.find(item => item.target.kind === 'agent' && item.target.id === config.agentId)?.target;
         const values = Object.fromEntries(Object.entries(config.settings).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
-        this.view.configureInput({selection: {...draft.selection, ...values, executorId: config.agentId}, ...(this.targets ? {target} : {})}, draft.revision);
+        this.view.configureInput({selection: {...draft.selection, ...values, executorId: this.config.sessionDraft?.promptHarness && !config.agentId.startsWith('remote:')
+            ? draft.selection?.executorId ?? this.remoteExecutor ?? '' : config.agentId}, ...(this.targets ? {target} : {})}, draft.revision);
         await this.view.flushDraft();
     }
     private async refreshDraft(): Promise<void> {
@@ -323,7 +390,7 @@ export class ChatDraftEditor extends BaseSettingsEditor<IAgentConfigService> {
                 ...(config.target ? {target: config.target} : {})}, current.revision);
             if (config.text !== undefined) this.view.setText(config.text); await this.view.flushDraft();
         },
-        refreshDraft: () => this.refreshDraft(), selectDraftAgent: (id: string) => this.selectAgent(id), inheritDraftPreferences: (preferences: import('@itookit/ui-common').SessionDraftPreferences) => this.inherit(preferences),
+        refreshDraft: () => this.refreshDraft(), selectDraftAgent: (id: string) => this.selectAgent(id), inheritDraftPreferences: (preferences: import('@itookit/ui-common-adapter').SessionDraftPreferences) => this.inherit(preferences),
         appendDraft: async (input: {text: string; files: File[]}) => {
             this.check(); if (this.transferred || this.view.inputBusy) throw new Error(t('chatInput.switchUnavailable'));
             this.view.setText([this.view.getDraft().text, input.text].filter(Boolean).join('\n')); if (input.files.length) await this.view.addFiles(input.files); await this.view.flushDraft();

@@ -6,7 +6,7 @@ import { MemoryBackend, createFileSystemSource, FSError } from '@itookit/vfs-cor
 import { createApplicationRuntime, remoteSessionPath, folderBrowserPath } from '@itookit/app-core';
 import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/cells-driver';
 import {createLLMFactory} from '../../llm-ui-adapter/src/chat';
-import type { EditorOptions } from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 import type { VFSUIShell } from '@itookit/vfs-ui';
 import { projectConversationEntryPath, projectConversationsPath } from '@itookit/app-contracts';
 
@@ -89,7 +89,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         selector.value = initialScope; selector.dispatchEvent(new Event('change', {bubbles: true}));
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(initialScope));
         const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
-        const driver = (workbench as unknown as {navigationFiles: {driver: {getChildren(path: string): Promise<unknown[]>}}}).navigationFiles.driver;
+        const driver = (workbench as unknown as {browser: {fs: {driver: {getChildren(path: string): Promise<unknown[]>}}}}).browser.fs.driver;
         const children = driver.getChildren.bind(driver), failure = new FSError('EIO', 'Remote directory unavailable');
         const listFailure = vi.spyOn(driver, 'getChildren').mockImplementation(async path => {
             if (path === remotePath) throw failure;
@@ -120,12 +120,16 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(peer.create).not.toHaveBeenCalled(); expect(peer.turn).not.toHaveBeenCalled();
         await workbench.openResource(profilePath, {preserveProject: true});
         const sidebarCreate = sidebar.querySelector<HTMLButtonElement>('.workbench-project-navigation__create')!;
+        expect(sidebarCreate.hidden).toBe(true);
+        await workbench.openResource(folderBrowserPath(project.path));
+        await workbench.openResource(profilePath, {preserveProject: true});
         await vi.waitFor(() => expect(sidebarCreate.hidden).toBe(false));
         expect(sidebarCreate.title).toBe(t('project.createSession')); sidebarCreate.click();
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('draft:' + project.project.id));
         expect(peer.create).not.toHaveBeenCalled(); expect(peer.turn).not.toHaveBeenCalled();
         await workbench.openResource(profilePath + '/@archived', {preserveProject: true});
         expect(create()).not.toBeNull(); await vi.waitFor(() => expect(sidebarCreate.hidden).toBe(false));
+        await workbench.openResource(initialScope);
         await workbench.openResource(profilePath, {preserveProject: true});
         const list = activePanel().querySelector('.workbench-directory__table')!;
         expect(list.querySelector('[data-column="modified"]')?.getAttribute('aria-sort')).toBe('descending');
@@ -180,7 +184,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(selector.value).toBe('/');
         expect(factory.mock.calls.at(-1)![1].conversation).toBeDefined();expect(peer.resume).not.toHaveBeenCalled();
         const collapsed = sidebar.classList.contains('is-collapsed');
-        const toggle = activePanel().querySelectorAll<HTMLButtonElement>('.llm-chat__sidebar')[0]!;
+        const toggle = activePanel().querySelector<HTMLButtonElement>('.ui-content-titlebar > .ui-nav-button')!;
         expect(toggle.hidden).toBe(false); toggle.click();
         await vi.waitFor(() => expect(sidebar.classList.contains('is-collapsed')).toBe(!collapsed));
         toggle.click(); await vi.waitFor(() => expect(sidebar.classList.contains('is-collapsed')).toBe(collapsed));
@@ -200,7 +204,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         await vi.waitFor(()=>expect(workbench.getActiveResourceId()).toBe(remoteSessionPath(project.path,'codex','native')));
         expect(selector.value).toBe('/');
         const folder=await runtime.projects.sessionFolder(project);
-        const controls=(workbench as unknown as {remoteAgentControls(folder:string):import('@itookit/ui-common').RemoteAgentControls}).remoteAgentControls(folder);
+        const controls=(workbench as unknown as {remoteAgentControls(folder:string):import('@itookit/ui-common-adapter').RemoteAgentControls}).remoteAgentControls(folder);
         const remoteId=(await controls.list())[0].id;expect(remoteId).toContain('remote:');
         const before=(await runtime.sessionRepository.list()).length;
         await workbench.startSessionDraft(remotePath, undefined, remoteId);
@@ -213,7 +217,8 @@ it('browses mounted native history pages, opens their conversations and routes a
         const delayed = new Promise<void>(resolve => {accept = resolve;});
         vi.mocked(peer.turn).mockImplementationOnce(async () => {await delayed; return {turnId: 't'};});
         textarea.value = 'remote task'; textarea.dispatchEvent(new Event('input', {bubbles: true}));
-        mount.querySelector<HTMLButtonElement>('.llm-chat__composer button[type=submit]')!.click();
+        const send = mount.querySelector<HTMLButtonElement>('.llm-chat__composer button[type=submit]')!;
+        await vi.waitFor(() => expect(send.disabled).toBe(false)); send.click();
         try {
             await vi.waitFor(() => expect(peer.turn).toHaveBeenCalledOnce());
             expect(workbench.getActiveResourceId()).toBe('draft:' + project.project.id);

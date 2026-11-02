@@ -1,5 +1,5 @@
 import {createModuleLogger, escapeHTML, t} from '@itookit/common';
-import type {ConversationCommandOutput} from '@itookit/ui-common';
+import type {ConversationCommandOutput} from '@itookit/ui-common-adapter';
 import {readNativeCommandContent, type CommandOutputReader} from './native-command-content';
 export type {CommandOutputReader} from './native-command-content';
 

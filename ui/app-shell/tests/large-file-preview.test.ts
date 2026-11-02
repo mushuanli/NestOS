@@ -39,3 +39,15 @@ it('does not fetch a large known binary file', async () => {
     expect(mount.textContent).toContain('60.0 MiB'); expect(mount.textContent).toContain('无法内嵌预览');
     expect(readContent).not.toHaveBeenCalled(); await opened?.context.release();
 });
+
+it('uses prepared metadata and releases the source when the selected file has disappeared', async () => {
+    const getNode = vi.fn(), readContent = vi.fn(), dispose = vi.fn(async () => {}), factory = vi.fn();
+    const openWorkspace = vi.fn(async () => ({initialFile: {node: null, readonly: true}, dispose, fs: {driver: {getNode, readContent}}}));
+    await expect(openProjectFileEditor({openWorkspace} as unknown as ProjectService,
+        {folder: '/project', path: '/workspace/missing.ts'}, new ViewLoad(new AbortController().signal), {
+            factory, mount: vi.fn(), showBinary: vi.fn(), deferCleanup() {}, changed() {}, host: {} as never,
+        })).rejects.toMatchObject({code: 'ENOENT'});
+    expect(openWorkspace).toHaveBeenCalledWith('/project', {initialPath: '/workspace/missing.ts'});
+    expect(getNode).not.toHaveBeenCalled(); expect(readContent).not.toHaveBeenCalled();
+    expect(factory).not.toHaveBeenCalled(); expect(dispose).toHaveBeenCalledOnce();
+});

@@ -5,6 +5,7 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath } from '@itookit/app-core';
 import { directoryBreadcrumbs } from '../src/projects/directory-label';
+import {refreshDirectoryList} from '../src/workbench/directory-list';
 
 /**
  * The project Files view shows the built-in create controls. Activating a row drops the
@@ -88,6 +89,17 @@ it('creates a project file beside the activated file, not at the Files root', as
         expect(allProjects.querySelector('.workbench-directory__path')?.textContent).toBe('所有项目');
         expect(allProjects.querySelector('.workbench-directory__table')?.textContent).toContain('原项目文档');
         expect(allProjects.querySelector('.workbench-directory__table')?.textContent).not.toContain('folder:');
+        await workbench.setNavigationVisible(false);
+        await workbench.openResource(projectPath + '/@files/sub', {directory: true});
+        const added = await projects.openFiles(project.path);
+        await added.fs.driver.createFile({parentPath: '/sub', name: 'external.ts', content: 'const external = true'});
+        await added.dispose();
+        const internals = workbench as unknown as {browser: {invalidateNavigation(): Promise<void>}; sidebarUI: {refresh(): Promise<void>}};
+        const invalidate = vi.spyOn(internals.browser, 'invalidateNavigation'), reloadSidebar = vi.spyOn(internals.sidebarUI, 'refresh');
+        const visibleDirectory = main.querySelector<HTMLElement>('.workbench-tabs__panel:not([hidden])')!;
+        await refreshDirectoryList(visibleDirectory);
+        expect(visibleDirectory.querySelector('.workbench-directory__table')?.textContent).toContain('external.ts');
+        expect(invalidate).not.toHaveBeenCalled(); expect(reloadSidebar).not.toHaveBeenCalled();
     } finally { await workbench.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); }
 });
 

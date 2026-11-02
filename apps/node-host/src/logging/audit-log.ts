@@ -7,6 +7,7 @@ export interface AuditEvent {
     userId?: string; operationId?: string; stage?: string; result?: string; count?: number; bytes?: number;
     event: string; requestId?: string; remoteAddress?: string; method?: string; route?: string;
     status?: number; durationMs?: number; operation?: string; code?: string; certificate?: string; parentRequestId?: string;
+    asset?: string;
     rpcKind?: string; rpcBatchSize?: number; rpcOperations?: string[];
     rpcCommands?: string[]; rpcErrorCount?: number; rpcErrorCodes?: string[];
     uploads?: Array<{mimeType: string; bytes?: number}>;
@@ -67,6 +68,8 @@ export class AuditLog implements AuditPort {
 
 export function auditRequest(audit: AuditPort, request: IncomingMessage, response: ServerResponse, route: string): string {
     const requestId = randomUUID(), startedAt = Date.now(), remoteAddress = request.socket.remoteAddress;
+    const pathname = new URL(request.url ?? '/', 'https://localhost').pathname;
+    const asset = /^\/assets\/[\w.-]+-[\w-]{8,}\.(?:js|css)$/.test(pathname) ? pathname.slice('/assets/'.length) : undefined;
     response.setHeader('X-Request-ID', requestId);
     let finished = false;
     const record = () => {
@@ -76,7 +79,7 @@ export function auditRequest(audit: AuditPort, request: IncomingMessage, respons
         audit.write({ event: response.writableFinished ? 'request.complete' : 'request.aborted', requestId,
             ...timing?.phases, ...(timing?.queuedAt !== undefined ? {responseFlushMs: Date.now() - timing.queuedAt} : {}),
             ...(typeof parent === 'string' && /^[a-f0-9-]{36}$/.test(parent) ? { parentRequestId: parent } : {}),
-            remoteAddress, method: request.method, route,
+            remoteAddress, method: request.method, route, ...(asset ? {asset} : {}),
             status: response.statusCode, durationMs: Date.now() - startedAt,
             ...(typeof response.getHeader('X-VFS-Error') === 'string' ? { code: String(response.getHeader('X-VFS-Error')) } : {}),
             ...(typeof response.getHeader('X-VFS-Operation') === 'string' ? { operation: String(response.getHeader('X-VFS-Operation')) } : {}) });

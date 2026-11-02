@@ -175,7 +175,7 @@ NestOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createNe
 
 - host/open-view.ts 聚合冷启动 UI 文档、工作台、目标激活及只读恢复；host/view-observation.ts 先订阅源、保存有界事件日志，再按水位补发。失败排空资源并仅回滚本次绑定，不取消 Task；同客户端已有绑定/并发冷激活拒绝，多客户端绑定独立。
 
-工作台 session-browser 的 setSessionFilter 是每个观察实例的会话来源过滤，分页和会话搜索前应用，不过滤项目文件或收藏夹。远程 harness 按连接和 profile 身份过滤；筛选后的分页游标包含筛选身份，旧游标不得被其他筛选复用。本地与远程项目均投影固定 @new；远程项目草稿 prepare 不允许创建本地 Session。
+工作台 session-browser 的 setSessionFilter 是每个观察实例的会话来源过滤，分页和会话搜索前应用，不过滤项目文件或收藏夹。远程 harness 按连接和 profile 身份过滤；筛选后的分页游标包含筛选身份，旧游标不得被其他筛选复用。本地与远程项目均投影固定 @new；远程项目草稿不允许无执行绑定地创建本地 Session；显式选择 NestOS Agent/Flow 与已授权远程 harness 时，prepare 在本地持久化编排 Session，固定 harnessConnectionId，并继续由远程执行器执行提示词。原生会话保留原 journal 路径。
 
 - 项目远程草稿的 `remoteTarget` 和提交身份先在 drafts/store 事务中固定，再创建原生控制器。remote-submission 负责日志键、旧记录迁移与回执读取，恢复不得使用后来编辑的智能体偏好覆盖该目标；结果未知时禁止丢弃。输入保存可吸收同一草稿的准备元数据，但仍拒绝其他视图的正文冲突。Session 执行存储准备在 session/prepare-session-execution，runtime 只接线。
 
@@ -243,3 +243,8 @@ projects/project-environment 将本地普通环境按项目 ID 存在 settings.s
 导航索引模式下，ProjectService.forFolder 未显式传入 folders 时也从 Session folder 索引解析项目，与工作台目录投影保持一致；最近会话等虚拟目录不得因权威目录尚未初始化而误报 ENOENT。回归见 tests/host/project-navigation.test.ts。
 
 直接 Tool 扫描器的 collection.destination 或 projectId 与 directory 在 Run 内冻结，由宿主将授权目标挂载为 /workspace。项目来源通过 ProjectService 获取并逐文件操作复验，不按工具/供应商/账号参数推导目录。拒绝父目录、隐藏路径和宿主绝对路径；纯采集规则保存/启停不等待无关来源索引。
+
+
+草稿标题以 prepare.title 冻结；原生远程通过 projectConversation 的 draftTitle 交给同一首次接纳命名链。ProjectDraftComposer.move 只移动未提交草稿，按源和目标记录 CAS 保留原 UUID/正文/附件，不覆盖已有目标草稿。attachmentScopeId 隔离每次目录所有权，回执包含源目录代次；旧窗口不能因往返移动后 UUID 相同而覆盖新拥有者。迁移和标题均不改写可移植 Agent 定义，日志不记录草稿或附件正文。
+
+session/directory-view 在既有授权 Session 浏览器文件视图内聚合节点、透明容器条目和项目导航，浏览器不再逐层请求虚拟会话分组。普通文件目录保持惰性；透明容器拒绝循环，读取中 revision 改变则将种子标 stale。查询不打开 Session 或持有执行租约，错误保留具体分类，日志只含操作标识、阶段、数量、结果与耗时。

@@ -29,6 +29,9 @@ function seedDirectory(available: Map<string, Seed>, directory: Directory): void
     const { path, node, nodes, revision, stale, ignore } = directory;
     const add = (method: string, at: string, value: unknown) => available.set(`${method}:${at}`, { revision, stale, value });
     add('getChildren', path, nodes); add('getNode', path, node); add('getNodeType', path, node ? { type: node.type } : null);
+    for (const child of nodes) {
+        add('getNode', child.path, child); add('getNodeType', child.path, {type: child.type});
+    }
     if (!ignore) return;
     const at = `${path === '/' ? '' : path}/.gitignore`;
     add('getNode', at, ignore.node); add('getNodeType', at, ignore.node ? { type: ignore.node.type } : null);

@@ -5,7 +5,7 @@ import ts from 'typescript';
 import { workspacePackages, sourceExports } from './workspace-packages.mjs';
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
-const frontend = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'llm-settings-ui', 'mdx-adapter', 'ui-common', 'vfs-ui', 'image-parser', 'mdxeditor'];
+const frontend = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'llm-settings-ui', 'mdx-adapter', 'ui-common', 'ui-common-adapter', 'vfs-ui', 'image-parser', 'mdxeditor'];
 const backend = ['app-core', 'llm-context', 'llm-session', 'llm-flow', 'llm-tasks', 'durable-kernel', 'kernel-adapters', 'tools', 'device-tty', 'sanbox', 'sync-adapters'];
 const shared = ['app-contracts', 'common', 'app-transport'];
 
@@ -55,7 +55,7 @@ function contractErrors(roots, role, root) {
 }
 
 export function directoryErrors(root = repository) {
-    const groups = new Map([...frontend.map(name => [name, ['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui'].includes(name) ? 'libraries' : 'ui']), ...backend.map(name => [name, ['durable-kernel', 'device-tty'].includes(name) ? 'libraries' : 'backend']), ...shared.map(name => [name, 'shared'])]);
+    const groups = new Map([...frontend.map(name => [name, ['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui', 'ui-common'].includes(name) ? 'libraries' : 'ui']), ...backend.map(name => [name, ['durable-kernel', 'device-tty'].includes(name) ? 'libraries' : 'backend']), ...shared.map(name => [name, 'shared'])]);
     const legacy = resolve(root, 'packages');
     const misplaced = existsSync(legacy) ? readdirSync(legacy).filter(name => existsSync(resolve(legacy, name, 'package.json'))) : [];
     return [...misplaced.map(name => `packages/${name} must move to ui/, backend/, shared/ or apps/`), ...workspacePackages(root).flatMap(pkg => {
@@ -113,7 +113,7 @@ export function moduleRole(path, root = repository) {
     if (group === 'tools') return name === 'image-tools' && tail === 'browser.ts' ? 'host' : tail === 'contract.ts' ? 'shared' : 'backend';
     if (group === 'libraries') {
         if (name === 'image-parser' && /^(processing|policy|validation|contracts)\.ts$/.test(tail)) return 'shared';
-        if (['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui'].includes(name)) return 'frontend';
+        if (['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui', 'ui-common'].includes(name)) return 'frontend';
         if (name === 'vfs-core') return 'shared';
         if (name === 'kanban') {
             if (tail.startsWith('ui/')) return 'frontend';

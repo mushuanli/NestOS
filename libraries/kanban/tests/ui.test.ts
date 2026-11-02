@@ -6,13 +6,13 @@ import {mountKanban, type KanbanPresentation} from '../src/ui';
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of closes.splice(0).reverse()) await close(); document.body.replaceChildren();});
 const presentation = (prefix: string): KanbanPresentation => ({text: key => `${prefix}:${key}`, icons: {refreshView: '', more: '', close: ''}, log: vi.fn()});
-async function fixture(prefix = 'one') {
+async function fixture(prefix = 'one', mountNavigation?: (container: HTMLElement) => () => void) {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()});
     closes.push(() => manager.dispose());
     const store = await SeqKanbanStore.open(await manager.openFileSystem('/'));
     const service = createKanbanModule({store, actor: {kind: 'human', id: 'person'}, authorize: async () => {}, log: vi.fn()});
     const root = document.createElement('section'); document.body.append(root);
-    const view = await mountKanban(root, {service, presentation: presentation(prefix), selected: vi.fn(), openSession: vi.fn()});
+    const view = await mountKanban(root, {service, presentation: presentation(prefix), selected: vi.fn(), openSession: vi.fn(), mountNavigation});
     closes.push(() => view.destroy());
     return {root, service, view};
 }
@@ -30,10 +30,35 @@ it('mounts an independent board, completes and restores work entirely through DO
     expect(root.querySelector('[name=execution]')).toBeNull();
     await click(root, '[data-action=new-item]'); fill(root, 'title', 'First'); fill(root, 'responsibility', 'Do work'); fill(root, 'acceptance', 'Verify'); await submit(root, 'item');
     const board = (await service.list())[0], id = board.items[0].id;
+    const header = root.querySelector('[data-panel] .kanban__panel-header')!;
+    expect(header.querySelector('.ui-content-titlebar')?.firstElementChild?.getAttribute('data-action')).toBe('close-panel');
+    expect(header.querySelector('h3')?.getAttribute('title')).toBe('First');
+    expect(header.querySelector('[data-action=copy-link]')?.getAttribute('data-copy')).toBe(`/board/${board.id}/${id}`);
+    expect(root.querySelector('[data-panel] .kanban__reference')).toBeNull();
+    await click(root, '[data-panel] .kanban__panel-back');
+    expect(root.querySelector<HTMLElement>('[data-panel]')!.hidden).toBe(true);
+    await click(root, `[data-item="${id}"]`);
     await click(root, '[data-action=ready]'); await submit(root, 'claim'); fill(root, 'resultRef', 'record:result'); await submit(root, 'submit');
     expect((await service.item(board.id, id)).item.status).toBe('completed');
     await click(root, '[data-action=archive]'); expect((await service.item(board.id, id)).archive).toBeDefined();
     await click(root, '[data-action=restore]'); expect((await service.item(board.id, id)).archive).toBeUndefined();
+});
+it('keeps reference and secondary actions in the menu and preserves filters and host navigation across refreshes', async () => {
+    const release = vi.fn(), mount = vi.fn((container: HTMLElement) => {
+        const button = document.createElement('button'); button.dataset.hostNavigation = ''; container.append(button); return release;
+    });
+    const {root, view} = await fixture('one', mount);
+    await click(root, '[data-action=new-board]'); fill(root, 'title', 'Mobile board'); await submit(root, 'board');
+    const header = root.querySelector('main .kanban__page-header')!;
+    expect(header.querySelector('.kanban__board-heading code')).toBeNull();
+    expect(header.querySelector('.kanban__menu-reference')).not.toBeNull();
+    expect(header.querySelector('.kanban__menu [data-action=refresh]')).not.toBeNull();
+    expect(root.querySelector('[data-host-navigation]')).not.toBeNull();
+    const filter = root.querySelector<HTMLSelectElement>('[name=view]')!; filter.value = 'archive';
+    expect(filter.closest('details')).not.toBeNull(); await submit(root, 'filter');
+    expect(root.querySelector<HTMLSelectElement>('[name=view]')!.value).toBe('archive');
+    expect(mount).toHaveBeenCalledTimes(3); expect(release).toHaveBeenCalledTimes(2);
+    await view.destroy(); expect(release).toHaveBeenCalledTimes(3);
 });
 it('isolates presentation between simultaneous instances and preserves drafts through failed writes', async () => {
     const first = await fixture('first'), second = await fixture('second');

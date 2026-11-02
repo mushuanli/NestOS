@@ -3,9 +3,9 @@
 // Frequently modified: format support, import strategy, export options.
 
 import {generateShortUUID, t} from '@itookit/common';
-import { Modal } from '@itookit/ui-common';
+import { Modal } from '@itookit/ui-common-adapter';
 import type { LLMSkill, IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import yaml from 'js-yaml';
 
 export interface SkillImporterDeps {

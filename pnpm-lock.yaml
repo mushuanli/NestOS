@@ -42,6 +42,7 @@ overrides:
   '@itookit/vfsdriver-indexeddb': workspace:*
   '@itookit/vfsdriver-local': workspace:*
   '@itookit/durable-kernel': workspace:*
+  '@itookit/ui-common': workspace:*
 
 pnpmfileChecksum: sha256-uQ0d3PQ0+pbddyWXfxfVRlNdIWzrxNYCQkNeykIDrrU=
 
@@ -101,6 +102,9 @@ importers:
       '@itookit/app-transport':
         specifier: workspace:*
         version: link:../../shared/app-transport
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -125,9 +129,6 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../../backend/llm-tasks
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../node-host
@@ -210,9 +211,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../../ui/ui-common
+        version: link:../../ui/ui-common-adapter
       '@itookit/vfs-ui':
         specifier: workspace:*
         version: link:../../libraries/vfs-ui
@@ -259,6 +260,9 @@ importers:
       '@itookit/app-transport':
         specifier: workspace:*
         version: link:../../shared/app-transport
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -277,15 +281,12 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../node-host
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../../ui/ui-common
+        version: link:../../ui/ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -335,6 +336,9 @@ importers:
       '@itookit/app-transport':
         specifier: workspace:*
         version: link:../../shared/app-transport
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -347,9 +351,6 @@ importers:
       '@itookit/kernel-adapters':
         specifier: workspace:*
         version: link:../../backend/kernel-adapters
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -396,6 +397,9 @@ importers:
       '@itookit/app-shell':
         specifier: workspace:*
         version: link:../../ui/app-shell
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -426,15 +430,12 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../../ui/ui-common
+        version: link:../../ui/ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -520,6 +521,9 @@ importers:
       '@itookit/app-shell':
         specifier: workspace:*
         version: link:../../ui/app-shell
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -547,18 +551,15 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/sync-adapters':
         specifier: workspace:*
         version: link:../../backend/sync-adapters
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../../ui/ui-common
+        version: link:../../ui/ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -602,6 +603,9 @@ importers:
       '@itookit/app-contracts':
         specifier: workspace:*
         version: link:../../shared/app-contracts
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -629,9 +633,6 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../llm-tasks
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../tools
@@ -931,6 +932,31 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.43)(jsdom@27.4.0)
 
+  libraries/cells-driver:
+    dependencies:
+      '@itookit/vfs-core':
+        specifier: workspace:*
+        version: link:../vfs-core
+      '@itookit/vfs-sync':
+        specifier: workspace:*
+        version: link:../vfs-sync
+      '@modelcontextprotocol/client':
+        specifier: 2.0.0
+        version: 2.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.25
+        version: 20.19.43
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@microsoft/api-extractor@7.55.1(@types/node@20.19.43))(jiti@1.21.7)(postcss@8.5.16)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@1.21.7)(jsdom@27.4.0)(tsx@4.20.6)(yaml@2.8.2)
+
   libraries/device-tty:
     dependencies:
       node-pty:
@@ -1019,6 +1045,10 @@ importers:
         version: 1.6.1(@types/node@20.19.43)(jsdom@27.4.0)
 
   libraries/kanban:
+    dependencies:
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../ui-common
     devDependencies:
       '@itookit/vfs-core':
         specifier: workspace:*
@@ -1044,6 +1074,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../mdxeditor
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../ui-common
     devDependencies:
       '@types/node':
         specifier: ^20.19.25
@@ -1051,15 +1084,15 @@ importers:
       jsdom:
         specifier: ^27.4.0
         version: 27.4.0
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@microsoft/api-extractor@7.55.1(@types/node@20.19.43))(jiti@1.21.7)(postcss@8.5.16)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^5.4.21
         version: 5.4.21(@types/node@20.19.43)
-      vite-plugin-dts:
-        specifier: ^4.5.4
-        version: 4.5.4(@types/node@20.19.43)(rollup@4.62.2)(typescript@5.9.3)(vite@5.4.21(@types/node@20.19.43))
       vitest:
         specifier: ^1.6.1
         version: 1.6.1(@types/node@20.19.43)(jsdom@27.4.0)
@@ -1078,6 +1111,9 @@ importers:
       '@codemirror/language':
         specifier: ^6.12.4
         version: 6.12.4
+      '@codemirror/language-data':
+        specifier: ^6.5.2
+        version: 6.5.2
       '@codemirror/lint':
         specifier: ^6.9.7
         version: 6.9.7
@@ -1090,6 +1126,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.5
         version: 6.43.5
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../ui-common
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
@@ -1121,36 +1160,29 @@ importers:
       jsdom:
         specifier: ^27.4.0
         version: 27.4.0
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@microsoft/api-extractor@7.55.1(@types/node@20.19.43))(jiti@1.21.7)(postcss@8.5.16)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^5.4.21
         version: 5.4.21(@types/node@20.19.43)
-      vite-plugin-dts:
-        specifier: ^4.5.4
-        version: 4.5.4(@types/node@20.19.43)(rollup@4.62.2)(typescript@5.9.3)(vite@5.4.21(@types/node@20.19.43))
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@1.21.7)(jsdom@27.4.0)(tsx@4.20.6)(yaml@2.8.2)
 
-  libraries/cells-driver:
-    dependencies:
-      '@itookit/vfs-core':
-        specifier: workspace:*
-        version: link:../vfs-core
-      '@itookit/vfs-sync':
-        specifier: workspace:*
-        version: link:../vfs-sync
-      '@modelcontextprotocol/client':
-        specifier: 2.0.0
-        version: 2.0.0
+  libraries/ui-common:
     devDependencies:
       '@types/node':
         specifier: ^20.19.25
         version: 20.19.43
+      jsdom:
+        specifier: ^27.4.0
+        version: 27.4.0
       tsup:
-        specifier: ^8.5.1
+        specifier: ^8.5.0
         version: 8.5.1(@microsoft/api-extractor@7.55.1(@types/node@20.19.43))(jiti@1.21.7)(postcss@8.5.16)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
       typescript:
         specifier: ^5.9.3
@@ -1277,6 +1309,9 @@ importers:
         specifier: workspace:*
         version: link:../../libraries/vfs-core
     devDependencies:
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/driver-llm':
         specifier: workspace:*
         version: link:../../libraries/driver-llm
@@ -1298,9 +1333,6 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../../backend/llm-tasks
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -1391,9 +1423,9 @@ importers:
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../ui-common
+        version: link:../ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -1424,6 +1456,9 @@ importers:
       '@itookit/kanban':
         specifier: workspace:*
         version: link:../../libraries/kanban
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../../libraries/ui-common
     devDependencies:
       '@itookit/app-core':
         specifier: workspace:*
@@ -1431,6 +1466,9 @@ importers:
       '@itookit/app-settings':
         specifier: workspace:*
         version: link:../app-settings
+      '@itookit/cells-driver':
+        specifier: workspace:*
+        version: link:../../libraries/cells-driver
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -1464,9 +1502,6 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/cells-driver':
-        specifier: workspace:*
-        version: link:../../libraries/cells-driver
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../../apps/node-host
@@ -1476,9 +1511,9 @@ importers:
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../ui-common
+        version: link:../ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -1530,9 +1565,9 @@ importers:
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../ui-common
+        version: link:../ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -1594,9 +1629,9 @@ importers:
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../ui-common
+        version: link:../ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -1646,9 +1681,9 @@ importers:
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
-      '@itookit/ui-common':
+      '@itookit/ui-common-adapter':
         specifier: workspace:*
-        version: link:../ui-common
+        version: link:../ui-common-adapter
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -1684,11 +1719,14 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@1.21.7)(jsdom@27.4.0)(tsx@4.20.6)(yaml@2.8.2)
 
-  ui/ui-common:
+  ui/ui-common-adapter:
     dependencies:
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
+      '@itookit/ui-common':
+        specifier: workspace:*
+        version: link:../../libraries/ui-common
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -1762,20 +1800,77 @@ packages:
   '@codemirror/commands@6.10.4':
     resolution: {integrity: sha512-Ryk9y9T0FFVF0cUGhAknveAyUOl/A1qReTFi+qPKtOh2Z9F4AUBz3XOrYD4ZEgZirdugVzHvd/2/Wcwy5OliTg==}
 
+  '@codemirror/lang-angular@0.1.4':
+    resolution: {integrity: sha512-oap+gsltb/fzdlTQWD6BFF4bSLKcDnlxDsLdePiJpCVNKWXSTAbiiQeYI3UmES+BLAdkmIC1WjyztC1pi/bX4g==}
+
+  '@codemirror/lang-cpp@6.0.3':
+    resolution: {integrity: sha512-URM26M3vunFFn9/sm6rzqrBzDgfWuDixp85uTY49wKudToc2jTHUrKIGGKs+QWND+YLofNNZpxcNGRynFJfvgA==}
+
   '@codemirror/lang-css@6.3.1':
     resolution: {integrity: sha512-kr5fwBGiGtmz6l0LSJIbno9QrifNMUusivHbnA1H6Dmqy4HZFte3UAICix1VuKo0lMPKQr2rqB+0BkKi/S3Ejg==}
+
+  '@codemirror/lang-go@6.0.1':
+    resolution: {integrity: sha512-7fNvbyNylvqCphW9HD6WFnRpcDjr+KXX/FgqXy5H5ZS0eC5edDljukm/yNgYkwTsgp2busdod50AOTIy6Jikfg==}
 
   '@codemirror/lang-html@6.4.11':
     resolution: {integrity: sha512-9NsXp7Nwp891pQchI7gPdTwBuSuT3K65NGTHWHNJ55HjYcHLllr0rbIZNdOzas9ztc1EUVBlHou85FFZS4BNnw==}
 
+  '@codemirror/lang-java@6.0.2':
+    resolution: {integrity: sha512-m5Nt1mQ/cznJY7tMfQTJchmrjdjQ71IDs+55d1GAa8DGaB8JXWsVCkVT284C3RTASaY43YknrK2X3hPO/J3MOQ==}
+
   '@codemirror/lang-javascript@6.2.5':
     resolution: {integrity: sha512-zD4e5mS+50htS7F+TYjBPsiIFGanfVqg4HyUz6WNFikgOPf2BgKlx+TQedI1w6n/IqRBVBbBWmGFdLB/7uxO4A==}
+
+  '@codemirror/lang-jinja@6.0.1':
+    resolution: {integrity: sha512-P5kyHLObzjtbGj16h+hyvZTxJhSjBEeSx4wMjbnAf3b0uwTy2+F0zGjMZL4PQOm/mh2eGZ5xUDVZXgwP783Nsw==}
+
+  '@codemirror/lang-json@6.0.2':
+    resolution: {integrity: sha512-x2OtO+AvwEHrEwR0FyyPtfDUiloG3rnVTSZV1W8UteaLL8/MajQd8DpvUb2YVzC+/T18aSDv0H9mu+xw0EStoQ==}
+
+  '@codemirror/lang-less@6.0.2':
+    resolution: {integrity: sha512-EYdQTG22V+KUUk8Qq582g7FMnCZeEHsyuOJisHRft/mQ+ZSZ2w51NupvDUHiqtsOy7It5cHLPGfHQLpMh9bqpQ==}
+
+  '@codemirror/lang-liquid@6.3.3':
+    resolution: {integrity: sha512-U9EnyzWuAx1TX3MZSKDXydKH734n1Aogk/ijKdW+jdIwmbf9zSPQYOIKggC/b2PTRjQb7ddvMktmxnfTLuv/SQ==}
 
   '@codemirror/lang-markdown@6.5.0':
     resolution: {integrity: sha512-0K40bZ35jpHya6FriukbgaleaqzBLZfOh7HuzqbMxBXkbYMJDxfF39c23xOgxFezR+3G+tR2/Mup+Xk865OMvw==}
 
+  '@codemirror/lang-php@6.0.2':
+    resolution: {integrity: sha512-ZKy2v1n8Fc8oEXj0Th0PUMXzQJ0AIR6TaZU+PbDHExFwdu+guzOA4jmCHS1Nz4vbFezwD7LyBdDnddSJeScMCA==}
+
+  '@codemirror/lang-python@6.2.1':
+    resolution: {integrity: sha512-IRjC8RUBhn9mGR9ywecNhB51yePWCGgvHfY1lWN/Mrp3cKuHr0isDKia+9HnvhiWNnMpbGhWrkhuWOc09exRyw==}
+
+  '@codemirror/lang-rust@6.0.2':
+    resolution: {integrity: sha512-EZaGjCUegtiU7kSMvOfEZpaCReowEf3yNidYu7+vfuGTm9ow4mthAparY5hisJqOHmJowVH3Upu+eJlUji6qqA==}
+
+  '@codemirror/lang-sass@6.0.2':
+    resolution: {integrity: sha512-l/bdzIABvnTo1nzdY6U+kPAC51czYQcOErfzQ9zSm9D8GmNPD0WTW8st/CJwBTPLO8jlrbyvlSEcN20dc4iL0Q==}
+
+  '@codemirror/lang-sql@6.10.0':
+    resolution: {integrity: sha512-6ayPkEd/yRw0XKBx5uAiToSgGECo/GY2NoJIHXIIQh1EVwLuKoU8BP/qK0qH5NLXAbtJRLuT73hx7P9X34iO4w==}
+
+  '@codemirror/lang-vue@0.1.3':
+    resolution: {integrity: sha512-QSKdtYTDRhEHCfo5zOShzxCmqKJvgGrZwDQSdbvCRJ5pRLWBS7pD/8e/tH44aVQT6FKm0t6RVNoSUWHOI5vNug==}
+
+  '@codemirror/lang-wast@6.0.2':
+    resolution: {integrity: sha512-Imi2KTpVGm7TKuUkqyJ5NRmeFWF7aMpNiwHnLQe0x9kmrxElndyH0K6H/gXtWwY6UshMRAhpENsgfpSwsgmC6Q==}
+
+  '@codemirror/lang-xml@6.1.0':
+    resolution: {integrity: sha512-3z0blhicHLfwi2UgkZYRPioSgVTo9PV5GP5ducFH6FaHy0IAJRg+ixj5gTR1gnT/glAIC8xv4w2VL1LoZfs+Jg==}
+
+  '@codemirror/lang-yaml@6.1.3':
+    resolution: {integrity: sha512-AZ8DJBuXGVHybpBQhmZtgew5//4hv3tdkXnr3vDmOUMJRuB6vn/uuwtmTOTlqEaQFg3hQSVeA90NmvIQyUV6FQ==}
+
+  '@codemirror/language-data@6.5.2':
+    resolution: {integrity: sha512-CPkWBKrNS8stYbEU5kwBwTf3JB1kghlbh4FSAwzGW2TEscdeHHH4FGysREW86Mqnj3Qn09s0/6Ea/TutmoTobg==}
+
   '@codemirror/language@6.12.4':
     resolution: {integrity: sha512-1q4PaT+o6PbgpkJt4Q8Fv5XJxTy4FUZ4MWETtyiDw3J0Pyr9E2vqcKL+k9wcvjNTIsauxvE7OfmWj3FRPHQ76A==}
+
+  '@codemirror/legacy-modes@6.5.5':
+    resolution: {integrity: sha512-9ltT214oMb3Y1w5eAZMSigzrjzZnMI2Wa3Feq73rU/i4C56MkwrpfswfQYOr28C5pXr6dWwspNTMyeHXlzWMxg==}
 
   '@codemirror/lint@6.9.7':
     resolution: {integrity: sha512-28/+iWLYxKxsvGYhSYL7zaCZqLz5+FFFDq9tVsvGv9kv8RY4fFAchJ5WX9M3YrrRlTIsECjsXPqeNgnSmNP2dg==}
@@ -1785,6 +1880,9 @@ packages:
 
   '@codemirror/state@6.7.1':
     resolution: {integrity: sha512-9QzNDgE4EYDnAHfrTlR2lwiPciiOymLtwKK+8yHQzCc7GXhAP9xdEbEJFy2IWB1j9UGUl9BsgMmTo/ImA02T7A==}
+
+  '@codemirror/streamparser@6.0.0':
+    resolution: {integrity: sha512-JTFPF6xrfjt0mnfGPgzcLiMwYmvIyNaoizp8BYzv8FE8KrT6GBGDZ190rtt+O7Wke3gG/MFHyiY9YGNeimof4w==}
 
   '@codemirror/view@6.43.5':
     resolution: {integrity: sha512-7uT/vUgH6dfXWn3WqOe23KneILMvGy5wQjNMEcRXLKzziJ9NOktpW6tGoyQpwVkBgE5Gj6hKkCcsddbnkaWrOQ==}
@@ -2475,8 +2573,14 @@ packages:
   '@lezer/common@1.5.2':
     resolution: {integrity: sha512-sxQE460fPZyU3sdc8lafxiPwJHBzZRy/udNFynGQky1SePYBdhkBl1kOagA9uT3pxR8K09bOrmTUqA9wb/PjSQ==}
 
+  '@lezer/cpp@1.1.6':
+    resolution: {integrity: sha512-vh9gWWJOXFVY8HBHK3Twzq8MgwG2iN4GSyzBP9sCGTe37P15x2R14VaBQk0VA0ezTRN1KHYBBsHhvpGZ2Xy/pA==}
+
   '@lezer/css@1.3.4':
     resolution: {integrity: sha512-N+tn9tej2hPvyKgHEApMOQfHczDJCwxrRFS3SPn9QjYN+uwHvEDnCgKRrb3mxDYxRS8sKMM8fhC3+lc04Abz5Q==}
+
+  '@lezer/go@1.0.1':
+    resolution: {integrity: sha512-xToRsYxwsgJNHTgNdStpcvmbVuKxTapV0dM0wey1geMMRc9aggoVyKgzYp41D2/vVOx+Ii4hmE206kvxIXBVXQ==}
 
   '@lezer/highlight@1.2.3':
     resolution: {integrity: sha512-qXdH7UqTvGfdVBINrgKhDsVTJTxactNNxLk7+UMwZhU13lMHaOBlJe9Vqp907ya56Y3+ed2tlqzys7jDkTmW0g==}
@@ -2484,14 +2588,38 @@ packages:
   '@lezer/html@1.3.13':
     resolution: {integrity: sha512-oI7n6NJml729m7pjm9lvLvmXbdoMoi2f+1pwSDJkl9d68zGr7a9Btz8NdHTGQZtW2DA25ybeuv/SyDb9D5tseg==}
 
+  '@lezer/java@1.1.5':
+    resolution: {integrity: sha512-JppTd1iKHpeNlLYw/Zl8JX7zSY5HqAzK4zZ05lpn8l8Sk7Fo5KAKiDiMiezKoT5lfeC2xZf8HeKp1tSctj4G6Q==}
+
   '@lezer/javascript@1.5.4':
     resolution: {integrity: sha512-vvYx3MhWqeZtGPwDStM2dwgljd5smolYD2lR2UyFcHfxbBQebqx8yjmFmxtJ/E6nN6u1D9srOiVWm3Rb4tmcUA==}
+
+  '@lezer/json@1.0.3':
+    resolution: {integrity: sha512-BP9KzdF9Y35PDpv04r0VeSTKDeox5vVr3efE7eBbx3r4s3oNLfunchejZhjArmeieBH+nVOpgIiBJpEAv8ilqQ==}
 
   '@lezer/lr@1.4.10':
     resolution: {integrity: sha512-rnCpTIBafOx4mRp43xOxDJbFipJm/c0cia/V5TiGlhmMa+wsSdoGmUN3w5Bqrks/09Q/D4tNAmWaT8p6NRi77A==}
 
   '@lezer/markdown@1.6.4':
     resolution: {integrity: sha512-N0SxazMj4k65DBfaf1azqtMZd6u7MqluP84/NZnB/io8Td9aleFmAhz9hcbvSfsxT5tdYlJ5qgv5aMJGY4zEtA==}
+
+  '@lezer/php@1.0.6':
+    resolution: {integrity: sha512-QJ2xNXPmsm/Z3IpThq8fnJrEIVpxhsIoj6GZBW0JYEd/l9zxpJZW216X4fzqQY4vgpdGIumypvI4uQjd4tnYtw==}
+
+  '@lezer/python@1.1.19':
+    resolution: {integrity: sha512-MhQIURHRytsNzP/YXnqpYKW6la6voAH3kyplTOOiCdjyFY6cWWGFVmYVdHIPrElqSDf4iCDktQCockB9FxuhzQ==}
+
+  '@lezer/rust@1.0.3':
+    resolution: {integrity: sha512-XxErOjZzQ7yJt1agUT4fu9qQvESZ3acgoxpPaPTPOiUx+duCjaVAtZGFIgphkHxlN05djdVAIOy/wItShMEjqQ==}
+
+  '@lezer/sass@1.1.0':
+    resolution: {integrity: sha512-3mMGdCTUZ/84ArHOuXWQr37pnf7f+Nw9ycPUeKX+wu19b7pSMcZGLbaXwvD2APMBDOGxPmpK/O6S1v1EvLoqgQ==}
+
+  '@lezer/xml@1.0.6':
+    resolution: {integrity: sha512-CdDwirL0OEaStFue/66ZmFSeppuL6Dwjlk8qk153mSQwiSH/Dlri4GNymrNWnUmPl2Um7QfV1FO9KFUyX3Twww==}
+
+  '@lezer/yaml@1.0.4':
+    resolution: {integrity: sha512-2lrrHqxalACEbxIbsjhqGpSW8kWpUKuY6RHgnSAFZa6qK62wvnPxA8hGOwOoDbwHcOFs5M4o27mjGu+P7TvBmw==}
 
   '@marijn/find-cluster-break@1.0.3':
     resolution: {integrity: sha512-FY+MKLBoTsLNJF/eLWaOsXGdz6uh3Iu1axjPf6TUq92IYumcTcXWHoS747JARLkcdlJ/Waiaxc5wQfFO8jC6NA==}
@@ -4776,6 +4904,20 @@ snapshots:
       '@codemirror/view': 6.43.5
       '@lezer/common': 1.5.2
 
+  '@codemirror/lang-angular@0.1.4':
+    dependencies:
+      '@codemirror/lang-html': 6.4.11
+      '@codemirror/lang-javascript': 6.2.5
+      '@codemirror/language': 6.12.4
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@codemirror/lang-cpp@6.0.3':
+    dependencies:
+      '@codemirror/language': 6.12.4
+      '@lezer/cpp': 1.1.6
+
   '@codemirror/lang-css@6.3.1':
     dependencies:
       '@codemirror/autocomplete': 6.20.3
@@ -4783,6 +4925,14 @@ snapshots:
       '@codemirror/state': 6.7.1
       '@lezer/common': 1.5.2
       '@lezer/css': 1.3.4
+
+  '@codemirror/lang-go@6.0.1':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@lezer/common': 1.5.2
+      '@lezer/go': 1.0.1
 
   '@codemirror/lang-html@6.4.11':
     dependencies:
@@ -4796,6 +4946,11 @@ snapshots:
       '@lezer/css': 1.3.4
       '@lezer/html': 1.3.13
 
+  '@codemirror/lang-java@6.0.2':
+    dependencies:
+      '@codemirror/language': 6.12.4
+      '@lezer/java': 1.1.5
+
   '@codemirror/lang-javascript@6.2.5':
     dependencies:
       '@codemirror/autocomplete': 6.20.3
@@ -4805,6 +4960,41 @@ snapshots:
       '@codemirror/view': 6.43.5
       '@lezer/common': 1.5.2
       '@lezer/javascript': 1.5.4
+
+  '@codemirror/lang-jinja@6.0.1':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/lang-html': 6.4.11
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@codemirror/view': 6.43.5
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@codemirror/lang-json@6.0.2':
+    dependencies:
+      '@codemirror/language': 6.12.4
+      '@lezer/json': 1.0.3
+
+  '@codemirror/lang-less@6.0.2':
+    dependencies:
+      '@codemirror/lang-css': 6.3.1
+      '@codemirror/language': 6.12.4
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@codemirror/lang-liquid@6.3.3':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/lang-html': 6.4.11
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@codemirror/view': 6.43.5
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
 
   '@codemirror/lang-markdown@6.5.0':
     dependencies:
@@ -4816,6 +5006,105 @@ snapshots:
       '@lezer/common': 1.5.2
       '@lezer/markdown': 1.6.4
 
+  '@codemirror/lang-php@6.0.2':
+    dependencies:
+      '@codemirror/lang-html': 6.4.11
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@lezer/common': 1.5.2
+      '@lezer/php': 1.0.6
+
+  '@codemirror/lang-python@6.2.1':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@lezer/common': 1.5.2
+      '@lezer/python': 1.1.19
+
+  '@codemirror/lang-rust@6.0.2':
+    dependencies:
+      '@codemirror/language': 6.12.4
+      '@lezer/rust': 1.0.3
+
+  '@codemirror/lang-sass@6.0.2':
+    dependencies:
+      '@codemirror/lang-css': 6.3.1
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@lezer/common': 1.5.2
+      '@lezer/sass': 1.1.0
+
+  '@codemirror/lang-sql@6.10.0':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@codemirror/lang-vue@0.1.3':
+    dependencies:
+      '@codemirror/lang-html': 6.4.11
+      '@codemirror/lang-javascript': 6.2.5
+      '@codemirror/language': 6.12.4
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@codemirror/lang-wast@6.0.2':
+    dependencies:
+      '@codemirror/language': 6.12.4
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@codemirror/lang-xml@6.1.0':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@codemirror/view': 6.43.5
+      '@lezer/common': 1.5.2
+      '@lezer/xml': 1.0.6
+
+  '@codemirror/lang-yaml@6.1.3':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+      '@lezer/yaml': 1.0.4
+
+  '@codemirror/language-data@6.5.2':
+    dependencies:
+      '@codemirror/lang-angular': 0.1.4
+      '@codemirror/lang-cpp': 6.0.3
+      '@codemirror/lang-css': 6.3.1
+      '@codemirror/lang-go': 6.0.1
+      '@codemirror/lang-html': 6.4.11
+      '@codemirror/lang-java': 6.0.2
+      '@codemirror/lang-javascript': 6.2.5
+      '@codemirror/lang-jinja': 6.0.1
+      '@codemirror/lang-json': 6.0.2
+      '@codemirror/lang-less': 6.0.2
+      '@codemirror/lang-liquid': 6.3.3
+      '@codemirror/lang-markdown': 6.5.0
+      '@codemirror/lang-php': 6.0.2
+      '@codemirror/lang-python': 6.2.1
+      '@codemirror/lang-rust': 6.0.2
+      '@codemirror/lang-sass': 6.0.2
+      '@codemirror/lang-sql': 6.10.0
+      '@codemirror/lang-vue': 0.1.3
+      '@codemirror/lang-wast': 6.0.2
+      '@codemirror/lang-xml': 6.1.0
+      '@codemirror/lang-yaml': 6.1.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/legacy-modes': 6.5.5
+
   '@codemirror/language@6.12.4':
     dependencies:
       '@codemirror/state': 6.7.1
@@ -4824,6 +5113,10 @@ snapshots:
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.10
       style-mod: 4.1.3
+
+  '@codemirror/legacy-modes@6.5.5':
+    dependencies:
+      '@codemirror/streamparser': 6.0.0
 
   '@codemirror/lint@6.9.7':
     dependencies:
@@ -4840,6 +5133,8 @@ snapshots:
   '@codemirror/state@6.7.1':
     dependencies:
       '@marijn/find-cluster-break': 1.0.3
+
+  '@codemirror/streamparser@6.0.0': {}
 
   '@codemirror/view@6.43.5':
     dependencies:
@@ -5250,7 +5545,19 @@ snapshots:
 
   '@lezer/common@1.5.2': {}
 
+  '@lezer/cpp@1.1.6':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
   '@lezer/css@1.3.4':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@lezer/go@1.0.1':
     dependencies:
       '@lezer/common': 1.5.2
       '@lezer/highlight': 1.2.3
@@ -5266,7 +5573,19 @@ snapshots:
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.10
 
+  '@lezer/java@1.1.5':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
   '@lezer/javascript@1.5.4':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@lezer/json@1.0.3':
     dependencies:
       '@lezer/common': 1.5.2
       '@lezer/highlight': 1.2.3
@@ -5280,6 +5599,42 @@ snapshots:
     dependencies:
       '@lezer/common': 1.5.2
       '@lezer/highlight': 1.2.3
+
+  '@lezer/php@1.0.6':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@lezer/python@1.1.19':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@lezer/rust@1.0.3':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@lezer/sass@1.1.0':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@lezer/xml@1.0.6':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
+  '@lezer/yaml@1.0.4':
+    dependencies:
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
 
   '@marijn/find-cluster-break@1.0.3': {}
 

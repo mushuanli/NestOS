@@ -1,7 +1,7 @@
 import { escapeHTML, t } from '@itookit/common';
 import { projectFileSource } from '@itookit/app-contracts';
 import type { ProjectService } from '@itookit/app-contracts/services';
-import { Modal } from '@itookit/ui-common';
+import { Modal } from '@itookit/ui-common-adapter';
 
 export async function showProjectDefaultSettings(projects: ProjectService, signal: AbortSignal, changed: () => Promise<void>): Promise<void> {
     const [catalog, current] = await Promise.all([projects.list(), projects.getDefaultProject()]);

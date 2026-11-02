@@ -5,7 +5,7 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { SessionFilesService } from '@itookit/app-core';
 import type { Kernel } from '@itookit/durable-kernel';
-import type { EditorFactory } from '@itookit/ui-common';
+import type {EditorFactory} from '@itookit/ui-common-adapter';
 
 afterEach(() => vi.unstubAllGlobals());
 

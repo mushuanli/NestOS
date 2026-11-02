@@ -10,11 +10,12 @@ import type {IFileSystem} from '@itookit/vfs-core';
 /** Reuse the existing published input form and immutable attachment preparation. */
 export async function prepareSessionChatRequest(options: {
     commands: ICommandBus; agents: IAgentConfigService; choice: RootCallTarget; request: SubmissionRequest;
+    harnessConnectionId?: string;
     files: File[]; assets?: IFileSystem; input?: ChatSubmission; signal: AbortSignal;
 }): Promise<SubmissionRequest> {
     const {commands, agents, choice, signal, files} = options, request = structuredClone(options.request);
     signal.throwIfAborted();
-    const draft = {sourceScope: {navigation: 'projects', sessionId: request.expectedSessionId}, text: options.input?.text ?? (request.source.kind === 'composer' ? request.source.text : request.presentation?.text ?? ''), files,
+    const draft = {harnessConnectionId: options.harnessConnectionId, sourceScope: {navigation: 'projects', sessionId: request.expectedSessionId}, text: options.input?.text ?? (request.source.kind === 'composer' ? request.source.text : request.presentation?.text ?? ''), files,
         ...(options.input?.input ? {input: {targetId: options.input.input.targetId, signature: {...options.input.input.signature},
             ...(isTargetRef(options.input.input.target) ? {target: options.input.input.target} : {}), revision: 0, json: JSON.stringify(options.input.input.values)}} : {})};
     if (/^\/run(?:\s|$)/.test(draft.text) && choice.target.kind !== 'flow' && !choice.input)

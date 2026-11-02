@@ -4,6 +4,8 @@ import type {EditorFactory} from './IEditorFactory';
 export interface SessionDraftMaterialization {
     container: HTMLElement;
     agentId?: string;
+    title?: string;
+    harness?: {profileId: string; expectedProject?: {nodeConnectionId: string; serverProjectId: string}; selection?: {modelId: string; reasoningEffort?: string}};
     /** The stable view creates its controller from host-prepared resource options. */
     createEditor?: EditorFactory;
 }
@@ -16,14 +18,21 @@ export interface SessionDraftPreferences {
 
 /** Host owns draft lifecycle; the composer only saves input and requests a target. */
 export interface SessionDraftControls<TSubmission = unknown> {
+    readonly locked?: boolean;
     readonly id?: string;
     /** Materialize a controller inside the existing mount while retaining its composer. */
     readonly inPlace?: boolean;
     readonly executorScope?: 'local' | 'remote';
+    /** Supports NestOS prompt targets on a separately selected native harness. */
+    readonly promptHarness?: boolean;
     readonly scope?: {
         id: string; label: string;
         choices(): Promise<Array<{id: string; label: string; disabled?: boolean}>>;
         select(id: string, agentId?: string, preferences?: SessionDraftPreferences): Promise<void>;
+        move?(id: string): Promise<void>;
+    };
+    readonly presentation?: {
+        titleChanged(title: string): void;
     };
     readonly attachments?: {
         put(content: ArrayBuffer): Promise<string>;

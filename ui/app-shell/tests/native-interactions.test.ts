@@ -1,7 +1,8 @@
+import type {ConversationRequest} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
 import {renderConversationRequests, clearConversationRequests} from '../../llm-ui-adapter/src/shell/remote-interactions';
-import type {ConversationRequest} from '@itookit/ui-common';
+
 it('renders a restored native dialog, keeps edits during observations, and replies with multiple selected values', async () => {
     const host = document.createElement('section'), respond = vi.fn(async () => {}); document.body.append(host);
     const request: ConversationRequest = {id: 'q', kind: 'input', detail: '', questions: [

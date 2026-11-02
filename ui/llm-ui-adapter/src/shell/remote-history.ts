@@ -1,4 +1,4 @@
-import type { ConversationMessage } from '@itookit/ui-common';
+import type { ConversationMessage } from '@itookit/ui-common-adapter';
 import type { SessionGroup } from '@itookit/llm-session/contracts';
 import { createTranscriptMarkup } from './transcript-markup';
 import { HistoryView } from '../components/HistoryView';

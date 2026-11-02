@@ -1,9 +1,10 @@
+import type {ConversationCommandOutput, ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {arrayBufferToBase64, sha256Hex, t} from '@itookit/common';
 import {createOperationLedger} from '@itookit/llm-ui';
 import {RpcPeer} from '@itookit/app-transport/application';
-import type {ConversationCommandOutput, ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+
 import {NativeCommandOutput} from '../../llm-ui-adapter/src/components/history/NativeCommandOutput';
 import {RemoteConversationEditor} from '../../llm-ui-adapter/src/shell/RemoteConversationEditor';
 import {createNativeChatBinding, createNativeChatView} from '../../llm-ui-adapter/src/independent/native';
@@ -101,9 +102,9 @@ it('rejects pages whose reference or cursor changes without exposing unverified 
 
 it('cancels a pending page across real RPC without requesting remaining bytes or changing the next draft', async () => {
     const data = await content('🧪'.repeat(50000)), state = {...snapshot(data.output), draft: 'untouched draft'};
-    let server!: RpcPeer, release!: (page: import('@itookit/ui-common').ConversationCommandOutputPage) => void;
+    let server!: RpcPeer, release!: (page: import('@itookit/ui-common-adapter').ConversationCommandOutputPage) => void;
     const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
-    const source = controls(state, vi.fn()), read = vi.fn(() => new Promise<import('@itookit/ui-common').ConversationCommandOutputPage>(resolve => {release = resolve;}));
+    const source = controls(state, vi.fn()), read = vi.fn(() => new Promise<import('@itookit/ui-common-adapter').ConversationCommandOutputPage>(resolve => {release = resolve;}));
     source.readCommandOutput = read;
     const peer = client.decode(await server.expose(source)) as ConversationControls, view = new NativeCommandOutput(peer);
     document.body.append(view.element); view.update(data.output);

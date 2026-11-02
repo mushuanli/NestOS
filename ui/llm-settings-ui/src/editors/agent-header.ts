@@ -1,5 +1,5 @@
 import { ACTION_ICONS, createModuleLogger, randomUUID, t } from '@itookit/common';
-import type { EditorOptions } from '@itookit/ui-common';
+import type { EditorOptions } from '@itookit/ui-common-adapter';
 
 export interface AgentHeaderController {
     cancelPendingAction(): void;

@@ -52,3 +52,6 @@
 [submodule "tools/googlecli"]
 	path = tools/googlecli
 	url = https://github.com/mushuanli/googlecli.git
+[submodule "libraries/ui-common"]
+	path = libraries/ui-common
+	url = git@github.com:mushuanli/ui-common.git

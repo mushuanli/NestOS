@@ -14,7 +14,7 @@ import type { NavDataBuilder } from '../services/NavDataBuilder';
 import type {DOMCache} from '@itookit/llm-ui';
 import type {TimerManager} from '@itookit/llm-ui';
 import { FloatingNavPanel } from '../components/FloatingNavPanel';
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import { visibleSessionId } from '../components/history/visible-session';
 import { PromptNavigator } from '../components/PromptNavigator';
 

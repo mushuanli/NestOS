@@ -2,7 +2,7 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {FILE_ICONS} from '@itookit/common';
-import type {EditorOptions} from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 import {connectEditorLifecycle} from '../src/browser/editor-connector';
 
 const cleanup: Array<() => Promise<void>> = [];

@@ -1,7 +1,8 @@
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 import {expect, it, vi} from 'vitest';
 import {NativeMetricsObserver} from './native-metrics-observer';
 import {nativeComposerIndicators} from './native-composer-indicators';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+
 const base: ConversationSnapshot = {sessionId: 's', title: '', messages: [], requests: [], pending: false, gap: false, disconnected: false,
     canSend: true, canInterrupt: false, canRespond: false, supportsMetrics: true};
 it('refreshes only at native turn boundaries, coalesces notifications and suspends hidden views', async () => {

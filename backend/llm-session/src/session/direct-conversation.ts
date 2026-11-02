@@ -39,8 +39,12 @@ export async function prepareDirectConversation<T extends DirectConversationInpu
 }
 
 async function prepareDefaultTools<T extends DirectConversationInput>(options: DirectConversationPorts, execution: T) {
-    if (directExecutionMode(execution.task.input) !== 'agent' || execution.config.capabilityPolicy?.toolIds !== undefined) return execution;
-    const toolIds = [...await options.resolveHarnessToolIds?.(execution.task.sessionId) ?? []];
+    const policy = execution.config.capabilityPolicy;
+    if (policy?.inheritDefaultTools !== undefined && typeof policy.inheritDefaultTools !== 'boolean') throw new Error('AGENT_TOOL_POLICY_INVALID');
+    const inherit = policy?.inheritDefaultTools ?? (policy?.toolIds === undefined);
+    if (directExecutionMode(execution.task.input) !== 'agent' || !inherit) return execution;
+    const defaults = await options.resolveHarnessToolIds?.(execution.task.sessionId) ?? [];
+    const toolIds = [...new Set([...defaults, ...policy?.toolIds ?? []])];
     return {...execution, config: {...execution.config, capabilityPolicy: {mcpProfileIds: [], ...execution.config.capabilityPolicy, toolIds}}};
 }
 

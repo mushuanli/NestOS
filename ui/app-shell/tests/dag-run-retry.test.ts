@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { Toast } from '@itookit/ui-common';
+import {Toast} from '@itookit/ui-common-adapter';
 import { DagWorkbench } from '../../llm-ui-adapter/src/components/DagWorkbench';
 
 function snapshot(retrying = false, status = 'succeeded') {

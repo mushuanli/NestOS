@@ -1,5 +1,5 @@
 import {ParameterSources} from './parameter-sources';
-import {Toast} from '@itookit/ui-common';
+import {Toast} from '@itookit/ui-common-adapter';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import {InvocationOperations} from './invocation-operations';
 import { escapeHTML, randomUUID, t } from '@itookit/common';

@@ -107,7 +107,7 @@ it('closes and disables model changes while running and keeps usage details belo
     view.setLoading(true);
     expect(document.querySelector('.llm-popup--visible')).toBeNull();
     expect(button('.llm-input__model-trigger').disabled).toBe(true);
-    expect(button('[data-execution-mode="agent"]').disabled).toBe(true);
+    expect(host.querySelector<HTMLInputElement>('.llm-input__tools-enabled-toggle')!.disabled).toBe(true);
     view.updateTokenStats({ inputTokens: 100, outputTokens: 20, contextUsageRatio: .2, costUsd: .01,
         durationMs: 1200, rounds: 1, isEstimated: false });
     const usage = host.querySelector<HTMLDetailsElement>('.token-meter')!;

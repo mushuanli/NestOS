@@ -1,4 +1,4 @@
-import type {ConversationCommandOutput} from '@itookit/ui-common';
+import type {ConversationCommandOutput} from '@itookit/ui-common-adapter';
 import {NativeCommandOutput, type CommandOutputReader} from './NativeCommandOutput';
 
 export interface NativeOutputPlacement {id: string; parent: HTMLElement; output: ConversationCommandOutput}

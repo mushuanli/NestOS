@@ -1,4 +1,5 @@
 import { filterDirectoryFiles } from './directory-visibility';
+import {readDirectoryView} from './directory-view';
 import { SessionActivityProjection } from './session-activity';
 import { RemoteSessionProjection } from './remote-session-projection';
 import { conversationDirectory, conversationDirectoryNode, conversationNavigationNodes } from '../projects/conversation-directory';
@@ -703,6 +704,10 @@ export async function createSessionBrowser(deps: SessionBrowserDependencies): Pr
         await rename(path, segment, options);
     };
     return Object.assign(owner, { transferItems: (mode: 'copy' | 'move', ids: string[], destination: string) => backend.transfer(mode, ids, destination),
+        readDirectory: (path: string, options?: {projectId?: string | null; refresh?: boolean}) => {
+            if (options?.refresh) backend.refreshNavigation();
+            return readDirectoryView(owner.fs, deps.projects, path, options);
+        },
         readFileDirectory: (path: string, options?: FileDirectoryOptions) => backend.readFileDirectory(path, options),
         invalidateNavigation: async (options?: {activity?: boolean}) => { backend.refreshNavigation(options); },
         setSessionFilter: async (agentId?: string) => { backend.setSessionFilter(agentId); } });

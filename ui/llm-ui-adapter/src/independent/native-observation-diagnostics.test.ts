@@ -1,5 +1,6 @@
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 import {afterEach, expect, it, vi} from 'vitest';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+
 import {nativeObservationDiagnostics} from './native-observation-diagnostics';
 
 const logs = vi.hoisted(() => ({info: vi.fn(), warn: vi.fn()}));

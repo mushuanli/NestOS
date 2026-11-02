@@ -20,7 +20,7 @@ import { NavigationFilters } from '../workbench/navigation-filters';
 import { type VFSUIShell, type VFSNodeUI, type VFSToolbarContext, type UIPersistencePort } from '@itookit/vfs-ui';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { createModuleLogger, ENTITY_ICONS, t, type NavigationRequest } from '@itookit/common';
-import { editorResourceId, type EditorFactory, type MenuItem, type ContextMenuConfig } from '@itookit/ui-common';
+import { editorResourceId, type EditorFactory, type MenuItem, type ContextMenuConfig } from '@itookit/ui-common-adapter';
 import type { WorkspaceController } from '@itookit/app-contracts';
 import { showToolboxCreationDialog } from './create-resource-dialog';
 import { configureCreatedModel } from './creation-model-setup';
@@ -45,7 +45,7 @@ interface Options {
     uiPersistence?: UIPersistencePort;
     /** Host-owned preference storage; omitted means the toolbox starts from defaults. */
     uiPreferences?: ToolboxPreferencesPort;
-    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
+    executorUsage?: import('@itookit/ui-common-adapter').EditorOptions['executorUsage'];
     agentsInWorkbench?: boolean;
     workbenchState?: import('../workbench/state').WorkbenchStatePort;
     windows?: import('../workbench/windows').WorkbenchWindowBinding;

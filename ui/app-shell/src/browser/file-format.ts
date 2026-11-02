@@ -1,4 +1,4 @@
-import type { EditorOptions } from '@itookit/ui-common';
+import type { EditorOptions } from '@itookit/ui-common-adapter';
 import { FILE_REGISTRY } from '../config/file-registry';
 
 const markdownExtensions = new Set(['.md', '.markdown', '.mdx',

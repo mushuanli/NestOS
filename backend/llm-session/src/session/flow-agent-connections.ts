@@ -1,3 +1,5 @@
+import {promptHarnessNode} from './prompt-harness';
+import type {HarnessConnectionSnapshot} from '@itookit/kernel-adapters/contracts';
 import { mergeAgentConfig } from '@itookit/llm-flow';
 import type { FlowNodeDefinition } from '@itookit/llm-flow/contracts';
 import type { ExecutorConfig, TaskInput } from '../core/types';
@@ -28,9 +30,9 @@ export function preferredTaskConnection(input: Pick<TaskInput, 'overrides' | 'in
 
 /** Resolve identities and connection choices without assembling conversation messages. */
 export async function bindFlowAgentConnection(node: FlowNodeDefinition, defaults: FlowNodeDefinition['config'] | undefined,
-    agents: FlowIdentityResolver, preferred?: string) {
+    agents: FlowIdentityResolver, preferred?: string, harness?: HarnessConnectionSnapshot) {
     if (node.plugin !== 'builtin.agent') return {};
-    const config = normalizeLegacyFields(record(node.config)), inherited = normalizeLegacyFields(record(defaults));
+    const config = normalizeLegacyFields(promptHarnessNode(record(node.config), harness)), inherited = normalizeLegacyFields(record(defaults));
     const id = text(config.agentId) ?? text(inherited.agentId);
     const agent = id ? await agents.resolveExact(id).catch(error => {
         throw new Error(`Flow agent reference cannot be resolved: ${id}`, { cause: error });
@@ -55,7 +57,7 @@ export function withAdmittedConnections(source: Record<string, unknown>, admitte
             .map(([id, value]) => [id, connectionTemplate(value)]));
         result.delegation = delegation;
     }
-    return result;
+    return record(admitted.execution).kind === 'harness' ? harnessAgentConfig(result, {}) : result;
 }
 
 /** Remote execution targets never inherit a local model selection or tool authority. */
@@ -63,7 +65,7 @@ export function harnessAgentConfig(config: Record<string, unknown>, agent: Pick<
     const saved = record(config.execution).kind === 'harness';
     const result = { ...config, execution: structuredClone(saved ? config.execution : agent.execution),
         harnessConnection: structuredClone(config.harnessConnection ?? agent.harnessConnection) };
-    for (const key of ['connectionId', 'connectionSlot', 'modelName', 'model', 'connectionRequirements', 'frozenConnection', 'toolIds', 'mcpProfileIds'])
+    for (const key of ['connectionId', 'connectionSlot', 'modelName', 'model', 'connectionRequirements', 'frozenConnection', 'toolIds', 'mcpProfileIds', 'capabilityPolicy', 'skillIds', 'memoryPolicy'])
         delete (result as Record<string, unknown>)[key];
     return result;
 }

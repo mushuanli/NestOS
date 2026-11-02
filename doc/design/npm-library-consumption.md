@@ -1,9 +1,10 @@
 # 独立库本地快照、源码开发与 npm 构建
 
-MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本地制品快照；可选的全工作区快照模式用于制品验收。十三个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui、durable-kernel、device-tty、kanban），保留 npm 发布能力；既有库使用各自独立仓库与 Git 子模块；新拆出的 kanban 暂为主仓库源码工作区，支持本地快照，但尚未创建外部仓库或发布 npm 版本，注册表模式须待发布后验收。libraries 下的子模块目录是唯一开发工作树，不维护另一份发布源码。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
+MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本地制品快照；可选的全工作区快照模式用于制品验收。十四个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui、durable-kernel、device-tty、kanban），保留 npm 发布能力；既有库使用各自独立仓库与 Git 子模块；新拆出的 kanban 暂为主仓库源码工作区，支持本地快照，但尚未创建外部仓库或发布 npm 版本，注册表模式须待发布后验收。libraries 下的子模块目录是唯一开发工作树，不维护另一份发布源码。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
+| @itookit/ui-common | `libraries/ui-common` | 0.1.0（本轮准备发布） |
 | @itookit/durable-kernel | `libraries/durable-kernel` | 0.1.0（目标版本，以 registry 为准） |
 | @itookit/vfs-core | `libraries/vfs-core` | 5.3.3 |
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.6.0 |
@@ -11,9 +12,9 @@ MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本�
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.1 |
 | @itookit/mindos-node-driver | `libraries/cells-driver` | 0.3.1 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.1 |
-| @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
+| @itookit/mdxeditor | `libraries/mdxeditor` | 0.6.0（本轮准备发布） |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
-| @itookit/llm-ui | `libraries/llm-ui` | 0.2.1 |
+| @itookit/llm-ui | `libraries/llm-ui` | 0.4.0（本轮准备发布） |
 | @itookit/device-tty | `libraries/device-tty` | 0.1.0（目标版本，以 registry 为准） |
 | @itookit/image-parser | `libraries/image-parser` | 0.3.0（待发布） |
 

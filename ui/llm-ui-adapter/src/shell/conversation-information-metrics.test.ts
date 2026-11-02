@@ -1,7 +1,8 @@
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {ConversationInformation} from './ConversationInformation';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+
 afterEach(() => document.body.replaceChildren());
 const state: ConversationSnapshot = {title: 'Native', messages: [], requests: [], pending: false, gap: false, disconnected: false,
     canSend: true, canInterrupt: false, canRespond: false, supportsMetrics: true};

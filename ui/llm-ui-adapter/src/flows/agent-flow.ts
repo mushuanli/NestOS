@@ -1,3 +1,4 @@
+import {promptHarnessFlow} from '@itookit/llm-session/contracts';
 import {expandComposerReferences} from './composer-references';
 import {ParameterSources} from './parameter-sources';
 import {resolveFlowArguments} from './flow-arguments';
@@ -22,6 +23,7 @@ export interface AgentFlowSubmission {
 }
 
 export interface AgentFlowDraftInput {
+    harnessConnectionId?: string;
     text: string;
     files: readonly File[];
     sourceScope?: ResourceScope;
@@ -91,7 +93,8 @@ async function prepareDefinition(commands: ICommandBus, flow: FlowRevision, sign
     const {parameters, initialFiles} = confirmedFlowInput(inputFlow, command ? {...trace.draft!, text: '', input: undefined} : draft, command ? flowParameterValues(flow.parameters, supplied as Record<string, JsonValue>, flow.inputGroups) : supplied);
     const sources = new ParameterSources(commands, scope, parameters);
     trace.stage = 'connections';
-    const connection = await flowConnectionSelection(commands, undefined, flow.connections, execution?.connectionBindings, flow, agent);
+    const connection = await flowConnectionSelection(commands, undefined, trace.draft?.harnessConnectionId ? promptHarnessFlow(flow, trace.draft.harnessConnectionId).connections : flow.connections, execution?.connectionBindings,
+        trace.draft?.harnessConnectionId ? promptHarnessFlow(flow, trace.draft.harnessConnectionId) : flow, agent);
     if (signal.aborted) return null;
     trace.stage = 'parameters';
     const direct = command?.[1]?.trim() && !trace.draft?.files.length

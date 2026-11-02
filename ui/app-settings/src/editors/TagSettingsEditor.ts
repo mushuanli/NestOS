@@ -1,5 +1,5 @@
 // @file: app-settings/editors/TagSettingsEditor.ts
-import { BaseSettingsEditor, Modal, Toast } from '@itookit/ui-common';
+import { BaseSettingsEditor, Modal, Toast } from '@itookit/ui-common-adapter';
 import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 import { Tag } from '../types/types';
 

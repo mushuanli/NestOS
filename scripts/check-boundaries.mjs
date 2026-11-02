@@ -19,7 +19,8 @@ export function dependencyError(source, target) {
     if (source === target) return;
     if (source === '@itookit/device-tty' && target.startsWith('@itookit/')) return 'device-tty must use owned contracts and must not depend on application packages';
     if (source === '@itookit/image-parser' && target.startsWith('@itookit/') && target !== '@itookit/vfs-core') return 'image-parser only accepts optional VFS host adaptation';
-    if (source === '@itookit/llm-ui' && target !== '@itookit/mdxeditor') return 'independent llm-ui may only depend on mdxeditor';
+    if (source === '@itookit/ui-common') return 'ui-common must remain dependency-free; host capabilities require generic ports';
+    if (source === '@itookit/llm-ui' && !['@itookit/mdxeditor', '@itookit/ui-common'].includes(target)) return 'independent llm-ui may only depend on mdxeditor and ui-common';
     if (source === '@itookit/cells-driver' && target.startsWith('@itookit/') &&
         !['@itookit/vfs-core', '@itookit/vfs-sync'].includes(target))
         return 'cells-driver must receive application policy through public ports';
@@ -27,15 +28,15 @@ export function dependencyError(source, target) {
         return 'VFS core and drivers must remain independent; drivers may only depend on vfs-core';
     if (source === '@itookit/vfs-sync') return 'vfs-sync must receive all I/O through owned ports';
     if (source === '@itookit/common' && target.startsWith('@itookit/')) return 'common must not depend on capability packages';
-    if (source === '@itookit/ui-common' && target.startsWith('@itookit/') && !['@itookit/common', '@itookit/vfs-core'].includes(target)) return 'shared UI must receive domain data through generic ports';
+    if (source === '@itookit/ui-common-adapter' && target.startsWith('@itookit/') && !['@itookit/common', '@itookit/vfs-core', '@itookit/ui-common'].includes(target)) return 'shared UI must receive domain data through generic ports';
     if (source === '@itookit/kernel-adapters' && ['@itookit/llm-tasks', '@itookit/llm-flow', '@itookit/llm-session'].includes(target)) return 'adapters must not depend on execution or conversation layers';
     if (['@itookit/kernel-adapters', '@itookit/tools', '@itookit/device-tty', '@itookit/llm-tasks', '@itookit/llm-flow', '@itookit/llm-session'].includes(source) &&
         ['@itookit/common', '@itookit/llm-common'].includes(target)) return 'execution capabilities must use owned contracts and injected ports';
     if (source === '@itookit/driver-llm') return 'driver-llm must receive host capabilities through its public ports';
     if (source === '@itookit/llm-context') return 'llm-context must receive I/O through its public ports';
-    if (source === '@itookit/mdxeditor' && target.startsWith('@itookit/')) return 'mdxeditor must receive host capabilities through its public ports';
+    if (source === '@itookit/mdxeditor' && target.startsWith('@itookit/') && target !== '@itookit/ui-common') return 'mdxeditor must receive host capabilities through its public ports';
     if (source === '@itookit/vfs-ui' && target !== '@itookit/vfs-core') return 'vfs-ui must not depend on host packages; use its public ports';
-    if (source === '@itookit/kanban' && target !== '@itookit/vfs-core') return 'kanban may only depend on vfs-core; execution and application policy require host ports';
+    if (source === '@itookit/kanban' && !['@itookit/vfs-core', '@itookit/ui-common'].includes(target)) return 'kanban may only depend on vfs-core and ui-common; execution and application policy require host ports';
     if (source === '@itookit/app-core' && !coreDependencies.has(target)) return 'app-core may only depend on its platform-neutral capabilities';
     if (source !== '@itookit/app-shell' && application.has(target)) return 'capability packages must not depend on application packages';
 }
@@ -60,8 +61,10 @@ function ownerOf(file, packages) {
 export function importError(source, file, specifier, packages) {
     if (source.name === '@itookit/image-parser' && specifier === '@itookit/vfs-core' && file !== resolve(source.dir, 'src/vfs.ts'))
         return 'image-parser VFS types and runtime stay in the optional vfs entry';
-    if (source.name === '@itookit/llm-ui' && !specifier.startsWith('.') && specifier !== '@itookit/mdxeditor')
-        return 'independent llm-ui may only import mdxeditor';
+    if (source.name === '@itookit/llm-ui' && !specifier.startsWith('.') && !['@itookit/mdxeditor', '@itookit/ui-common', '@itookit/ui-common/navigation.css'].includes(specifier))
+        return 'independent llm-ui may only import mdxeditor and ui-common';
+    if (source.name === '@itookit/kanban' && specifier.startsWith('@itookit/ui-common') && !file.startsWith(resolve(source.dir, 'src/ui') + sep))
+        return 'kanban backend must not import UI; ui-common belongs to the optional ui entry';
     if ((source.host || source.name === '@itookit/app-transport') && file.startsWith(resolve(source.dir, 'src/rpc') + sep)) {
         const local = specifier.startsWith('.') && resolve(file, '..', specifier).startsWith(resolve(source.dir, 'src/rpc') + sep);
         if (!local && specifier !== '@itookit/vfs-core') return 'RPC mechanisms must receive application metadata through injection';

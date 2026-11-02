@@ -6,7 +6,7 @@ import { CELLS_EXTENSION, cellsConfiguration } from '@itookit/app-contracts';
 import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import type { NavigationRequest } from '@itookit/common';
-import type { EditorFactory } from '@itookit/ui-common';
+import type { EditorFactory } from '@itookit/ui-common-adapter';
 import type { AppUI } from '../types';
 import type { VFSNodeUI, UIPersistencePort } from '@itookit/vfs-ui';
 import type { ToolboxInventory } from '@itookit/app-contracts/services';
@@ -26,7 +26,7 @@ interface Options {
     navigate(request: NavigationRequest): Promise<void>; selected(path: string | null): void;
     uiPersistence?: UIPersistencePort;
     uiPreferences?: ToolboxPreferencesPort;
-    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
+    executorUsage?: import('@itookit/ui-common-adapter').EditorOptions['executorUsage'];
     agentsInWorkbench?: boolean;
     workbenchState?: import('../workbench/state').WorkbenchStatePort;
     windows?: import('../workbench/windows').WorkbenchWindowBinding;
@@ -45,21 +45,21 @@ export async function createToolboxModule(options: Options): Promise<WorkspaceMo
 }
 function configurationFactories(options: Options, inventory: ToolboxInventory, resources: ToolboxResources) {
     const { agentService } = options.services, editors = options.ui.llmUiEditors;
-    const create = (Editor: new (element: HTMLElement, service: typeof agentService, options: import('@itookit/ui-common').EditorOptions, examples?: MediaProbeExamples) => import('@itookit/ui-common').IEditor, examples?: MediaProbeExamples): EditorFactory => async (element, config) => {
+    const create = (Editor: new (element: HTMLElement, service: typeof agentService, options: import('@itookit/ui-common-adapter').EditorOptions, examples?: MediaProbeExamples) => import('@itookit/ui-common-adapter').IEditor, examples?: MediaProbeExamples): EditorFactory => async (element, config) => {
         const editor = new Editor(element, agentService, config, examples); await editor.init(element); return editor;
     };
-    return { ...options.factories, agents: async (element: HTMLElement, config: import('@itookit/ui-common').EditorOptions) => {
+    return { ...options.factories, agents: async (element: HTMLElement, config: import('@itookit/ui-common-adapter').EditorOptions) => {
         if (config.target?.kind === 'file' && config.target.path.startsWith('/@remote/')) {
             const editor = new RemoteAgentDetailsEditor(element, inventory, config, options.services.projects); await editor.init(element); return editor;
         }
         return options.factories.agents(element, config);
     }, prompts: create(editors.SystemPromptSettingsEditor), providers: create(editors.ProviderSettingsEditor, mediaProbeExamples), connections: create(editors.ConnectionSettingsEditor),
-        mcp: async (element: HTMLElement, config: import('@itookit/ui-common').EditorOptions) => {
+        mcp: async (element: HTMLElement, config: import('@itookit/ui-common-adapter').EditorOptions) => {
             const remote = options.services.projects?.remoteMounts;
             const controls = new MCPConfigurationControlsRegistry().register('diagnostics', new MCPDiagnosticsControls(options.backend.diagnostics, remote), () => true);
             if (remote) controls.register(CELLS_EXTENSION, new CellsMCPControls(remote, options.services.projects, options.backend.diagnostics), server => !!cellsConfiguration(server));
             const editor = new editors.MCPSettingsEditor(element, agentService, config, controls); await editor.init(element); return editor;
-        }, tools: async (element: HTMLElement, config: import('@itookit/ui-common').EditorOptions) => {
+        }, tools: async (element: HTMLElement, config: import('@itookit/ui-common-adapter').EditorOptions) => {
             const editor = new ToolDetailsEditor(element, inventory, config, resources); await editor.init(element); return editor;
         } };
 }

@@ -1,6 +1,6 @@
 import {composeCommandCatalogs, type CommandCatalog, type CommandDefinition, type CommandSource, type CommandSubmission,
     type ComposerCommand, type SelectorView, type OperationContext, type OperationReceipt} from '@itookit/llm-ui';
-import type {ConversationControls, ConversationModelCatalog, ConversationModelSelection, ConversationSnapshot, ConversationSlashCommand} from '@itookit/ui-common';
+import type {ConversationControls, ConversationModelCatalog, ConversationModelSelection, ConversationSnapshot, ConversationSlashCommand} from '@itookit/ui-common-adapter';
 import {t} from '@itookit/common';
 
 /** Hosts register UI, project, Flow or Agent contributions without exposing their services. */

@@ -1,4 +1,4 @@
-import type { IEditor } from '@itookit/ui-common';
+import type { IEditor } from '@itookit/ui-common-adapter';
 
 /** Save failure retains every resource; concurrent disposal shares one completion. */
 export class EditorLease {

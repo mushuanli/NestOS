@@ -45,7 +45,7 @@
   "dependencies": {
     "@itookit/app-contracts": "workspace:*",
     "@itookit/common": "workspace:*",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "js-yaml": "^4.1.1"
   },

@@ -1,5 +1,5 @@
 import type {KanbanPresentation} from './ports';
-import {referenceView} from './references';
+import {panelHeader} from './panel-header';
 import {kanbanReference} from '../contracts';
 import {suggestionField, selectedItems} from './suggestion-field';
 import {escapeHTML, escapeAttr} from './html';
@@ -17,12 +17,12 @@ export function sourcesView(ui: KanbanPresentation, sources: KanbanSourceRef[]):
     return sources.length ? `<ul>${sources.map(source => `<li><button type="button" data-session="${escapeAttr(source.sessionId)}">${escapeHTML(source.sessionId)}</button><small>${escapeHTML(source.messageId)} · ${escapeHTML(source.revision)} · ${escapeHTML(source.role)}</small></li>`).join('')}</ul>` : `<p>${escapeHTML(ui.text('noSources'))}</p>`;
 }
 export function recordForm(ui: KanbanPresentation, kind: KanbanProjectRecord['kind'], board: KanbanBoardSummary, itemId = ''): string {
-    return `<header class="kanban__panel-header"><h3>${escapeHTML(ui.text(kind === 'log' ? 'newLog' : 'newDecision'))}</h3>${button(ui, 'close-panel', 'close')}</header><form data-form="record">
+    return `${panelHeader(ui, ui.text(kind === 'log' ? 'newLog' : 'newDecision'))}<form data-form="record">
         <input type="hidden" name="kind" value="${kind}">${field(ui, 'title', 'name')}${textarea(ui, 'content', 'content')}${kind === 'decision' ? textarea(ui, 'rationale', 'rationale') + suggestionField({name: 'supersedes', label: 'supersedes', kind: 'decision'}) : ''}
         ${itemChoices(board, itemId)}<details><summary>${escapeHTML(ui.text('sources'))}</summary>${suggestionField({name: 'sourceSession', label: 'sourceSession', kind: 'session', manual: true})}${field(ui, 'sourceMessage', 'sourceMessage', '', false)}${field(ui, 'sourceRevision', 'sourceRevision', '', false)}</details><button>${escapeHTML(ui.text('save'))}</button></form>`;
 }
 export function recordDetail(ui: KanbanPresentation, record: KanbanProjectRecord, board: KanbanBoardSummary): string {
-    return `<header class="kanban__panel-header"><h3>${escapeHTML(record.title)}</h3>${button(ui, 'close-panel', 'close')}</header>${referenceView(ui, board, record)}
+    return `${panelHeader(ui, record.title, board, record)}
         <p>${escapeHTML(ui.text(record.kind))} · ${escapeHTML(ui.text(record.status))} · ${escapeHTML(ui.text(record.origin))}</p><small>${escapeHTML(ui.text('recordId'))}: ${escapeHTML(record.id)}</small><p>${escapeHTML(ui.text('author'))}: ${escapeHTML(record.author.id)} · ${escapeHTML(new Date(record.createdAt).toLocaleString())}</p>
         <section class="kanban__prose"><h4>${escapeHTML(ui.text('content'))}</h4><p>${escapeHTML(record.content)}</p>${record.rationale ? `<h4>${escapeHTML(ui.text('rationale'))}</h4><p>${escapeHTML(record.rationale)}</p>` : ''}</section>
         ${record.status === 'draft' ? `<div class="kanban__actions">${button(ui, 'confirm-record', 'confirmRecord')}${button(ui, 'reject-record', 'rejectRecord')}</div>` : ''}

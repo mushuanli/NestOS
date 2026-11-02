@@ -1,5 +1,5 @@
 import { getLocale, t } from '@itookit/common';
-import type { ConversationSnapshot } from '@itookit/ui-common';
+import type { ConversationSnapshot } from '@itookit/ui-common-adapter';
 
 /** Renders host-prepared usage and quotes; no provider catalogs or pricing rules. */
 export function conversationUsage(snapshot: ConversationSnapshot): string {

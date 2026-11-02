@@ -1,7 +1,7 @@
 import { resolveBrowserTarget, projectRelativePath, type TwinSelectionTarget } from '@itookit/app-contracts';
 import type { DigitalTwinService, ProjectService } from '@itookit/app-contracts/services';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
-import type { MenuItem } from '@itookit/ui-common';
+import type { MenuItem } from '@itookit/ui-common-adapter';
 import { showTwinSource } from './source-dialog';
 import { label } from './view';
 

@@ -1,6 +1,6 @@
-import {BaseSettingsEditor} from '@itookit/ui-common';
+import {BaseSettingsEditor} from '@itookit/ui-common-adapter';
 import {escapeHTML, t} from '@itookit/common';
-import type {EditorOptions} from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 import type {ServerTerminal, ServerTerminals} from '@itookit/app-contracts/services';
 import type {Terminal} from '@xterm/xterm';
 import type {FitAddon} from '@xterm/addon-fit';

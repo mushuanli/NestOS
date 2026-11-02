@@ -33,7 +33,7 @@ it('resolves a remote Agent without any model and fails closed when authorizatio
 
 it('freezes queued Agent identity and revalidates its original target after Agent defaults change', async () => {
     const { resolver, connection, service, definition } = fixture();
-    const coordinator = new SessionRunCoordinator(...[{}, {}, resolver, ...Array(5).fill({})] as ConstructorParameters<typeof SessionRunCoordinator>);
+    const coordinator = new SessionRunCoordinator(...[{getSessionSettings: async () => ({})}, {}, resolver, ...Array(5).fill({})] as ConstructorParameters<typeof SessionRunCoordinator>);
     const instruction = { id: 'instruction', agentId: 'reviewer', text: 'Review', files: [], branch: 'main', createdAt: 0, state: 'pending' };
     const admitted = await coordinator.bindQueuedInstruction('session', instruction as never);
     expect(admitted.connectionBinding).toMatchObject({ defaults: {}, harnessAgent: { execution: definition.execution, harnessConnection: connection } });

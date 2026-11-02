@@ -1,28 +1,23 @@
-import {installNavigationButtonPresentation} from '@itookit/ui-common';
+import {contentTitleBar, installNavigationButtonPresentation, navigationButton} from '@itookit/ui-common-adapter';
 import {windowNavigation, type WindowNavigation} from './window-navigation';
 import {openedButton} from './opened-button';
 import {ACTION_ICONS, t} from '@itookit/common';
 
-/** The host keeps project context and document switching independent of editor internals. */
+/** Compatibility adapter delegates all content title layout to ui-common. */
 export function compactNavigation(container: HTMLElement, context: string, back: () => void, open: (origin: HTMLButtonElement) => void, actions?: WindowNavigation) {
-    const root = document.createElement('div'); root.className = 'workbench-compact-navigation';
-    const button = (icon: string, label: string, action: () => void) => {
-        const element = document.createElement('button'); element.type = 'button'; element.innerHTML = icon;
-        element.title = label; element.setAttribute('aria-label', label); element.onclick = action; return element;
-    };
-    const label = document.createElement('div'); label.className = 'workbench-compact-navigation__label';
-    const title = document.createElement('strong'), project = document.createElement('small');
-    project.textContent = context; project.title = context; project.hidden = !context; label.append(title, project);
-    const opened = openedButton(open);
-    const navigate = button(ACTION_ICONS.sidebar, t('workspace.sidebar.toggle'), back);
-    const cleanup = installNavigationButtonPresentation(navigate);
+    const navigate = navigationButton({icon: ACTION_ICONS.sidebar, label: t('workspace.sidebar.toggle'), run: back});
+    const cleanup = installNavigationButtonPresentation(navigate), opened = openedButton(open);
     const navigation = actions ? windowNavigation(actions) : undefined;
-    root.append(navigate, label, ...(navigation?.buttons ?? []), opened.button); container.append(root);
-    return {update(name: string, total: number, currentContext = context, navigationLabel?: HTMLElement, canGoUp = false) {
-        navigation?.update(canGoUp);
-        if (navigationLabel) { if (label.firstElementChild !== navigationLabel) label.replaceChildren(navigationLabel); }
-        else if (label.firstElementChild !== title) label.replaceChildren(title, project);
-        project.textContent = currentContext; project.title = currentContext; project.hidden = !currentContext;
-        title.textContent = name; title.title = name; opened.update(total);
-    }, destroy() { cleanup(); navigation?.destroy(); root.remove(); }};
+    let view = contentTitleBar({leading: [navigate], trailing: [...(navigation?.buttons ?? []), opened.button]});
+    view.element.classList.add('workbench-compact-navigation'); container.append(view.element);
+    let custom: HTMLElement | undefined;
+    return {update(name: string, total: number, currentContext = context, label?: HTMLElement, canGoUp = false) {
+        navigation?.update(canGoUp); opened.update(total);
+        if (custom !== label) {
+            view.destroy(); custom = label;
+            view = contentTitleBar({leading: [navigate], title: label, contextEmbedded: !!label, trailing: [...(navigation?.buttons ?? []), opened.button]});
+            view.element.classList.add('workbench-compact-navigation'); container.append(view.element);
+        }
+        view.update({title: name, context: currentContext});
+    }, destroy() {cleanup(); navigation?.destroy(); view.destroy();}};
 }

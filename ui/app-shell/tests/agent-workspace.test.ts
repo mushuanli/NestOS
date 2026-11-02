@@ -8,7 +8,7 @@ import {SessionWorkbench} from '../src/projects/SessionWorkbench';
 import {AgentProjectPreferences} from '../src/projects/agent-project-preferences';
 import {createAgentEditorFactory} from '../../llm-ui-adapter/src/settings';
 import {SessionDraftEditor} from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
-import type {EditorOptions} from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close(); document.body.replaceChildren(); vi.unstubAllGlobals(); vi.restoreAllMocks();});

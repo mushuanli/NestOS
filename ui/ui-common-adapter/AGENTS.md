@@ -1,4 +1,4 @@
-# @itookit/ui-common
+# @itookit/ui-common-adapter
 
 OcrSettingsForm 已挂载的字段在后台读取失败时保留 DOM 和程序赋值，仅更新错误状态与重试入口；不能以网络错误清空草稿或改变恢复表单结构。form-recovery 只记录字段数量和结构差异位置，不记录字段值或设置密钥。
 
@@ -8,7 +8,7 @@ OcrSettingsForm 可通过可选 selectionChanged 回调向宿主提供当前连�
 
 ## 定位与铁律
 
-- **不依赖具体实现**：只依赖 `common` 与 `vfs-core`；不得依赖 `app-shell`、`vfs-ui`、`mdx`、`llm-ui`、`app-settings` 或任何 app。
+- **不依赖具体实现**：只依赖 `common`、`vfs-core` 与独立 `ui-common`；不得依赖 `app-shell`、`vfs-ui`、`mdx`、`llm-ui`、`app-settings` 或任何 app。
 - **接口优先**：跨层能力以接口声明（`IEditor`、`IEditorFactory`、`ISessionUI`），实现由宿主注入；组件只做 DOM 与事件，不直接访问 VFS。
 - **无用户文案硬编码**：可见文案用 `t('domain.section.item')`（key 在 `@itookit/common` 的 `i18n/zh-CN.ts` → `en.ts` 同步）。
 - **样式遵循 BEM**：类名与 `ui/*/src/styles` 保持一致，新增类需通过 `pnpm styles:check`。
@@ -35,7 +35,7 @@ src/
 ## 入口
 
 ```ts
-import { Modal, Toast, showConfirmDialog, ISessionUI, IEditor } from '@itookit/ui-common';
+import { Modal, Toast, showConfirmDialog, ISessionUI, IEditor } from '@itookit/ui-common-adapter';
 ```
 
 `BaseSettingsEditor<TService>` 是设置类编辑器的推荐基类：子类实现渲染与保存，基类负责 DOM 挂载/卸载与 host context 传递。
@@ -54,8 +54,8 @@ import { Modal, Toast, showConfirmDialog, ISessionUI, IEditor } from '@itookit/u
 ## 运行
 
 ```bash
-pnpm --filter @itookit/ui-common typecheck
-pnpm --filter @itookit/ui-common build        # tsup
+pnpm --filter @itookit/ui-common-adapter typecheck
+pnpm --filter @itookit/ui-common-adapter build        # tsup
 ```
 
 本包**没有独立测试套件**；使用方（`app-settings`、`app-shell`）在 jsdom 下覆盖组件行为。新增有分支逻辑的组件时，应在使用方补一条 jsdom 回归。
@@ -93,3 +93,10 @@ EditorOptions.mountSettings 让宿主挂载业务偏好，返回 isDirty/flush/d
 IEditor 的 captureRecovery/restoreRecovery/suspendForRecovery 为显式本地视图恢复契约，不能提交操作。BaseSettingsEditor 的表单恢复需子类显式开启并交接额外模型状态；表单值（包括密钥）仅在内存中交接，不写浏览器存储、不记录日志，恢复不派发 input/change 事件或自动保存。不支持的可编辑表单保留旧页并说明原因。
 
 ConversationControls 仅描述宿主能力与投影，不拥有原生 SDK。查询目录、独立控制回执和输出引用分别表达；结果可读性、控制已接纳和实际停止不可互相替代。
+
+公共导航基础由 contentTitleBar、navigationButton、navigationItem、navigation.css 和 MOBILE_NAVIGATION_QUERY 提供。新基础组件只依赖 DOM 和本包纯 UI 模块，图标与状态文案由调用方提供；不依赖应用服务、VFS、路由或窗口状态。CSS 和 JS 的手机边界同为 768px，触摸区域至少 44px，选中与焦点使用主题变量。样式通过公开 @itookit/ui-common-adapter/navigation.css 导入并随制品发布。
+
+EditorOptions.mountTitleBar 是完整标题栏首选端口：原编辑控件和菜单节点通过 parts 交接，保持输入、事件、disabled 及生命周期；宿主提供项目上下文、返回和窗口行为。提供完整端口时不再同时挂载 compact/window 局部布局，旧端口只作兼容。
+
+
+本包已从 ui/ui-common 迁移并改名为 @itookit/ui-common-adapter；纯导航组件由 libraries/ui-common 独立仓库提供，适配包仅转导以兼容应用消费者。不要把编辑器、会话、OCR 或 VFS 契约移回纯 UI 基础库。

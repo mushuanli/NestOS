@@ -1,6 +1,6 @@
 // @file: llm-ui/utils/errorHandler.ts
 
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 
 export type ErrorSeverity = 'silent' | 'warn' | 'toast' | 'render';
 

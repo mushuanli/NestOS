@@ -1,7 +1,7 @@
 import type { MDxPlugin, MDxEditor, PluginContext, AssetConfigOptions } from '@itookit/mdxeditor';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { ACTION_ICONS } from '@itookit/common';
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import { AssetManagerUI } from './asset-manager.ui';
 
 export class AssetManagerPlugin implements MDxPlugin {

@@ -1,7 +1,7 @@
 import {configurationScope, configurationFailure, configurationError, reportFlowConfiguration, type FlowConfigurationScope} from './agent-flow-diagnostics';
 import { ACTION_ICONS, FILE_BROWSER_ICONS, escapeHTML, randomUUID, t } from '@itookit/common';
 import { editHarnessConnection } from './agent-harness-connections';
-import { requestSettingsSave } from '@itookit/ui-common';
+import { requestSettingsSave } from '@itookit/ui-common-adapter';
 import type { AgentDefinition } from '@itookit/kernel-adapters/contracts';
 import { renderAgentComposition, bindAgentComposition, readAgentComposition } from './agent-composition';
 import { readAgentFlowFields, renderAgentFlowFields } from './agent-flow-fields';

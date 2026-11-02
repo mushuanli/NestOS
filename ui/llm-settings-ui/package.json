@@ -39,7 +39,7 @@
   "dependencies": {
     "@itookit/llm-ui": "workspace:*",
     "@itookit/common": "workspace:*",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "@itookit/driver-llm": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "js-yaml": "^4.1.1",

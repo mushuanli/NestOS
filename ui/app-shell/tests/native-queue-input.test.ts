@@ -1,7 +1,8 @@
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
 import {createOperationLedger} from '@itookit/llm-ui';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+
 import {createNativeChatBinding, createNativeChatView} from '../../llm-ui-adapter/src/independent/native';
 
 it.each(['success', 'failure'] as const)('uses durable native receipts to release ChatView while its original reply ends in %s', async late => {
@@ -23,7 +24,7 @@ it.each(['success', 'failure'] as const)('uses durable native receipts to releas
         }
         return state;
     });
-    const edit = vi.fn(async (change: import('@itookit/ui-common').ConversationQueueEdit) => {
+    const edit = vi.fn(async (change: import('@itookit/ui-common-adapter').ConversationQueueEdit) => {
         const queue = state.instructionQueue!;
         state = {...state, instructionQueue: {...queue, revision: queue.revision + 1,
             items: queue.items.map(item => change.action === 'update' && item.id === change.id ? {...item, text: change.text} : item)}};

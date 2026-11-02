@@ -1,7 +1,8 @@
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {expect, it} from 'vitest';
 import {NativeExecutionNotice} from './NativeExecutionNotice';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+
 
 it('shows compaction prominently and removes it on resumed work or completion', () => {
     const view = new NativeExecutionNotice();

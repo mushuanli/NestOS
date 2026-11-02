@@ -20,7 +20,7 @@ export interface AttachmentManagerOptions {
     textarea: HTMLTextAreaElement;
     inputWrapper: HTMLElement;
     attachBtn: HTMLButtonElement;
-    ocr?: import('@itookit/ui-common').OcrControls;
+    ocr?: import('@itookit/ui-common-adapter').OcrControls;
     onRequestFiles?: (query: string) => Promise<any[]>;
     getLoading: () => boolean;
     canAttach?: () => boolean;

@@ -1,5 +1,5 @@
 import { escapeAttr, t } from '@itookit/common';
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 import { isMediaCatalog, type LLMModel, type LLMProvider } from '@itookit/driver-llm/contracts';
 import { bindMediaFields, renderMediaFields } from './media-fields';
 export function renderMediaDeclaration(value: unknown, model = false, draft?: string): string {

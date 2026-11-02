@@ -195,3 +195,30 @@ it('retries a rejected close while coalescing concurrent release and retaining s
     await acquired.release(); await acquired.release();
     expect(close).toHaveBeenCalledTimes(2);
 });
+
+it('prepares a reusable project harness target without creating a native session', async () => {
+    const {prepareHarnessDraftConnection} = await import('../src/projects/harness-draft-connection');
+    const f = await fixture(), target = {profileId: 'fixture', selection: {modelId: 'fixture-model', reasoningEffort: 'high'}};
+    const id = await prepareHarnessDraftConnection(f.service, f.remote, 'local-project', target);
+    expect(await prepareHarnessDraftConnection(f.service, f.remote, 'local-project', target)).toBe(id);
+    expect((await f.service.list()).map(record => record.connection)).toEqual([expect.objectContaining({
+        id, projectId: 'local-project', nodeConnectionId: 'node-connection', profileId: 'fixture', selection: target.selection})]);
+    expect(JSON.stringify(await f.service.list())).not.toMatch(/private-credential-reference|https:\/\/node.test/);
+    expect(f.clients.every(client => client.close.mock.calls.length === 1)).toBe(true);
+    f.mounts[0].access = 'ro';
+    await expect(prepareHarnessDraftConnection(f.service, f.remote, 'local-project', target)).rejects.toMatchObject({code: 'EACCES'});
+});
+it('rejects a missing profile before persisting a project harness target', async () => {
+    const {prepareHarnessDraftConnection} = await import('../src/projects/harness-draft-connection');
+    const f = await fixture();
+    await expect(prepareHarnessDraftConnection(f.service, f.remote, 'local-project', {profileId: 'missing'}))
+        .rejects.toMatchObject({code: 'ECAPABILITY'});
+    expect(await f.service.list()).toEqual([]); expect(f.clients[0].close).toHaveBeenCalledOnce();
+});
+it('rejects stale project selection before discovery or target persistence', async () => {
+    const {prepareHarnessDraftConnection} = await import('../src/projects/harness-draft-connection');
+    const f = await fixture();
+    await expect(prepareHarnessDraftConnection(f.service, f.remote, 'local-project', {profileId: 'fixture',
+        expectedProject: {nodeConnectionId: 'other-node', serverProjectId: 'server-project'}})).rejects.toMatchObject({code: 'ECONFLICT'});
+    expect(f.remote.projectHarness).not.toHaveBeenCalled(); expect(await f.service.list()).toEqual([]);
+});

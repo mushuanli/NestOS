@@ -12,6 +12,7 @@
 运行时只依赖 common 与 vfs-core；Kanban 仅通过独立库 contracts 进行类型依赖。Kanban DTO 与 KanbanClient 由库自包含定义，本包只在应用端口引用，不代转出库 API；NestOS 执行引用保留在 presets/kanban-execution。领域类型通过公开入口引用，开发依赖不授予运行时实现导入权限。不得在契约里重新导出 Runtime、执行服务或 DOM 组件的值。`pnpm modules:check` 校验传递加载，`pnpm modules:buildcheck` 校验完整前端公开入口。
 
 - WorkbenchView/SessionOpenView 是应用聚合契约：后端准备只读模型、能力与资源所有权，前端决定编辑器保存/切换时机。UI 文档保持不透明，连接兴趣按 revision 更新，不能传递实现类或前端类型。
+- SessionBrowserPort.readDirectory 是可选聚合查询：返回可见目录条目、项目归属、导航和按 revision 校验的目录种子；种子的 entryIndices 复用已返回行，避免重复传输。读模型不包含聊天正文或附件二进制，不接管执行和编辑器生命周期。
 
 - WorkspaceController.setNavigationVisible 是可选视图生命周期能力，和整个工作区 setVisible 分开；WorkbenchView 的 initialNavigation=false 跳过初始目录/组织投影，不改变授权或资源所有权。
 - ProjectNavigationView 聚合项目归属、当前路径、离线状态与不透明分组加载路径；ProjectNavigationRequest.projectId=null 表示保持“所有项目”，省略才按目标解析归属。Session 浏览器的 invalidateNavigation 必须返回 Promise，表示后端失效屏障已完成。createSessionDraft 聚合来源解析与带初始输入的会话创建；sessionTasks 只返回任务列表所需字段。宿主观察租约 acquireConversation 只属于 local 接口。

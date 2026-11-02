@@ -1,3 +1,5 @@
+@import '@itookit/ui-common/navigation.css';
+
 /* Workspace layout styles — used by consumers (app-shell, app-settings, demo)
    to create sidebar + editor flex containers. MemoryManager itself creates zero DOM;
    consumers are responsible for building the .mm-layout / .mm-sidebar / .mm-editor-area
@@ -94,18 +96,11 @@
     .mm-layout[data-workspace-opening="true"] .project-workbench__welcome { display: none; }
 }
 
-.workbench-compact-navigation { display: flex; align-items: center; width: 100%; min-width: 0; gap: 3px; }
-.workbench-compact-navigation > button { position: relative; display: grid; place-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: inherit; border-radius: 7px; cursor: pointer; }
-.workbench-compact-navigation > button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
-.workbench-compact-navigation__label { flex: 1; min-width: 0; overflow: hidden; }
-.workbench-compact-navigation__label > strong, .workbench-compact-navigation__label > small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workbench-compact-navigation__label > strong { font-size: 14px; font-weight: 600; line-height: 1.4; }
-.workbench-compact-navigation__label > small { color: var(--text-secondary, #64748b); font-size: 10px; line-height: 1.3; }
-.workbench-compact-navigation__label > .workbench-directory__path { margin: 0; overflow-x: auto; overflow-wrap: normal; scrollbar-width: none; }
-.workbench-compact-navigation__label > .workbench-directory__path ol { flex-wrap: nowrap; align-items: center; width: max-content; }
-.workbench-compact-navigation__label > .workbench-directory__path li { flex-shrink: 0; white-space: nowrap; }
-.workbench-compact-navigation__label > .workbench-directory__path button { min-height: 44px; padding: 0 3px; border: 0; background: transparent; color: var(--primary-color, #6366f1); font: inherit; cursor: pointer; }
-.workbench-compact-navigation__count { position: absolute; top: 3px; right: 2px; font-size: 10px; line-height: 1.2; background: var(--mm-bg-color, #fff); border-radius: 3px; }
+.workbench-compact-navigation { flex: 1; }
+.ui-content-titlebar__identity > .workbench-directory__path { margin: 0; overflow-x: auto; overflow-wrap: normal; scrollbar-width: none; }
+.ui-content-titlebar__identity > .workbench-directory__path ol { flex-wrap: nowrap; align-items: center; width: max-content; }
+.ui-content-titlebar__identity > .workbench-directory__path li { flex-shrink: 0; white-space: nowrap; }
+.ui-content-titlebar__identity > .workbench-directory__path button { min-height: var(--ui-nav-touch-size); padding: 0 3px; border: 0; background: transparent; color: var(--ui-nav-active-color); font: inherit; cursor: pointer; }
 .workbench-opened-sheet { position: fixed; inset: max(8px, env(safe-area-inset-top, 0px)) 8px auto; width: auto; max-width: none; max-height: calc(100dvh - 24px); margin: 0; padding: 12px; border: 1px solid var(--mm-border-color, #e5e7eb); border-radius: 12px; background: var(--mm-bg-color, #fff); color: var(--text-primary, #111827); overflow: auto; }
 .workbench-opened-sheet::backdrop { background: #0f172a77; }
 .workbench-opened-sheet[open] { display: flex; flex-direction: column; box-sizing: border-box; height: min(640px, calc(var(--app-visible-height, 100dvh) - 24px)); max-height: calc(var(--app-visible-height, 100dvh) - 24px); overflow: hidden; }
@@ -622,9 +617,7 @@
     .workbench-directory__row-action { flex-basis: 44px; width: 44px; min-height: 44px; justify-content: center; }
 }
 
-.workbench-window-list { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
-.workbench-window-list > svg { width: 18px; height: 18px; flex-shrink: 0; }
-.workbench-window-list:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
+.workbench-window-list { flex-shrink: 0; }
 
 
 /* Shared workspace navigation and filter surface. */
@@ -676,7 +669,5 @@
 .workbench-project-navigation__menu-items .project-sync-status__button:hover { background: var(--vfs-active-bg, #eef2ff); }
 .workbench-project-navigation__menu-items .project-sync-status__button svg { width: 18px; height: 18px; flex: 0 0 18px; }
 
-.workbench-window-navigation { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.workbench-window-navigation { flex-shrink: 0; }
 .workbench-window-navigation[hidden] { display: none; }
-.workbench-window-navigation > svg { width: 18px; height: 18px; }
-.workbench-window-navigation:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }

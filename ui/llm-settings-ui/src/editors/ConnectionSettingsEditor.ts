@@ -1,5 +1,5 @@
 import { hasConnectionCredentials, modelForOperation, resolveChatModelForTier, resolveModelForTier } from '@itookit/kernel-adapters/contracts';
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 import { renderProtocolOptions } from './provider-form';
 import { getProviderDefaultProtocol, modelReasoning, getProviderProtocols } from '@itookit/driver-llm/contracts';
 import { showConfigurationForm, addConfigurationAction, addConfigurationEnabled } from './configuration-form';
@@ -11,10 +11,10 @@ import { t } from '@itookit/common';
 // 模型目录由 Provider 统一管理，不在 Connection 中存储/编辑。
 
 import {generateShortUUID} from '@itookit/common';
-import { BaseSettingsEditor } from '@itookit/ui-common';
+import { BaseSettingsEditor } from '@itookit/ui-common-adapter';
 import type { IConnectionService } from '@itookit/kernel-adapters/contracts';
 import type { ConnectionMeta, LLMConnection, LLMProvider, ModelTier, ApiProtocol } from '@itookit/driver-llm/contracts';
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import { fromConnectionDef, serializeLLMConfig } from '@itookit/kernel-adapters/llm/config';
 import { runLLMImport } from './llm-import';
 import { escapeAttr, escapeHTML } from '@itookit/common';

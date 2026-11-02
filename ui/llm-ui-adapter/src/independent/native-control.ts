@@ -1,5 +1,5 @@
 import type {OperationReceipt} from '@itookit/llm-ui';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 
 /** Control acknowledgement never supplies a user history message or consumes a draft. */
 export function nativeControlReceipt(state: ConversationSnapshot, operationId: string, target?: string): OperationReceipt {

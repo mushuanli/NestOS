@@ -1,5 +1,5 @@
 import {randomUUID, t} from '@itookit/common';
-import type {ConversationControls} from '@itookit/ui-common';
+import type {ConversationControls} from '@itookit/ui-common-adapter';
 import type {IChatInputConfig} from '../../domain/ports/IChatInputPresenter';
 import {DraftDataCodec} from './session-draft-data';
 

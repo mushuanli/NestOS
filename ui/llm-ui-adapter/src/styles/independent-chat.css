@@ -24,3 +24,24 @@
 
 /* Chat history owns vertical reading; embedded Flow documents do not trap the wheel. */
 .llm-chat .flow-document__body { max-height: none; overflow: visible; overscroll-behavior: auto; }
+
+/* The same editable label is shared by desktop and compact draft navigation. */
+.llm-chat__header[data-project-draft] > .llm-chat__title { display: none; }
+.llm-chat .llm-chat__header[data-host-titlebar=true] { flex-wrap: wrap; gap: 0; padding: 0 6px; }
+.llm-chat__header[data-host-titlebar=true] > .ui-content-titlebar { flex: 0 0 100%; }
+.llm-draft-header { display: flex; flex: 1; align-items: center; min-width: 0; gap: 8px; }
+.llm-draft-header__project, .llm-draft-header__title { min-width: 0; max-width: 100%; padding: 6px; border: 1px solid transparent; border-radius: 6px; color: inherit; background: transparent; font: inherit; }
+.llm-draft-header__project { flex: 0 1 40%; text-overflow: ellipsis; }
+.llm-draft-header__title { flex: 1; width: 100%; font-weight: 600; }
+.llm-draft-header__project:hover, .llm-draft-header__title:hover { border-color: var(--llm-border-color); }
+.llm-draft-header__project:focus-visible, .llm-draft-header__title:focus-visible { outline: 2px solid var(--llm-color-primary); }
+@media (max-width: 768px) {
+    .llm-draft-header { flex-direction: row; align-items: center; gap: 4px; }
+    .llm-draft-header__project, .llm-draft-header__title { min-height: 44px; padding: 2px; font-size: 16px; }
+    .llm-draft-header__project { flex: 0 1 35%; width: 35%; }
+    .llm-draft-header__title { flex: 1 1 0; width: 0; text-overflow: ellipsis; }
+}
+.llm-chat__header[data-project-draft] > .llm-chat__header-primary,
+.llm-chat__header[data-project-draft] > .llm-chat__host-menu,
+.llm-chat__header[data-project-draft] > .llm-chat__status { display: none; }
+.llm-draft-loading { margin: 0; padding: 24px 16px; color: var(--text-secondary, #666); overflow-wrap: anywhere; }

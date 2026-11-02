@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import type { EditorOptions, IEditor } from '@itookit/ui-common';
+import type {EditorOptions, IEditor} from '@itookit/ui-common-adapter';
 import { configureCreatedModel } from '../src/toolbox/creation-model-setup';
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });

@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ProviderAuthorizationPanel } from '../src/editors/provider-authorization';
 import { ProviderSettingsEditor } from '../src/editors/ProviderSettingsEditor';
 import { t, type LocaleKey } from '@itookit/common';
-import * as ui from '@itookit/ui-common';
+import * as ui from '@itookit/ui-common-adapter';
 import type { ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });

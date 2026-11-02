@@ -1,8 +1,9 @@
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
 import {createOperationLedger} from '@itookit/llm-ui';
 import {getLogger} from '@itookit/common';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+
 import {createNativeChatBinding, createNativeChatView} from '../../llm-ui-adapter/src/independent/native';
 
 async function queueFixture() {

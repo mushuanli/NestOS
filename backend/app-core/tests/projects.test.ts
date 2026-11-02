@@ -626,3 +626,18 @@ it('migrates the legacy reserved label once without changing IDs or later user n
     await r.projects.ensureStartup();
     expect((await r.projects.personal()).name).toBe('Personal project');
 });
+
+it('prepares workspace metadata without reading file content and keeps missing files explicit', async () => {
+    const r = await setup(), project = (await r.projects.current())!;
+    const source = await r.projects.openWorkspace(project.path);
+    await source.fs.driver.createFile({parentPath: '/workspace', name: 'code.ts', content: 'const value = 1'});
+    await source.dispose();
+    const opened = await r.projects.openWorkspace(project.path, {initialPath: '/workspace/code.ts'});
+    try {
+        expect(opened.initialFile).toMatchObject({node: {name: 'code.ts', type: 'file'}, readonly: false});
+        expect(opened.initialFile).not.toHaveProperty('content');
+    } finally {await opened.dispose();}
+    const missing = await r.projects.openWorkspace(project.path, {initialPath: '/workspace/missing.ts'});
+    try {expect(missing.initialFile?.node).toBeNull();} finally {await missing.dispose();}
+    await expect(r.projects.openWorkspace(project.path, {initialPath: '/workspace/../outside'})).rejects.toMatchObject({code: 'EINVAL'});
+});

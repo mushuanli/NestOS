@@ -1,5 +1,5 @@
 import { ENTITY_ICONS, escapeHTML, getLocale, t } from '@itookit/common';
-import { copyText, Modal, type EditorOptions } from '@itookit/ui-common';
+import { copyText, Modal, type EditorOptions } from '@itookit/ui-common-adapter';
 import { LLMPrintService } from '@itookit/mdx-adapter';
 import { MDxRenderer } from '@itookit/mdxeditor';
 import { ChatInput } from '../components/input/ChatInputView';
@@ -11,18 +11,18 @@ import { StatusIndicatorView } from '../components/indicators/StatusIndicatorVie
 import { RemoteHistory } from './remote-history';
 import {NativeSlashCommandPlugin} from '../components/input/plugins/NativeSlashCommandPlugin';
 import { ConversationInformation } from './ConversationInformation';
-import type { ConversationSnapshot } from '@itookit/ui-common';
+import type { ConversationSnapshot } from '@itookit/ui-common-adapter';
 import { mountConversationSource } from './conversation-source';
 import {bindWorkspaceInput, type WorkspaceHandoff} from './drafts/workspace-handoff';
 
 interface Actions {
     refreshMetrics?(): Promise<ConversationSnapshot>;
-    commandOutputs?: Pick<import('@itookit/ui-common').ConversationControls, 'readCommandOutput' | 'loadCommandOutput'>;
+    commandOutputs?: Pick<import('@itookit/ui-common-adapter').ConversationControls, 'readCommandOutput' | 'loadCommandOutput'>;
     instructionQueue?: boolean;
     flushDraft?(): Promise<void>;
     persistImageFiles?(files: File[], resize: import('@itookit/image-parser').ImageResizePolicy): Promise<void>;
-    models?(): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
-    commands?(): Promise<import('@itookit/ui-common').ConversationSlashCommand[]>;
+    models?(): Promise<import('@itookit/ui-common-adapter').ConversationModelCatalog>;
+    commands?(): Promise<import('@itookit/ui-common-adapter').ConversationSlashCommand[]>;
     attachments?: Array<'text' | 'image'>;
     rename?(title: string): void;
     send(text: string, files?: File[]): Promise<void | false>;

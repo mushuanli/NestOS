@@ -10,7 +10,10 @@ export function freezePlannedFlowConnections(source: DagRunSpec, admitted: DagRu
     const graph = structuredClone(source), nodes = new Map(admitted.nodes.map(node => [node.id, node]));
     for (const node of graph.nodes) {
         const config = nodes.get(node.id)?.config;
-        if (record(node.config) && record(config)) node.config = withAdmittedConnections(node.config, config);
+        if (record(node.config) && record(config)) {
+            node.config = withAdmittedConnections(node.config, config);
+            if (record(config.execution) && config.execution.kind === 'harness') node.capabilities = [];
+        }
     }
     for (const [id, template] of Object.entries(graph.functionCalls ?? {})) {
         template.child = freezePlannedFlowConnections(template.child, admitted.functionCalls![id].child);

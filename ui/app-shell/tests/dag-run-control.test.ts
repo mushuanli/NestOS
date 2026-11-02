@@ -2,7 +2,7 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {createOperationLedger, type OperationRecord} from '@itookit/llm-ui';
 import {FlowCommand} from '@itookit/llm-flow/contracts';
-import {Toast} from '@itookit/ui-common';
+import {Toast} from '@itookit/ui-common-adapter';
 import {DagWorkbench} from '../../llm-ui-adapter/src/components/DagWorkbench';
 import {FlowsEditor} from '../../llm-ui-adapter/src/components/FlowsEditor';
 

@@ -89,7 +89,7 @@ const defaultImagePolicy: ImageProcessingPolicy = {
 };
 ```
 
-上面是图片库自身的纯数据默认策略。AgentConfig.imageProcessing 只保存可选 resize，不保存处理器名称、实例或 Scanic 对象。智能体编辑器允许跟随库默认或显式设置。ChatInput 设置显示“跟随智能体（当前 1024）/ 自定义最长边 / 保留原始尺寸”，同时说明配置来源。
+上面是图片库自身的纯数据默认策略。AgentConfig.imageProcessing 只保存可选 resize，不保存处理器名称、实例或 Scanic 对象。智能体编辑器允许跟随库默认或显式设置。聊天宿主默认最长边 1600；独立库默认仍为 1024。ChatInput 设置显示“跟随智能体（当前 1600）/ 自定义最长边 / 保留原始尺寸”，同时说明配置来源。
 
 不将跟随值固化成显式的 1024，避免后来修改智能体默认不生效。ChatInput 覆盖仅保存到当前会话/草稿，不修改智能体；提供恢复跟随入口。参数必须是有界正整数；无效持久值提示修正，不悄悄回退。Agent 配置只保存语义偏好 resize，不保存处理器名称；处理器由宿主装配，库自己的 defaults 仍描述自身实现。
 
@@ -243,7 +243,7 @@ llm-ui 只需要一个可选的图片能力端口，由宿主装配。已实现�
 
 ## 7 宿主草稿与提交责任
 
-独立 DraftAttachment 已补充可选 revision，图片替换及接纳清理核对附件 id、资源 id 与内容版本。兼容输入以不可变 File 身份及图片项 id/revision 核对，不按数组下标或文件名定位。AgentConfig.imageProcessing.resize、输入 settings.imageResize 与安全配置投影已接线。项目草稿编码同时保存原图与当前派生文件、ImageSpec 和版本。项目草稿沿用既有 CAS 保存队列；远程会话新增宿主侧不透明 composer 存储，版本冲突拒绝覆盖，保存回执未知时按 operationId 查询核对。
+独立 DraftAttachment 已补充可选 revision，图片替换及接纳清理核对附件 id、资源 id 与内容版本。兼容输入以不可变 File 身份及图片项 id/revision 核对，不按数组下标或文件名定位。AgentConfig.imageProcessing.resize、输入 settings.imageResize 与安全配置投影已接线。新加入的聊天图片只上传、保存处理后的图片，并以该资源作为后续编辑源，不额外保留全尺寸输入。JPEG 照片使用保留彩色、质量 0.82 的编码，PNG 保留格式和透明度；不放大小图。历史原图引用保持兼容，不自动清理历史资源。后续裁剪仍保存 ImageSpec、编辑源引用及版本，取消编辑不覆盖已保存图片。项目草稿沿用既有 CAS 保存队列；远程会话新增宿主侧不透明 composer 存储，版本冲突拒绝覆盖，保存回执未知时按 operationId 查询核对。
 
 宿主保存：最初原图、ImageSpec、已确认派生资源、生效策略及内容版本。Blob 的临时 URL 不可写进持久配置。图片库只生成结果，不负责创建 Session、切项目、原子更新聊天草稿或管理发送回执。
 
@@ -370,7 +370,7 @@ Scanic 四角编辑器优先读取 image.width 而非 naturalWidth。现传入�
 
 明确 CAS 冲突和权限、格式拒绝不进入未知保存状态；用户显式重新加载后可以继续保存。只有无法确认是否已写入时保留 operationId，随后查询 acceptedOperationIds。已有接纳证据但正文被其他窗口更新时仍报冲突，不能借核对结果覆盖他人的新草稿。
 
-图片处理由共享 ImageProcessingSession 管理处理器所有权及策略核对，兼容 File 输入和独立 ImageEditingPort 共用。附件变化、配置变化和宿主 subscribeResize 通知触发调度；renderAttachments 只渲染，不启动处理。独立宿主应在策略变化时通知 subscribeResize；后续快照更新也会核对 getRevision。导出、上传及整组替换前核对策略、附件身份和内容版本；处理中变化的策略使旧结果失效，上传从原图重算。处理器版本进入派生结果标识。没有实际变换且 MIME 一致的文件复用原 File，不重复上传原图。
+图片处理由共享 ImageProcessingSession 管理处理器所有权及策略核对，兼容 File 输入和独立 ImageEditingPort 共用。附件变化、配置变化和宿主 subscribeResize 通知触发调度；renderAttachments 只渲染，不启动处理。独立宿主应在策略变化时通知 subscribeResize；后续快照更新也会核对 getRevision。导出、上传及整组替换前核对策略、附件身份和内容版本；处理中变化的策略使旧结果失效，从当前保留的编辑源重算。处理器版本进入派生结果标识。没有实际变换且 MIME 一致的文件复用原 File，不重复上传原图。
 
 ```mermaid
 C4Component

@@ -1,5 +1,5 @@
 import type { VFSNodeUI, FileTypeDefinition } from '@itookit/vfs-ui';
-import type { EditorFactory } from '@itookit/ui-common';
+import type { EditorFactory } from '@itookit/ui-common-adapter';
 
 
 export interface EditorFileType extends FileTypeDefinition {

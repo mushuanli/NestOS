@@ -5,6 +5,8 @@
 Agent 的 `capabilityPolicy` 位于定义顶层：
 
 - `toolIds` 未设置：Harness 使用宿主可用的 `Read / Glob / Grep / Write / Edit / Bash`。显式 `[]` 不授予直接工具；普通 Chat 不因此获得工具。
+- `inheritDefaultTools: true` 将宿主常用工具与 Agent 的 `toolIds` 去重合并；false 只使用显式列表。省略该字段保留上述历史语义，不将已有白名单自动扩大。
+- 输入区移除外部对话/执行按钮，在聊天设置中提供“允许工具执行”：关闭为 chat（保留既有联网搜索例外），开启为 agent；只有开启才展开已授权的常用和专用工具。工具声明本身不自动切换模式。首次实际执行后沿用模式锁，新会话才能切换。Flow 与原生 harness 继续使用自身执行配置，不展示该开关。
 - `skillIds` 加载指定 Skill 的指令及快照。直接 Harness 中，Skill 工具仍需进入 `toolIds`；输入面板加载 Skill 不自动扩大工具权限。Flow 的显式 Skill 引用按节点能力合并规则加入绑定工具。
 - `mcpProfileIds` 是对服务器能力的显式授权，与直接工具白名单叠加。提交前执行真实能力发现，将工具与资源/Prompt 读取能力展开为固定 ID，写入 Task 的 `tools / allowedToolIds / externalToolIds`。在途 Task 不因后续勾选变更自动扩大权限。
 - Agent 在每次实际工具分派前检查 Task 的显式白名单，包括审批恢复和同批次后续调用；未授权工具返回 `TOOL_NOT_ALLOWED`，不会执行。v2 宿主单独授予内置 context 检索/检查点工具，不扩大文件或 MCP 授权。没有白名单的历史 Task 保持旧执行契约。

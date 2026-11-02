@@ -1,6 +1,6 @@
 import {getLocale} from '@itookit/common';
 import {t} from '@itookit/common';
-import type {ConversationSlashCommand} from '@itookit/ui-common';
+import type {ConversationSlashCommand} from '@itookit/ui-common-adapter';
 import type {InputPlugin, InputPluginContext} from './InputPlugin';
 import {PopupPanel} from '@itookit/llm-ui';
 

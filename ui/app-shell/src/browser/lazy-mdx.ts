@@ -1,4 +1,4 @@
-import type { EditorFactory } from '@itookit/ui-common';
+import type { EditorFactory } from '@itookit/ui-common-adapter';
 
 /** The file editor is only needed when a document opens, after the VFS sidebar paints. */
 export const lazyMdxEditorFactory: EditorFactory = async (container, options) =>

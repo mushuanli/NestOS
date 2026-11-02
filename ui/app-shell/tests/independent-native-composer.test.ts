@@ -1,8 +1,9 @@
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {t} from '@itookit/common';
 import {createOperationLedger} from '@itookit/llm-ui';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+
 import {createNativeChatBinding, createNativeChatView} from '../../llm-ui-adapter/src/independent/native';
 
 afterEach(() => {document.body.replaceChildren(); vi.unstubAllGlobals();});

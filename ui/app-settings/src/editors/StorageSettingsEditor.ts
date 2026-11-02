@@ -1,4 +1,4 @@
-import { BaseSettingsEditor } from '@itookit/ui-common';
+import { BaseSettingsEditor } from '@itookit/ui-common-adapter';
 import { escapeHTML, t } from '@itookit/common';
 import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 import { StorageOverviewSection } from './storage/StorageOverviewSection';

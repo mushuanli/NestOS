@@ -1,5 +1,6 @@
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 import {expect, it, vi} from 'vitest';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+
 import {awaitNativeAdmission} from './native-admission';
 
 function host() {

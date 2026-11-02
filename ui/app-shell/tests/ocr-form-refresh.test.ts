@@ -1,6 +1,9 @@
+import {type OcrControls} from '@itookit/ui-common-adapter';
+import {OcrSettingsForm} from '@itookit/ui-common-adapter';
+
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
-import {OcrSettingsForm, type OcrControls} from '@itookit/ui-common';
+
 
 it('preserves the input and save feedback for unchanged settings and recovers after a read failure', async () => {
     const state = {value: {connectionId: 'ocr'}, connections: [{id: 'ocr', label: 'OCR'}]};

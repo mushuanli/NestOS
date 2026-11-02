@@ -1,5 +1,6 @@
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 import { expect, it, vi } from 'vitest';
-import type { ConversationControls, ConversationSnapshot } from '@itookit/ui-common';
+
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import { createNativeChatBinding } from './native';
 import { ChatProjection } from './projection';
@@ -418,7 +419,7 @@ it('assembles image preprocessing and metadata persistence when creating a nativ
     const options = vi.mocked(createChatView).mock.calls.at(-1)![1], signal = new AbortController().signal;
     const original = new File(['original'], 'image.png', {type: 'image/png'}), prepared = await options.imageEditing!.prepare!(original, {signal});
     const ref = await options.upload!(prepared, {signal}); await options.imageEditing!.uploaded!(prepared, ref, {signal});
-    expect(upload).toHaveBeenCalledTimes(2); expect(saveMetadata).toHaveBeenCalledWith(ref, expect.objectContaining({original: expect.objectContaining({id: 'image.png2'})}));
+    expect(upload).toHaveBeenCalledTimes(1); expect(saveMetadata).toHaveBeenCalledWith(ref, expect.objectContaining({original: expect.objectContaining({id: 'image.png1'})}));
     expect(view.setActive).toBe(setActive); expect(view.destroy).toBe(close);
     expect(options.release).toBeTypeOf('function'); options.setActive?.(false); await options.release?.(); await view.destroy();
     expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();

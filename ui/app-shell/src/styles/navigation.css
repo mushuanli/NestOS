@@ -1,3 +1,5 @@
+@import '@itookit/ui-common/navigation.css';
+
 /* =================================================================== */
 /*                     1. 全局变量与重置                                */
 /* =================================================================== */
@@ -111,14 +113,14 @@ body {
 }
 
 .app-nav-btn:hover {
-    background: #eef2ff;
-    color: #4338ca;
+    background: var(--ui-nav-active-bg);
+    color: var(--ui-nav-active-color);
 }
 
 .app-nav-btn.active,
 .app-sidebar:has(.app-nav-item--secondary .app-nav-btn.active) #mobile-more-button {
-    background: #e8eaff;
-    color: #3730a3;
+    background: var(--ui-nav-active-bg);
+    color: var(--ui-nav-active-color);
 }
 
 .app-nav-btn i,

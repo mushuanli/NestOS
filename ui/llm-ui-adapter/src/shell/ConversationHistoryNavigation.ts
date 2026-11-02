@@ -1,4 +1,4 @@
-import { copyText, Toast } from '@itookit/ui-common';
+import { copyText, Toast } from '@itookit/ui-common-adapter';
 import type { SessionGroup } from '@itookit/llm-session/contracts';
 import { FloatingNavPanel } from '../components/FloatingNavPanel';
 import type { HistoryView } from '../components/HistoryView';

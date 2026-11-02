@@ -146,6 +146,8 @@ export interface SessionLifecycleDependencies {
 
 export interface SessionBrowserPort extends VfsContracts.FileSystemSourceOwner {
     transferItems: (mode: "copy" | "move", ids: string[], destination: string) => Promise<void>;
+    /** Current directory and project navigation prepared beside storage in one read. */
+    readDirectory?(path: string, options?: {projectId?: string | null; refresh?: boolean}): Promise<SessionDirectoryView>;
     readFileDirectory: (path: string, options?: FileDirectoryOptions) => Promise<{
         node: FSNode;
         nodes: FSNode[];
@@ -154,6 +156,20 @@ export interface SessionBrowserPort extends VfsContracts.FileSystemSourceOwner {
     invalidateNavigation: (options?: {activity?: boolean}) => Promise<void>;
     /** Per-view conversation filter; files and favorites retain their normal projection. */
     setSessionFilter?(agentId?: string): Promise<void>;
+}
+
+export interface SessionDirectoryView {
+    node: FSNode;
+    nodes: FSNode[];
+    project: import('./projects').ProjectFolder | null;
+    navigation?: import('./projects').ProjectNavigationView;
+    directories: SessionDirectorySeed[];
+}
+export interface SessionDirectorySeed extends Omit<import('./navigation').NavigationDirectory, 'nodes'> {
+    path: string;
+    nodes?: FSNode[];
+    /** Reuse displayed rows instead of transporting the same metadata twice. */
+    entryIndices?: number[];
 }
 
 export declare function createSessionBrowser(deps: SessionBrowserDependencies): Promise<SessionBrowserPort>;

@@ -36,6 +36,7 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - openView 聚合聊天首屏及无旧编辑器时的激活/恢复，observeView 按水位补发并共享 SSE；事件缺口与回调失败报告更新错误。CLI 临时 profile/mTLS 测试覆盖新路径和多客户端隔离。
 
 - 轻入口先并行启动 HTTP 同步、Shell 与当前编辑器代码加载；初始目标通过 app-shell/startup 构造。初始视图随 bootstrap 进入 initApp，不重复 openView/observeView。浏览器按内容摘要缓存纯数据，首帧使用共享 HTML 的主题镜像和静态骨架，错误仍显示现有入口。
+- 编辑器预加载按当前资源类型决定：工作台目录、项目列表、任务和文件浏览不预取聊天模块；会话、草稿及远程会话保留并行预加载，真正打开编辑器仍由惰性工厂负责。
 - HTML 在样式 load/error 时记录结果；HTTP/Web 共用 nestos-web/startup 读取已有结果、等待未完成样式（最长 30 秒）和显示启动失败。失败提示的必要样式内联在 HTML，CSS 不可用时仍可操作重载。
 - 提前连接保存当前状态，状态 UI 订阅时同步补报；终结的 view-error/expired 不能被迟到的重连覆盖。窗口事件保留兼容通知，正常 HTTP UI 通过连接状态订阅消费。
 

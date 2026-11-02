@@ -1,6 +1,6 @@
 import { ENTITY_ICONS, FILE_BROWSER_ICONS, escapeHTML, randomUUID, t } from '@itookit/common';
 import { MODEL_OPERATIONS, modelForOperation, type AgentDefinition, type IAgentManagementService, type ModelDefaults, type ModelOperation } from '@itookit/kernel-adapters/contracts';
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 
 interface Catalog { connections: ConnectionMeta[]; providers: LLMProvider[]; defaults: ModelDefaults; }

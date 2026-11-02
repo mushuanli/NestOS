@@ -9,7 +9,7 @@ export function presentChatButton(node: HTMLButtonElement, action: string): void
         close: ACTION_ICONS.close, preview: ACTION_ICONS.wordWrap,
         more: CHAT_ICONS.more, search: CHAT_ICONS.search, copy: CHAT_ICONS.copy, edit: CHAT_ICONS.edit,
         retry: ACTION_ICONS.rerun, 'resubmit-send': ACTION_ICONS.rerun, 'rerun-arguments': ACTION_ICONS.rerun, branch: ACTION_ICONS.branch, delete: ACTION_ICONS.delete, send: ChatInputTemplates.sendIcon(),
-        steer: ChatInputTemplates.sendIcon(), queue: CHAT_ICONS.enqueue, attach: ChatInputTemplates.addIcon(), cancel: ChatInputTemplates.stopIcon(),
+        steer: ChatInputTemplates.sendIcon(), queue: CHAT_ICONS.enqueue, attach: ChatInputTemplates.addIcon(), attachments: ChatInputTemplates.attachIcon(), cancel: ChatInputTemplates.stopIcon(),
         print: '<i class="fas fa-print" aria-hidden="true"></i>',
     };
     const icon = icons[action]; if (!icon) return;

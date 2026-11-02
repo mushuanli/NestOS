@@ -10,7 +10,7 @@ import { MemoryBackend } from '@itookit/vfs-core';
 import { createToolboxFiles } from '../../../backend/app-core/src/configuration/toolbox-files';
 import { createApplicationRuntime, type ApplicationRuntime } from '@itookit/app-core';
 import { SkillsEngine } from '../../../backend/app-core/src/configuration/skills-files';
-import { BaseSettingsEditor, editorResourceId, type EditorOptions } from '@itookit/ui-common';
+import {BaseSettingsEditor, editorResourceId, type EditorOptions} from '@itookit/ui-common-adapter';
 import { MCPSettingsEditor } from '../../llm-settings-ui/src/editors/MCPSettingsEditor';
 import { FlowCommand } from '@itookit/llm-session';
 import { ToolboxInventory } from '@itookit/app-core';

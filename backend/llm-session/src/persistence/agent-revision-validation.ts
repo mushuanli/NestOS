@@ -16,12 +16,13 @@ function validateDefinitionFields(definition: AgentDefinition): void {
     if (Object.keys(definition).some(key => !fields.includes(key))) throw invalid();
     const policies: Array<[unknown, string[]]> = [
         [definition.config, ['imageProcessing', 'systemPrompt', 'systemPromptId', 'maxHistoryLength', 'temperature', 'mcpServers']],
-        [definition.capabilityPolicy, ['toolIds', 'skillIds', 'mcpProfileIds']],
+        [definition.capabilityPolicy, ['inheritDefaultTools', 'toolIds', 'skillIds', 'mcpProfileIds']],
         [definition.memoryPolicy, ['namespaceId', 'readScopes', 'writeScopes', 'retrievalLimit']],
         [definition.defaultContextPolicy, ['tokenBudget', 'automaticCompression']],
         [definition.execution, ['kind', 'connectionId', 'flowId', 'revision', 'parameters', 'connectionBindings']],
     ];
     if (policies.some(([value, keys]) => !knownFields(value, keys))) throw invalid();
+    if (definition.capabilityPolicy?.inheritDefaultTools !== undefined && typeof definition.capabilityPolicy.inheritDefaultTools !== 'boolean') throw invalid();
 }
 function knownFields(value: unknown, keys: string[]): boolean {
     return value === undefined || !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key));

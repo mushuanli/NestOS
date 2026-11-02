@@ -1,7 +1,7 @@
-import { editorResourceId } from '@itookit/ui-common';
+import { editorResourceId } from '@itookit/ui-common-adapter';
 // @file llm-ui/editors/SkillSettingsEditor.ts
 import {t} from '@itookit/common';
-import { BaseSettingsEditor, SettingsValidationError, requestSettingsSave } from '@itookit/ui-common';
+import { BaseSettingsEditor, SettingsValidationError, requestSettingsSave } from '@itookit/ui-common-adapter';
 import type { LLMSkill, IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import yaml from 'js-yaml';
 import { readSkillDraft } from './skill/skill-draft';
@@ -42,7 +42,7 @@ export class SkillSettingsEditor extends BaseSettingsEditor<IAgentManagementServ
     static createFormOnly(
         container: HTMLElement,
         service: IAgentManagementService,
-        options?: import('@itookit/ui-common').EditorOptions,
+        options?: import('@itookit/ui-common-adapter').EditorOptions,
     ): SkillSettingsEditor {
         const editor = new SkillSettingsEditor(container, service, options ?? {});
         editor._formOnly = true;

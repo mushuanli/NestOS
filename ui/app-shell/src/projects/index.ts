@@ -9,8 +9,8 @@ import { SessionWorkbench, type SessionWorkbenchOptions } from './SessionWorkben
 interface ProjectModuleOptions extends Pick<SessionWorkbenchOptions, 'sidebar' | 'container' | 'factory' | 'createFactory' | 'fileFactory' | 'onSelect' | 'onBeforeNavigate' | 'hostContext' | 'sessionSkills' | 'onSidebarReady' | 'initialResource' | 'deferNavigation' | 'uiPersistence' | 'workbenchState' | 'windows' | 'projectSyncSetup' | 'projectSyncDirectory'> {
     backend: import('@itookit/app-contracts/services').ApplicationBackend;
     services: Pick<ApplicationServices, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync' | 'digitalTwin' | 'prepareSession' | 'agentService'>;
-    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
-    agentFactory: import('@itookit/ui-common').EditorFactory;
+    executorUsage?: import('@itookit/ui-common-adapter').EditorOptions['executorUsage'];
+    agentFactory: import('@itookit/ui-common-adapter').EditorFactory;
     createFlowContextMenu: AppUI['createFlowContextMenu'];
 }
 

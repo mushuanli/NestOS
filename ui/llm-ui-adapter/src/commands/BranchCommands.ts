@@ -1,7 +1,7 @@
 // @file: llm-ui/commands/BranchCommands.ts
 
 import { Command } from './Command';
-import { Toast, showConfirmDialog } from '@itookit/ui-common';
+import { Toast, showConfirmDialog } from '@itookit/ui-common-adapter';
 import { BranchError } from '../services/BranchService';
 import type { BranchItem } from '../domain/types';
 import {escapeHTML, t} from '@itookit/common';

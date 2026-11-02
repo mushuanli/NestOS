@@ -1,5 +1,5 @@
 import {sha256HexSync, t} from '@itookit/common';
-import type {EditorFactory, EditorOptions, IEditor} from '@itookit/ui-common';
+import type {EditorFactory, EditorOptions, IEditor} from '@itookit/ui-common-adapter';
 import {FileRecoveryStore, type FileRecovery} from '../persistence/file-recovery-store';
 
 /** Read only this file's recovery record before making its editor interactive. */

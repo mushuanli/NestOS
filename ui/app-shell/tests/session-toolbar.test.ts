@@ -1,7 +1,7 @@
 import {EventBinder} from '../../llm-ui-adapter/src/shell/EventBinder';
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { installResponsiveActions } from '@itookit/ui-common';
+import {installResponsiveActions} from '@itookit/ui-common-adapter';
 import {t} from '@itookit/common';
 import {LayoutTemplates} from '../../llm-ui-adapter/src/components/templates/LayoutTemplates';
 import { SessionFamilyActions } from '../src/projects/SessionFamilyActions';

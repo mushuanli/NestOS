@@ -1,4 +1,4 @@
-import type {EditorOptions} from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 import type {ISessionRepository, SessionViewPort, ICommandBus} from '@itookit/llm-session/contracts';
 import type {IAgentConfigService} from '@itookit/kernel-adapters/contracts';
 import type {EditorTaskControlPlane} from '@itookit/durable-kernel/contracts';
@@ -17,7 +17,7 @@ export interface LLMEditorOptions extends EditorOptions<import('@itookit/llm-flo
     agentService: IAgentConfigService;
     initialInputState?: { text?: string; agentId?: string };
     /** Host-owned OCR capability and configuration. */
-    ocr?: import('@itookit/ui-common').OcrControls;
+    ocr?: import('@itookit/ui-common-adapter').OcrControls;
     /**
      * Conversation command bus returned by initializeConversationSystem().
      * High-level operations use the injected Session and VCS commands.

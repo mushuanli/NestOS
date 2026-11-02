@@ -1,6 +1,6 @@
 import { escapeHTML, t } from '@itookit/common';
 import type { AgentDefinition } from '@itookit/kernel-adapters/contracts';
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 
 type Composition = NonNullable<AgentDefinition['composition']>;
 

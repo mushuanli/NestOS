@@ -31,7 +31,7 @@
     "@itookit/llm-ui-adapter": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
-    "@itookit/ui-common": "workspace:*",
+    "@itookit/ui-common-adapter": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@itookit/vfs-ui": "workspace:*",
     "@itookit/vfsdriver-indexeddb": "workspace:*",

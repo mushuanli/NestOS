@@ -1,7 +1,7 @@
 import { escapeHTML, generateUUID, t } from '@itookit/common';
 import { type SystemPromptDefinition } from '@itookit/tools/contracts';
 import { type IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import { Toast, type EditorHostContext } from '@itookit/ui-common';
+import { Toast, type EditorHostContext } from '@itookit/ui-common-adapter';
 
 /** The shared text is a preview; only its identity is stored in the Agent. */
 export function renderPromptReference(prompts: SystemPromptDefinition[], selected?: string): string {

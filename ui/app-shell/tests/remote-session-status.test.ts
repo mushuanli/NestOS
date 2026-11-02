@@ -1,6 +1,7 @@
+import {conversationStatus} from '@itookit/ui-common-adapter';
 import { harnessObservation as observeHarness } from '@itookit/app-contracts';
 import {expect, it, vi} from 'vitest';
-import {conversationStatus} from '@itookit/ui-common';
+
 import {t} from '@itookit/common';
 import {harnessObservation} from '@itookit/cells-driver';
 import {remoteSessionPath, type ProjectService} from '@itookit/app-core';

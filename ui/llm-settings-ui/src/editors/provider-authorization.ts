@@ -1,5 +1,5 @@
 import { t, escapeAttr, escapeHTML, getLocale, type LocaleKey } from '@itookit/common';
-import { Toast, copyText } from '@itookit/ui-common';
+import { Toast, copyText } from '@itookit/ui-common-adapter';
 import type { IConnectionService, ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
 
 type PendingAuthorization = NonNullable<ProviderAuthorizationState['pending']>;

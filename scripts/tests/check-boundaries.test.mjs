@@ -71,7 +71,7 @@ test('public core exports are explicit and comments do not create false dependen
 
 
 test('standalone mdxeditor has no internal package dependencies', () => {
-    for (const name of ['common', 'ui-common', 'vfs-core', 'mdx-adapter']) {
+    for (const name of ['common', 'ui-common-adapter', 'vfs-core', 'mdx-adapter']) {
         assert.match(dependencyError('@itookit/mdxeditor', '@itookit/' + name), /public ports/);
     }
     assert.equal(dependencyError('@itookit/mdxeditor', 'codemirror'), undefined);
@@ -117,7 +117,7 @@ test('public LLM mechanisms reject host dependencies', () => {
 
 
 test('common and shared UI cannot regain hidden LLM dependencies', () => {
-    const common = pkg('common'), ui = pkg('ui-common'), session = pkg('llm-session');
+    const common = pkg('common'), ui = pkg('ui-common-adapter'), session = pkg('llm-session');
     for (const source of [common, ui]) {
         assert.match(dependencyError(source.name, session.name), /capability packages|generic ports/);
         for (const expression of ["import type { ISession } from '@itookit/llm-session'",

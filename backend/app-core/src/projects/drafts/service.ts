@@ -1,6 +1,6 @@
+import {preparedTitle} from './title';
 import { FSError } from '@itookit/vfs-core';
 import type { ISessionRepository } from '@itookit/llm-session';
-import { formatDefaultFileTitle } from '@itookit/common';
 import { type SessionSubmission } from '@itookit/llm-flow/contracts';
 import { hasCommittedSubmission } from '@itookit/llm-session';
 import type { ProjectDraftPromotion, ProjectDraftRecord, ProjectDraftComposer, DraftStore } from './contracts';
@@ -8,8 +8,8 @@ import type { ProjectDraftPromotion, ProjectDraftRecord, ProjectDraftComposer, D
 /** Reconcile from durable evidence; notifications never create successor drafts. */
 export class ProjectDraftService {
     private readonly listeners = new Set<(event: ProjectDraftPromotion) => void>();
-    constructor(private readonly store: (projectId: string) => DraftStore, private readonly sessions: Pick<ISessionRepository, 'ensureSession' | 'readDocument' | 'getManifest'>,
-        private readonly projectIds: () => Promise<string[]>, private readonly assertLocal?: (projectId: string) => Promise<void>,
+    constructor(private readonly store: (projectId: string) => DraftStore, private readonly sessions: Pick<ISessionRepository, 'ensureSession' | 'readDocument' | 'getManifest' | 'saveSessionSettings'>,
+        private readonly projectIds: () => Promise<string[]>, private readonly assertLocal?: (projectId: string, request?: Parameters<ProjectDraftComposer['prepare']>[0]) => Promise<string | void>,
         private readonly remoteReceipt?: (projectId: string, record: ProjectDraftRecord) => Promise<ProjectDraftPromotion['remote'] | undefined>,
         private readonly initializeExecution?: (sessionId: string) => Promise<void>,
         private readonly assertResettable?: (projectId: string, record: ProjectDraftRecord) => Promise<void>) {}
@@ -18,24 +18,36 @@ export class ProjectDraftService {
         const store = this.store(projectId), record = await store.load();
         let identity = record.id;
         let resumeOnly = record.state === 'submitting';
+        let locked = resumeOnly;
         return {
             get id() {return identity;},
+            get locked() {return locked;},
             initialData: record.data,
             refresh: async () => {
                 await this.reconcile(projectId);
-                return await store.wasPromoted() ? this.open(projectId, folder) : undefined;
+                const current = await this.store(projectId).load();
+                return current.id !== identity || (current.state === 'submitting') !== locked || await store.wasPromoted() ? this.open(projectId, folder) : undefined;
             },
             attachments: { put: content => store.putAttachment(content), read: id => store.readAttachment(id) },
+            move: async targetProjectId => {
+                if (!(await this.projectIds()).includes(targetProjectId)) throw new FSError('ENOENT', 'Target project not found');
+                const current = await this.store(projectId).load();
+                if (current.id === identity) await this.assertResettable?.(projectId, current);
+                if (!store.moveTo) throw new FSError('ECAPABILITY', 'Draft project switching is unavailable');
+                await store.moveTo(targetProjectId);
+            },
             save: data => store.saveData(data), clear: async () => {
                 const current = await this.store(projectId).load();
                 if (current.id !== identity) throw new FSError('ECONFLICT', 'Project draft identity changed');
                 await this.assertResettable?.(projectId, current);
-                await store.reset(); identity = (await store.load()).id; resumeOnly = false; return identity;
+                await store.reset(); identity = (await store.load()).id; resumeOnly = false; locked = false; return identity;
             },
-            prepare: async () => {
-                await this.assertLocal?.(projectId);
-                const intent = await store.begin(formatDefaultFileTitle());
+            prepare: async request => {
+                const harnessConnectionId = await this.assertLocal?.(projectId, request) || undefined;
+                const intent = await store.begin(preparedTitle(request?.title), undefined, harnessConnectionId);
+                locked = true;
                 await this.sessions.ensureSession(intent.sessionId!, intent.title!, 'tauri', folder, null, {agentId: draftAgent(intent.data)});
+                if (harnessConnectionId) await this.sessions.saveSessionSettings(intent.sessionId!, {harnessConnectionId});
                 await this.initializeExecution?.(intent.sessionId!);
                 return { sessionId: intent.sessionId!, resumeOnly, submission: submissionOf(projectId, intent) };
             },

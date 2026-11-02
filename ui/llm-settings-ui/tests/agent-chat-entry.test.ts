@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { AgentConfigEditor } from '../src/editors/AgentConfigEditor';
-import type { EditorOptions } from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 import {getLogger} from '@itookit/common';
 
 const editors: AgentConfigEditor[] = [];

@@ -32,6 +32,8 @@ Kernel store.appendEvent → 事件日志 → kernel.eventList(sessionId, after)
 
 Task watch 默认在逻辑终态及 Effect 清理均完成（settled）后排空结束；until: exit 只观察逻辑终态。Session watch 在 closed 后排空；AbortSignal 取消观察不取消执行，dispose 结束事件流。新 readEvents / watch 发现裁剪游标过期时抛 CURSOR_EXPIRED，使用 snapshot.asOfSequence 重建后补读；详见独立事件契约。
 
+应用事件投影按会话保存 Kernel 检查点。启动补读遇到裁剪过期、非法检查点，或核对快照确认检查点超过源日志末尾时，以 `snapshot.asOfSequence` 建立新基线；`source.reset` 与检查点更新在同一事务中提交，并比较旧检查点以避免覆盖并发进度。这只重建展示投影，不重发指令或推断执行结果；其他 `INVALID_SPEC`、存储损坏和读取错误仍向上传播。`events.source.recover` 记录会话、原因、合法序号、结果及耗时，不记录原始异常检查点内容。回归见 `backend/app-core/tests/kernel-event-recovery.test.ts`。
+
 ## 2. 业务流式事件（agent.event payload）
 
 LLM 流式与程序进度经 `agent.event` 透传（`KernelAction.emit` 或 effect `context.emit`）。

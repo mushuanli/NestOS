@@ -4,7 +4,7 @@
  */
 
 import {getLogger, LogLevel, LogLevelNames, escapeHTML} from '@itookit/common';
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import type { SettingsPort } from '@itookit/app-contracts/settings';
 
 interface ModuleLevelConfig {

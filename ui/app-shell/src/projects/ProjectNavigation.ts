@@ -127,7 +127,7 @@ export class ProjectNavigation {
     private async configureSettings(): Promise<void> {
         if (this.settingsPending) return;
         this.settingsPending = true; this.settings.disabled = this.overflowSettings.disabled = true;
-        const selected = this.project;
+        const selected = this.project; this.menu.open = false;
         const changed = async () => {await this.refresh(); await this.actions.refresh?.();};
         try {
             if (selected && this.actions.projectSettings) await this.actions.projectSettings(selected.project.id);
@@ -176,7 +176,8 @@ export class ProjectNavigation {
     }
     private async choose(path: string, signal: AbortSignal): Promise<void> {
         const revision = ++this.scopeRevision;
-        const project = path === '/' ? undefined : await this.projects.forFolder(browserTargetFolder(resolveBrowserTarget(path), path));
+        const project = path === '/' ? undefined : this.projectChoices.find(item => folderBrowserPath(item.path) === path)
+            ?? await this.projects.forFolder(browserTargetFolder(resolveBrowserTarget(path), path));
         if (signal.aborted || revision !== this.scopeRevision) return;
         this.project = project;
         this.updateSelector();
@@ -206,11 +207,11 @@ export class ProjectNavigation {
         this.draftActive = this.project?.project.id === project.project.id;
         this.create.setAttribute('aria-current', this.draftActive ? 'page' : 'false');
     }
-    async sync(path: string, options: ProjectNavigationOptions = {}): Promise<void> {
+    async sync(path: string, options: ProjectNavigationOptions = {}, prepared?: ProjectNavigationView): Promise<void> {
         ++this.scopeRevision;
         this.path = path; this.draftActive = false;
         const revision = ++this.revision;
-        const snapshot = await this.projects.navigation({ path,
+        const snapshot = prepared ?? await this.projects.navigation({ path,
             projectId: options.project?.project.id ?? (options.preserveProject ? this.project?.project.id ?? null : undefined) });
         if (revision === this.revision) await this.apply(snapshot, revision);
     }
@@ -237,6 +238,7 @@ export class ProjectNavigation {
         this.pendingDeletions = pending;
         this.projectChoices = [...projects].sort((a, b) => Number(b.project.id === this.defaultProjectId) - Number(a.project.id === this.defaultProjectId));
         const project = this.project;
+        this.settings.hidden = !project;
         for (const button of [this.settings,this.overflowSettings]) decorateButton(button,PROJECT_ACTION_ICONS.settings,t(project ? 'project.settings' : 'project.default.settings'),button === this.settings);
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
         delete this.settings.dataset.status;
@@ -261,16 +263,12 @@ export class ProjectNavigation {
             this.settings.title = [label, ...(state.issue ? [state.issue.code, diagnosticReasonText(state.issue.reason)] : []), ...state.mounts.flatMap(mount => mount.failure ? [mount.failure.code, mount.failure.reason ? diagnosticReasonText(mount.failure.reason) : ''] : []).filter(Boolean)].filter(Boolean).join(' · ');
         } catch {if (revision === this.stateRead) decorateButton(this.settings, PROJECT_ACTION_ICONS.warning, t('diagnostics.statusFailed'), true);}
     }
-    private creationProject(): ProjectFolder | undefined {
-        if (this.project) return this.project;
-        const folder = browserTargetFolder(resolveBrowserTarget(this.path), this.path);
-        return this.projectChoices.find(project => folder === project.path || folder.startsWith(project.path + '/'));
-    }
     private async createSession(): Promise<unknown> {
-        return this.actions.createSession(folderBrowserPath(this.creationProject()?.path));
+        if (!this.project) return;
+        return this.actions.createSession(folderBrowserPath(this.project.path));
     }
     private updateCreation(): void {
-        const project = this.creationProject();
+        const project = this.project;
         this.create.hidden = !project;
         const reason = project ? sessionCreationReason(this.projects, project.project.id) : undefined;
         this.create.disabled = !!reason;

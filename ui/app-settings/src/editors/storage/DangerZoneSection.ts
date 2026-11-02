@@ -1,6 +1,6 @@
 // @file: app-settings/editors/storage/DangerZoneSection.ts
 
-import { Toast, Modal } from '@itookit/ui-common';
+import { Toast, Modal } from '@itookit/ui-common-adapter';
 import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 
 export class DangerZoneSection {

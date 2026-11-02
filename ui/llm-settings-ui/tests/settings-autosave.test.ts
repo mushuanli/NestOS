@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { SettingsAutoSave } from '@itookit/ui-common';
+import {SettingsAutoSave} from '@itookit/ui-common-adapter';
 
 const controllers: SettingsAutoSave[] = [];
 afterEach(async () => {

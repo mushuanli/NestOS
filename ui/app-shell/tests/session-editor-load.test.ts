@@ -98,7 +98,7 @@ it.each(['main', 'review'])('initializes %s once and restores the selected branc
     expect(f.execute.mock.calls.filter(([name]) => name === SessionCommand.GetSnapshot)).toHaveLength(branch === 'main' ? 0 : 1);
     expect(container.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe(`${branch} draft`);
     expect(container.querySelector<HTMLInputElement>('#llm-title-input')?.value).toBe('Loaded title');
-    expect(container.querySelector('[data-execution-mode="agent"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(container.querySelector<HTMLInputElement>('.llm-input__tools-enabled-toggle')?.checked).toBe(true);
     expect((await f.repository.getManifest(f.id)).currentBranch).toBe(branch);
     // Explicit reload must fetch fresh state rather than keep initialization data forever.
     await f.repository.updateUIState(f.id, { branchDrafts: { [branch]: { inputText: 'changed externally' } } });
@@ -162,7 +162,7 @@ it('measures A → B → A with retained session state and fresh editor preferen
             if (index === 2) {
                 expect(container.querySelector<HTMLInputElement>('#llm-title-input')?.value).toBe('Updated A');
                 expect(container.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe('Fresh draft');
-                expect(container.querySelector('[data-execution-mode="agent"]')?.getAttribute('aria-pressed')).toBe('true');
+                expect(container.querySelector<HTMLInputElement>('.llm-input__tools-enabled-toggle')?.checked).toBe(true);
             }
         } finally { await editor.destroy(); container.remove(); }
     }

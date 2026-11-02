@@ -1,7 +1,8 @@
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {t} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+
 import {nativeWriterLockText} from './native-writer-lock';
 import {NativeInstructionQueuePanel} from '../components/NativeInstructionQueuePanel';
 import {ConversationInformation} from './ConversationInformation';

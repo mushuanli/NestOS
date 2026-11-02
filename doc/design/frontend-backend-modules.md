@@ -8,8 +8,8 @@
 
 | 归属 | 目录 | 入口规则 |
 |---|---|---|
-| 前端 | ui/app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common 的 src | 不导入后端实现，不创建执行 Runtime |
-| 前端独立库 | libraries/vfs-ui、libraries/mdxeditor、libraries/llm-ui | 保留通用展示、编辑和注入端口 |
+| 前端 | ui/app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common-adapter 的 src | 不导入后端实现，不创建执行 Runtime |
+| 前端独立库 | libraries/vfs-ui、libraries/mdxeditor、libraries/llm-ui、libraries/ui-common | 保留通用展示、编辑和注入端口 |
 | 后端应用 | backend/app-core/src/host、configuration、settings、projects、session、runtime 等 | 不加载 UI、CSS 或 DOM 组件 |
 | 独立持久执行内核 | libraries/durable-kernel | 仅依赖 vfs-core，运行与纯契约入口分开 |
 | 后端领域与能力 | backend/ 下的 llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters | 领域契约与实现入口分开 |
@@ -141,3 +141,8 @@ C4Component
 后端准备资源元数据、分组、能力和业务读模型，前端通过应用端口消费，不能向后端传入前端实现的数据文件系统再回调读取。工具箱由 `app-core/configuration` 装配完整导航；`SkillsEngine` 从设置 UI 包迁移到后端。前端的一次性目录快照适配与原生 DOM 面包屑不包含资源分类或存储策略。
 
 工作台目录面包屑保存每一级的真实路由和展示名称，复用 `openResource` 及已有异步导航代次同步侧栏展开/选中；返回缓存目录标签也执行侧栏同步。本地与远程项目共用，不额外创建后台数据服务或改动挂载权限。
+
+
+## 公共 UI 与宿主适配
+
+`libraries/ui-common`（@itookit/ui-common）是零运行时依赖的 DOM 导航基础库；原业务契约保留于 `ui/ui-common-adapter`（@itookit/ui-common-adapter）。Markdown、聊天和看板 UI 直接依赖基础库并共用标题栏布局，宿主只注入导航、项目/窗口状态、文案图标与业务菜单；不把 VFS、Session 或路由实现放入基础库。原编辑控件及菜单节点在重排中保留身份，手机次要动作移入同一菜单；视图和绑定销毁释放布局租约，迟到清理不能夺走新绑定的控件。

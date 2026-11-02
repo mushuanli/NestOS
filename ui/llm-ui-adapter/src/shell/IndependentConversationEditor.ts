@@ -1,12 +1,14 @@
+import {resolveChatImageResize} from '../components/input/image-processing-session';
 import {mountNativeRecovery} from '../independent/native-recovery';
+import {mountEditorTitleBar} from './content-titlebar';
 import {mountExecutionDraftAction} from './chat-execution-draft';
 import {SharedChatOcr} from './SharedChatOcr';
-import {resolveResize} from '@itookit/image-parser';
+
 import {CHAT_SLOT_CLASSES} from '@itookit/llm-ui';
 import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
 import {ACTION_ICONS, CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
-import {BaseSettingsEditor, Toast, type ConversationControls, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common';
+import {BaseSettingsEditor, Toast, type ConversationControls, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common-adapter';
 import type {ChatView, OperationReceipt} from '@itookit/llm-ui';
 import {createNativeChatBinding, createNativeChatView} from '../independent/native';
 import type {RetainedWorkspaceHandoff} from './drafts/workspace-handoff';
@@ -38,7 +40,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
     private branches?: RemoteBranches;
     private historyBranches?: RemoteHistoryBranches;
     private readonly events = new Map<EditorEvent, Set<(payload: unknown) => void>>();
-    constructor(container: HTMLElement, controls: ConversationControls, options: EditorOptions, private store: NativeChatStore, private handoff?: RetainedWorkspaceHandoff, private ocrControls?: import('@itookit/ui-common').OcrControls) {
+    constructor(container: HTMLElement, controls: ConversationControls, options: EditorOptions, private store: NativeChatStore, private handoff?: RetainedWorkspaceHandoff, private ocrControls?: import('@itookit/ui-common-adapter').OcrControls) {
         super(container, controls, options); this.owned = !handoff; this.operations = store.ledger();
     }
     async init(container: HTMLElement): Promise<void> {this.container = container; await this.render();}
@@ -83,7 +85,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
     private viewOptions(sessionId: string): Parameters<typeof createNativeChatView>[2] {
         const images = this.store.images.host(() => {
             const value = (this.view?.getDraft() ?? this.store.draft).selection?.imageResize;
-            return resolveResize(value ? JSON.parse(value) : undefined);
+            return resolveChatImageResize(value ? JSON.parse(value) : undefined);
         }, resize => {const view = this.view; if (!view) return; const draft = view.getDraft();
             view.configureInput({selection: {...draft.selection, imageResize: JSON.stringify(resize)}}, draft.revision);});
         const ocr = this.ocr = this.ocrControls ? new SharedChatOcr(this.ocrControls, () => this.view,
@@ -95,31 +97,32 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             saveDraft: draft => this.suspended || this.options.readOnly ? Promise.resolve() : this.store.saveDraft(draft),
             onDraftChange: () => this.emit('interactiveChange', undefined), onError: error => this.fail(error),
             onDiagnostic: event => log.info('chat.operation', {...event, sessionId}),
-            mountHeader: (root, context) => this.toolbar(root, context.headerMenu)};
+            mountHeader: (root, context) => this.toolbar(root, context)};
     }
     private announce(): void {
         const state = this.service.snapshot?.(); if (state) this.historyBranches?.update(state, !this.active);
         const id = this.service.snapshot?.()?.sessionId;
         if (id && id !== this.announced && !this.closed) {this.announced = id; this.options.onConversationSession?.(id);}
     }
-    private async runBranch(action: () => Promise<import('@itookit/ui-common').ConversationSnapshot>): Promise<void> {
+    private async runBranch(action: () => Promise<import('@itookit/ui-common-adapter').ConversationSnapshot>): Promise<void> {
         if (!this.active || this.closed || this.options.readOnly) throw new Error('Conversation view is unavailable');
         await this.flushPendingSave();
         if (!this.active || this.closed) return;
         const state = await action(); if (state.sessionId && !this.closed) this.options.onConversationSession?.(state.sessionId);
     }
-    private toolbar(root: HTMLElement, menuHost?: HTMLElement) {
+    private toolbar(root: HTMLElement, context: import('@itookit/llm-ui').ToolbarContext) {
+        const menuHost = context.headerMenu;
         const cleanups: (() => void)[] = [];
         let information: ConversationInformation | undefined;
         const recovery = mountNativeRecovery(root, this.operations, () => this.view, () => !this.closed && this.active, id => this.receipt(id), error => this.fail(error));
         cleanups.push(() => recovery.destroy());
-        mountConversationSource(root, this.options.conversationSource?.kind ?? 'remote', this.options.conversationSource?.label);
-        for (const [mount, className] of [[this.options.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
+        cleanups.push(mountConversationSource(root, this.options.conversationSource?.kind ?? 'remote', this.options.conversationSource?.label, context.header?.extra));
+        for (const [mount, className] of [[this.options.mountTitleBar ? undefined : this.options.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
             if (!mount) continue;
             const slot = document.createElement('div'); slot.className = className; if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); cleanups.push(mount(slot), () => slot.remove());
         }
         information = this.mountMenu(root, cleanups, menuHost);
-        if (this.options.hostContext?.toggleSidebar) {
+        if (!this.options.mountTitleBar && this.options.hostContext?.toggleSidebar) {
             const button = document.createElement('button'); button.type = 'button';
             presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
             button.classList.add('llm-chat__sidebar'); button.onclick = () => this.options.hostContext!.toggleSidebar();
@@ -132,7 +135,8 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             const state = await action();
             if (state.sessionId && !this.closed) this.options.onConversationSession?.(state.sessionId);
         }, error => this.fail(error));
-        this.branches.element.classList.add('llm-chat__branch'); this.branches.element.dataset.chatOverflow = ''; root.append(this.branches.element);
+        this.branches.element.classList.add('llm-chat__branch'); this.branches.element.dataset.chatOverflow = ''; (context.header?.extra ?? root).append(this.branches.element);
+        cleanups.push(mountEditorTitleBar(root, this.options, context));
         const update = () => {recovery.update(); const state = this.service.snapshot?.(); if (state) {this.branches?.update(state, !this.active); information?.setSnapshot(state); this.historyBranches?.update(state, !this.active);}};
         update();
         return {update, destroy: () => {this.branches?.destroy(); cleanups.forEach(cleanup => cleanup());}};
@@ -145,7 +149,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         cleanups.push(mountExecutionDraftAction(body, this.options, () => this.view, draft => Promise.all(draft.attachments.map(async item => {
             const blob = await this.store.read(item.file, {signal: this.lifetime.signal}); return new File([blob], item.file.name, {type: item.file.mimeType});})),
             () => !this.closed && this.active && !this.options.readOnly, error => this.fail(error)));
-        for (const mount of [this.options.mountWindowList, this.options.mountConversationNavigation, this.options.mountMoreMenu]) {
+        for (const mount of [this.options.mountTitleBar ? undefined : this.options.mountWindowList, this.options.mountConversationNavigation, this.options.mountMoreMenu]) {
             if (mount) cleanups.push(mount(body));
         }
         if (!menuHost) cleanups.push(() => menu.remove());

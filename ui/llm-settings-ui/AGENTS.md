@@ -28,7 +28,7 @@ src/
 ## 约束
 
 - 只做设置/配置 UI，不依赖 llm-ui 的 chat/history/dag 组件。
-- 依赖最小：`@itookit/common`（工具与 i18n）、`@itookit/ui-common`（BaseSettingsEditor/Modal/Toast/IEditor）、`@itookit/driver-llm`（导入导出）、`@itookit/vfs-core`（EventBus）、`@itookit/kernel-adapters/contracts`（配置管理与定价）、`@itookit/tools/contracts`（Prompt/Skill）、`@itookit/tools/mcp-contracts`（MCP）、`js-yaml`（YAML 解析）。
+- 依赖最小：`@itookit/common`（工具与 i18n）、`@itookit/ui-common-adapter`（BaseSettingsEditor/Modal/Toast/IEditor）、`@itookit/driver-llm`（导入导出）、`@itookit/vfs-core`（EventBus）、`@itookit/kernel-adapters/contracts`（配置管理与定价）、`@itookit/tools/contracts`（Prompt/Skill）、`@itookit/tools/mcp-contracts`（MCP）、`js-yaml`（YAML 解析）。
 - 多数编辑器继承 `BaseSettingsEditor<T>` 基类（统一生命周期/保存/校验）；`AgentConfigEditor` 直接实现 `IEditor`。
 
 运行：

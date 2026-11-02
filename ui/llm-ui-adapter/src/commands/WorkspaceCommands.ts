@@ -6,7 +6,7 @@ import { Command } from './Command';
 import { LLMPrintService, type PrintService } from '@itookit/mdx-adapter';
 import type { ErrorSeverity } from '../utils/errorHandler';
 import type { IFileSystem } from '@itookit/vfs-core';
-import { copyText } from '@itookit/ui-common';
+import { copyText } from '@itookit/ui-common-adapter';
 
 /**
  * 复制整个会话为 Markdown

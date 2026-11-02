@@ -1,3 +1,4 @@
+import {promptHarnessFlow} from '../contracts/prompt-harness-flow';
 import { prepareFlowRun, prepareFlowCallInput, type FlowDefinitionStore } from '@itookit/llm-flow';
 import { assertRootCallable, assertSelectedTarget, flowTargetRevision, type DagPluginCatalog, type FlowRevision, type JsonValue, type FlowCallSource } from '@itookit/llm-flow/contracts';
 import type { ExecutorConfig, TaskInput } from '../core/types';
@@ -103,15 +104,21 @@ function boundParameters(flow: FlowRevision, defaults: Record<string, unknown> |
 
 async function freezeDependencies(ports: FlowAgentPorts, flow: FlowRevision, input: TaskInput, bindings: Record<string, string>,
     parameters: Record<string, JsonValue>, agent: ExecutorConfig) {
+    const harness = input.instructionConnectionBinding?.harnessConnection;
+    if (harness) flow = promptHarnessFlow(flow, harness.id);
     const revisions = new Map<string, FlowRevision>();
     const identities = captureFlowIdentities(ports.identityResolver, input.sessionId);
     const capture = ports.connectionCatalog && captureFlowConnections(ports.connectionCatalog);
-    const prepare = capture ? (definition: FlowRevision, values?: Record<string, string>, runId?: string) =>
-        prepareFlowConnections(definition, values, capture.catalog, input.instructionConnectionBinding?.defaults, runId) : ports.prepareConnections;
+    const prepare = capture ? (definition: FlowRevision, values?: Record<string, string>, runId?: string) => {
+        const selected = harness ? promptHarnessFlow(definition, harness.id) : definition;
+        const bindings = harness ? Object.fromEntries(Object.entries(values ?? {}).filter(([name]) =>
+            name.includes('/') || selected.connections?.some(slot => slot.name === name))) : values;
+        return prepareFlowConnections(selected, bindings, capture.catalog, input.instructionConnectionBinding?.defaults, runId);
+    } : ports.prepareConnections;
     const graph = await prepareFlowRun(flow, { parameters, plugins: ports.plugins,
-        bindNode: (node, defaults) => bindFlowAgentConnection(node, defaults, identities.resolver, preferredTaskConnection(input)),
+        bindNode: (node, defaults) => bindFlowAgentConnection(node, defaults, identities.resolver, preferredTaskConnection(input), input.instructionConnectionBinding?.harnessConnection),
         fallbackConnectionId: input.instructionConnectionBinding?.connectionId ?? input.overrides?.connectionId,
-        connectionId: input.overrides?.connectionId, connectionBindings: bindings, prepareConnections: prepare,
+        connectionId: harness ? undefined : input.overrides?.connectionId, connectionBindings: harness ? Object.fromEntries(Object.entries(bindings).filter(([name]) => flow.connections?.some(slot => slot.name === name))) : bindings, prepareConnections: prepare,
         resolveComposite: async (id, revision) => {
             const found = await requiredRevision(ports, id, revision);
             revisions.set(`${found.id}@${found.revision}`, found);

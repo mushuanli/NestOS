@@ -1,5 +1,5 @@
 import {createModuleLogger, randomUUID} from '@itookit/common';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 const log = createModuleLogger('native-metrics');
 /** Refresh at session/turn boundaries, never on token deltas or an independent timer. */
 export class NativeMetricsObserver {

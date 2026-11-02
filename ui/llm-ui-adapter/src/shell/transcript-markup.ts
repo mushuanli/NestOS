@@ -1,6 +1,6 @@
 import { randomUUID, CHAT_ICONS, TOOLBOX_ICONS, escapeHTML, t } from '@itookit/common';
 import type { MDxPlugin } from '@itookit/mdxeditor';
-import { copyText } from '@itookit/ui-common';
+import { copyText } from '@itookit/ui-common-adapter';
 
 export const TRANSCRIPT_SYSTEM = 'nestos-system';
 export const TRANSCRIPT_TOOL = 'nestos-tool';

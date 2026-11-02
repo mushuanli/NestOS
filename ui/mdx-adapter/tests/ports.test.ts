@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
-import type { EditorOptions } from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 import { adaptEditorOptions } from '../src/factory';
 import { createAssetProvider } from '../src/assets';
 

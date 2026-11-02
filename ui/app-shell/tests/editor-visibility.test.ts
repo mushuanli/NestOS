@@ -2,7 +2,7 @@
 import { expect, it, vi } from 'vitest';
 import { connectEditorLifecycle } from '../src/browser/editor-connector';
 
-function fixture(chatFromFile?: import('@itookit/ui-common').EditorHostContext['chatFromFile'], toggleSidebar?: () => void) {
+function fixture(chatFromFile?: import('@itookit/ui-common-adapter').EditorHostContext['chatFromFile'], toggleSidebar?: () => void) {
     const events = new Map<string, (event: any) => Promise<void>>();
     const ui = { on: (name: string, callback: any) => { events.set(name, callback); return () => {}; },
         getNode: () => undefined, updateNodeMetadata: vi.fn() };

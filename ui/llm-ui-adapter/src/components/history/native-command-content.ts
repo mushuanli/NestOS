@@ -1,5 +1,5 @@
 import {arrayBufferToBase64, base64ToArrayBuffer, sha256Hex} from '@itookit/common';
-import type {ConversationCommandOutputRef, ConversationCommandOutputPage, ConversationControls} from '@itookit/ui-common';
+import type {ConversationCommandOutputRef, ConversationCommandOutputPage, ConversationControls} from '@itookit/ui-common-adapter';
 import {readVerifiedContent} from '../../utils/verified-content';
 
 export type CommandOutputReader = Pick<ConversationControls, 'readCommandOutput' | 'loadCommandOutput'>;

@@ -29,6 +29,7 @@ export interface SessionInstruction extends SessionInstructionInput {
         /** Frozen ordinary Agent identity; connection credentials remain in the live catalog. */
         agent?: {version: 1; config: import('../core/types').ExecutorConfig; digest: string};
         /** Frozen remote Agent identity and execution target; credentials remain host-owned. */
+        harnessConnection?: import('@itookit/kernel-adapters/contracts').HarnessConnectionSnapshot;
         harnessAgent?: import('../core/types').ExecutorConfig;
         connectionId?: string;
         source?: 'run' | 'session' | 'agent' | 'system';

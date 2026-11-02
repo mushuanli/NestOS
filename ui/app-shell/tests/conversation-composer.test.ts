@@ -1,6 +1,7 @@
+import type {ConversationControls} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
-import type {ConversationControls} from '@itookit/ui-common';
+
 import {ConversationComposer} from '../../llm-ui-adapter/src/shell/drafts/conversation-composer';
 import {imageFileState, setImageFileState} from '../../llm-ui-adapter/src/components/input/image-file-state';
 function host() {

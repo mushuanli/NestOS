@@ -1,7 +1,7 @@
 import { escapeHTML, t, generateShortUUID, randomUUID } from '@itookit/common';
 import type { MCPDiscovery, MCPServer } from '@itookit/tools/mcp-contracts';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import { Modal, Toast } from '@itookit/ui-common';
+import { Modal, Toast } from '@itookit/ui-common-adapter';
 import { renderMCPResourcePreview } from './mcp-resource-preview';
 
 export function renderMCPPrompts(server: MCPServer): string {

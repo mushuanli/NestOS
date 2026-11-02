@@ -23,7 +23,7 @@ Provider/Connection 配置可以打包为标准 `itookit.toolbox` v1 归档，�
 
 工具箱的模型分类提供折叠能力筛选，按钮组合稳定的 `tag:chat`、`tag:vision`、`tag:image.generate`、`tag:speech.synthesize` 等查询，与普通文字搜索取交集；显示名称通过 presentation.tagLabel 本地化，查询和资源身份不随语言改变。能力来自 Provider 模型目录及 Connection 实际档位，生成操作还须具有受支持的媒体适配器；音频输入与音频分类不等于 TTS。标签与凭据就绪状态分别呈现，不能代替运行前准入检查。
 
-`ui/ui-common/src/components/SettingsAutoSave.ts` 统一管理 LLM 设置编辑器的延迟、校验、串行写入和状态提示。普通文本停止输入 600ms、长文本 1000ms 后保存；开关/选择立即保存，API Key 和带 `data-autosave-defer` 的标识输入失去焦点后保存。输入法组合输入完成前不写入。程序修改列表时调用 `requestSettingsSave(root)`，搜索和临时图标输入不触发保存。
+`ui/ui-common-adapter/src/components/SettingsAutoSave.ts` 统一管理 LLM 设置编辑器的延迟、校验、串行写入和状态提示。普通文本停止输入 600ms、长文本 1000ms 后保存；开关/选择立即保存，API Key 和带 `data-autosave-defer` 的标识输入失去焦点后保存。输入法组合输入完成前不写入。程序修改列表时调用 `requestSettingsSave(root)`，搜索和临时图标输入不触发保存。
 
 Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新增资源使用稳定 ID；API 刷新也自动保存，失败保留编辑草稿并提供重试。Agent 优先通过宿主 `saveContent` 写入当前源，未注入宿主时使用 `saveAgent`，避免与宿主 `interactiveChange` 自动保存重复写入。Skill / MCP / SystemPrompt / Cost 使用同一控制器，完整配置经校验后整体写入；不合法的 JSON、路径/协议或未完成条目不覆盖上一次有效配置。
 

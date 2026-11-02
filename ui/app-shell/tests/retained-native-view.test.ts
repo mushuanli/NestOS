@@ -1,7 +1,8 @@
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import {expect, it, vi} from 'vitest';
 import {createOperationLedger} from '@itookit/llm-ui';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+
 import {createNativeChatBinding, createNativeChatView, replaceNativeChatBinding} from '../../llm-ui-adapter/src/independent/native';
 import {IndependentConversationEditor} from '../../llm-ui-adapter/src/shell/IndependentConversationEditor';
 import {NativeChatStore} from '../../llm-ui-adapter/src/independent/native-store';

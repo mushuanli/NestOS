@@ -7,7 +7,7 @@
  */
 import { EventBus } from '@itookit/vfs-core';
 import type {Heading} from '@itookit/common';
-import type { IEditor, EditorEvent, EditorEventMap, EditorEventCallback, UnifiedSearchResult, CollapseExpandResult } from '@itookit/ui-common';
+import type { IEditor, EditorEvent, EditorEventMap, EditorEventCallback, UnifiedSearchResult, CollapseExpandResult } from '@itookit/ui-common-adapter';
 
 // ── MIME 类型分组 ──────────────────────────────────────────────────────────────
 

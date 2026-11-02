@@ -1,5 +1,5 @@
 import { t } from '@itookit/common';
-import { showConfirmDialog, type ConversationControls, type ConversationSnapshot, type EditorOptions } from '@itookit/ui-common';
+import { showConfirmDialog, type ConversationControls, type ConversationSnapshot, type EditorOptions } from '@itookit/ui-common-adapter';
 import { BranchIndicatorTemplates } from '../components/templates/BranchIndicatorTemplates';
 import {EventCleanup} from '@itookit/llm-ui';
 import type { BranchItem } from '../domain/types';

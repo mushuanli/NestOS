@@ -1,5 +1,5 @@
 import type {KanbanPresentation} from './ports';
-import {referenceView} from './references';
+import {panelHeader} from './panel-header';
 import {suggestionField, selectedItems} from './suggestion-field';
 import {amendmentsView, sourcesView} from './context-view';
 import {escapeHTML, escapeAttr} from './html';
@@ -7,12 +7,12 @@ import type {KanbanBoardSummary, KanbanEvent, KanbanItem, KanbanPrincipal} from 
 import {button, field, textarea, owns} from './view';
 
 export function newBoardForm(ui: KanbanPresentation): string {
-    return `<header class="kanban__panel-header"><h3>${escapeHTML(ui.text('newBoard'))}</h3>${button(ui, 'close-panel', 'close')}</header><form data-form="board">${field(ui, 'title', 'boardName')}
+    return `${panelHeader(ui, ui.text('newBoard'))}<form data-form="board">${field(ui, 'title', 'boardName')}
         <label><input name="requireEstimate" type="checkbox">${escapeHTML(ui.text('requireEstimate'))}</label>
         ${save(ui)}</form>`;
 }
 export function newItemForm(ui: KanbanPresentation, board: KanbanBoardSummary): string {
-    return `<header class="kanban__panel-header"><h3>${escapeHTML(ui.text('newItem'))}</h3>${button(ui, 'close-panel', 'close')}</header><form data-form="item">${field(ui, 'title', 'name')}
+    return `${panelHeader(ui, ui.text('newItem'))}<form data-form="item">${field(ui, 'title', 'name')}
         ${textarea(ui, 'responsibility', 'responsibility')}${textarea(ui, 'acceptance', 'acceptance')}${planningFields(ui, board)}${save(ui)}</form>`;
 }
 function planningFields(ui: KanbanPresentation, board: KanbanBoardSummary, item?: KanbanItem): string {
@@ -29,7 +29,7 @@ function dateInput(at?: number): string {
 }
 const save = (ui: KanbanPresentation) => `<div class="kanban__actions"><button>${escapeHTML(ui.text('save'))}</button>${button(ui, 'close-panel', 'close')}</div>`;
 export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, events: KanbanEvent[]): string {
-    return `<header class="kanban__panel-header"><h3>${escapeHTML(item.title)}</h3>${button(ui, 'close-panel', 'close')}</header>${referenceView(ui, board, item)}
+    return `${panelHeader(ui, item.title, board, item)}
         <p>${escapeHTML(ui.text('origin'))}: ${escapeHTML(item.origin ? ui.text(item.origin.kind === 'discovery' ? 'flow' : 'manual') + ' · ' + item.origin.principal.id : ui.text('unknownOrigin'))}</p>
         <dl><dt>${escapeHTML(ui.text('itemId'))}</dt><dd>${escapeHTML(item.id)}</dd><dt>${escapeHTML(ui.text('responsibility'))}</dt><dd>${escapeHTML(item.responsibility)}</dd>
         <dt>${escapeHTML(ui.text('acceptance'))}</dt><dd>${escapeHTML(item.acceptance)}</dd><dt>${escapeHTML(ui.text('owner'))}</dt><dd>${escapeHTML(item.owner?.id ?? item.owner?.agentId ?? ui.text('none'))}</dd></dl>

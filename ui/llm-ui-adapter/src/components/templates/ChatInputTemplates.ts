@@ -32,7 +32,7 @@ export const ChatInputTemplates = {
                 <div class="llm-input__settings-body">
                     <section class="llm-input__settings-group" data-local-settings>
                         <h3>${t('chatSettings.conversation')}</h3>
-                        ${this.renderConnectionRow()}${this.renderTierRow()}${this.renderContextSetting()}
+                        ${this.renderExecutionMode()}${this.renderConnectionRow()}${this.renderTierRow()}${this.renderContextSetting()}
                         <div class="llm-input__settings-toggles">${this.renderThinkingSetting()}${this.renderWebSearchSetting()}</div>
                     </section>
                     <section class="llm-input__settings-group llm-input__ocr-preferences" data-ocr-preferences hidden>
@@ -286,7 +286,7 @@ export const ChatInputTemplates = {
         return `<div class="llm-input__toolbar">
             <div class="llm-input__toolbar-left">
                 <button type="button" class="llm-input__btn llm-input__btn--attach" title="${t('chatInput.add.menu')}" aria-label="${t('chatInput.add.menu')}">${this.addIcon()}</button>
-                ${this.renderExecutionMode()}${this.renderAgentPicker()}
+                ${this.renderAgentPicker()}
             </div>
             <div class="llm-input__toolbar-right">
                 ${this.renderModelPicker()}
@@ -314,18 +314,13 @@ export const ChatInputTemplates = {
         </details>`;
     },
 
-    /** A single mode label stays visible; its explanation is available on demand. */
+    /** Tool execution is a conversation preference, alongside the other settings. */
     renderExecutionMode(): string {
-        return `<details class="llm-input__execution-picker">
-            <summary><span class="llm-input__execution-label">${t('chatInput.executionMode.chat')}</span>${CHAT_ICONS.chevron}</summary>
-            <div class="llm-input__execution-menu">
-                <div class="llm-input__execution-mode" role="group" aria-label="${t('chatInput.executionMode.label')}">
-                    <button class="llm-input__execution-option" type="button" data-execution-mode="chat" aria-pressed="true">${t('chatInput.executionMode.chat')}</button>
-                    <button class="llm-input__execution-option" type="button" data-execution-mode="agent" aria-pressed="false">${t('chatInput.executionMode.agent')}</button>
-                </div>
-                <div class="llm-input__execution-hint" role="status"></div>
-            </div>
-        </details>`;
+        return `<div class="llm-input__tool-execution-setting">
+            <div class="llm-input__setting-row"><span>${t('chatSettings.allowTools')}</span>
+                <label class="llm-input__toggle"><input type="checkbox" class="llm-input__tools-enabled-toggle" aria-label="${t('chatSettings.allowTools')}"><span class="llm-input__toggle-slider"></span></label>
+            </div><div class="llm-input__execution-hint" role="status"></div>
+        </div>`;
     },
 
     /**

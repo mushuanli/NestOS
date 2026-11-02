@@ -1,4 +1,4 @@
-import { SettingsValidationError, requestSettingsSave } from '@itookit/ui-common';
+import { SettingsValidationError, requestSettingsSave } from '@itookit/ui-common-adapter';
 // @file: llm-ui/editors/CostEditor.ts
 //
 // 费用统计 & 定价配置编辑器。
@@ -11,7 +11,7 @@ import { aggregateCostRecords, lookupPricingEntry } from '@itookit/kernel-adapte
 import { t } from '@itookit/common';
 import type { IAgentManagementService, CostRecord, ModelPricingEntry, ModelPricingConfig } from '@itookit/kernel-adapters/contracts';
 import { costTrendRange, renderCostTrend, type CostTrendPeriod } from './cost-trend';
-import { BaseSettingsEditor } from '@itookit/ui-common';
+import { BaseSettingsEditor } from '@itookit/ui-common-adapter';
 
 type Period = 'today' | 'week' | 'month';
 

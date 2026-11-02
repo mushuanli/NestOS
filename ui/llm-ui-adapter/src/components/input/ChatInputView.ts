@@ -1,7 +1,8 @@
+import {resolveChatImageResize} from './image-processing-session';
 import {getLocale} from '@itookit/common';
 import {InputPluginRegistry} from '@itookit/llm-ui';
 import {isCommandInput, resizeMessageInput, shouldSubmitMessage} from '@itookit/llm-ui';
-import { OcrSettingsForm, Modal, Toast } from '@itookit/ui-common';
+import { OcrSettingsForm, Modal, Toast } from '@itookit/ui-common-adapter';
 // @file: llm-ui/components/input/ChatInputView.ts
 
 import type { IChatInputPresenter, IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
@@ -31,7 +32,7 @@ import type { PopupItem } from '@itookit/llm-ui';
 import { AttachmentManager } from './AttachmentManager';
 import {knownImageFileState} from './image-file-state';
 import {ImageResizeSettings} from './ImageResizeSettings';
-import {resolveResize, type ImageResizePolicy} from '@itookit/image-parser';
+import {type ImageResizePolicy} from '@itookit/image-parser';
 import { ToolOutputPanel } from './ToolOutputPanel';
 import { HelpPanel } from './HelpPanel';
 import { SkillPanel } from './SkillPanel';
@@ -48,10 +49,10 @@ export interface ChatInputOptions {
     instructionQueue?: boolean;
     flushDraft?: () => Promise<void>;
     persistImageFiles?: (files: File[], resize: ImageResizePolicy) => Promise<void>;
-    nativeModels?(executorId: string): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
+    nativeModels?(executorId: string): Promise<import('@itookit/ui-common-adapter').ConversationModelCatalog>;
     /** Host-owned menu slot for immutable conversation mode information. */
     executionModeInfo?: HTMLElement;
-    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
+    executorUsage?: import('@itookit/ui-common-adapter').EditorOptions['executorUsage'];
     attachments?: boolean;
     attachmentAccept?: string;
     attachmentHint?: string;
@@ -127,7 +128,7 @@ export interface ChatInputOptions {
     onRequestReferences?: (query: string, options?: {includeIgnored?: boolean}) => Promise<FileSuggestion[]>;
 
     /** Host-owned image recognition, shared configuration and live connection label. */
-    ocr?: import('@itookit/ui-common').OcrControls;
+    ocr?: import('@itookit/ui-common-adapter').OcrControls;
 
     /**
      * 预留（本期不接线）：语音转文字。
@@ -705,7 +706,7 @@ export class ChatInput implements IChatInputPresenter {
             getFiles: () => this.files,
             setFiles: (f) => { this.files = f; if (!this.restoringRecovery) this.options.onDraftChange?.(this.getConfig(), [...f]); },
             notifyConfigChange: () => this.notifyConfigChange(),
-            getImageResize: () => resolveResize(this.config.settings.imageResize, this.agents.find(agent => agent.id === this.config.agentId)?.imageProcessing?.resize),
+            getImageResize: () => resolveChatImageResize(this.config.settings.imageResize, this.agents.find(agent => agent.id === this.config.agentId)?.imageProcessing?.resize),
             setImageResize: resize => {this.config.settings.imageResize = resize; this.notifyConfigChange();},
             onImageStateChange: () => {this.applyAvailability(); this.attachmentMgr?.renderAttachments();},
             flushFiles: () => this.options.flushDraft?.() ?? Promise.resolve(),

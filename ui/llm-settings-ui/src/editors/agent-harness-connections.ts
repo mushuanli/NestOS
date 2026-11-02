@@ -1,5 +1,5 @@
 import { escapeHTML, randomUUID, t } from '@itookit/common';
-import { Modal } from '@itookit/ui-common';
+import { Modal } from '@itookit/ui-common-adapter';
 import type { HarnessExecutionConnection, HarnessExecutionConnectionRecord, HarnessExecutionConnectionTarget } from '@itookit/kernel-adapters/contracts';
 import type { HarnessConnectionManagement } from './agent-execution-options';
 

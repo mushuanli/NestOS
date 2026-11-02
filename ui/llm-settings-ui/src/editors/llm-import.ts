@@ -8,9 +8,9 @@
 //   - Cascading ID remapping on rename (provider → connections)
 //   - Executing the import in dependency order
 
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import type { IConnectionService } from '@itookit/kernel-adapters/contracts';
-import { Modal } from '@itookit/ui-common';
+import { Modal } from '@itookit/ui-common-adapter';
 import {
     parseLLMConfig,
     getProviderDefs,

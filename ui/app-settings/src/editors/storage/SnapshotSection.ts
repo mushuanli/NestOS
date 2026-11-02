@@ -1,6 +1,6 @@
 // @file: app-settings/editors/storage/SnapshotSection.ts
 
-import { Toast, Modal } from '@itookit/ui-common';
+import { Toast, Modal } from '@itookit/ui-common-adapter';
 import type { SettingsPort as SettingsService, LocalSnapshot } from '@itookit/app-contracts/settings';
 import { StorageUtils } from './StorageUtils';
 

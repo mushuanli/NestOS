@@ -8,8 +8,8 @@ import type { HoverPreviewData } from '@itookit/common';
 
 export type { HoverPreviewData };
 
-import type { IAutocompleteSource, Suggestion } from '@itookit/ui-common';
-export type { Suggestion } from '@itookit/ui-common';
+import type { IAutocompleteSource, Suggestion } from '@itookit/ui-common-adapter';
+export type { Suggestion } from '@itookit/ui-common-adapter';
 
 export abstract class IMentionSource implements IAutocompleteSource {
     abstract getSuggestions(query: string): Promise<Suggestion[]>;

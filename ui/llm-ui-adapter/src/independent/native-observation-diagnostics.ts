@@ -1,5 +1,5 @@
 import {createModuleLogger, randomUUID} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 
 const log = createModuleLogger('native-observation');
 

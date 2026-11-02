@@ -2,7 +2,7 @@ import {createRecoverableFileEditor} from '../browser/file-recovery';
 import { PROJECT_EDITOR_MAX_BYTES, showLargeFilePreview } from './large-file-preview';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { buildRenamedFilename, traceBoot, t } from '@itookit/common';
-import type { EditorFactory, EditorHostContext, EditorOptions, IEditor } from '@itookit/ui-common';
+import type { EditorFactory, EditorHostContext, EditorOptions, IEditor } from '@itookit/ui-common-adapter';
 import { FSError, type FSNode, type FileSystemContextOwner } from '@itookit/vfs-core';
 import { fileContentFormat } from '../browser/file-format';
 import { ViewLoad, ViewLoadCancelled } from '../lifecycle/view-load';
@@ -16,6 +16,7 @@ interface ProjectFileOptions {
     host: EditorHostContext;
     recoveryScope?: string;
     mountWindowList?: EditorOptions['mountWindowList'];
+    mountTitleBar?: EditorOptions['mountTitleBar'];
 }
 interface OpenedProjectFile { node: FSNode; editor?: IEditor; context: FileSystemContextOwner; previewCleanup?: () => void }
 
@@ -26,10 +27,11 @@ export async function openProjectFileEditor(projects: ProjectService, target: { 
     let mount: HTMLElement | undefined;
     let previewCleanup: (() => void) | undefined;
     try {
-        const source = await load.read(async () => owner = await traceBoot('projectFile.source', () => projects.openWorkspace(target.folder)));
+        const source = await load.read(async () => owner = await traceBoot('projectFile.source', () => projects.openWorkspace(target.folder, {initialPath: target.path})));
         const context: FileSystemContextOwner = { context: { fs: source.fs, cwd: target.path.slice(0, target.path.lastIndexOf('/')) || '/' }, release: () => source.dispose() };
         const driver = source.fs.driver;
-        const node = await load.read(() => traceBoot('projectFile.type', () => driver.getNode(target.path, { signal: load.signal })));
+        const node = source.initialFile ? source.initialFile.node
+            : await load.read(() => traceBoot('projectFile.type', () => driver.getNode(target.path, { signal: load.signal })));
         if (!node) throw new FSError('ENOENT', 'File not found');
         if (node.type === 'directory') return {node, context};
         mount = await options.mount(); load.check();
@@ -44,7 +46,7 @@ export async function openProjectFileEditor(projects: ProjectService, target: { 
         catch (error) { if (error instanceof FSError && error.code === 'EFBIG') return await large(); throw error; }
         const content = decodeFile(target.path, bytes);
         if (content === undefined) previewCleanup = options.showBinary(mount, target.path, bytes);
-        else editor = await load.read(async () => editor = await createTextEditor(context, target.path, content, mount!, load, options, revision));
+        else editor = await load.read(async () => editor = await createTextEditor(context, target.path, content, mount!, load, options, revision, source.initialFile?.readonly));
         load.check();
         return { node, editor, context, previewCleanup };
     } catch (error) {
@@ -62,14 +64,15 @@ function decodeFile(path: string, bytes: ArrayBuffer): string | undefined {
 }
 
 async function createTextEditor(context: FileSystemContextOwner, path: string, content: string,
-    mount: HTMLElement, load: ViewLoad, options: ProjectFileOptions, revision?: string): Promise<IEditor> {
+    mount: HTMLElement, load: ViewLoad, options: ProjectFileOptions, revision?: string, preparedReadOnly?: boolean): Promise<IEditor> {
     const { fs } = context.context;
-    const readOnly = (await fs.capabilitiesAt(path)).readonly;
+    const readOnly = preparedReadOnly ?? (await fs.capabilitiesAt(path)).readonly;
     load.check();
     const filename = path.split('/').pop()!;
     return traceBoot('projectFile.editor', () => createRecoverableFileEditor(options.factory, mount, {
         ...fileContentFormat(path), target: { kind: 'file', path }, files: context.context,
         mountWindowList: options.mountWindowList,
+        mountTitleBar: options.mountTitleBar,
         initialContent: content, readOnly, signal: load.signal, title: buildRenamedFilename(filename, filename).title,
         hostContext: { ...options.host,
             reloadContent: async (file, accept) => {

@@ -1,6 +1,7 @@
+import {MOBILE_NAVIGATION_QUERY} from '@itookit/ui-common-adapter';
 /** Reports the sidebar surface; each workspace owns the visibility of its local views. */
 export function observeNavigationVisibility(layout: HTMLElement, sidebar: HTMLElement, changed: (visible: boolean) => void): () => void {
-    const workspace = layout.closest('.workspace-view'), media = window.matchMedia?.('(max-width: 768px)');
+    const workspace = layout.closest('.workspace-view'), media = window.matchMedia?.(MOBILE_NAVIGATION_QUERY);
     let previous: boolean | undefined;
     const sync = () => {
         const visible = !!workspace?.classList.contains('active') && !sidebar.classList.contains('is-collapsed')

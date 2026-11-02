@@ -1,5 +1,5 @@
 import {promptInvocation} from '../../llm-ui-adapter/src/flows/prompt-invocation';
-import {Toast} from '@itookit/ui-common';
+import {Toast} from '@itookit/ui-common-adapter';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ContentTransferCommand, FlowInvocationCommand, type ContentCapture, type ContentTransfer, type ICommandBus } from '@itookit/llm-session/contracts';

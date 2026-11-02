@@ -1,5 +1,5 @@
 import { ACTION_ICONS, CHAT_ICONS, TOOLBOX_ICONS, PROJECT_ACTION_ICONS, FILE_BROWSER_ICONS } from '@itookit/common';
-import type { ContextMenuBuilder } from '@itookit/ui-common';
+import type { ContextMenuBuilder } from '@itookit/ui-common-adapter';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 
 const icons: Record<string, string> = {

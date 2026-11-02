@@ -1,5 +1,5 @@
 import {ASSISTANT_ADD_EVENT, type ShortcutRequest} from './assistant-actions';
-import {setTimePresentation} from '@itookit/ui-common';
+import {setTimePresentation, navigationItem} from '@itookit/ui-common-adapter';
 import {ACTION_ICONS, createModuleLogger, escapeHTML, randomUUID, t} from '@itookit/common';
 import type {ApplicationBackend, ApplicationServices, AssistantEvent, AssistantOverview} from '@itookit/app-contracts/services';
 import type {VfsJsonStore} from '../persistence/vfs-json-store';
@@ -66,7 +66,7 @@ class AssistantMenu {
     }
     private launcher(mobile: boolean): HTMLButtonElement {
         const button = document.createElement('button'); button.type = 'button';
-        button.className = 'assistant-launcher' + (mobile ? ' app-nav-btn' : ''); button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-expanded', 'false');
+        button.className = 'assistant-launcher' + (mobile ? ' app-nav-btn' : ''); if (mobile) navigationItem(button); button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-expanded', 'false');
         button.innerHTML = `<span class="assistant-launcher__icon">${this.icon('assistant', 'nav')}<span class="assistant-launcher__count" data-assistant-count>…</span></span><span class="assistant-launcher__label">${escape(label('nav'))}</span>`;
         button.addEventListener('click', () => {
             this.origin = button; this.all = false; this.render(); if (!this.dialog.open) this.dialog.showModal(); button.setAttribute('aria-expanded', 'true'); this.schedule();

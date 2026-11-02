@@ -1,5 +1,5 @@
 import {t} from '@itookit/common';
-import {createBlobSource, type ImageProcessor, type ImageResizePolicy} from '@itookit/image-parser';
+import {createBlobSource, type ImageProcessor, DEFAULT_IMAGE_SPEC, type ImageResizePolicy} from '@itookit/image-parser';
 import {ImageProcessingSession} from './image-processing-session';
 import {imageFileState, setImageFileState} from './image-file-state';
 import {editImageFiles} from './file-image-editing';
@@ -55,10 +55,10 @@ export class ImageAttachments {
         const metadata: Array<() => void> = [];
         for (const file of files) {
             const state = imageFileState(file), source = createBlobSource(state.original, {id: state.id, revision: 'original', name: state.original.name});
-            const output = await this.processing.process(source, state.spec, signal, resize);
+            const output = await this.processing.process(source, state.spec, signal, resize, state.original.type);
             if (signal.aborted || this.lifetime.signal.aborted) return;
             const next = new File([output.blob], file.name, {type: output.mimeType});
-            metadata.push(() => setImageFileState(next, {...state, revision: state.revision + 1, resizeKey: this.processing.getKey(resize)})); replacements.set(file, next);
+            metadata.push(() => setImageFileState(next, {...state, ...(state.revision === 0 ? {original: next, spec: DEFAULT_IMAGE_SPEC} : {}), revision: state.revision + 1, resizeKey: this.processing.getKey(resize)})); replacements.set(file, next);
         }
         if (signal.aborted || this.lifetime.signal.aborted) return;
         metadata.forEach(apply => apply());

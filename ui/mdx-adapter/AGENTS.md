@@ -38,3 +38,5 @@ createStudyHost/createStudyEditor 的可选 capabilities.creation 透传宿主�
 命名提示词列表通过 prompts.store.list/saveList 存在 /.nestos/cloze/prompts.yaml；不读取旧 JSON。列表内容校验失败明确报错，禁止静默覆盖损坏配置。预设由 app-core/presets 初始化；显式系统恢复完整覆盖模板 YAML，正常启动保留已有内容。适配层不附带业务模板。
 
 创建能力采用 documents/generation/prompts/recovery 分组；适配层只补齐 documents.directories 与 prompts.store，不解释生成错误码或取消策略。
+
+完整 mountTitleBar 端口优先透传到 core:titlebar，复用原标题输入、经过重命名屏障的返回按钮及更多菜单；提供完整布局时不再重复 mountWindowList。mdxeditor 只声明通用节点插槽，公共 UI 与路由实现仍由宿主注入，不引入 ui-common 依赖。

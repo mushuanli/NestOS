@@ -7,8 +7,8 @@ import type { IEditorEventBus } from '../domain/events';
 import type { BranchItem } from '../domain/types';
 import {EventCleanup, TimerManager} from '@itookit/llm-ui';
 import { FloatingNavPanelTemplates } from './templates/FloatingNavPanelTemplates';
-import { Toast } from '@itookit/ui-common';
-import { showConfirmDialog } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
+import { showConfirmDialog } from '@itookit/ui-common-adapter';
 
 export interface FloatingNavWorkspaceActions {
     onSetContext: (roundIds: string[], mode: 'include' | 'exclude') => Promise<void>;

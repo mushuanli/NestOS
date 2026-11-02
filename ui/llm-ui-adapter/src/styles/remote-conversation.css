@@ -20,7 +20,7 @@
 
 .llm-input--remote .llm-input__btn--settings,
 .llm-input--remote .llm-input__model-trigger,
-.llm-input--remote .llm-input__execution-picker,
+.llm-input--remote .llm-input__tool-execution-setting,
 .llm-input--remote .llm-input__btn--websearch,
 .llm-input--remote .llm-input__active-settings { display: none !important; }
 

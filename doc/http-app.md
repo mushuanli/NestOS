@@ -412,6 +412,10 @@ tail -n 100 /var/log/nestos/httpd.runtime.log
 
 健康检查返回 `{"ready":true,"mode":"release","version":"<release-id>"}`，其中 `version` 才是当前服务版本。版本 ID 为 `<UTC构建时间 YYYYMMDDTHHmmss>-<Git提交前8位>[-dirty]`，例如 `20261017T100615-b109df0a-dirty`；`dirty` 表示构建时存在未提交修改。运行日志中最新的 `Version:` 记录可用于核对启动版本，但进程退出后仍保留。`release/httpd/current.json` 只指定下次启动选择，不证明当前服务已切换；修改日志目录后，日志查询命令也应使用新目录。
 
+HTTP release 在隔离构建完成后保留已选择版本及最近另一版本的原始 hash 静态资源，避免手机保留的旧页面在切换版本后按需加载模块时收到 404。仅保留 `dist/assets/` 下带 hash 的产物并核对摘要，不复制旧 HTML 或后端；`release.json.uiAssets` 记录本次构建自身资源，避免历史资源递归积累。构建日志 `stage=retain-ui-assets` 记录保留数量、代数和错误分类。更早页面仍应重新加载；模块加载失败会给出版本变化/网络中断提示，不自动刷新已有未发送内容。
+
+Safari 可能把失败的 modulepreload 留在内存缓存中，普通刷新仍会重复失败（[WebKit 270357](https://bugs.webkit.org/show_bug.cgi?id=270357)）。启动失败页的重新加载按钮先以 `cache: reload` 重新获取已捕获失败项及页面模块，再重新加载文档；仅允许同源 `assets/` 下的 hash JS/CSS，去除查询参数，不执行响应正文、不清理草稿或浏览器数据。请求逐个消费，总时限 15 秒、单个 8 秒；网络/认证失败保留错误页及重试，已退役的 404 模块转为重新加载当前 HTML。诊断记录阶段、数量、结果和安全资源名；宿主审计的 asset 字段也只记录 hash JS/CSS 文件名，不记录用户路径和查询参数。Safari 18 同代 WebKit 回归已复现一次 503 导致普通刷新仍失败，调用实际修复模块后恢复成功。
+
 httpd 使用 `startupMode: 'server'`：LLM 配置与设备、MCP 首次自动连接尝试、依赖的项目目录、Skill、Agent、会话调用恢复和项目草稿初始化完成后才创建监听。失败向启动入口传播，关闭 Runtime、存储、日志并释放目录锁，不打印服务已启动，也不开放健康检查。远端 MCP 首次尝试失败作为已观测的连接状态保留，不要求所有远端服务可达；持续任务恢复、周期扫描与分身分析不等待业务运行结束。Web/Tauri 的交互式延迟初始化策略保持独立。
 
 默认只监听 HTTPS `0.0.0.0:2000`，backlog 为 4096。TLS 验证客户端证书与 clients.json 的 SHA-256 指纹，没有匿名或明文入口。CA、密钥、浏览器导入包和审计日志位于数据根之外。
@@ -470,6 +474,10 @@ Session getSnapshot 是唯一历史快照，getSessions、getStatus 和 isGenera
 项目 lookup 预热读取内存挂载目录，不再扫描持久项目目录。OCR 后端服务共享首次配置读取；readSettings、label、ready 不写默认值，显式打开配置才 prepareConfiguration，识别不恢复已删除提示词。空输入框订阅也不创建 OCR 服务。工具箱投影内容未变化时跳过写入和元数据事件。
 
 静态 hash 资源使用私有 immutable 缓存，HTML 使用 no-cache 和 ETag 重新验证；gzip 结果按文件身份、大小、修改时间和编码缓存，最多 64 项 / 16 MiB。所有请求仍先通过证书认证。API 响应继续 no-store。
+
+项目与全部项目切换通过 `SessionBrowserPort.readDirectory` 一次聚合目录节点、透明分组、项目归属和导航；按钮、搜索和侧栏复用该结果，不分别查询 `forFolder`。目录种子按 revision 单次消费，变化事件或读取期间发生变更会使种子失效；普通子目录保持按需读取，显式刷新重新核对来源。返回种子用行索引复用已传输的摘要，不复制聊天历史或附件正文。后端 `directory-view` 日志记录聚合阶段、数量、错误分类和耗时。
+
+HTTP 文件系统事件在 application 适配层按能力对象共享 `onAny` 连接，文件浏览器、工具箱、笔记等消费者仍独立按类型筛选及释放，全部退出后才取消远程连接。共享范围不跨用户、命名空间或文件视图；登记失败允许后续兴趣重新登记，描述符更新保留现有兴趣，旧连接迟到通知被丢弃。HTTP 之外的编辑器事件及执行观察继续遵循原生命周期。
 
 旧 ApplicationPort / ApplicationHost / 持久回执实现、专属测试及废弃设计已删除，不再保留第二套生产入口。
 

@@ -11,7 +11,7 @@ import {
     LogFilter,
     escapeHTML
 } from '@itookit/common';
-import { Toast, Modal } from '@itookit/ui-common';
+import { Toast, Modal } from '@itookit/ui-common-adapter';
 
 export class LogViewerSection {
     private container: HTMLElement;

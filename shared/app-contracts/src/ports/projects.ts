@@ -147,8 +147,10 @@ export interface ProjectService {
     workspaceAccess(project: ProjectFolder, requested?: 'ro' | 'rw'): 'ro' | 'rw';
     assertIndependent(project: ProjectFolder, mounts?: ProjectRemoteMount[], knownCatalog?: readonly ProjectFolder[]): Promise<void>;
     workspaceReadOnly(folder: string): Promise<boolean>;
-    openWorkspace(folder: string): Promise<{
+    /** Optionally prepare file metadata beside storage, without reading its content. */
+    openWorkspace(folder: string, options?: {initialPath?: string}): Promise<{
         fs: VfsContracts.FileSystemView;
+        initialFile?: {node: VfsContracts.FSNode | null; readonly: boolean};
         dispose(): Promise<void>;
     }>;
     assertMove(from: string | null, to: string | null, projectRoot?: boolean): Promise<void>;
@@ -268,6 +270,7 @@ export interface ProjectDraftPromotion {
 }
 
 export interface ProjectDraftComposer {
+    readonly locked?: boolean;
     readonly id?: string;
     /** Reconcile durable submission evidence and replace this cursor only after its promotion. */
     refresh?(): Promise<ProjectDraftComposer | undefined>;
@@ -279,7 +282,8 @@ export interface ProjectDraftComposer {
     save(data: string): Promise<void>;
     /** Return the replacement UUID so clients can update immutable RPC field snapshots. */
     clear(): Promise<string | void>;
-    prepare(): Promise<{
+    move?(projectId: string): Promise<void>;
+    prepare(request?: {title?: string; harness?: {profileId: string; expectedProject?: {nodeConnectionId: string; serverProjectId: string}; selection?: {modelId: string; reasoningEffort?: string}}}): Promise<{
         sessionId: string;
         resumeOnly: boolean;
         submission?: FlowContracts.SessionSubmission;
@@ -333,7 +337,7 @@ export interface ProjectRemoteMountService {
     setExecution(projectId: string, expected: HarnessContracts.RemoteProject, execution: HarnessContracts.ProjectEnvironment, options?: OperationOptions): Promise<void>;
     remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;
-    projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean, draftId?: string): Promise<ProjectConversationPort>;
+    projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean, draftId?: string, draftTitle?: string): Promise<ProjectConversationPort>;
     projectOffline(projectId: string): boolean;
     degraded(projectId: string): boolean;
     status(mountId: string): RemoteConnectionStatus;

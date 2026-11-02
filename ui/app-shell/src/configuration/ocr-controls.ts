@@ -3,7 +3,7 @@ import { editOcrPrompt } from './ocr-prompt-dialog';
 import type { OcrService } from '@itookit/app-contracts/services';
 import { escapeHTML, randomUUID, t, type NavigationRequest } from '@itookit/common';
 import { type IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import { Modal, Toast, renderOcrSettings, readOcrSettings, type OcrSettingsState, type EditorTarget, type OcrControls } from '@itookit/ui-common';
+import { Modal, Toast, renderOcrSettings, readOcrSettings, type OcrSettingsState, type EditorTarget, type OcrControls } from '@itookit/ui-common-adapter';
 
 export interface OcrConfigurationControls extends OcrControls {
     dispose(): Promise<void>;

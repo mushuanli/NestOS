@@ -1,6 +1,6 @@
 import { t, type NavigationRequest } from '@itookit/common';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
-import type { EditorFileReference, EditorHostContext } from '@itookit/ui-common';
+import type { EditorFileReference, EditorHostContext } from '@itookit/ui-common-adapter';
 
 /** Store the quote before mounting chat, so a later reopen also restores the draft. */
 export function createFileChatHandler(backend: Pick<ApplicationBackend, 'createSessionDraft'>,

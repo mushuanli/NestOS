@@ -1,6 +1,6 @@
 import {createModuleLogger, randomUUID, t} from '@itookit/common';
 import type {AttachmentRef, ChatView, DraftAttachment, MessageAction} from '@itookit/llm-ui';
-import type {OcrControls} from '@itookit/ui-common';
+import type {OcrControls} from '@itookit/ui-common-adapter';
 import {OcrReviewPanel} from '../components/input/OcrReviewPanel';
 import {downscaleImageForOcr} from '../utils/imageDownscale';
 

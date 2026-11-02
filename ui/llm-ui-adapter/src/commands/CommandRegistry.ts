@@ -9,7 +9,7 @@ import {
     RenameBranchCommand, DeleteBranchCommand,
 } from './BranchCommands';
 import { BatchDeleteCommand, BatchCopyCommand } from './BatchCommands';
-import { copyText, Toast } from '@itookit/ui-common';
+import { copyText, Toast } from '@itookit/ui-common-adapter';
 
 /**
  * 命令注册中心

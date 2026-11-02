@@ -1,7 +1,7 @@
 import { escapeHTML, randomUUID, t } from '@itookit/common';
 import type { OcrService } from '@itookit/app-contracts/services';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
-import { Modal } from '@itookit/ui-common';
+import { Modal } from '@itookit/ui-common-adapter';
 
 /** Edit the referenced shared prompt without leaving the defaults page. */
 export async function editOcrPrompt(service: OcrService, agents: IAgentManagementService): Promise<void> {

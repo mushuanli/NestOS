@@ -1,7 +1,7 @@
 import { t } from '@itookit/common';
 import { MODEL_OPERATIONS, type ModelOperation } from '@itookit/kernel-adapters/contracts';
 import type { ToolboxInventory, ToolboxResources } from '@itookit/app-contracts/services';
-import type { MenuItem } from '@itookit/ui-common';
+import type { MenuItem } from '@itookit/ui-common-adapter';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 
 function defaults(inventory: ToolboxInventory) { return inventory.modelDefaults ?? (inventory.defaultConnectionId ? { chat: inventory.defaultConnectionId } : {}); }

@@ -1,5 +1,5 @@
 import { t } from '@itookit/common';
-import { SettingsAutoSave } from '@itookit/ui-common';
+import { SettingsAutoSave } from '@itookit/ui-common-adapter';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { AgentProjectPreferences } from './agent-project-preferences';
 import { sessionCreationReason } from './session-creation-policy';

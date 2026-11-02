@@ -29,7 +29,7 @@ import {rerunSessionFlow} from '../flows/rerun-flow';
 import { promptFlowParameters } from '../components/FlowParameterForm';
 // @file: llm-ui/shell/LLMWorkspaceEditor.ts
 
-import { IEditor, EditorHostContext, EditorEvent, EditorEventMap, EditorEventCallback, CollapseExpandResult, Toast } from '@itookit/ui-common';
+import { IEditor, EditorHostContext, EditorEvent, EditorEventMap, EditorEventCallback, CollapseExpandResult, Toast } from '@itookit/ui-common-adapter';
 import { EventBus } from '@itookit/vfs-core';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { EventEnvelope, InteractionRequest, JsonValue } from '@itookit/durable-kernel/contracts';

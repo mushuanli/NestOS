@@ -5,7 +5,7 @@ import {FlowsEditor} from '../../llm-ui-adapter/src/components/FlowsEditor';
 import {SessionRepository, ContentTransferService, SessionDirectoryStorageResolver} from '@itookit/llm-session';
 import {createOperationLedger, type OperationRecord} from '@itookit/llm-ui';
 import {StateService} from '../../llm-ui-adapter/src/services/StateService';
-import {Toast} from '@itookit/ui-common';
+import {Toast} from '@itookit/ui-common-adapter';
 import type {DurableFlowSnapshot} from '@itookit/llm-flow/contracts';
 import { Kernel } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';

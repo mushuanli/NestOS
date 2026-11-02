@@ -1,5 +1,5 @@
 import { StudyView, type StudyHost } from '@itookit/mdxeditor';
-import { IEditor } from '@itookit/ui-common';
+import { IEditor } from '@itookit/ui-common-adapter';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { getLocale } from '@itookit/common';
 import { createAdapterStore } from './srs-store';

@@ -116,6 +116,7 @@ export interface ConnectionOption {
 // ============================================================
 
 export interface ChatSessionSettings {
+    harnessConnectionId?: string;
     imageResize?: import('@itookit/kernel-adapters/contracts').ImageResizePolicy;
     executionMode?: ChatExecutionMode;
     /** Fixed after the first accepted direct run. */

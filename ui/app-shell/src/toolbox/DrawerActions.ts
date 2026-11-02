@@ -1,5 +1,5 @@
 import { t } from '@itookit/common';
-import type { MenuItem } from '@itookit/ui-common';
+import type { MenuItem } from '@itookit/ui-common-adapter';
 import { createMoveOperation, type VFSNodeUI } from '@itookit/vfs-ui';
 import { showNameDialog } from '../files/project-dialog';
 import { drawerField } from './drawer-field';

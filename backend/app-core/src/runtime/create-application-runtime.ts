@@ -1,3 +1,4 @@
+import {prepareHarnessDraftConnection} from '../projects/harness-draft-connection';
 import {reportKanbanHealth, kanbanFailureCode} from '../kanban/health-events';
 import {withProjectEnvironment} from '../projects/project-environment';
 import {createPersonalKanban} from '../kanban/personal';
@@ -310,6 +311,11 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             resolveConnection: async id => { await initializeProjects(); return remoteConnections!.resolveConnection(id); },
             projectHarness: async (id, settings) => { await initializeProjects(); return remoteConnections!.projectHarness(id, settings); },
         } : undefined);
+        projects.harnessDraftConnection = async (id, target) => {
+            await initializeProjects();
+            if (!projects.remoteMounts) throw new Error('REMOTE_PROJECT_UNAVAILABLE');
+            return prepareHarnessDraftConnection(executionConnections, projects.remoteMounts, id, target);
+        };
         agentService.configureHarnessConnections(id => executionConnections.freeze(id), async () =>
             (await executionConnections.list()).flatMap(record => record.connection ? [record.connection] : []), {
             get: id => executionConnections.get(id), save: (connection, revision) => executionConnections.save(connection, revision),

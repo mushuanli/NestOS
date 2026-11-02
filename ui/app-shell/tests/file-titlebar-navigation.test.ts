@@ -17,10 +17,12 @@ it('uses the existing file title bar for windows and overflow actions while reta
     const release = setupMobileWorkspaceView(layout, sidebar, content);
     const tab = await tabs.open('/note.md', 'note.md', false), mount = document.createElement('div'); tab.panel.append(mount);
     const editor = await defaultEditorFactory(mount, {target: {kind: 'file', path: '/note.md'}, title: 'note.md', initialContent: 'Original', initialMode: 'edit',
+        mountTitleBar: (slot, parts) => tabs.mountTitleBar(slot, parts),
         mountWindowList: slot => tabs.mountWindowList(slot), hostContext: {saveContent: async () => {}, toggleSidebar: () => {layout.dataset.mobileView = 'list';}}}) as MDxEditor;
     try {
         await vi.waitFor(() => expect(layout.dataset.mobileHeader).toBe('embedded'));
         expect(tab.panel.querySelectorAll('.mdx-editor-titlebar')).toHaveLength(1);
+        expect(tab.panel.querySelectorAll('.ui-content-titlebar')).toHaveLength(1);
         expect(tab.panel.querySelectorAll('.workbench-window-list')).toHaveLength(1);
         expect(tab.panel.querySelector('[data-button-id="toggle-sidebar"]')?.getAttribute('aria-label')).toBe('返回上一页');
         const title = tab.panel.querySelector<HTMLInputElement>('.mdx-editor-titlebar__title')!; expect(title.value).toBe('note.md');

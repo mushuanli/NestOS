@@ -12,6 +12,8 @@ export function sessionSettings(raw: string | null | undefined, manifest: Conver
 
 /** Run inside the settings transaction so stale preferences cannot undo admission. */
 export function mergeSessionSettings(current: ChatSessionSettings, patch: Partial<ChatSessionSettings>): ChatSessionSettings {
+    if (current.harnessConnectionId && Object.hasOwn(patch, 'harnessConnectionId') && patch.harnessConnectionId !== current.harnessConnectionId)
+        throw Object.assign(new Error('Harness execution target is fixed for this Session'), {code: 'HARNESS_CONNECTION_CHANGED'});
     return { ...current, ...patch, ...mergeExecutionMode(current, patch),
         version: '1.0', updatedAt: new Date().toISOString() };
 }

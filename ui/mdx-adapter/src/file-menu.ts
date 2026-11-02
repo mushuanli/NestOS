@@ -1,7 +1,7 @@
 import {compareFileContents} from './file-compare';
 import {ACTION_ICONS, FILE_BROWSER_ICONS, createModuleLogger, randomUUID, t} from '@itookit/common';
 import type {MDxEditor} from '@itookit/mdxeditor';
-import type {EditorOptions} from '@itookit/ui-common';
+import type {EditorOptions} from '@itookit/ui-common-adapter';
 
 const log = createModuleLogger('file-menu');
 /** Read file details only when requested; explicit reload never writes or replaces a dirty draft. */

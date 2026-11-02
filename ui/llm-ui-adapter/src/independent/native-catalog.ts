@@ -1,5 +1,5 @@
 import {t} from '@itookit/common';
-import type {ConversationSnapshot} from '@itookit/ui-common';
+import type {ConversationSnapshot} from '@itookit/ui-common-adapter';
 
 /** A partial command directory does not make the conversation or its read-only queries offline. */
 export function nativeCatalogNotice(state: ConversationSnapshot): {code: string; message: string} | undefined {

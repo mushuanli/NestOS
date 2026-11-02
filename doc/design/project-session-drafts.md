@@ -30,7 +30,7 @@ app-core/src/runtime/project-draft-recovery.ts
   attachProjectDraftRecovery         事件接线与关闭时等待在途恢复
 app-shell/src/projects/project-draft-editor.ts
   createProjectDraftControls         可用性检查、打开编辑器，不读写草稿记录
-ui-common/src/interfaces/SessionDraftControls.ts
+ui-common-adapter/src/interfaces/SessionDraftControls.ts
   SessionDraftControls               UI 与宿主之间的独立契约
 llm-ui-adapter/src/shell/drafts/
   ChatDraftEditor.ts                 共享 ChatView 草稿、同视图转正与宿主接线

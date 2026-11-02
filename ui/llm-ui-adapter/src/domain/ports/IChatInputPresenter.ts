@@ -16,7 +16,7 @@ export type ChatInputSettings =
         ChatOverrides,
         'branchMode' | 'retentionMode' | 'flowId' | 'flowRevision' | 'flowParameters'
     >
-    & { modelId?: string; nativeModelSelection?: import('@itookit/ui-common').ConversationModelSelection & {executorId: string} };
+    & { modelId?: string; nativeModelSelection?: import('@itookit/ui-common-adapter').ConversationModelSelection & {executorId: string} };
 
 export interface IChatInputConfig {
     draftToken?: string;
@@ -56,7 +56,7 @@ export interface IChatInputPresenter {
     restoreRecovery(snapshot: unknown): void;
     cancelPendingSend?(): void;
     hideNativeModelPicker?(): void;
-    getNativeModelSelection?(): import('@itookit/ui-common').ConversationModelSelection | undefined;
+    getNativeModelSelection?(): import('@itookit/ui-common-adapter').ConversationModelSelection | undefined;
     openConnectionPicker(): void;
     setLoading(loading: boolean): void;
     setAvailability?(availability: {canSend: boolean; canInterrupt: boolean}): void;

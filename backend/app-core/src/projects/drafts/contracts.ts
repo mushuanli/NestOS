@@ -6,6 +6,8 @@ export type RemoteDraftTarget = Omit<NonNullable<ProjectDraftPromotion['remote']
 export interface ProjectDraftRecord {
     version: 1; id: string; state: 'draft' | 'submitting'; data: string;
     sessionId?: string; submissionId?: string; title?: string;
+    attachmentScopeId?: string;
+    harnessConnectionId?: string;
     remoteTarget?: RemoteDraftTarget;
 }
 /** Transaction adapter used by project policy; no VFS types cross this port. */
@@ -15,7 +17,8 @@ export interface DraftStore {
     load(): Promise<ProjectDraftRecord>;
     saveData(data: string): Promise<void>;
     reset(): Promise<void>;
-    begin(title: string, remoteTarget?: RemoteDraftTarget): Promise<ProjectDraftRecord>;
+    moveTo?(projectId: string): Promise<void>;
+    begin(title: string, remoteTarget?: RemoteDraftTarget, harnessConnectionId?: string): Promise<ProjectDraftRecord>;
     promote(remote?: ProjectDraftPromotion['remote']): Promise<ProjectDraftPromotion | undefined>;
     wasPromoted(): Promise<boolean>;
 }

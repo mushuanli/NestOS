@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('@itookit/llm-ui', async () => ({...await vi.importActual('@itookit/llm-ui'), PopupPanel: class { destroy() {} }}));
-vi.mock('@itookit/ui-common', () => ({ Toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() }, showConfirmDialog: vi.fn() }));
+vi.mock('@itookit/ui-common-adapter', () => ({ Toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() }, showConfirmDialog: vi.fn() }));
 import { SlashCommandPlugin } from '../components/input/plugins/SlashCommandPlugin';
 import { buildSlashCallbacks, type SlashCommandRouterDeps } from './SlashCommandRouter';
 import type { InputPluginContext } from '../components/input/plugins/InputPlugin';

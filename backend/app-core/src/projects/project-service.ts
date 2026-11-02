@@ -32,6 +32,7 @@ export class ProjectService {
     async navigation(request: import('@itookit/app-contracts/services').ProjectNavigationRequest) {
         return readProjectNavigation(this, this.repository, request, await this.defaultProjects.getId());
     }
+    harnessDraftConnection?: (projectId: string, target: import('./harness-draft-connection').DraftHarnessTarget) => Promise<string>;
     execution?: ProjectExecutionService;
     private remote?: ProjectRemoteMountService;
     get remoteMounts(): ProjectRemoteMountService | undefined { return this.remote; }
@@ -62,8 +63,12 @@ export class ProjectService {
                 .map(session => [session.id, session.title]));
         });
         const remoteDrafts = new RemoteDraftRecovery(root, id => this.remoteMounts?.list(id) ?? []);
-        this.drafts = new ProjectDraftService(id => new ProjectDraftStore(root, id), repository, async () => (await this.list()).map(item => item.project.id), async id => {
+        this.drafts = new ProjectDraftService(id => new ProjectDraftStore(root, id), repository, async () => (await this.list()).map(item => item.project.id), async (id, request) => {
             const project = await this.get(id);
+            if (request?.harness) {
+                if (!this.harnessDraftConnection) throw new FSError('ECAPABILITY', 'Project harness preparation is unavailable');
+                return this.harnessDraftConnection(id, request.harness);
+            }
             if (project.project.source?.kind === 'remote' || this.remoteMounts?.list(id).some(mount => mount.at === '/'))
                 throw new FSError('EACCES', 'Remote project drafts require a remote executor');
         }, (id, record) => remoteDrafts.receipt(id, record), initializeDraftExecution,
@@ -484,7 +489,7 @@ export class ProjectService {
         try { return (await source.fs.capabilitiesAt('/')).readonly; } finally { await source.dispose(); }
     }
     /** The editor and tools share canonical project paths; openFiles remains a source view. */
-    async openWorkspace(folder: string) {
+    async openWorkspace(folder: string, options?: {initialPath?: string}) {
         const catalog = await this.list(), project = catalog.find(item => item.path === folder);
         if (!project) throw new FSError('ENOENT', 'Project not found');
         const source = await this.openProjectFiles(project, catalog);
@@ -492,8 +497,15 @@ export class ProjectService {
             const fs = createFileSystemView({ viewId: `project-workspace:${source.fs.viewId}`, mounts: [
                 { mountId: 'workspace', at: WORKSPACE_PATH, fs: source.fs, access: 'rw' },
             ] });
+            let initialFile: {node: import('@itookit/vfs-core').FSNode | null; readonly: boolean} | undefined;
+            try {
+                if (options?.initialPath !== undefined) {
+                    const [node, access] = await Promise.all([fs.driver.getNode(options.initialPath), fs.capabilitiesAt(options.initialPath)]);
+                    initialFile = {node, readonly: access.readonly};
+                }
+            } catch (error) {await fs.dispose(); throw error;}
             const stop = trackFavoriteFiles(this.favorites, project.project.id, fs);
-            return { fs, async dispose() { try { await stop(); } finally { try { await fs.dispose(); } finally { await source.dispose(); } } } };
+            return { fs, initialFile, async dispose() { try { await stop(); } finally { try { await fs.dispose(); } finally { await source.dispose(); } } } };
         } catch (error) { await source.dispose(); throw error; }
     }
     async assertMove(from: string | null, to: string | null, projectRoot = false): Promise<void> {

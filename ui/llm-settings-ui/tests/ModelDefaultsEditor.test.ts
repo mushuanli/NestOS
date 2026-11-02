@@ -1,8 +1,10 @@
+import type {OcrControls} from '@itookit/ui-common-adapter';
+
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModelDefaultsEditor } from '../src/editors/ModelDefaultsEditor';
 import { t } from '@itookit/common';
-import type { OcrControls } from '@itookit/ui-common';
+
 
 afterEach(() => { document.body.replaceChildren(); });
 function fixture(ocr?: OcrControls) {

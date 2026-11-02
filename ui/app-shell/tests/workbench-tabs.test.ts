@@ -6,12 +6,25 @@ import { createDirectoryList, refreshDirectoryList, refreshDirectorySelection } 
 import { readWorkbenchSnapshot, type WorkbenchSnapshot } from '../src/workbench/state';
 import { connectEditorLifecycle } from '../src/browser/editor-connector';
 import { LatestViewLoad } from '../src/lifecycle/view-load';
+import {compactNavigation} from '../src/workbench/compact-navigation';
 import { Workbench } from '../src/core/Workbench';
 import { createDirectoryBreadcrumbs } from '../src/workbench/directory-breadcrumbs';
 import { FILE_ICONS } from '@itookit/common';
 import { createVFS, MemoryBackend, FSError } from '@itookit/vfs-core';
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
+
+it('shows project context once when a restored conversation title already includes it', () => {
+    const container = document.createElement('div'), view = compactNavigation(container, 'Project', () => {}, () => {});
+    try {
+        view.update('Project · Session', 1);
+        expect(container.querySelector<HTMLElement>('.ui-content-titlebar__context')!.hidden).toBe(true);
+        expect(container.querySelector('strong')!.textContent).toBe('Project · Session');
+        view.update('Session', 1);
+        expect(container.querySelector<HTMLElement>('.ui-content-titlebar__context')!.hidden).toBe(false);
+        expect(container.querySelector('strong')!.textContent).toBe('Session');
+    } finally {view.destroy();}
+});
 
 it('clears a removed directory view, disables creation and recovers without hiding IO failures', async () => {
     const refresh = vi.fn(async () => [{ id: '/docs/a.md', name: 'a.md', type: 'file' }]);
@@ -464,7 +477,7 @@ it('uses a display-only path in compact directory navigation and restores docume
     const dir = await f.tabs.open('directory', '文件', false);
     f.tabs.context(dir.id, '个人');
     f.tabs.setNavigationLabel(dir.id, createDirectoryBreadcrumbs([{id: '/', label: '所有项目'}, {id: '/p', label: '个人'}, {id: '/p/files', label: '文件'}], open));
-    const label = () => f.container.querySelector('.workbench-tabs__navigation .workbench-compact-navigation__label')!;
+    const label = () => f.container.querySelector('.workbench-tabs__navigation .ui-content-titlebar__identity')!;
     try {
         expect(label().textContent).toBe('所有项目 / 个人 / 文件');
         expect(label().querySelector('strong')).toBeNull();
@@ -502,4 +515,20 @@ it('reveals activated tabs horizontally, preserves manual browsing on metadata u
         scroll.mockClear(); f.tabs.activate('c'); await f.tabs.destroy(); flush();
         expect(scroll).not.toHaveBeenCalled(); expect(frames.size).toBe(0);
     } finally {await f.tabs.destroy();}
+});
+
+it('moves one editable draft label between desktop and mobile navigation without replacing its DOM', async () => {
+    const handlers = new Set<() => void>(), media = {matches: false, addEventListener: (_: string, run: () => void) => handlers.add(run), removeEventListener: (_: string, run: () => void) => handlers.delete(run)};
+    vi.stubGlobal('matchMedia', () => media);
+    const host = document.createElement('div'), header = document.createElement('div'), slot = document.createElement('div'), label = document.createElement('input');
+    document.body.append(host, header); header.append(label, slot); label.value = 'Keep title';
+    const tabs = new WorkbenchTabs(host, {activate: vi.fn(), dispose: async () => {}, empty() {}, error() {}});
+    const close = tabs.mountCompactNavigation(slot, 'Project', () => {}, label);
+    try {
+        expect(label.parentElement).toBe(header);
+        media.matches = true; handlers.forEach(run => run()); expect(label.closest('.workbench-compact-navigation')).not.toBeNull();
+        await tabs.open('draft:project', 'Old title', false); tabs.title('draft:project', 'Updated tab title');
+        expect(label.value).toBe('Keep title'); expect(label.closest('.workbench-compact-navigation')).not.toBeNull();
+        media.matches = false; handlers.forEach(run => run()); expect(label.parentElement).toBe(header);
+    } finally {close(); await tabs.destroy(); vi.unstubAllGlobals();}
 });

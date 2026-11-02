@@ -4,7 +4,7 @@ import {SessionCommand, type SubmissionRequest} from '@itookit/llm-session/contr
 import {SendMessageCommand} from './SendMessageCommand';
 import type {CommandContext} from './CommandContext';
 import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
-import {Toast} from '@itookit/ui-common';
+import {Toast} from '@itookit/ui-common-adapter';
 
 const target = {kind: 'agent' as const, id: 'worker', version: '1', digest: 'published'};
 const context = () => ({revision: 1, sessionId: 'session', branchId: 'main', target: {...target}, selection: {

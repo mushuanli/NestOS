@@ -1,3 +1,4 @@
+import {promptHarnessNode} from './prompt-harness';
 import { DELEGATION_LIMITS, type FlowNodeDefinition } from '@itookit/llm-flow/contracts';
 import { type ChatMessage, type ContextSnapshot } from '@itookit/llm-context';
 import { type LLMSkill } from '../contracts';
@@ -101,6 +102,8 @@ async function bindIsolatedInvocation(node: FlowNodeDefinition, defaults: FlowNo
 }
 
 async function bindAgentSource(source: AgentSource, context: BindingContext, templateDepth = 0) {
+    const connection = context.task.input.instructionConnectionBinding?.harnessConnection;
+    if (connection) source = {...source, config: promptHarnessNode(source.config, connection)};
     const identity = await resolveIdentity(source.config, context);
     const messages = await resolveMessages(source.config, identity, context);
     const harness = identity.referencedAgent?.execution?.kind === 'harness' || record(source.config.execution).kind === 'harness';
@@ -138,13 +141,13 @@ async function resolveIdentity(
 ): Promise<IdentityLayer> {
     const agentId = stringValue(config.agentId) ?? stringValue(context.flowDefaults.agentId);
     const referencedAgent = agentId ? await resolveAgent(agentId, context.agents) : undefined;
-    const skillIds = unique([
+    const skillIds = context.task.input.instructionConnectionBinding?.harnessConnection ? [] : unique([
         ...(context.setup.config.capabilityPolicy?.skillIds ?? []),
         ...strings(context.flowDefaults.skillIds),
         ...(referencedAgent?.capabilityPolicy?.skillIds ?? []),
         ...strings(config.skillIds),
     ]);
-    const skills = await context.agents.getSkills(skillIds, context.task.sessionId);
+    const skills = skillIds.length ? await context.agents.getSkills(skillIds, context.task.sessionId) : [];
     return { referencedAgent, skills: skills.filter(skill => skill.enabled && !skill.disableModelInvocation && skill.triggerStrategy !== 'action') };
 }
 

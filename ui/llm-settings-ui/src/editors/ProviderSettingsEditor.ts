@@ -4,7 +4,7 @@ import { renderProviderApiReference } from './provider-api-reference';
 import {providerTestResult} from './provider-test-result';
 import { bindReasoningFields, readReasoningDeclaration, renderReasoningDeclaration } from './model-reasoning-form';
 import { renderMediaDeclaration, readMediaEndpoints, readModelOperations, bindMediaDeclarations, syncMediaDeclarations } from './provider-media-form';
-import { SettingsValidationError } from '@itookit/ui-common';
+import { SettingsValidationError } from '@itookit/ui-common-adapter';
 import { ProviderAuthorizationPanel } from './provider-authorization';
 import { readProviderForm, renderProviderAdvanced, syncProtocolControls, renderProtocolOptions } from './provider-form';
 import { getPrimaryProtocol, getProviderProtocols } from '@itookit/driver-llm/contracts';
@@ -27,11 +27,11 @@ import {matchesModelQuery} from '../utils/modelChoice';
 // 注意：tier 配置（optimal/standard/fast 映射）属于 Connection 层，不在此处配置。
 
 import { randomUUID, generateShortUUID } from '@itookit/common';
-import { BaseSettingsEditor, requestSettingsSave } from '@itookit/ui-common';
+import { BaseSettingsEditor, requestSettingsSave } from '@itookit/ui-common-adapter';
 import type { IConnectionService, MediaProbeExamples } from '@itookit/kernel-adapters/contracts';
 import type { ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
 import type { LLMProvider, LLMModel, ModelCategory } from '@itookit/driver-llm/contracts';
-import { Modal, Toast } from '@itookit/ui-common';
+import { Modal, Toast } from '@itookit/ui-common-adapter';
 import { exportBundleToLLM, fromConnectionDef } from '@itookit/kernel-adapters/llm/config';
 import { runLLMImport } from './llm-import';
 
@@ -63,7 +63,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     protected afterRestoreRecovery(): void {
         if (this.providerForm) {this.syncAuthorizationForm(this.providerForm); this.syncCatalogControls(this.providerForm);}
     }
-    constructor(container: HTMLElement, service: IConnectionService, options: import('@itookit/ui-common').EditorOptions,
+    constructor(container: HTMLElement, service: IConnectionService, options: import('@itookit/ui-common-adapter').EditorOptions,
         private readonly mediaProbeExamples: MediaProbeExamples = {}) { super(container, service, options); }
     private editModels: LLMModel[] = [];
     private reasoningDrafts = new WeakMap<LLMModel, [string | undefined, string | undefined]>();

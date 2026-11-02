@@ -1,5 +1,5 @@
+import {preparedTitle} from './title';
 import {FSError, type IFileSystem} from '@itookit/vfs-core';
-import {formatDefaultFileTitle} from '@itookit/common';
 import {RemoteConversationStore} from '../remote-conversation-store';
 import {ProjectDraftStore} from './store';
 import type {ProjectDraftRecord, ProjectDraftPromotion, RemoteDraftTarget} from './contracts';
@@ -10,10 +10,10 @@ export function remoteConversationKey(projectId: string, target: RemoteDraftTarg
 }
 
 /** Freeze the authorized executor before any native operation can escape the host. */
-export async function prepareRemoteDraft(fs: IFileSystem, projectId: string, draftId: string, target: RemoteDraftTarget): Promise<void> {
+export async function prepareRemoteDraft(fs: IFileSystem, projectId: string, draftId: string, target: RemoteDraftTarget, title?: string): Promise<ProjectDraftRecord> {
     const store = new ProjectDraftStore(fs, projectId), record = await store.load();
     if (record.id !== draftId) throw new FSError('ECONFLICT', 'Project draft identity changed');
-    await store.begin(formatDefaultFileTitle(), target);
+    return store.begin(preparedTitle(title), target);
 }
 
 /** Recovery reads the submission target, never a later input preference. */

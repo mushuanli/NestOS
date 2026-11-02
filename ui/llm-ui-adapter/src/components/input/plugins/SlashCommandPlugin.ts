@@ -8,7 +8,7 @@ import type { SkillInfo, SkillInvocation } from '../../../domain/types';
 import { parseSkillArgs } from '../SkillInvocationParser';
 import { injectStyle } from '../../../utils/styleInjector';
 import { insertBeforeWrapper } from '../../../utils/domInsertion';
-import { Toast } from '@itookit/ui-common';
+import { Toast } from '@itookit/ui-common-adapter';
 import { ENTITY_ICONS, t, type LocaleKey } from '@itookit/common';
 
 // ── Tool arg parser ──────────────────────────────────────────────────────────

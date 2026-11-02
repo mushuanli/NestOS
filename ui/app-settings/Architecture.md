@@ -73,7 +73,7 @@ const factory = createSettingsFactory(
 
 - SettingsService、LabelStore 与导入导出用例位于 app-core/settings；SnapshotService 位于 Web 存储宿主。设置 UI 通过 SettingsPort 使用能力。
 - 后端设置数据持久化在 VFS `/etc` 视图（宿主等待 `SettingsService.init()` 后才返回端口）：标签 `/tags.seq`、联系人 `/contacts.json`。SettingsPort 不暴露 init；workspaces 仅含描述，openWorkspace(name) 按需解析并复用已授权文件视图。
-- 编辑器继承 `BaseSettingsEditor`（`@itookit/ui-common`），实现 `IEditor`
+- 编辑器继承 `BaseSettingsEditor`（`@itookit/ui-common-adapter`），实现 `IEditor`
 - `StorageSettingsEditor` 的子 section 各自独立：`StorageOverviewSection`, `MigrationSection`, `SnapshotSection`, `DangerZoneSection`
 - `AppearanceSettingsEditor` 写 `/ui/theme.json`，通过 `app:theme-change` 事件广播
 - `SystemFSExploreEditor` 经 `createSystemFileInspector()` 组装只读视图：`/dev` 挂载设备描述，`/workspaces/<name>` 挂载各工作区文件系统

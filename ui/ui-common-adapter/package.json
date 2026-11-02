@@ -1,7 +1,7 @@
 {
-  "name": "@itookit/ui-common",
+  "name": "@itookit/ui-common-adapter",
   "version": "0.1.0",
-  "description": "Shared UI components, contracts, and browser utilities for the itookit ecosystem.",
+  "description": "NestOS editor contracts and host adapters for the independent UI foundation.",
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -43,7 +43,8 @@
   },
   "dependencies": {
     "@itookit/common": "workspace:*",
-    "@itookit/vfs-core": "workspace:*"
+    "@itookit/vfs-core": "workspace:*",
+    "@itookit/ui-common": "workspace:*"
   },
   "devDependencies": {
     "@itookit/common": "workspace:*",

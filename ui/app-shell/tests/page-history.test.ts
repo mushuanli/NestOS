@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {backToPreviousPage, rememberPagePresentation, writePageHistory} from '../src/navigation/page-history';
-import {installNavigationButtonPresentation} from '@itookit/ui-common';
+import {installNavigationButtonPresentation} from '@itookit/ui-common-adapter';
 import {ACTION_ICONS, t} from '@itookit/common';
 
 afterEach(() => {history.replaceState(null, '', '/'); vi.restoreAllMocks(); vi.unstubAllGlobals();});

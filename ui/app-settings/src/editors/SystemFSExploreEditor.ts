@@ -1,6 +1,6 @@
 import { t, traceBoot, fileTypeIcon, type LocaleKey } from '@itookit/common';
 import type { IFileSystem } from '@itookit/vfs-core';
-import type { EditorFactory, EditorOptions } from '@itookit/ui-common';
+import type { EditorFactory, EditorOptions } from '@itookit/ui-common-adapter';
 /**
  * @file SystemFSExploreEditor.ts
  * @desc Debug settings page — read-only view of all VFS modules.
@@ -19,7 +19,7 @@ import type { EditorFactory, EditorOptions } from '@itookit/ui-common';
  * Hidden files (names starting with ".") are visible in the tree but their
  * content is replaced with a placeholder by SystemVFSEngine.readContent().
  */
-import { BaseSettingsEditor } from '@itookit/ui-common';
+import { BaseSettingsEditor } from '@itookit/ui-common-adapter';
 import { createVFSUI, fromVFS, VFSUIShell } from '@itookit/vfs-ui';
 import '@itookit/mdxeditor/style.css';
 

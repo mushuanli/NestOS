@@ -1,5 +1,6 @@
+import {resolveChatImageResize} from './image-processing-session';
 import {t} from '@itookit/common';
-import {resolveResize, type ImageResizePolicy} from '@itookit/image-parser';
+import {type ImageResizePolicy} from '@itookit/image-parser';
 
 export class ImageResizeSettings {
     private readonly select = document.createElement('select');
@@ -20,8 +21,8 @@ export class ImageResizeSettings {
     }
     refresh(): void {
         const {override, agent} = this.get(); this.select.value = override?.mode ?? 'inherit';
-        this.edge.hidden = override?.mode !== 'max-edge'; this.edge.value = String(override?.mode === 'max-edge' ? override.maxEdge : 1024);
-        try {const effective = resolveResize(override, agent); const size = effective.mode === 'original' ? t('image.original') : String(effective.maxEdge);
+        this.edge.hidden = override?.mode !== 'max-edge'; this.edge.value = String(override?.mode === 'max-edge' ? override.maxEdge : 1600);
+        try {const effective = resolveChatImageResize(override, agent); const size = effective.mode === 'original' ? t('image.original') : String(effective.maxEdge);
             this.select.options[0].textContent = t('image.followLabel', {size}); this.hint.textContent = t('image.hint');}
         catch {this.hint.textContent = t('image.invalid');}
     }
@@ -29,7 +30,7 @@ export class ImageResizeSettings {
         const mode = this.select.value;
         const resize = mode === 'inherit' ? undefined : mode === 'original' ? {mode: 'original' as const}
             : {mode: 'max-edge' as const, maxEdge: Number(this.edge.value)};
-        try {resolveResize(resize); this.edge.setCustomValidity(''); this.changed(resize); this.refresh();}
+        try {resolveChatImageResize(resize); this.edge.setCustomValidity(''); this.changed(resize); this.refresh();}
         catch {this.edge.setCustomValidity(t('image.invalid')); this.edge.reportValidity();}
     }
 }

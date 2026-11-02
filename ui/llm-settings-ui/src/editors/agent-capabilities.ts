@@ -12,9 +12,10 @@ const ids = (value: string) => [...new Set(value.split(/[\s,]+/).filter(Boolean)
 /** Undefined and an explicit empty list have different authority semantics. */
 export function renderAgentCapabilities(agent: AgentDefinition, skills: LLMSkill[], defaultToolIds: readonly string[] = []): string {
     const policy = agent.capabilityPolicy;
+    const inherit = policy?.inheritDefaultTools ?? (policy?.toolIds === undefined);
     const selected = new Set(policy?.skillIds ?? []);
     const tools = [...new Set([...defaultToolIds, ...skills.flatMap(skill => skill.tools.map(tool => tool.toolId))])];
-    const grants = new Set(policy?.toolIds ?? defaultToolIds);
+    const grants = new Set([...(inherit ? defaultToolIds : []), ...policy?.toolIds ?? []]);
     const additional = (policy?.toolIds ?? []).filter(id => !tools.includes(id));
     const available = new Map(skills.map(skill => [skill.id, skill]));
     for (const id of selected) if (!available.has(id)) available.set(id, { id, name: id, tools: [] } as unknown as LLMSkill);
@@ -25,7 +26,7 @@ export function renderAgentCapabilities(agent: AgentDefinition, skills: LLMSkill
             <span class="agent-section__toggle" aria-hidden="true">${FILE_BROWSER_ICONS.chevron}</span>
         </button>
         <div class="agent-section__body">
-            <label class="agent-default-tools"><input type="checkbox" name="defaultTools" ${policy?.toolIds === undefined ? 'checked' : ''}> <span>${t('agent.capabilities.defaults')}</span></label>
+            <label class="agent-default-tools"><input type="checkbox" name="defaultTools" ${inherit ? 'checked' : ''}> <span>${t('agent.capabilities.defaults')}</span></label>
             <p class="agent-form-help">${t('agent.capabilities.help')}</p>
             <div class="agent-capability-group">
                 ${tools.length ? `<div class="agent-mcp-list">${tools.map(id => `<label class="agent-mcp-item"><input type="checkbox" name="toolGrant" value="${escapeHTML(id)}" ${grants.has(id) ? 'checked' : ''}><span class="agent-mcp-item__info agent-tool-id">${escapeHTML(id)}</span></label>`).join('')}</div>` : ''}
@@ -43,22 +44,23 @@ export function renderAgentCapabilities(agent: AgentDefinition, skills: LLMSkill
         </div></div>`;
 }
 
-export function readAgentCapabilities(container: HTMLElement, previous: AgentDefinition['capabilityPolicy']): AgentDefinition['capabilityPolicy'] {
+export function readAgentCapabilities(container: HTMLElement, previous: AgentDefinition['capabilityPolicy'], defaultToolIds: readonly string[] = []): AgentDefinition['capabilityPolicy'] {
     if (!container.querySelector('[data-capability-editor]')) return previous;
     const defaults = container.querySelector<HTMLInputElement>('[name="defaultTools"]')!.checked;
     const tools = container.querySelector<HTMLTextAreaElement>('[name="toolIds"]')!.value;
     const checked = (name: string) => [...container.querySelectorAll<HTMLInputElement>(`[name="${name}"]:checked`)].map(input => input.value);
-    return { ...previous, toolIds: defaults ? undefined : [...new Set([...checked('toolGrant'), ...ids(tools)])], skillIds: checked('skillIds'), mcpProfileIds: checked('mcpServers') };
+    const explicit = [...new Set([...checked('toolGrant').filter(id => !defaults || !defaultToolIds.includes(id)), ...ids(tools)])];
+    return { ...previous, inheritDefaultTools: defaults && explicit.length ? true : undefined,
+        toolIds: defaults && !explicit.length ? undefined : explicit, skillIds: checked('skillIds'), mcpProfileIds: checked('mcpServers') };
 }
 
 export function bindAgentCapabilities(container: HTMLElement, defaultToolIds: readonly string[] = []): void {
     const update = (event: Event) => {
         const input = event.target as HTMLInputElement;
         const defaults = container.querySelector<HTMLInputElement>('[name="defaultTools"]')!;
-        if (input.name === 'toolGrant' || input.name === 'toolIds') defaults.checked = false;
+        if (input.name === 'toolGrant' && defaultToolIds.includes(input.value) && !input.checked) defaults.checked = false;
         if (input.name === 'defaultTools' && defaults.checked) {
-            container.querySelectorAll<HTMLInputElement>('[name="toolGrant"]').forEach(tool => { tool.checked = defaultToolIds.includes(tool.value); });
-            container.querySelector<HTMLTextAreaElement>('[name="toolIds"]')!.value = '';
+            container.querySelectorAll<HTMLInputElement>('[name="toolGrant"]').forEach(tool => { if (defaultToolIds.includes(tool.value)) tool.checked = true; });
         }
     };
     const section = container.querySelector('[data-capability-editor]');

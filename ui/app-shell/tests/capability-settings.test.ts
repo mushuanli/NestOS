@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { AgentConfigEditor } from '../../llm-settings-ui/src/editors/AgentConfigEditor';
 import { MCPSettingsEditor } from '../../llm-settings-ui/src/editors/MCPSettingsEditor';
-import { Toast } from '@itookit/ui-common';
+import {Toast} from '@itookit/ui-common-adapter';
 import type { AgentDefinition } from '@itookit/kernel-adapters/contracts';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 
@@ -112,4 +112,19 @@ it('does not invent tool grants when the host supplies no defaults', async () =>
         expect(host.querySelectorAll('[name="toolGrant"]')).toHaveLength(0);
         expect(JSON.parse(editor.getText()).capabilityPolicy.toolIds).toBeUndefined();
     } finally { await editor.destroy(); }
+});
+
+it('combines common tools and Agent-specific tools without changing legacy explicit grants', async () => {
+    const host = document.createElement('div');
+    const editor = new AgentConfigEditor(host, {}, service() as never, {defaultToolIds: ['Read']});
+    await editor.init(host, JSON.stringify({id: 'a', name: 'A', type: 'agent', config: {},
+        capabilityPolicy: {inheritDefaultTools: true, toolIds: ['custom']}}));
+    await vi.waitFor(() => expect(host.querySelector('[name="defaultTools"]')).not.toBeNull());
+    expect(host.querySelector<HTMLInputElement>('[name="defaultTools"]')!.checked).toBe(true);
+    expect(JSON.parse(editor.getText()).capabilityPolicy).toMatchObject({inheritDefaultTools: true, toolIds: ['custom']});
+    const extra = host.querySelector<HTMLTextAreaElement>('[name="toolIds"]')!;
+    extra.value = 'custom\nother'; extra.dispatchEvent(new Event('input', {bubbles: true}));
+    expect(host.querySelector<HTMLInputElement>('[name="defaultTools"]')!.checked).toBe(true);
+    expect(JSON.parse(editor.getText()).capabilityPolicy.toolIds).toEqual(['custom', 'other']);
+    editor.destroy();
 });

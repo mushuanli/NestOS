@@ -1,8 +1,8 @@
-import type { EditorOptions } from '@itookit/ui-common';
+import type { EditorOptions } from '@itookit/ui-common-adapter';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import { toolConfiguration } from './tool-configuration';
 import {showToolPackages} from './ToolPackagesDialog';
-import { BaseSettingsEditor, editorResourceId } from '@itookit/ui-common';
+import { BaseSettingsEditor, editorResourceId } from '@itookit/ui-common-adapter';
 import { t } from '@itookit/common';
 import type { ToolboxInventory } from '@itookit/app-contracts/services';
 

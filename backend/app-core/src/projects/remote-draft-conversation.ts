@@ -41,7 +41,7 @@ export function draftHarness(client: HarnessClient, recovery: RemoteConversation
 }
 
 /** Hide provisional identities from navigation without changing native ownership. */
-export function draftConversation(source: HarnessConversationPort, recovery: RemoteConversationStore): HarnessConversationPort {
+export function draftConversation(source: HarnessConversationPort, recovery: RemoteConversationStore, draftTitle?: string): HarnessConversationPort {
     let initialTitle: string | undefined;
     const snapshot = (): HarnessConversationSnapshot => {
         const state = source.snapshot(), submittedTurnId = state.submittedTurnId ?? recovery.submittedTurnId;
@@ -56,7 +56,7 @@ export function draftConversation(source: HarnessConversationPort, recovery: Rem
             const submitted = !!recovery.submittedTurnId;
             const result = await Reflect.apply(value, target, args);
             if (key === 'rename') initialTitle = undefined;
-            if (!submitted && snapshot().submittedTurnId) initialTitle ??= formatDefaultFileTitle();
+            if (!submitted && snapshot().submittedTurnId) initialTitle ??= draftTitle ?? formatDefaultFileTitle();
             if (initialTitle && source.snapshot().title === initialTitle) initialTitle = undefined;
             if (initialTitle && ['send', 'command', 'reconcile', 'refresh'].includes(String(key)) && source.snapshot().canRename && source.rename) {
                 try { await source.rename(initialTitle); initialTitle = undefined; }

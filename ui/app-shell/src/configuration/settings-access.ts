@@ -2,7 +2,7 @@ import { createSettingsFactory, createSettingsNavigation } from '@itookit/app-se
 import type { SettingsFactoryOptions } from '@itookit/app-settings';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import type { SettingsWorkspaceSource } from '@itookit/app-contracts/settings';
-import type { EditorFactory } from '@itookit/ui-common';
+import type { EditorFactory } from '@itookit/ui-common-adapter';
 import type { IFileSystem } from '@itookit/vfs-core';
 import type { WorkspaceConfig } from '../types';
 import { traceBoot } from '@itookit/common';

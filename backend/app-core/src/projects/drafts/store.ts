@@ -1,3 +1,4 @@
+import {moveProjectDraft} from './move';
 import { emptyDraft, decodeDraftRecord } from './record-codec';
 import { randomUUID } from '@itookit/common';
 import {nativeIdentityKey} from './remote-identity';
@@ -31,24 +32,25 @@ export class ProjectDraftStore {
     }
     putAttachment(content: ArrayBuffer): Promise<string> {
         return this.enqueue(async () => {
-            const draftId = this.record.id, id = randomUUID(), parentPath = this.attachmentDirectory(draftId);
+            const draftId = this.record.id, id = randomUUID(), parentPath = this.attachmentDirectory(this.record.attachmentScopeId ?? draftId);
             await this.assertCurrentDraft(draftId);
             await this.fs.driver.createFile({ parentPath, name: id, content, recursive: true });
             try { await this.assertCurrentDraft(draftId); }
-            catch (error) { await this.removeAttachments(draftId); throw error; }
+            catch (error) { await this.fs.driver.delete([`${parentPath}/${id}`]); throw error; }
             return id;
         });
     }
     readAttachment(id: string): Promise<ArrayBuffer> {
         if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new FSError('EINVAL', 'Invalid attachment identity');
-        return this.fs.driver.readContent(`${this.attachmentDirectory(this.record.id)}/${id}`, { encoding: 'binary' });
+        return this.fs.driver.readContent(`${this.attachmentDirectory(this.record.attachmentScopeId ?? this.record.id)}/${id}`, { encoding: 'binary' });
     }
     private attachmentDirectory(draftId: string): string {
         return `/var/lib/projects/${this.projectId}/draft-attachments/${draftId}`;
     }
     private async assertCurrentDraft(id: string): Promise<void> {
         const raw = await this.fs.meta.seq!.getEntry(this.path, 'draft');
-        if (decodeDraftRecord(raw).record.id !== id) throw conflict();
+        const current = decodeDraftRecord(raw).record;
+        if (current.id !== id || current.attachmentScopeId !== this.record.attachmentScopeId) throw conflict();
     }
     private async removeAttachments(id: string): Promise<void> {
         try { await this.fs.driver.delete([this.attachmentDirectory(id)], { recursive: true }); }
@@ -63,42 +65,49 @@ export class ProjectDraftStore {
             for (const entry of await this.fs.driver.getChildren(root)) {
                 if (entry.type !== 'directory' || !/^[a-zA-Z0-9_-]+$/.test(entry.name)) continue;
                 const raw = await this.fs.meta.seq!.getEntry(this.path, 'draft');
-                if (decodeDraftRecord(raw).record.id !== entry.name) await this.removeAttachments(entry.name);
+                const current = decodeDraftRecord(raw).record;
+                if ((current.attachmentScopeId ?? current.id) !== entry.name) await this.removeAttachments(entry.name);
             }
         } catch (error) { console.warn('Retired draft attachment sweep failed', error); }
     }
     saveData(data: string): Promise<void> { return this.save({ data }); }
     reset(): Promise<void> { return this.save(null); }
+    moveTo(projectId: string): Promise<void> {
+        return this.enqueue(async () => {
+            const target = new ProjectDraftStore(this.fs, projectId); await target.load();
+            await moveProjectDraft(this.fs, this.projectId, projectId, {...this.record});
+        });
+    }
     async wasPromoted(): Promise<boolean> {
         return await this.fs.meta.seq!.getEntry(this.path, `promotion/${this.record.id}`) !== null;
     }
     private save(patch: Partial<ProjectDraftRecord> | null): Promise<void> {
         return this.enqueue(async () => {
-            const oldId = this.record.id;
+            const oldId = this.record.id, oldScope = this.record.attachmentScopeId ?? oldId;
             const record = await this.fs.meta.seq!.transaction!(async tx => {
                 const current = await tx.getEntry(this.path, 'draft');
                 const base = current === this.raw ? this.record : decodeDraftRecord(current).record;
                 // Preparation may add immutable submission metadata without editing the input.
-                if (base.id !== oldId || base.data !== this.record.data) throw conflict();
+                if (base.id !== oldId || base.attachmentScopeId !== this.record.attachmentScopeId || base.data !== this.record.data) throw conflict();
                 const next = patch === null ? emptyDraft() : {...base, ...patch};
                 if (!await tx.compareAndSet(this.path, 'draft', { expected: current, value: JSON.stringify(next) })) throw conflict();
                 return next;
             });
             this.raw = JSON.stringify(record); this.record = record;
-            if (patch === null) await this.removeAttachments(oldId);
+            if (patch === null) await this.removeAttachments(oldScope);
         });
     }
-    begin(title: string, remoteTarget?: RemoteDraftTarget): Promise<ProjectDraftRecord> {
+    begin(title: string, remoteTarget?: RemoteDraftTarget, harnessConnectionId?: string): Promise<ProjectDraftRecord> {
         return this.enqueue(async () => {
             const record = await this.fs.meta.seq!.transaction!(async tx => {
                 const raw = await tx.getEntry(this.path, 'draft'), current = decodeDraftRecord(raw).record;
-                if (current.id !== this.record.id || current.data !== this.record.data) throw conflict();
+                if (current.id !== this.record.id || current.attachmentScopeId !== this.record.attachmentScopeId || current.data !== this.record.data) throw conflict();
                 if (current.state === 'submitting') {
-                    if (!sameTarget(current.remoteTarget, remoteTarget)) throw conflict();
+                    if (current.harnessConnectionId !== harnessConnectionId || !sameTarget(current.remoteTarget, remoteTarget)) throw conflict();
                     return current;
                 }
                 const next: ProjectDraftRecord = {...current, state: 'submitting', sessionId: current.id,
-                    submissionId: randomUUID(), title, ...(remoteTarget ? {remoteTarget} : {})};
+                    submissionId: randomUUID(), title, ...(harnessConnectionId ? {harnessConnectionId} : {}), ...(remoteTarget ? {remoteTarget} : {})};
                 if (!await tx.compareAndSet(this.path, 'draft', {expected: raw, value: JSON.stringify(next)})) throw conflict();
                 return next;
             });
@@ -122,7 +131,7 @@ export class ProjectDraftStore {
                 if (remote) await tx.setEntry(this.path, nativeIdentityKey(remote), old.id);
                 return event;
             });
-            if (promoted) await this.removeAttachments(old.id);
+            if (promoted) await this.removeAttachments(old.attachmentScopeId ?? old.id);
             return promoted;
         });
     }

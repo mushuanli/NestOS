@@ -15,15 +15,16 @@ async function setup() {
     const files = new SessionFilesService(root); await files.initialize(); cleanup.push(() => files.dispose());
     const mounts = new DirectoryMountService(root, files); await mounts.init(); cleanup.push(() => mounts.dispose());
     const projects = new ProjectService(root, repository, mounts, files); cleanup.push(() => projects.dispose()); await projects.ensureStartup();
-    const report = vi.fn(), navigation = new ProjectNavigation(projects, () => undefined, {createProject: vi.fn(), createSession: vi.fn(),
+    const report = vi.fn(), createSession = vi.fn(), navigation = new ProjectNavigation(projects, () => undefined, {createProject: vi.fn(), createSession,
         createChild: vi.fn(), importItems: vi.fn(), exportItems: vi.fn(), retryDeletions: vi.fn(), contentChanged: vi.fn(), report});
     cleanup.push(() => navigation.destroy()); document.body.append(navigation.header);
-    await navigation.sync('/'); return {projects, navigation, report};
+    await navigation.sync('/'); return {projects, navigation, report, createSession};
 }
 it('selects the default from sidebar settings and pins it before other project rows and choices', async () => {
     const f = await setup(), other = await f.projects.create('AAA other'), chosen = await f.projects.create('ZZZ chosen');
     await f.navigation.refresh();
-    f.navigation.header.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!.click();
+    f.navigation.overflow.root.open = true;
+    f.navigation.overflow.content.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('#project-default-select')).not.toBeNull());
     const select = document.querySelector<HTMLSelectElement>('#project-default-select')!; select.value = chosen.project.id;
     document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
@@ -39,7 +40,8 @@ it('selects the default from sidebar settings and pins it before other project r
 it('preserves the selected project and keeps settings open when persistence fails', async () => {
     const f = await setup(), original = await f.projects.getDefaultProject(), candidate = await f.projects.create('Candidate');
     vi.spyOn(f.projects, 'setDefaultProject').mockRejectedValue(new Error('Default storage unavailable'));
-    f.navigation.header.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!.click();
+    f.navigation.overflow.root.open = true;
+    f.navigation.overflow.content.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('#project-default-select')).not.toBeNull());
     document.querySelector<HTMLSelectElement>('#project-default-select')!.value = candidate.project.id;
     document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
@@ -53,7 +55,8 @@ it('offers local projects only and does not change the default when settings are
     vi.spyOn(f.projects, 'list').mockResolvedValue([...catalog, {...candidate, name: 'Remote only',
         project: {...candidate.project, id: 'remote-only', source: {kind: 'remote'}}}]);
     const save = vi.spyOn(f.projects, 'setDefaultProject');
-    f.navigation.header.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!.click();
+    f.navigation.overflow.root.open = true;
+    f.navigation.overflow.content.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('#project-default-select')).not.toBeNull());
     const select = document.querySelector<HTMLSelectElement>('#project-default-select')!;
     expect([...select.options].map(option => option.value)).not.toContain('remote-only');
@@ -61,4 +64,22 @@ it('offers local projects only and does not change the default when settings are
     document.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click();
     await vi.waitFor(() => expect(document.querySelector('.settings-modal')).toBeNull());
     expect(save).not.toHaveBeenCalled(); expect((await f.projects.getDefaultProject())?.project.id).toBe(current.project.id);
+});
+
+it('keeps creation scoped to the sidebar and moves default settings into its overflow menu', async () => {
+    const f = await setup(), project = (await f.projects.list())[0];
+    vi.spyOn(f.projects, 'navigation').mockResolvedValue({project: undefined, projects: [project],
+        path: project.path + '/existing-session', defaultProjectId: project.project.id,
+        offlineProjectIds: [], pendingDeletions: 0, loadPaths: []});
+    await f.navigation.sync(project.path + '/existing-session', {preserveProject: true});
+    const create = f.navigation.header.querySelector<HTMLButtonElement>('.workbench-project-navigation__create')!;
+    expect(create.hidden).toBe(true); create.click(); expect(f.createSession).not.toHaveBeenCalled();
+    const directSettings = f.navigation.header.querySelector<HTMLButtonElement>(':scope > [data-project-action="settings"]')!;
+    expect(directSettings.hidden).toBe(true);
+    const menuSettings = f.navigation.overflow.content.querySelector<HTMLButtonElement>('[data-project-action="settings"]')!;
+    expect(menuSettings.hidden).toBe(false); expect(menuSettings.title).toBe(t('project.default.settings'));
+    f.navigation.overflow.root.open = true; menuSettings.click();
+    await vi.waitFor(() => expect(document.querySelector('#project-default-select')).not.toBeNull());
+    expect(f.navigation.overflow.root.open).toBe(false);
+    document.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click();
 });

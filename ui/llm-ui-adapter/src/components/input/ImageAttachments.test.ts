@@ -16,14 +16,14 @@ function output(source: ImageSource, text = 'derived'): ImageOutput {
     return {sourceId: source.id, sourceRevision: source.revision, blob, width: 1024, height: 683, byteLength: blob.size,
         mimeType: blob.type, changed: true, purpose: 'export'};
 }
-it('regenerates from the preserved original when the effective agent preference changes', async () => {
+it('uses the reduced image as its sole source after initial processing', async () => {
     const inputs: string[] = [], process = vi.fn(async (source: ImageSource) => {inputs.push((await source.read({signal: new AbortController().signal})).size.toString()); return output(source);});
     const state = fixture(process), original = state.files[0];
     state.images.refresh(); await state.images.ready(); const first = state.files[0];
-    expect(first).not.toBe(original); expect(imageFileState(first).original).toBe(original);
+    expect(first).not.toBe(original); expect(imageFileState(first).original).toBe(first);
     state.resize({mode: 'max-edge', maxEdge: 2048}); await state.images.ready();
-    expect(process).toHaveBeenCalledTimes(2); expect(inputs).toEqual([String(original.size), String(original.size)]);
-    expect(imageFileState(state.files[0]).original).toBe(original); state.images.destroy(); expect(state.disposed).not.toHaveBeenCalled();
+    expect(process).toHaveBeenCalledTimes(2); expect(inputs).toEqual([String(original.size), String(first.size)]);
+    expect(imageFileState(state.files[0]).original).toBe(first); state.images.destroy(); expect(state.disposed).not.toHaveBeenCalled();
 });
 it('does not revive a removed image when a non-cancellable decoder finishes', async () => {
     let finish!: (value: ImageOutput) => void, captured!: ImageSource;

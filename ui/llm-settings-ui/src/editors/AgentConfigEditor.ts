@@ -1,7 +1,7 @@
-import { SettingsAutoSave, SettingsValidationError, requestSettingsSave } from '@itookit/ui-common';
+import { SettingsAutoSave, SettingsValidationError, requestSettingsSave } from '@itookit/ui-common-adapter';
 import {bindAgentImageSettings, renderAgentImageSettings, readAgentImageSettings} from './agent-image-settings';
 import { renderPromptReference, bindPromptReference } from './agent-prompt-reference';
-import { editorResourceId } from '@itookit/ui-common';
+import { editorResourceId } from '@itookit/ui-common-adapter';
 import { renderAgentExecution, readAgentExecution, bindAgentExecution, type AgentExecutionController } from './agent-execution';
 import { renderAgentModelDefaults, readAgentModelDefaults, bindAgentModelDefaults } from './agent-model-defaults';
 import { readAgentComposition } from './agent-composition';
@@ -14,7 +14,7 @@ import {
     buildRenamedFilename,
     ACTION_ICONS, ENTITY_ICONS, FILE_BROWSER_ICONS, Heading, t
 } from '@itookit/common';
-import { IEditor, EditorOptions, EditorEvent, EditorEventMap, EditorEventCallback, UnifiedSearchResult, CollapseExpandResult } from '@itookit/ui-common';
+import { IEditor, EditorOptions, EditorEvent, EditorEventMap, EditorEventCallback, UnifiedSearchResult, CollapseExpandResult } from '@itookit/ui-common-adapter';
 import type { AgentType, AgentDefinition, IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import type { PromptPreset } from '@itookit/tools/contracts';
 import { EventBus } from '@itookit/vfs-core';
@@ -766,7 +766,7 @@ export class AgentConfigEditor implements IEditor {
             mcpServers: undefined,
             temperature: !isNaN(tempVal) ? tempVal : undefined,
         };
-        this.content.capabilityPolicy = readAgentCapabilities(this.container, this.content.capabilityPolicy);
+        this.content.capabilityPolicy = readAgentCapabilities(this.container, this.content.capabilityPolicy, this.defaultToolIds);
         if (this.content.systemPrompt !== undefined) this.content.systemPrompt = this.content.config.systemPrompt;
     }
 

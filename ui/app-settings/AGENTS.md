@@ -2,7 +2,7 @@
 
 设置 UI 模块 — 全局配置、日志、存储、标签、联系人、数据恢复、外观和系统 VFS 浏览。
 
-依赖（peer）：`@itookit/common`、`@itookit/driver-llm`、`@itookit/vfs-core`、`@itookit/ui-common`、`@itookit/vfs-ui`、`@itookit/mdxeditor`。LLM 设置编辑器来自 `@itookit/llm-settings-ui`，经 `LLMUIEditors` 接口注入（避免上行依赖）。
+依赖（peer）：`@itookit/common`、`@itookit/driver-llm`、`@itookit/vfs-core`、`@itookit/ui-common-adapter`、`@itookit/vfs-ui`、`@itookit/mdxeditor`。LLM 设置编辑器来自 `@itookit/llm-settings-ui`，经 `LLMUIEditors` 接口注入（避免上行依赖）。
 
 ## Architecture
 

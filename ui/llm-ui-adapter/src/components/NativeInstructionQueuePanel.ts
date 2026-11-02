@@ -1,6 +1,6 @@
 import {CHAT_ICONS, getLocale, t} from '@itookit/common';
 import {InstructionQueueView, type InstructionQueueEdit, type InstructionQueueSnapshot} from '@itookit/llm-ui';
-import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
+import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common-adapter';
 import {instructionQueueLabels} from './instruction-queue-labels';
 
 /** Adapt the native queue directly; native admission does not use Session commands. */

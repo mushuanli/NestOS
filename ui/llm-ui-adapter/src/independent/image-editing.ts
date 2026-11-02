@@ -20,7 +20,7 @@ export interface ImageEditingHost {
 /** Inject through ChatOptions.imageEditing; root llm-ui never imports this library. */
 export function createImageEditingPort(host: ImageEditingHost): ImageEditingPort & {dispose(): Promise<void>} {
     const processing = new ImageProcessingSession(() => host.getResize(), host.processor);
-    const pending = new WeakMap<File, {original: File; resize: ImageResizePolicy}>();
+    const pending = new WeakMap<File, {resize: ImageResizePolicy}>();
     return {
         getRevision: () => JSON.stringify([processing.getResize(), processing.engine.version]),
         subscribe: changed => host.subscribeResize?.(changed) ?? (() => {}),
@@ -29,15 +29,15 @@ export function createImageEditingPort(host: ImageEditingHost): ImageEditingPort
             if (!original.type.startsWith('image/')) return original;
             const source = createBlobSource(original, {id: randomUUID(), revision: 'original', name: original.name});
             const resize = processing.getResize();
-            const output = await processing.process(source, DEFAULT_IMAGE_SPEC, signal, resize);
+            const output = await processing.process(source, DEFAULT_IMAGE_SPEC, signal, resize, original.type);
             const file = !output.changed && original.type === output.mimeType ? original : new File([output.blob], original.name, {type: output.mimeType});
-            pending.set(file, {original, resize}); return file;
+            pending.set(file, {resize}); return file;
         },
         async uploaded(file, ref, {signal}) {
             const data = pending.get(file); if (!data) return; signal.throwIfAborted();
             processing.assertPolicy(data.resize, signal);
-            const original = data.original === file ? ref : await host.upload(data.original, {signal}); signal.throwIfAborted();
-            processing.assertPolicy(data.resize, signal);
+            // The prepared file is the sole editing source; never upload the full-size input.
+            const original = ref;
             await host.saveMetadata(ref, {original, spec: DEFAULT_IMAGE_SPEC, resize: data.resize, processorVersion: processing.engine.version});
             processing.assertPolicy(data.resize, signal); pending.delete(file);
         },
@@ -82,7 +82,7 @@ async function refreshGroup(host: ImageEditingHost, processing: ImageProcessingS
         if (metadata && JSON.stringify(metadata.resize) === JSON.stringify(resize) && metadata.processorVersion === processing.engine.version) continue;
         const original = metadata?.original ?? item.file, spec = validateSpec(metadata?.spec ?? DEFAULT_IMAGE_SPEC);
         const source = {id: original.id, revision: original.id, name: original.name, read: (options: {signal: AbortSignal}) => host.read(original, options)};
-        const output = await processing.process(source, spec, signal, resize);
+        const output = await processing.process(source, spec, signal, resize, original.mimeType);
         const file = await host.upload(new File([output.blob], item.file.name, {type: output.mimeType}), {signal});
         processing.assertPolicy(resize, signal);
         await host.saveMetadata(file, {original, spec, resize, processorVersion: processing.engine.version}); processing.assertPolicy(resize, signal);

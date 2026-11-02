@@ -41,6 +41,8 @@ import type { ChatExecutionMode } from '@itookit/llm-tasks/contracts';
 export type { ChatExecutionMode } from '@itookit/llm-tasks/contracts';
 
 export interface ChatSessionSettings {
+    /** Host-prepared execution target; Agent definitions only supply instructions. */
+    harnessConnectionId?: string;
     imageResize?: import('@itookit/kernel-adapters/contracts').ImageResizePolicy;
     /** Omitted means follow the global default connection. */
     connectionId?: string;

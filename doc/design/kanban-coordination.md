@@ -347,3 +347,12 @@ suggest 是已授权看板上的只读元数据查询，支持 item/parent/depen
 Cells 的作用域目录订阅通过现有 SSE/inotify 唤醒；旧节点或丢失事件时保留宿主扫描作为补偿。消息以持久收据去重，校验文件名、schema 与运行作用域；改写已发布消息报冲突。clarification/error 写入看板消息日志、阻塞事项并发全局通知。当前澄清后自动回复与续轮尚未闭环，不能把收到回复或解除阻塞声称为已完成。诊断仅包含阶段、安全错误码、耗时和关联 ID；消息正文只进入业务记录。
 
 CLI 提供 `kanban list/create/show/targets/resources/execute/record/records/run/runs/workflow/events`、`agent list/show/save/status/publish/receipt/connections/bind` 和 `notify list`。写入命令从 `--file` 读取冻结 JSON；核对沿用原操作身份，未知结果不自动换 ID 重发。
+
+
+### 2026-11-02 真实 CLI 验收
+
+已通过远程 CLI 建立“开发”看板与 x1 决策，自动分析依赖、发布执行 Agent、创建工作树并调用 x1:codex。原生 sessionId 在运行期间关联到事项；宿主重启后核对原派发，没有另发同一任务。完成消息与原生终态齐备后进入 review，独立复验 21 项 cloze/SRS 测试及类型检查，再用 accept-execution 完成验收。决策保持 confirmed，独立运行记录投影 completed；源看板保存验收日志。
+
+第一轮继承 30 秒超时并确认取消后才重新派发，失败记录保留。实际链路促成精确范围读取、消息字段示例、初版 body 兼容及重复 running/unknown 观察回执修复。活跃派发的权威观察续持原 fence 租约，不据此制造 Session 活动或重派；同一观察再次出现按看板修订区分状态写入。原生最后一轮 completed、activeTurnId 为空，保留历史与工作树供后续恢复。
+
+完整身份、提交、验证范围和限制见 [验收证据](fixtures/kanban-ai-cloze-20261102.json)。部署健康检查版本为 `20261102T084549-e2c9f5e9`；工作区 `_nestos/acceptance/kanban-ai/` 保存冻结 CLI 请求与返回值，工作树 artifacts 保留测试日志、补丁和子模块 bundle。未进行人工浏览器点击验收；澄清回复的自动续轮仍未实现。

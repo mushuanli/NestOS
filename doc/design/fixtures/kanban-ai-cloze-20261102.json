@@ -1,0 +1,57 @@
+{
+  "date": "2026-11-02",
+  "method": "CLI through authenticated remote ApplicationClient",
+  "sourceBoardId": "development",
+  "decisionId": "cloze-fixed-visibility",
+  "decisionRevision": 2,
+  "executionBoardId": "run-82ab2f7d25411f9b66afec97b34c22e4eaba1c39ff0f85f0041cfe6d5cc4d487",
+  "runId": "82ab2f7d25411f9b66afec97b34c22e4eaba1c39ff0f85f0041cfe6d5cc4d487",
+  "status": "completed",
+  "dispatchId": "7b42bfdf-6821-4290-86c8-257e2e063be0",
+  "executionSessionId": "node-01M6DP20583BT45QTETZFXVCTV",
+  "nativeSessionId": "01a19b61-547a-7942-873d-77d0b26fb955",
+  "nativeTurnId": "01a19b61-55d5-77b0-a59b-63e90109b813",
+  "nativeTerminal": {
+    "lastResult": "completed",
+    "activeTurnId": null,
+    "pending": false
+  },
+  "worktree": "_nestos/worktrees/7b42bfdf-6821-4290-86c8-257e2e063be0",
+  "workerCommit": "822cbb52a202407b0bfcb67763de107bb2b64518",
+  "mdxeditorCommit": "6760523dfc633b06f218f030f144322fb652b5a2",
+  "integratedCommit": "e2c9f5e9",
+  "runningHttpVersion": "20261102T084549-e2c9f5e9",
+  "failedAttempt": {
+    "dispatchId": "380acc0b-a9f3-4c43-866e-71264cdc9966",
+    "nativeSessionId": "01a19b5c-3b94-7cd0-ad5a-cb461f234439",
+    "nativeResult": "cancelled",
+    "cause": "Inherited 30 second Task-call effect timeout; cancellation verified before explicit new attempt"
+  },
+  "verification": {
+    "workerMdxeditorSuite": 186,
+    "reviewerClozeAndSrsSuite": 21,
+    "kanbanSuite": 56,
+    "hostIntegrationSuite": 23,
+    "cliSuite": 2,
+    "cellsDriverHarnessSuite": 24,
+    "mdxeditorTypecheck": true,
+    "httpReleaseBuild": true
+  },
+  "communication": {
+    "schema": "work-message/1",
+    "directory": "_nestos/kanban",
+    "deliveredIds": [
+      "work-0-progress-08",
+      "work-0-progress-09",
+      "work-0-result-01"
+    ],
+    "previousMessages": "Seven original body-field messages were preserved unchanged by the worker in artifacts/work-0/invalid-progress-originals; corrected messages use content.",
+    "acceptanceLogId": "cloze-fixed-visibility-acceptance"
+  },
+  "limits": [
+    "No manual browser interaction acceptance; DOM cases use jsdom.",
+    "Clarification/error notifications and blocking are tested; automatic reply and continuation are not implemented.",
+    "Native turn finished; native history and worktree retained. Shared Cells service is not stopped.",
+    "All changes committed locally; no remote push."
+  ]
+}

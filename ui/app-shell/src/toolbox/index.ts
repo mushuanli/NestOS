@@ -23,7 +23,7 @@ interface Options {
     ui: Pick<AppUI, 'llmUiEditors' | 'createFlowContextMenu'>;
     sidebar: HTMLElement; editor: HTMLElement;
     factories: Record<'agents' | 'skills' | 'flows', EditorFactory>;
-    navigate(request: NavigationRequest): Promise<void>; selected(path: string | null): void;
+    navigate(request: NavigationRequest): Promise<void>; selected(path: string | null): void; onBeforeNavigate?(): void;
     uiPersistence?: UIPersistencePort;
     uiPreferences?: ToolboxPreferencesPort;
     executorUsage?: import('@itookit/ui-common-adapter').EditorOptions['executorUsage'];

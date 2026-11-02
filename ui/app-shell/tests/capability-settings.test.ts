@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { AgentConfigEditor } from '../../llm-settings-ui/src/editors/AgentConfigEditor';
-import { MCPSettingsEditor } from '../../llm-settings-ui/src/editors/MCPSettingsEditor';
+import { AgentConfigEditor } from '@itookit/llm-ui-adapter/settings';
+import { MCPSettingsEditor } from '@itookit/llm-ui-adapter/settings';
 import {Toast} from '@itookit/ui-common-adapter';
 import type { AgentDefinition } from '@itookit/kernel-adapters/contracts';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';

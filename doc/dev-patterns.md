@@ -76,14 +76,14 @@ MCP 的自动连接开关位于详情顶部，使用既有自动保存控制器�
 
 ## 新增 Connection
 
-通过 Settings UI (`ui/llm-settings-ui/src/editors/ConnectionSettingsEditor.ts`) 操作，
+通过 Settings UI (`libraries/llm-ui/src/settings/editors/ConnectionSettingsEditor.ts`) 操作，
 或直接写入 VFS `etc:/llm/.connections/<id>.json`
 
 ## 新增 Agent
 
 1. `backend/kernel-adapters/src/llm-management/contracts/agent.ts` — 更新 `AgentDefinition` 接口（如需新字段）
 2. `backend/kernel-adapters/src/llm-management/constants/agents.ts` — `DEFAULT_AGENTS` 预设模板
-3. `ui/llm-settings-ui/src/editors/AgentConfigEditor.ts` — 编辑器 UI
+3. `libraries/llm-ui/src/settings/editors/AgentConfigEditor.ts` — 编辑器 UI
 4. `backend/llm-session/src/session/agent-resolver.ts` — AgentResolver.resolve()
 
 ## 新增通用工具 (Built-in Tool)
@@ -124,7 +124,7 @@ MCP 的自动连接开关位于详情顶部，使用既有自动保存控制器�
 | UI 包 | vite build | `pnpm build` (app bundle + CSS) |
 | 无 build 脚本 | — | `app-core`/`app-shell` 以 TS 源码被 app 消费 |
 
-- **tsup**：`common`/`durable-kernel`/`llm-tasks`/`llm-flow`/`llm-session`/`kernel-adapters`/`driver-llm`/`device-tty`/`tools`/`vfs-core`/`vfsdriver-indexeddb`/`vfsdriver-local`，以及 UI 包中的 `llm-settings-ui`/`ui-common`。
+- **tsup**：`common`/`durable-kernel`/`llm-tasks`/`llm-flow`/`llm-session`/`kernel-adapters`/`driver-llm`/`device-tty`/`tools`/`vfs-core`/`vfsdriver-indexeddb`/`vfsdriver-local`，以及 UI 包中的 `ui-common`。
 - **vite build**：`llm-ui`/`vfs-ui`/`mdx`/`app-settings`/`demo`。
 
 ### dev server 的 workspace 别名（唯一来源）

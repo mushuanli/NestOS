@@ -1,4 +1,4 @@
-import {OcrSettingsForm} from '@itookit/llm-settings-ui/ocr';
+import {OcrSettingsForm} from '@itookit/llm-ui-adapter/settings';
 import type {OcrControls} from '@itookit/app-contracts/services';
 
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';

@@ -398,6 +398,6 @@ publish-plan → prepare-dispatch → observe-execution → accept-execution 表
 
 独立 ui-common 只提供 DOM 布局、弹窗、Toast、确认框、剪贴板、带调用方 locale 的时间展示及通用菜单 DTO；无运行时依赖。ui-common-adapter 保留通用 EditorOptions / IEditor 与应用设置基础设施。llm-ui-adapter/contracts 的 ChatEditorOptions 扩展 conversation、remoteAgents、sessionDraft，ConversationControls / SessionDraftControls 同入口导出；conversationStatus 从 /presentation 轻量入口提供，不拉入聊天运行代码。旧 ISessionUI、列表和自动补全重复定义已移除，资源列表直接使用 vfs-ui 公共契约。
 
-ChatOptions.ocr 是独立 llm-ui 的可选识别端口，支持 recognize、read、prepare 与安全阶段诊断。进度、取消、失败重试、结果审阅及按附件稳定身份/修订插入与移除均由库负责；模型连接与提示词不进入库。应用 OcrControls/OcrSettingsState 属于 app-contracts/services，配置表单属于 llm-settings-ui/ocr；聊天设置不重复模型配置。
+ChatOptions.ocr 是独立 llm-ui 的可选识别端口，支持 recognize、read、prepare 与安全阶段诊断。进度、取消、失败重试、结果审阅及按附件稳定身份/修订插入与移除均由库负责；模型连接与提示词不进入库。应用 OcrControls/OcrSettingsState 属于 app-contracts/services，配置表单属于 llm-ui/settings；聊天设置不重复模型配置。
 
 历史与实时输出共用 ToolOutputGroups：连续工具消息、混合助手消息中相邻的工具 part 合并为一个默认折叠组；普通正文和用户消息分隔组。分组按稳定成员身份复用节点与展开状态，批量折叠和搜索定位仍可用。cells 保留完整事实，UI 折叠不改变日志、执行结果、历史分页或传输截断标记。

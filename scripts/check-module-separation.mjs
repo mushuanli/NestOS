@@ -5,7 +5,7 @@ import ts from 'typescript';
 import { workspacePackages, sourceExports } from './workspace-packages.mjs';
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
-const frontend = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'llm-settings-ui', 'mdx-adapter', 'ui-common', 'ui-common-adapter', 'vfs-ui', 'image-parser', 'mdxeditor'];
+const frontend = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'mdx-adapter', 'ui-common', 'ui-common-adapter', 'vfs-ui', 'image-parser', 'mdxeditor'];
 const backend = ['app-core', 'llm-context', 'llm-session', 'llm-flow', 'llm-tasks', 'durable-kernel', 'kernel-adapters', 'tools', 'device-tty', 'sanbox', 'sync-adapters'];
 const shared = ['app-contracts', 'common', 'app-transport'];
 

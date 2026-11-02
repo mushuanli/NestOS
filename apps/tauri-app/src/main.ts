@@ -39,7 +39,7 @@ import {
     MCPSettingsEditor,
     CostEditor,
     SystemPromptSettingsEditor,
-} from '@itookit/llm-settings-ui';
+} from '@itookit/llm-ui-adapter/settings';
 import { WORKSPACES } from './config/modules';
 import { TauriSqlSidecarDb } from './db/tauri-sql-sidecar';
 import { TauriFsOps } from './fs/tauri-fs-ops';

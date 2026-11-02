@@ -120,7 +120,7 @@
 | 文件编辑器装配与预览 | `app-shell/src/browser/` |
 | MDX 编辑器 | [mdxeditor/src](https://github.com/mushuanli/mdxeditor/tree/main/src) |
 | MDX 宿主/VFS 适配 | `ui/mdx-adapter/src/` |
-| 设置（Provider/Connection/Agent/MCP/Skill/Cost） | `ui/llm-settings-ui/src/editors/` |
+| 设置（Provider/Connection/Agent/MCP/Skill/Cost） | `libraries/llm-ui/src/settings/editors/` |
 
 ## 装配 / 入口
 

@@ -56,7 +56,7 @@ const settings = await backend.settings([{ name: 'Notes', workspace: 'minds' }])
 | `SystemFSExploreEditor` | 跨模块只读 VFS 浏览 (含 `/dev` 与 `/workspaces/<name>`，调试用) |
 | `AboutSettingsEditor` | 版本信息 |
 
-LLM 设置编辑器（Provider / Connection / MCP / Cost / SystemPrompt）来自 `@itookit/llm-settings-ui`，经 `LLMUIEditors` 接口注入。
+LLM 设置编辑器（Provider / Connection / MCP / Cost / SystemPrompt）来自 `@itookit/llm-ui/settings`，经 `LLMUIEditors` 接口注入。
 
 ### createSettingsFactory()
 

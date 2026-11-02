@@ -73,13 +73,15 @@ export function importError(source, file, specifier, packages) {
         return 'frontend shell must use shared app-contracts and injected backend ports; runtime assembly belongs to hosts';
     if (specifier === '@itookit/kernel-adapters/llm' && (source.host || ['@itookit/app-core', '@itookit/app-shell'].includes(source.name)))
         return 'hosts must select explicit LLM core, presets or config entries';
-    if (source.name === '@itookit/llm-ui-adapter' && file !== resolve(source.dir, 'src/settings.ts')) {
-        if (specifier.startsWith('@itookit/llm-settings-ui') || (specifier.startsWith('.') && resolve(file, '..', specifier).replace(/\.ts$/, '') === resolve(source.dir, 'src/settings')))
+    if (source.name === '@itookit/llm-ui-adapter' && file !== resolve(source.dir, 'src/settings.ts') && !file.startsWith(resolve(source.dir, 'src/settings') + sep)) {
+        const target = specifier.startsWith('.') ? resolve(file, '..', specifier).replace(/\.ts$/, '') : '';
+        const settings = resolve(source.dir, 'src/settings');
+        if (specifier.startsWith('@itookit/llm-ui/settings') || target === settings || target.startsWith(settings + sep))
             return 'chat and shared UI must not load optional settings implementations';
     }
-    if (source.name === '@itookit/llm-settings-ui' && specifier === '@itookit/kernel-adapters/llm/mcp-host')
+    if (source.name === '@itookit/llm-ui-adapter' && specifier === '@itookit/kernel-adapters/llm/mcp-host')
         return 'settings UI must query service instance capabilities, not the global host registry';
-    if (source.name === '@itookit/llm-settings-ui' && specifier === '@itookit/kernel-adapters/llm')
+    if (source.name === '@itookit/llm-ui-adapter' && specifier === '@itookit/kernel-adapters/llm')
         return 'settings UI must use config codecs, contracts or explicit host ports; not the management aggregate';
     if (source.name === '@itookit/llm-ui-adapter' && /\.flow(?:\?raw)?$/.test(specifier))
         return 'UI must receive Flow template catalogs from the host';
@@ -140,7 +142,7 @@ export function sourceErrors(source, file, text, packages) {
             const error = importError(source, file, specifier.text, packages);
             if (error) report(node, `${error} (${specifier.text})`);
         }
-        if (['@itookit/kernel-adapters', '@itookit/llm-session', '@itookit/llm-ui-adapter', '@itookit/llm-settings-ui'].includes(source.name) &&
+        if (['@itookit/kernel-adapters', '@itookit/llm-session', '@itookit/llm-ui-adapter'].includes(source.name) &&
             ts.isIdentifier(node) && node.text === 'DEFAULT_HARNESS_TOOL_IDS')
             report(node, 'NestOS default tool grants belong to the host; capabilities receive injected policy');
         if (source.name === '@itookit/app-shell' && ts.isIdentifier(node) && ['LocalBackendPort', 'LocalApplicationServices', 'IVFSManager', 'SessionFilesService', 'DirectoryMountService'].includes(node.text))

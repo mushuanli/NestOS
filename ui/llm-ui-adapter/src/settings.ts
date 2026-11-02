@@ -1,9 +1,7 @@
-import { AgentConfigEditor, SkillSettingsEditor, type AgentCapabilityOptions } from '@itookit/llm-settings-ui';
+import {AgentConfigEditor,SkillSettingsEditor,type AgentCapabilityOptions} from './settings/bindings';
+export * from './settings/bindings';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import type { EditorFactory } from '@itookit/ui-common-adapter';
-
-export { ConnectionSettingsEditor, ProviderSettingsEditor, MCPSettingsEditor,
-    SkillSettingsEditor, CostEditor, SystemPromptSettingsEditor } from '@itookit/llm-settings-ui';
 
 export function createSkillsEditorFactory(agentService: IAgentManagementService): EditorFactory {
     return async (container, options) => {
@@ -21,5 +19,3 @@ export function createAgentEditorFactory(agentService: IAgentManagementService, 
         return editor;
     };
 }
-
-export type { AgentCapabilityOptions } from '@itookit/llm-settings-ui';

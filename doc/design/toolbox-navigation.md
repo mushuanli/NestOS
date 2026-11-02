@@ -43,7 +43,7 @@ Web 与 Tauri 共用 `ToolboxWorkbench`，主导航中用「工具箱」集中�
 
 - `ui/app-shell/src/toolbox/`：模块装配、列表、纯展示投影和路由转换。
 - `backend/app-core/src/configuration/`：资源操作、分组快照、只读目录、引用重映射与失败补偿。
-- `ui/llm-settings-ui/src/editors/MCPSettingsEditor.ts`：连接表单模式及原设置页模式。
+- `libraries/llm-ui/src/settings/editors/MCPSettingsEditor.ts`：连接表单模式及原设置页模式。
 - `https://github.com/mushuanli/vfs-ui/blob/main/src/ui/components/NodeList/NodeList.ts`：可注入列表投影/筛选头，动态工具栏；其他模块默认行为保持一致。
 - `ui/app-shell/tests/toolbox-workbench.test.ts`：资源筛选、抽屉排序与搜索展开、服务商图标、新建连接归属、编辑器身份、归档复制及工具来源检查。
 

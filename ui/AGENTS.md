@@ -1,6 +1,6 @@
 # ui/ 前端模块
 
-所有业务 UI 均在本目录：app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common-adapter。各包自身的 AGENTS.md 补充本约定。
+所有业务 UI 均在本目录：app-shell、app-settings、llm-ui-adapter、mdx-adapter、ui-common-adapter。各包自身的 AGENTS.md 补充本约定。
 
 - 负责 DOM、CSS、交互、导航投影、编辑草稿和视图缓存。
 - 应用服务接口从 `@itookit/app-contracts/services` 导入；领域接口从公开 contracts 入口导入。禁止从 app-core 导入实现或实现类型。

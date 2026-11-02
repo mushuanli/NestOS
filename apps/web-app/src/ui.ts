@@ -2,7 +2,7 @@ import type { AppUI } from '@itookit/app-shell';
 import { createFlowContextMenuConfig, createAIContextMenuConfig,
     restoreFlowLibrary } from '@itookit/llm-ui-adapter/startup';
 import { ProviderSettingsEditor, ConnectionSettingsEditor, ModelDefaultsEditor, MCPSettingsEditor,
-    CostEditor, SystemPromptSettingsEditor } from '@itookit/llm-settings-ui';
+    CostEditor, SystemPromptSettingsEditor } from '@itookit/llm-ui-adapter/settings';
 
 import {loadChatEditor} from './editor-modules';
 export {preloadBrowserEditor} from './editor-modules';

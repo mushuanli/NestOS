@@ -159,7 +159,6 @@ ui/                      # NestOS business UI
 ├── app-shell/
 ├── app-settings/
 ├── llm-ui/
-├── llm-settings-ui/
 ├── mdx-adapter/
 └── ui-common/
 backend/                 # Application use cases, execution and persistence

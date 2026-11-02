@@ -4,6 +4,8 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    "provider.credentials.storage": "Keys are stored as plaintext under /etc/llm/.providers/<id>.json in the data root. Provider lists and .llm exports omit them; the stored file remains readable.",
+    "provider.credentials.process": "Session Bash does not inherit the host environment. Pass credentials explicitly or read them from a controlled file or named environment variable.",
     'project.uploadFile': 'Upload files',
     'project.downloadFile': 'Download file',
     "twin.collectionDirectoryInvalid": "Use a relative output subdirectory without .., hidden directories or empty segments.",

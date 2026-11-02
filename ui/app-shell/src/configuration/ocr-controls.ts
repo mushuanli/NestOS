@@ -1,5 +1,5 @@
 import {type OcrSettingsState,type OcrControls} from '@itookit/app-contracts/services';
-import {renderOcrSettings, readOcrSettings} from '@itookit/llm-settings-ui/ocr';
+import {renderOcrSettings, readOcrSettings} from '@itookit/llm-ui-adapter/settings';
 
 import { OcrAccess } from './ocr-access';
 import { editOcrPrompt } from './ocr-prompt-dialog';

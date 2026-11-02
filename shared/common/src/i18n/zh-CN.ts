@@ -5,6 +5,8 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    "provider.credentials.storage": "Key 以明文保存在数据根的 /etc/llm/.providers/<id>.json；Provider 列表与 .llm 导出不含此字段，但文件本身可读。",
+    "provider.credentials.process": "Session Bash 不继承宿主环境：子进程需要凭证时，请在命令里显式传入，或让它从自己读取的受控文件 / 环境变量名取值。",
     'project.uploadFile': '上传文件',
     'project.downloadFile': '下载文件',
     "twin.collectionDirectoryInvalid": "输出子目录必须是相对路径，不能包含 ..、隐藏目录或空路径段。",

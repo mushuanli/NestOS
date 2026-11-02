@@ -2,11 +2,11 @@
 import { expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { SkillSettingsEditor } from '../../llm-settings-ui/src/editors/SkillSettingsEditor';
+import { SkillSettingsEditor } from '@itookit/llm-ui-adapter/settings';
 import type { LLMSkill } from '@itookit/kernel-adapters/contracts';
 
 // Use the editor's YAML dependency; this integration harness lives with app-shell's DOM tests.
-const yaml = createRequire(resolve(process.cwd(), '../llm-settings-ui/package.json'))('js-yaml');
+const yaml = createRequire(resolve(process.cwd(), '../llm-ui-adapter/package.json'))('js-yaml');
 
 it('round trips supporting files and hidden fields through the real form-only editor lifecycle', async () => {
     const first: LLMSkill = { id: 'review', name: 'Review', description: '', type: 'prompt', enabled: true,

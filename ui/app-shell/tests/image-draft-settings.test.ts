@@ -3,7 +3,7 @@ import {expect, it} from 'vitest';
 import {DraftDataCodec} from '../../llm-ui-adapter/src/shell/drafts/session-draft-data';
 import {imageFileState, setImageFileState} from '../../llm-ui-adapter/src/components/input/image-file-state';
 import {inheritDraftPreferences} from '../../llm-ui-adapter/src/shell/drafts/draft-preferences';
-import {renderAgentImageSettings, readAgentImageSettings} from '../../llm-settings-ui/src/editors/agent-image-settings';
+import {renderAgentImageSettings, readAgentImageSettings} from '@itookit/llm-ui-adapter/settings';
 
 it('persists the original resource and current crop separately from the derived image', async () => {
     const bytes = new Map<string, ArrayBuffer>(); let id = 0;

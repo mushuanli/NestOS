@@ -171,7 +171,6 @@ ui/                      # NestOS 业务 UI
 ├── app-shell/
 ├── app-settings/
 ├── llm-ui/
-├── llm-settings-ui/
 ├── mdx-adapter/
 └── ui-common/
 backend/                 # 应用用例、执行与持久化

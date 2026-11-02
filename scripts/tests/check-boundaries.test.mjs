@@ -142,7 +142,7 @@ test('driver dependencies reject context types as well as runtime imports', () =
 
 test('optional settings may only load through the explicit settings or compatibility entry', () => {
     const ui = pkg('llm-ui-adapter');
-    for (const statement of ["import '@itookit/llm-settings-ui'", "import('./settings')", "export * from './settings'"]) {
+    for (const statement of ["import '@itookit/llm-ui/settings'", "import('./settings')", "export * from './settings'", "import './settings/host'"]) {
         assert.match(inspect(ui, statement, ui.dir + '/src/chat.ts')[0], /optional settings/);
         assert.equal(inspect(ui, statement, ui.dir + '/src/settings.ts').length, 0);
     }
@@ -166,7 +166,7 @@ test('chat must receive business flow templates from the host', () => {
 
 
 test('public LLM capabilities cannot choose NestOS default tool grants', () => {
-    for (const name of ['kernel-adapters', 'llm-session', 'llm-ui-adapter', 'llm-settings-ui']) {
+    for (const name of ['kernel-adapters', 'llm-session', 'llm-ui-adapter']) {
         const source = pkg(name);
         assert.match(inspect(source, "export const DEFAULT_HARNESS_TOOL_IDS = ['Bash'];")[0], /injected policy/);
     }
@@ -175,13 +175,13 @@ test('public LLM capabilities cannot choose NestOS default tool grants', () => {
 
 
 test('settings cannot load the model management aggregate for config conversion', () => {
-    const ui = pkg('llm-settings-ui');
+    const ui = pkg('llm-ui-adapter');
     assert.match(inspect(ui, "import { parseLLMConfig } from '@itookit/kernel-adapters/llm'")[0], /management aggregate/);
 });
 
 
 test('settings use service capabilities instead of process-global MCP state', () => {
-    const ui = pkg('llm-settings-ui');
+    const ui = pkg('llm-ui-adapter');
     assert.match(inspect(ui, "import { hasMCPStdioHost } from '@itookit/kernel-adapters/llm/mcp-host'")[0], /service instance capabilities/);
 });
 

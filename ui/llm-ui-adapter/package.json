@@ -143,12 +143,10 @@
     "@itookit/image-parser": "workspace:*"
   },
   "peerDependencies": {
-    "@itookit/llm-settings-ui": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*"
   },
   "devDependencies": {
-    "@itookit/llm-settings-ui": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
     "@types/js-yaml": "^4.0.9",
@@ -158,10 +156,5 @@
     "vite": "^7.2.4",
     "vite-plugin-dts": "^4.5.4",
     "vitest": "^4.1.12"
-  },
-  "peerDependenciesMeta": {
-    "@itookit/llm-settings-ui": {
-      "optional": true
-    }
   }
 }

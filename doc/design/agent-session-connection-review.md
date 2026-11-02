@@ -228,7 +228,7 @@ Agent `.agent` 文件继续作为可编辑来源；`getAgentConfig/getAgents` �
 ```mermaid
 C4Component
     title Agent 发布与调用接纳
-    Component(editor, "Agent 编辑器", "llm-settings-ui", "自动保存草稿；显式发布与独立核对")
+    Component(editor, "Agent 编辑器", "llm-ui/settings", "自动保存草稿；显式发布与独立核对")
     Component(publisher, "Agent 发布服务", "VFSAgentService", "核验来源和依赖摘要")
     ComponentDb(definitions, "定义与发布记录", "既有 agents VFS", "草稿、不可变正文、最新指针与回执")
     Component(directory, "目标目录与解析器", "Session", "Agent 和 Flow 平级；选择发布版本")
@@ -251,7 +251,7 @@ C4Component
 
 未决发布期间收到来源刷新时，编辑器保留当前已查看内容及原请求，仍允许核对原操作；确认后必须重新打开来源再发起新发布，不能把未查看的新来源直接发布。此保护不替代跨页面的持久操作恢复；发布请求在浏览器强制重载后的恢复仍需单独接入既有操作存储。
 
-证据见[发布事务与故障](../../backend/llm-session/__tests__/agent-revisions.test.ts)、[真实 Runtime 与队列恢复](../../backend/app-core/tests/agent-publication.test.ts)、[设置页状态竞态](../../ui/llm-settings-ui/tests/agent-publication.test.ts)和[认证 RPC](../../apps/http-app/tests/view-api.test.ts)。重建回归重建 Kernel、VFS 视图和服务并保留存储，不等同于线上 daemon 重启或原浏览器故障验收。
+证据见[发布事务与故障](../../backend/llm-session/__tests__/agent-revisions.test.ts)、[真实 Runtime 与队列恢复](../../backend/app-core/tests/agent-publication.test.ts)、[设置页状态竞态](../../ui/app-shell/tests/settings/agent-publication.test.ts)和[认证 RPC](../../apps/http-app/tests/view-api.test.ts)。重建回归重建 Kernel、VFS 视图和服务并保留存储，不等同于线上 daemon 重启或原浏览器故障验收。
 
 尚未完成：共同 CallableContract 和 implementation/body 迁移、Flow 内 Agent/Skill/MCP 等依赖的完整发布版本闭包、发布版本的归档/导入映射及完整旧资源迁移；动态 worker 与授权仍按原运行准入处理。不能据此声称所有子调用依赖已经在发布时冻结。
 

@@ -240,7 +240,7 @@ Session manifest 的现有业务类型名仍是 `ConversationManifest`，包含 
 | llm-ui | 工厂只接受 Session target，未知 ID 报错；上传、历史渲染、资产管理和打印注入 Session 附件；搜索使用当前 Session 文件上下文 |
 | llm-session | SessionRepository 持有会话持久化；绑定、运行状态和 TaskInput 使用 Session 身份，Round/Profile 写 history 记录，不再通过聊天文件解析或隐式文件初始化创建会话 |
 | vfs-ui / mdx | 删除 .chat 保存特判、模块路径猜测；文档使用 target.path；Session 嵌入 Markdown 使用当前 Session 上下文派生的 /attachments 子视图，上传/预览/管理均随撤销失效；文件文档仍可使用伴生附件 |
-| llm-flow / llm-settings-ui / app-settings | Flow 创建会话返回 sessionId；实体编辑器消费显式 target；配置、同步和备份使用注入的文件来源 |
+| llm-flow / llm-ui/settings / app-settings | Flow 创建会话返回 sessionId；实体编辑器消费显式 target；配置、同步和备份使用注入的文件来源 |
 | driver-llm | 系统配置从 /etc 受限来源注入；凭据通过专用服务；无旧配置迁移探测。Skill 统一 `.yaml`，启动/reload 不加载旧 `.json/.yml`，保存不删除旧格式文件；Provider/Connection/MCP 继续使用各自当前 JSON 格式 |
 | durable-kernel / kernel-adapters | catalog 和 Session kernel 目录分离；每 Session 创建文件及执行能力；删除全局文件工具 scope 和 Node FS fallback |
 | Web | IndexedDB 固定新 schema；/run 使用内存；Session 恢复与编辑器文件列表无关 |

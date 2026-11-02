@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { AgentConfigEditor } from '../../llm-settings-ui/src/editors/AgentConfigEditor';
+import { AgentConfigEditor } from '@itookit/llm-ui-adapter/settings';
 import { buildExecutorOptions } from '../../llm-ui-adapter/src/shell/AgentProvider';
 import type { SystemPromptDefinition } from '@itookit/llm-tasks/contracts';
 

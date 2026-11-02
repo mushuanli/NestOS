@@ -8,7 +8,7 @@
 
 | 归属 | 目录 | 入口规则 |
 |---|---|---|
-| 前端 | ui/app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common-adapter 的 src | 不导入后端实现，不创建执行 Runtime |
+| 前端 | ui/app-shell、app-settings、llm-ui-adapter、mdx-adapter、ui-common-adapter 的 src | 不导入后端实现，不创建执行 Runtime |
 | 前端独立库 | libraries/vfs-ui、libraries/mdxeditor、libraries/llm-ui、libraries/ui-common | 保留通用展示、编辑和注入端口 |
 | 后端应用 | backend/app-core/src/host、configuration、settings、projects、session、runtime 等 | 不加载 UI、CSS 或 DOM 组件 |
 | 独立持久执行内核 | libraries/durable-kernel | 仅依赖 vfs-core，运行与纯契约入口分开 |
@@ -92,7 +92,7 @@ C4Component
 - createSettingsNavigation 不访问后端；SettingsPort 由后端初始化完成后返回。来源描述仅含工作区身份或已有授权视图，openWorkspace 按操作解析；HTTP 的延迟视图沿用原有写保护。OCR 首次读取由服务自行等待，readSettings 与显式 prepareConfiguration 分开，普通文档启动不加载 OCR 或设置数据。
 - SnapshotService 位于 Web 存储宿主，通过 SnapshotPort 注入。Node/Tauri 未提供快照适配时，写维护操作明确拒绝；不会误操作浏览器数据库或关闭 VFS 后假成功。
 - 存储估计、主题和日志偏好通过设置端口访问。浏览器存储 API 不出现在设置 UI。
-- llm-settings-ui 保留文件选择、格式解析提示、冲突选择和结果展示。冲突查询、ID 分配、关联重映射、凭据保留与按依赖顺序保存由 app-core/configuration/configuration-import 执行；ConfigurationImportPort 属于配置领域契约。
+- llm-ui/settings 保留文件选择、格式解析提示、冲突选择和结果展示。冲突查询、ID 分配、关联重映射、凭据保留与按依赖顺序保存由 app-core/configuration/configuration-import 执行；ConfigurationImportPort 属于配置领域契约。
 - llm-ui 通过自身的 Chat/Flow 展示契约消费宿主 source/actions，仅依赖 mdxeditor。llm-ui-adapter 保留 NestOS 交互命令、投影、视图缓存与完整产品编辑器兼容入口，通过 Session/Task/Conversation 公开端口调用。
 
 连接和原生会话状态由后端按观察需求共享探测；闲置状态缓存有身份、有效期和容量限制。前端读取快照并声明兴趣，不逐项目定时查询；后台执行记录仍以持久 Task 为准，缓存不授予操作权限。见 [业务装配与后台缓存](../http-app.md#业务装配与后台缓存)。

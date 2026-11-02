@@ -30,8 +30,7 @@
     "@itookit/app-transport": "workspace:*",
     "@itookit/kanban": "workspace:*",
     "@itookit/ui-common": "workspace:*",
-    "@itookit/llm-ui-adapter": "workspace:*",
-    "@itookit/llm-settings-ui": "workspace:*"
+    "@itookit/llm-ui-adapter": "workspace:*"
   },
   "peerDependencies": {
     "@itookit/app-settings": "workspace:*",
@@ -75,6 +74,8 @@
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
     "@itookit/cells-driver": "workspace:*",
-    "@itookit/node-host": "workspace:*"
+    "@itookit/node-host": "workspace:*",
+    "js-yaml": "^4.1.1",
+    "@types/js-yaml": "^4.0.9"
   }
 }

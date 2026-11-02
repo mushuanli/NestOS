@@ -1,31 +1,10 @@
-@import '@itookit/ui-common/components.css';
-/* ============================================
-   @file: app-settings/styles/styles.css
-   Settings Workspace - Main Entry
-   按模块组织的 CSS 入口文件
-   ============================================ */
-
-/* 基础变量和重置 */
-@import './_variables.css';
-
-/* 通用布局 */
-@import './_layout.css';
-
-/* 通用组件 */
-@import './_components.css';
-
-/* 功能模块 */
+@import '@itookit/llm-ui/settings.css';
 @import './_storage.css';
 @import './_tags.css';
-@import './_connections.css';
-@import './_providers.css';
 @import './_contacts.css';
-@import './_agents.css';
 @import './_about.css';
-@import '_storage.css';
-@import '_log.css';
-@import '_system-fs.css';
-@import '_cost.css';
-@import '_appearance.css';
+@import './_log.css';
+@import './_system-fs.css';
+@import './_appearance.css';
 @import '@xterm/xterm/css/xterm.css';
 @import './_terminal.css';

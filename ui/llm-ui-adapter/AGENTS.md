@@ -139,7 +139,7 @@ ChatInput 设置按对话、OCR、高级分组；高级项默认折叠。Skills 
 
 项目新会话 UI 位于 `src/shell/drafts/`：编辑器只消费 ui-common 的 `SessionDraftControls`，输入序列化与保存队列独立。materialize 返回明确的编辑器/提交标识/恢复行为，不能修改宿主 options 传递状态；项目转正策略、持久化和接受判定不进入 UI。inPlace 路径以 workspace-handoff 在同一 mount 内交接控制器，复用 ChatInput 与原输入 DOM，失败回滚输入绑定；外层编辑器委托正式能力，confirmDraft 接收宿主接纳事实及必要的恢复构造回调。跨视图接纳不重新提交，隐藏接纳不抢焦点。旧草稿 renderer 的 release 必须早于正式 HistoryView 创建子容器，不能在正式视图建立后清空共享历史根节点；首次发送回归必须核验临时提问和后续回复实际出现在已挂载 DOM 中，不能只校验外层容器身份。
 
-- `/chat` 是聊天/Flow 展示入口，`/settings` 承载可选设置编辑器；共享展示源码不得加载 llm-settings-ui。根入口等同 `/chat`；已删除 `/legacy` 聚合入口。
+- `/chat` 是聊天/Flow 展示入口，`/settings` 承载可选设置编辑器；共享展示源码不得加载 llm-ui/settings。根入口等同 `/chat`；已删除 `/legacy` 聚合入口。
 - UI 经结构化 `SessionViewPort` 接收会话实例，默认工具列表由宿主注入，不从适配器读取产品默认值。Web/Tauri 不使用全局 SessionManager 装配聊天。
 
 `/chat` 的正式会话编辑器必须注入 SessionViewPort，提示词历史仅由实例提供。Session/Flow 命令常量来自各自 `/contracts`，共享 UI 禁止导入 Session 实现根入口；禁止全局单例回退。

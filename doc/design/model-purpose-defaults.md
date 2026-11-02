@@ -15,7 +15,7 @@
 ```mermaid
 C4Component
     Container_Boundary(ui, "前端 UI") {
-        Component(settings, "ModelDefaultsEditor", "llm-settings-ui", "默认用途、模型详情与连接导航")
+        Component(settings, "ModelDefaultsEditor", "llm-ui/settings", "默认用途、模型详情与连接导航")
         Component(toolbox, "ToolboxWorkbench", "app-shell", "单个默认设置按钮、快捷菜单与配置导航")
         Component(ocrControls, "OcrControls / 提示词弹窗", "app-shell", "共享 OCR 配置与按需提示词编辑")
     }

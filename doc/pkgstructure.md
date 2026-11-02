@@ -5,13 +5,13 @@ pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应�
 
 | 目录 | 模块 |
 |---|---|
-| `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common-adapter |
+| `ui/` | app-shell、app-settings、llm-ui-adapter、mdx-adapter、ui-common-adapter |
 | `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters |
 | `shared/` | app-contracts、common、app-transport |
 | `libraries/` | driver-llm、cells-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser、durable-kernel、device-tty、kanban、ui-common |
 | `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
 
-19 个业务/共享包 + 14 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 `tools/cells` Rust 工具子模块（包名与命令为 `cells`），寓意蜂房中的单个巢室，将信息与 Agent 集成为 NestOS 的单个智能节点。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
+18 个业务/共享包 + 14 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 `tools/cells` Rust 工具子模块（包名与命令为 `cells`），寓意蜂房中的单个巢室，将信息与 Agent 集成为 NestOS 的单个智能节点。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -41,10 +41,9 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/vfsdriver-indexeddb` | IndexedDB 存储后端（浏览器）；既有 SeqFile 记录存储与通用原生事务能力；同步适配、原子应用与 Web Locks 由 sync-adapters 提供。 |
 | `@itookit/cells-driver` | 统一 cells 连接/凭据接入：文件、远程进程、HTTP 同步与 MCP harness 控制；独立于应用策略与 UI。 |
 | `@itookit/vfsdriver-local` | SQLite + 本地 FS 后端（Node/Electron）。 |
-| `@itookit/llm-ui` | 独立 Chat + Flow 通用 UI；只依赖 mdxeditor，Flow 由同包 /flow 子入口与功能开关控制。 |
+| `@itookit/llm-ui` | 独立 Chat、Flow 与设置 UI；仅依赖 mdxeditor 和零依赖 ui-common，Flow 与设置分别通过 /flow、/settings 可选子入口提供。 |
 | `@itookit/image-parser` | 独立图片缩放、裁剪与 Scanic 透视校正；/ui 多图编辑面板，/vfs 可选授权读取。 |
 | `@itookit/llm-ui-adapter` | NestOS 的 Session/Task/Flow/VFS 接线与原产品编辑器兼容入口。 |
-| `@itookit/llm-settings-ui` | LLM 设置 UI：Agent/Provider/Connection/MCP/Skill/Cost/SystemPrompt 编辑器 + 配置导入导出（`llm-import`）。 |
 | `@itookit/vfs-ui` | 独立文件/资源浏览 UI：目录导航、标签、内容大纲；仅依赖 vfs-core，通过公开接口注入数据源、动作、展示和持久化。 |
 | `@itookit/mdxeditor` | 独立 CodeMirror 6 编辑器（[独立仓库](https://github.com/mushuanli/mdxeditor)，源码工作区接入），不依赖其他内部包；宿主通过公共附件、存储、导航和保存接口注入能力。 |
 | `@itookit/mdx-adapter` | NestOS 编辑器适配：VFS/namespace/Session 校验、文件格式、插件元数据、笔记挖空复习状态的共享 seqfile（路径作用域、评分时按卡写入）、附件管理 UI、文件聊天引用及会话打印。 |

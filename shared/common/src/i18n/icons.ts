@@ -316,3 +316,12 @@ export function harnessPresentation(kind: string, profileId?: string): {label: s
     const source = Object.hasOwn(HARNESS_MARKS, key) ? HARNESS_MARKS[key]! : {label: kind, icon: TOOLBOX_ICONS.terminal};
     return profileId && profileId !== kind ? {...source, label: `${source.label} · ${profileId}`} : source;
 }
+
+/** Shared choices for entity configuration icon pickers. */
+export const SETTINGS_ICON_CHOICES = [
+    '📝', '📄', '📋', '✅', '❌', '⚡', '🔥', '⭐', '💡', '🔧',
+    '⚙️', '🔌', '🌐', '🖥️', '📱', '🤖', '🎯', '🚀', '💎', '🔑',
+    '🏷️', '📌', '📊', '📈', '🛠️', '🧩', '🔍', '🎨', '🧪', '🔬',
+    '⚗️', '📡', '🗂️', '🔔', '🎵', '🏗️', '📦', '🧲', '🎪', ENTITY_ICONS.llm,
+    '💬', '📢', '🔗', '🛡️', '🎮', '📐', '🧮', '🔋', '💊', '🐍',
+] as const;

@@ -39,7 +39,7 @@
 | `@itookit/tools` | 同上 | 2 通过 |
 | `@itookit/llm-ui-adapter` | 同上（本轮新增脚本） | 19 通过 |
 | `@itookit/mdxeditor` | 同上（本轮新增 vitest/jsdom 与脚本） | 9 通过 |
-| `@itookit/llm-settings-ui` | 同上 | 1 通过 |
+| `@itookit/llm-ui/settings` | 同上 | 1 通过 |
 | `apps/cli` | `pnpm --filter @itookit/cli exec vitest run --exclude 'tests/crash-matrix.test.ts'` | 88 通过 / 24 文件 |
 | `apps/cli`（崩溃矩阵） | `pnpm --filter @itookit/cli exec vitest run tests/crash-matrix.test.ts` | 6 通过（真实 SIGKILL，~160s，需单独跑） |
 | `tauri-app`（Rust） | `pnpm --filter tauri-app test:rust` | 16 通过（第七十六轮 +1：无挂载时的 Session Bash 文案） |
@@ -262,7 +262,7 @@ CLI 实测（单节点 + 1.5s mock 响应，探针 `.tauri-acceptance/probe-publ
 
 | P1-02「拒租的 Session 保持只读」只在恢复层成立，写入未受约束 | 已修复并取证（2026-09-11 第六十四轮）：`recoverSessionsWithLeases` 不恢复被拒的 Session，但**没有任何写入路径检查租约**——同一数据根上启动第二个宿主后，它仍能把新 round/任务写进由第一个宿主持有的 Session（实测：第二个宿主的 `session.send` 被接受）。现把租约检查做成写入门：`recovery.acquireLater` 返回是否持有租约（本宿主新建 Session 按需获取），`createApplicationRuntime` 经 `createConversationSystem({ ensureWritable })` 注入，`initializeConversationSystem` 以 `canWriteSession` 传入 `SessionManager.sendMessage`，被拒时在**追加 round 之前**抛 `Session is owned by another host; this host can only read it`。回归 `backend/llm-session/__tests__/session-write-gate.test.ts` 2 条（被拒时不写任何 round；门通过时检查的是将写入的 Session），llm-session 94→96；`backend/app-core/tests/session-recovery.test.ts` 增补 `acquireLater` 布尔断言（空闲 Session 为 true、他宿主持有为 false）。**边界**：同进程内两个 `createApplicationRuntime` 会共享进程级 `SessionManager` 单例，因此「第二个宿主」的真实端到端验收需要两个进程/两个应用实例（未做）；被拒端的 UI 只显示发送失败，尚未整体切换为只读视图 |
 
-| P0-03 教程与实际凭证路径不符（要求桌面设置填 `api_key_env`） | 已改正并补证（2026-09-11 第六十五轮）：`api_key_env` 只存在于 CLI YAML（`apps/cli/src/{types,config,runtime}.ts` 校验/读取环境变量），桌面 Provider 设置（`ui/llm-settings-ui/src/editors/ProviderSettingsEditor.ts`）只有密码输入框，key 以明文写入 profile 的 Provider 配置；`doc/minimal-system.md` 的「模型与目录授权」第 1 步改为按宿主区分，并写明 key 的可见范围（不出现在 `getProviders()`、`.llm` 导出与 LLM 日志，但落在 profile 数据根内，交付前需与用户确认）。新增 `backend/kernel-adapters/tests/llm-management/provider-export.spec.ts` 3 条守护导出路径：单/多 Provider 导出均不含 key、导出→解析往返不会凭空产生 key；driver-llm 46→49 |
+| P0-03 教程与实际凭证路径不符（要求桌面设置填 `api_key_env`） | 已改正并补证（2026-09-11 第六十五轮）：`api_key_env` 只存在于 CLI YAML（`apps/cli/src/{types,config,runtime}.ts` 校验/读取环境变量），桌面 Provider 设置（`libraries/llm-ui/src/settings/editors/ProviderSettingsEditor.ts`）只有密码输入框，key 以明文写入 profile 的 Provider 配置；`doc/minimal-system.md` 的「模型与目录授权」第 1 步改为按宿主区分，并写明 key 的可见范围（不出现在 `getProviders()`、`.llm` 导出与 LLM 日志，但落在 profile 数据根内，交付前需与用户确认）。新增 `backend/kernel-adapters/tests/llm-management/provider-export.spec.ts` 3 条守护导出路径：单/多 Provider 导出均不含 key、导出→解析往返不会凭空产生 key；driver-llm 46→49 |
 
 | `llm-session` 遗弃在途事件消费者：app-shell 套件「测试全过但 exit 1」并中断整仓矩阵（未处理的 `EACCES`） | 已修复并取证（2026-09-11 第六十六轮）：`ConversationRunCoordinator.consume` 先 `await handle.wait()`，宿主 `dispose()` 存储使其 reject 时直接抛出、**跳过**了 `Promise.all(consumers)`；在途 `consumeEvents`（`for await … handle.events()`）同样因存储关闭而 reject，却无人观察 → `Serialized Error: { code: 'EACCES' }` / `Errors 1 error`。现 `subscribe` 即捕获 consumer 错误、`wait()` 的 reject 记录后**始终**执行 consumer join，再按「wait 错误优先、其次 consumer 错误」抛出。回归 `backend/llm-session/__tests__/conversation-run-consumer-join.test.ts`（stub：wait reject + events 迭代器 reject）；**已验证未修复时失败并打印同形态 `EACCES`/`Errors 1 error`**。llm-session 96→97，app-shell 132 / 30 跳过且无错误 |
 
@@ -1023,13 +1023,13 @@ P0-02 的发送延迟（真机 4.4s / ≈590 次 IPC，目标 ≤2s / ≤100）�
 
 **用户决定（2026-09-11）：API key 落盘范围保持明文**（不引入密钥环 / 环境变量引用）。据此 P0-03 的「独立凭证注入 UI」不再需要另建入口，剩余交付侧工作本轮完成：
 
-1. **编辑器明确标注存储范围**（`ui/llm-settings-ui/src/editors/ProviderSettingsEditor.ts`）：API Key 字段下新增两条说明——
+1. **编辑器明确标注存储范围**（`libraries/llm-ui/src/settings/editors/ProviderSettingsEditor.ts`）：API Key 字段下新增两条说明——
    - `Key 以明文保存在数据根的 /etc/llm/.providers/<id>.json；Provider 列表、.llm 导出与 LLM 日志都会剥离它，但文件本身可读。`
    - `Session Bash 不继承宿主环境：子进程需要凭证时，请在命令里显式传入，或让它从自己读取的受控文件 / 环境变量名取值。`
 2. **纠正两页自相矛盾的文案**（与代码对齐：`llm-loader.ts` 注明「apiKey lives on the Provider」、「Connection 不持有 apiKey」）：
    - Provider 页原写「连接（API Key）在『LLM 连接』页配置」→ 现写「…API Key（认证信息属于 Provider 层）。连接在『LLM 连接』页把 Provider 绑定到 Agent 并设置模型层级。」
    - LLM 连接页原写「为云提供商配置 API Key…」→ 现写「把 Provider 绑定到 Agent 并设置模型层级…；API Key 属于 Provider，在『LLM Provider』页配置」。
-3. **回归**：`ui/llm-settings-ui/tests/ProviderSettingsEditor.key-storage.test.ts` 2 条（Provider 页描述指向 Provider 层；编辑弹窗的 API Key 字段是 password 且带明文路径与子进程约定）。llm-settings-ui 1→**3**。
+3. **回归**：`ui/app-shell/tests/settings/ProviderSettingsEditor.key-storage.test.ts` 2 条（Provider 页描述指向 Provider 层；编辑弹窗的 API Key 字段是 password 且带明文路径与子进程约定）。llm-settings-ui 1→**3**。
 4. **真机验证**（Xvfb + 真实窗口，实现内挂载 harness）：Provider 页描述与编辑弹窗两条说明、LLM 连接页描述均按上表渲染。证据：`.tauri-acceptance/round89-provider-key-copy.png`。
 5. [运行说明](minimal-system.md) 同步：§子进程凭证注入 明确「桌面端不另做注入 UI…落盘保持明文」。
 
@@ -2007,3 +2007,9 @@ ESM/CJS/类型消费者验证通过。本轮没有真实服务商的付费模型
 用途默认页在连接选择框右侧提供配置图标，OCR 同步复用；图标含连接名的 title/aria-label，并支持原生链接和宿主导航。说明中的“模型配置”跳转工具箱模型分类；移除已配置摘要、运行验证、底部管理按钮与优先级说明。思考和模型内置图标统一为水晶球。
 
 llm-settings-ui 全包 142 项、工作台与工具箱相关 66 项、vfs-ui 展示与工具栏 9 项通过。HTTPS 真实临时宿主重启恢复 3 项通过，模型默认选择恢复另行复核通过；类型、样式、文档和差异检查通过。HTTP release `20261023T142209-0645ce8c-dirty` 构建成功；此记录仅表示构建完成，不表示运行中的宿主已切换到该版本。
+
+### 2026-11-03 设置 UI 统一实现
+
+设置编辑器已迁入独立 llm-ui/settings；旧业务包及重复样式已删除。NestOS 适配层仅保留服务、导航、文件操作与呈现策略接线。自动保存和表单恢复统一由 ui-common 实现；原 29 个设置测试文件迁到 app-shell/tests/settings。
+
+相关集成回归 37 文件 268 项、独立 llm-ui 23 文件 214 项、ui-common 4 文件 10 项通过，覆盖授权、保存失败保留输入、发布修订冲突、多宿主隔离、销毁后迟到读取和恢复结构不匹配。独立 JS/类型声明构建及依赖隔离检查通过。此前已有的 project-workbench-ui 项目工具栏断言仍失败（期待旧工具栏按钮），本轮未修改该用例或以跳过掩盖。

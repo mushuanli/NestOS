@@ -1,9 +1,9 @@
 import {ASSISTANT_ADD_EVENT} from '../src/navigation/assistant-actions';
-import { SystemPromptSettingsEditor } from '../../llm-settings-ui/src/editors/SystemPromptSettingsEditor';
+import { SystemPromptSettingsEditor } from '@itookit/llm-ui-adapter/settings';
 // @vitest-environment jsdom
 import * as archiveTransfer from '../src/files/archive-transfer';
-import { ProviderSettingsEditor } from '../../llm-settings-ui/src/editors/ProviderSettingsEditor';
-import { ConnectionSettingsEditor } from '../../llm-settings-ui/src/editors/ConnectionSettingsEditor';
+import { ProviderSettingsEditor } from '@itookit/llm-ui-adapter/settings';
+import { ConnectionSettingsEditor } from '@itookit/llm-ui-adapter/settings';
 import { toolboxSettingsRoute } from '../src/toolbox/routes';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
@@ -11,7 +11,7 @@ import { createToolboxFiles } from '../../../backend/app-core/src/configuration/
 import { createApplicationRuntime, type ApplicationRuntime } from '@itookit/app-core';
 import { SkillsEngine } from '../../../backend/app-core/src/configuration/skills-files';
 import {BaseSettingsEditor, editorResourceId, type EditorOptions} from '@itookit/ui-common-adapter';
-import { MCPSettingsEditor } from '../../llm-settings-ui/src/editors/MCPSettingsEditor';
+import { MCPSettingsEditor } from '@itookit/llm-ui-adapter/settings';
 import { FlowCommand } from '@itookit/llm-session';
 import { ToolboxInventory } from '@itookit/app-core';
 import { ToolboxResources } from '@itookit/app-core';
@@ -511,7 +511,8 @@ it('does not dispatch organizer deletion or reopen its dialog after the workbenc
 });
 it('keeps the original toolbar and all resource types available from model creation', async () => {
     const f = await setup(); f.workbench.setFilter('models');
-    expect(f.sidebar.querySelector('[data-action="create-file"]')?.textContent).toContain(t('toolbox.new'));
+    expect(f.sidebar.querySelector('[data-action="create-file"]')?.getAttribute('aria-label')).toBe(t('toolbox.create'));
+    expect(f.sidebar.querySelector('[data-action="create-file"] svg')).not.toBeNull();
     expect(f.sidebar.querySelector('[data-action="create-connection"]')).toBeNull();
     const pending = f.workbench.createResource();
     const dialog = document.querySelector('.project-dialog')!;

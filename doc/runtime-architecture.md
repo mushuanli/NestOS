@@ -384,7 +384,7 @@ C4Component
     }
     Container_Boundary(publicBoundary, "公共机制与可选展示层") {
         Component(ui, "llm-ui", "DOM / ports", "输入、历史、Flow 展示、审批与任务控制")
-        Component(settings, "llm-settings-ui", "DOM / management ports", "可选配置编辑界面")
+        Component(settings, "llm-ui/settings", "DOM / management ports", "可选配置编辑界面")
         Component(session, "llm-session", "Session / Round / Branch", "会话历史、配置解析、运行投影与命令")
         Component(flow, "llm-flow", "DAG / FlowStore", "编译、依赖调度、循环、委派与恢复")
         Component(tasks, "llm-tasks", "DurableTaskProgram", "Chat / Agent / Plan 状态机与 Context bridge")
@@ -427,7 +427,7 @@ C4Component
 | kernel-adapters | Effect 与平台适配；模型配置、MCP、Skill 和费用管理；显式 core/config/presets 入口 | 模型目录、自动连接、MCP 传输、外部能力、平台策略 |
 | tools | Tool、ToolInvokeRequest、ToolInvokeResult、ToolVFSContext、INativeShell | 授权、工作目录、进程、外部服务与工具启用范围 |
 | llm-ui | SessionViewPort、PromptHistoryPort、TaskControlPlane、ICommandBus、会话仓储端口 | 导航、默认工具、宿主创建协议、国际化及产品动作 |
-| llm-settings-ui | 管理服务接口、配置编码及可选设置入口 | 实例能力与可编辑配置范围 |
+| llm-ui/settings | 管理服务接口、配置编码及可选设置入口 | 实例能力与可编辑配置范围 |
 | app-core/app-shell/apps | createApplicationRuntime/createKernelRuntime 与 UI 装配 | NestOS 预设、产品提示词、菜单、路由、环境与生命周期 |
 
 Session、Flow 和 Tasks 分别拥有历史语义、图语义和单任务状态机，不能因为都处理 LLM 就合并。driver-llm 和 llm-context 可分别使用；Kernel 可以执行非 LLM Program。kernel-adapters 当前同时覆盖执行适配和模型管理，应先按子入口及内部组件治理，暂不增加新的 npm 包。

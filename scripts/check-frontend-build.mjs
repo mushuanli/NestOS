@@ -8,7 +8,7 @@ import state from './local-library-state.mjs';
 import { sourceExports, workspacePackages } from './workspace-packages.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const names = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'llm-settings-ui', 'mdx-adapter', 'ui-common', 'ui-common-adapter', 'vfs-ui', 'mdxeditor'];
+const names = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'mdx-adapter', 'ui-common', 'ui-common-adapter', 'vfs-ui', 'mdxeditor'];
 const snapshot = state.readSelection(root);
 function entry(name, subpath = '') {
     const library = ['vfs-ui', 'mdxeditor', 'llm-ui', 'kanban', 'ui-common'].includes(name);

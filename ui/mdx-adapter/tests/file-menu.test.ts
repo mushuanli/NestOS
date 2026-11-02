@@ -11,13 +11,13 @@ function fixture() {
     const backup: string[] = [], read = vi.fn(async () => ({createdAt: 1_700_000_000_000, modifiedAt: 1_700_000_100_000}));
     const editor = {getText: () => text, isDirty: () => dirty,
         replaceLoadedContent: vi.fn((value: string, expected: string) => {expect(text).toBe(expected); text = value; dirty = false;})};
-    const container = document.createElement('div'); document.body.append(container);
+    const container = document.createElement('div'), primary = document.createElement('header'); document.body.append(primary, container);
     const stop = mountFileMenu(container, editor as unknown as MDxEditor, {target: {kind: 'file', path: '/note.md'}, files: {fs: {driver: {getNode: read}}} as any,
         hostContext: {reloadContent: async (_path, accept) => {if (await accept(disk)) committed++;},
-            reloadRecovery: {preserve: async value => {backup.push(value);}, read: async () => backup.at(-1)}} as any}, () => '/note.md');
+            reloadRecovery: {preserve: async value => {backup.push(value);}, read: async () => backup.at(-1)}} as any}, () => '/note.md', primary);
     cleanups.push(stop);
-    return {container, editor, read, backup, stop, text: () => text, committed: () => committed, edit: (value: string) => {text = value; dirty = true;}, disk: (value: string) => {disk = value;},
-        refresh: () => container.querySelector<HTMLButtonElement>('[data-file-refresh]')!.click()};
+    return {container, primary, editor, read, backup, stop, text: () => text, committed: () => committed, edit: (value: string) => {text = value; dirty = true;}, disk: (value: string) => {disk = value;},
+        refresh: () => primary.querySelector<HTMLButtonElement>('[data-file-refresh]')!.click()};
 }
 it('reads file times only when information expands and does not poll or read AI state', async () => {
     const f = fixture(); expect(f.read).not.toHaveBeenCalled();
@@ -52,4 +52,10 @@ it('rejects stale confirmation when editing continues during comparison', async 
 it('cancels the compare dialog when the editor closes', async () => {
     const f = fixture(); f.refresh(); await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
     f.stop(); expect(document.querySelector('dialog')).toBeNull(); await Promise.resolve(); expect(f.committed()).toBe(0);
+});
+
+it('places reload in the primary toolbar and keeps labelled file details in the menu',()=>{
+    const f=fixture();expect(f.primary.querySelector('[data-file-refresh]')).not.toBeNull();
+    expect(f.container.querySelector('[data-file-refresh]')).toBeNull();
+    const info=f.container.querySelector('summary')!;expect(info.querySelector('svg')).not.toBeNull();expect(info.querySelector('span')?.textContent).toBeTruthy();
 });

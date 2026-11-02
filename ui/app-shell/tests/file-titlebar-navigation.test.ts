@@ -53,7 +53,9 @@ it('uses the existing file title bar for windows and overflow actions while reta
         expect(tab.panel.querySelector('[data-button-id="toggle-sidebar"]')?.getAttribute('aria-label')).toBe('返回上一页');
         const title = tab.panel.querySelector<HTMLInputElement>('.mdx-editor-titlebar__title')!; expect(title.value).toBe('note.md');
         const menu = tab.panel.querySelector<HTMLDetailsElement>('.mdx-editor-titlebar__menu')!;
-        expect(menu.querySelector('[data-button-id="copy-content"]')).not.toBeNull(); expect(menu.querySelector('[data-button-id="save-action"]')).not.toBeNull();
+        for (const id of ['copy-content', 'save-action']) {
+            const action = tab.panel.querySelector(`[data-button-id="${id}"]`)!; expect(action).not.toBeNull(); expect(action.closest('details')).toBeNull();
+        }
         editor.setText('Unsaved text'); editor.setDirty(true);
         menu.querySelector('summary')!.click(); expect(menu.open).toBe(true);
         menu.querySelector<HTMLButtonElement>('[data-button-id="toggle-line-wrapping"]')!.click(); await Promise.resolve();

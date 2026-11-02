@@ -46,9 +46,9 @@ function pluginDefaults(options: MDxAdapterOptions, path?: string, getPath: () =
         overflowActions: titlebar.overflowActions ?? true,
         // Public ordering contract: the panel keeps its buttons, the host only declares order.
         actionOrder: titlebar.actionOrder ?? MORE_MENU_ORDER,
-        mountMoreMenu: (container: HTMLElement, editor: MDxEditor) => {
-            const provided = typeof titlebar.mountMoreMenu === 'function' ? titlebar.mountMoreMenu(container, editor) : undefined;
-            const file = mountFileMenu(container, editor, options, getPath);
+        mountMoreMenu: (container: HTMLElement, editor: MDxEditor, primary: HTMLElement) => {
+            const provided = typeof titlebar.mountMoreMenu === 'function' ? titlebar.mountMoreMenu(container, editor, primary) : undefined;
+            const file = mountFileMenu(container, editor, options, getPath, primary);
             return () => {file(); if (typeof provided === 'function') provided();};
         },
         presentButton: (id: string, button: HTMLButtonElement) => {

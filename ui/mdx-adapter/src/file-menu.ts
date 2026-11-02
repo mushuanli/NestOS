@@ -5,14 +5,15 @@ import type {EditorOptions} from '@itookit/ui-common-adapter';
 
 const log = createModuleLogger('file-menu');
 /** Read file details only when requested; explicit reload never writes or replaces a dirty draft. */
-export function mountFileMenu(container: HTMLElement, editor: MDxEditor, options: EditorOptions, getPath: () => string | undefined): () => void {
+export function mountFileMenu(container: HTMLElement, editor: MDxEditor, options: EditorOptions, getPath: () => string | undefined, primary: HTMLElement = container): () => void {
     const fs = options.files?.fs;
     if (options.target?.kind !== 'file' || !fs) return () => {};
     const lifetime = new AbortController(); let busy = false, generation = 0;
     container.dataset.mdxMenuKeepOpen = '';
     const info = document.createElement('details'), summary = document.createElement('summary');
     info.className = 'mdx-file-menu__info'; info.dataset.fileInfo = ''; info.dataset.mdxMenuKeepOpen = '';
-    summary.innerHTML = ACTION_ICONS.info; summary.title = t('editor.file.info'); summary.setAttribute('aria-label', summary.title);
+    summary.innerHTML = ACTION_ICONS.info;
+    const label = document.createElement('span'); label.textContent = t('editor.file.info'); summary.append(label); summary.title = t('editor.file.info'); summary.setAttribute('aria-label', summary.title);
     summary.className = 'mdx-file-menu__icon';
     const values = document.createElement('dl'), status = document.createElement('p'); status.setAttribute('role', 'status');
     info.append(summary, values); container.append(info);
@@ -43,7 +44,7 @@ export function mountFileMenu(container: HTMLElement, editor: MDxEditor, options
         refresh.dataset.mdxMenuKeepOpen = '';
         refresh.className = 'mdx-editor-titlebar__button mdx-file-menu__icon'; refresh.innerHTML = FILE_BROWSER_ICONS.refresh;
         refresh.title = t('editor.file.refresh'); refresh.setAttribute('aria-label', refresh.title);
-        container.append(refresh);
+        primary.append(refresh);
         refresh.addEventListener('click', async () => {
             if (busy || lifetime.signal.aborted) return;
             const path = getPath(), original = editor.getText(), operationId = randomUUID(), started = Date.now(); if (!path) return;

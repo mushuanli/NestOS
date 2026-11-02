@@ -8,7 +8,6 @@ interface Options {
     container: HTMLElement; service?: KanbanClient;
     navigate(path: string): Promise<void>;
     create(): Promise<void>;
-    lookup(): Promise<void>;
     report(error: unknown): void;
 }
 const log = createModuleLogger('kanban-sidebar');
@@ -28,13 +27,13 @@ export class KanbanSidebar {
         this.list.className = 'kanban-sidebar__list'; this.status.setAttribute('role', 'alert'); this.status.hidden = true;
         options.container.classList.add('kanban-sidebar'); options.container.append(this.status, this.list);
         this.browser = createVFSBrowser({container: this.list, title: t('kanban.title'), searchPlaceholder: t('kanban.search'),
-            presentation: nestOSVFSPresentation, appearance: {showTimestamp: false}, selection: false,
+            presentation: nestOSVFSPresentation, appearance: {showTimestamp: false}, selection: false, navigationHeader: {layout: 'inline'},
+            toolbarOptions: {variant: 'plain', iconOnlyActions: ['create', 'refresh']},
             source: {get: async id => this.nodes.find(node => node.id === id), children: async parent => parent === null ? this.nodes : [], subscribe: () => () => {}},
             onActivate: node => {void options.navigate(node.id).catch(error => this.failure(error));}, onError: error => this.failure(error),
             actions: [
                 {id: 'create', label: t('kanban.newBoard'), iconHTML: FILE_BROWSER_ICONS.addFile, placements: ['toolbar'], run: () => options.create()},
                 {id: 'refresh', label: t('kanban.refresh'), iconHTML: ACTION_ICONS.refreshView, placements: ['toolbar'], run: () => this.reload()},
-                {id: 'reference', label: t('kanban.openReference'), placements: ['toolbar'], run: () => options.lookup()},
             ]});
         this.refresh = new ViewRefresh({visible: () => this.visible && !this.closed, run: () => this.load(), report: error => this.failure(error)});
     }

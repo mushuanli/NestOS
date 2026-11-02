@@ -42,7 +42,7 @@ export interface KanbanBoard {
 export interface KanbanEvent {
     sequence: number; boardId: string; itemId?: string; operationId: string; at: number;
     kind: string; actor: KanbanActor; recipients: string[];
-    data: { dispatchId?: string; readyItemIds?: string[]; planId?: string; recordId?: string; recordIds?: string[]; itemIds?: string[]; planning?: KanbanPlanning; message?: string; reason?: string; resultRef?: string; estimate?: KanbanEstimate; workUnits?: number };
+    data: { status?: KanbanItem['status']; reference?: KanbanExternalReference; code?: string; itemTitle?: string; dispatchId?: string; readyItemIds?: string[]; planId?: string; recordId?: string; recordIds?: string[]; itemIds?: string[]; planning?: KanbanPlanning; message?: string; reason?: string; resultRef?: string; estimate?: KanbanEstimate; workUnits?: number };
 }
 export type KanbanCommand = import('./workflow').KanbanWorkflowCommand
     | {type: 'edit-item'; itemId: string; title: string; responsibility: string; acceptance: string}

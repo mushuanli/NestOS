@@ -3,7 +3,7 @@ import type {ContentTitleBarParts} from '@itookit/ui-common';
 export interface KanbanPresentation {
     text(key: string, values?: Record<string, string | number>): string;
     icons: {refreshView: string; more: string; close: string; back?: string};
-    log?(event: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; count?: number; durationMs: number}): void;
+    log?(event: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; count?: number; errorName?: string; source?: string; durationMs: number}): void;
     referenceUrl?(path: string): string;
 }
 export interface KanbanUIOptions {
@@ -14,6 +14,8 @@ export interface KanbanUIOptions {
     presentation: KanbanPresentation;
     selected(path: string): void;
     openSession(id: string): Promise<void>;
+    sessionUrl?(id: string): string;
+    referenceLink?(reference: KanbanExternalReference): Promise<{href: string; label: string; sessionId?: string} | undefined>;
     activated?(): void;
     mountNavigation?(container: HTMLElement): () => void;
     mountWindowList?(container: HTMLElement): () => void;

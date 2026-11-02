@@ -1,3 +1,4 @@
+import type {KanbanWorkLog, WorkLogFact} from './work-log';
 import {t} from '@itookit/common';
 import type {IFileSystem} from '@itookit/vfs-core';
 import type {IndependentCallService, SessionRepository} from '@itookit/llm-session';
@@ -13,21 +14,21 @@ import {requireValue} from './validation';
 
 export interface PersonalKanbanAutomationOptions {
     onAnalysis?(input: {boardId: string; id: string; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef; outcome: 'succeeded' | 'failed' | 'cancelled'; code?: string}): Promise<void>;
-    prepareAnalysis?(input: {id: string; board: KanbanBoard; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<{target: import('@itookit/llm-flow/contracts').TargetRef; instruction: string}>;
+    prepareAnalysis?(input: {reportActivity?(fact: WorkLogFact): Promise<void>; id: string; board: KanbanBoard; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<{target: import('@itookit/llm-flow/contracts').TargetRef; instruction: string}>;
     validatePreparation?(reference: import('@itookit/kanban/contracts').KanbanExternalReference, options?: Record<string, string>): void;
     verifyWork?(dispatchId: string): Promise<void>;
     preparations?: import('@itookit/kanban/contracts').KanbanAutomationTarget[];
     observeWork?(input: {boardId: string; dispatch: import('@itookit/kanban/contracts').KanbanDispatch;
         observation: import('@itookit/kanban/execution').KanbanExecutionObservation; service: KanbanService; worker: KanbanService}): Promise<import('@itookit/kanban/execution').KanbanExecutionObservation>;
     prepareWork?(input: {dispatch: import('@itookit/kanban/contracts').KanbanDispatch; item: KanbanItem;
-        stage?: 'decision' | 'task'; options?: Record<string, string>; preparation: import('@itookit/kanban/contracts').KanbanExternalReference; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<import('@itookit/llm-flow/contracts').TargetRef>;
+        reportActivity?(fact: WorkLogFact): Promise<void>; stage?: 'decision' | 'task'; options?: Record<string, string>; preparation: import('@itookit/kanban/contracts').KanbanExternalReference; target: import('@itookit/llm-flow/contracts').TargetRef}): Promise<import('@itookit/llm-flow/contracts').TargetRef>;
     projects?: Pick<import('@itookit/app-contracts/services').ProjectService, 'list' | 'get'>;
     calls: IndependentCallService; kernel: Kernel; sessions: SessionRepository;
     prepareSession(id: string): Promise<boolean>; catalog(): Promise<RootTargetCatalog>;
     ensureReady?(): Promise<void>;
 }
 interface Options extends PersonalKanbanAutomationOptions {
-    fs: IFileSystem; service: KanbanService; journal: KanbanAutomationJournal;
+    fs: IFileSystem; service: KanbanService; workLog?: KanbanWorkLog; journal: KanbanAutomationJournal;
     serviceFor(actor: KanbanActor): KanbanService;
     log(input: {operationId: string; boardId?: string; stage: string; result: 'success' | 'failure'; code?: string; durationMs: number}): void;
 }
@@ -83,7 +84,8 @@ async function planNext(options: Options, board: KanbanBoard, prepareSession: (i
     const target = board.automation!.enabled ? automationTarget(board.automation!.planner, await options.catalog()) : undefined;
     for (const item of candidates) {
         if (!active()) return;
-        await analyzeItem({...options, prepareSession, active}, board, item, target, options.serviceFor(board.automation!.coordinator));
+        await analyzeItem({...options, prepareSession, active, prepareAnalysis: options.prepareAnalysis ? input => options.prepareAnalysis!({...input,
+            reportActivity: fact => options.workLog?.append(options.service, board.id, item.id, {...fact, actor: fact.actor ?? board.automation?.coordinator, dispatchId: input.id}) ?? Promise.resolve()}) : undefined}, board, item, target, options.serviceFor(board.automation!.coordinator));
         const status = await analysisStatus(options.journal, board.id, item.id);
         if (status?.state === 'analyzing' || status?.state === 'unknown' || status?.state === 'ready') return;
     }
@@ -92,6 +94,8 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
     const manager = async () => {const board = await options.service.read(boardId); return options.serviceFor(board.automation!.coordinator);};
     const service = await manager();
     const executor = createPublishedKanbanWorkExecutor({...options, prepareSession,
+        onSessionPrepared: (dispatch, item, sessionId) => options.workLog?.append(options.service, boardId, item.id, {stage: 'session.prepared', result: 'success', actor: dispatch.principal, dispatchId: dispatch.id,
+            references: [{system: 'nestos-execution-session', id: sessionId, revision: dispatch.id}]}) ?? Promise.resolve(),
         observe: options.observeWork ? async (dispatch, observation) => options.observeWork!({boardId, dispatch, observation,
             service, worker: options.serviceFor(dispatch.principal)}) : undefined,
         context: async (_dispatch, item) => dependencyResults(options, boardId, item),
@@ -101,7 +105,8 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
             let target = automationTarget(board.automation.executor, await options.catalog());
             if (board.automation.preparation) {
                 requireValue(options.prepareWork, 'WORK_PREPARATION_UNAVAILABLE');
-                target = await options.prepareWork({dispatch, item, target, preparation: board.automation.preparation, options: board.automation.preparationOptions});
+                target = await options.prepareWork({dispatch, item, target, preparation: board.automation.preparation, options: board.automation.preparationOptions,
+                    reportActivity: fact => options.workLog?.append(options.service, boardId, item.id, {...fact, actor: fact.actor ?? dispatch.principal, dispatchId: dispatch.id}) ?? Promise.resolve()});
             }
             return {target};
         }, outputs: (dispatch, result) => {requireValue(active(), 'SERVICE_STOPPING'); return options.journal.artifact(dispatch.id, result.exit.output);}});

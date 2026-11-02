@@ -25,7 +25,7 @@ export class KanbanWindowWorkbench {
             error: error => this.report(error), changed: () => this.syncVisibility(),
         }, undefined, options.windows);
         this.navigation = new KanbanSidebar({container: options.sidebar, service: options.service, navigate: path => this.navigate(path),
-            create: () => this.openAction('createBoard'), lookup: () => this.openAction('lookupReference'), report: error => this.report(error)});
+            create: () => this.openBoardCreation(), report: error => this.report(error)});
         const host = document.createElement('div'); host.hidden = true; host.append(this.tabs.opened); options.sidebar.append(host);
     }
     async start(): Promise<void> {await Promise.all([this.navigation.start(), this.openResource(this.options.initialResource ?? '/')]);}
@@ -95,10 +95,10 @@ export class KanbanWindowWorkbench {
         if (!this.disposing) tab.value?.view.captureRecovery();
         await tab.value?.view.destroy();
     }
-    private async openAction(action: 'createBoard' | 'lookupReference'): Promise<void> {
+    private async openBoardCreation(): Promise<void> {
         await this.navigate('/');
         const page = this.tabs.current?.value; if (!page || this.disposing) return;
-        await page.ready; await page.view[action]();
+        await page.ready; await page.view.createBoard();
         this.options.sidebar.dispatchEvent(new CustomEvent(VFS_DOM_EVENTS.resourceActivated, {bubbles: true}));
     }
     private navigate(path: string): Promise<void> {return this.options.windows?.navigate(path) ?? this.openResource(path);}

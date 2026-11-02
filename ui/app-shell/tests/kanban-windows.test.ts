@@ -90,13 +90,12 @@ it('updates shared navigation after creating a board through its toolbar', async
     expect(f.sidebar.querySelectorAll('.vfs-node-list')).toHaveLength(1); expect(f.sidebar.textContent).toContain('Board');
 });
 
-it('opens an item by reference from the shared sidebar without treating its lookup as a draft', async () => {
-    const f = await fixture('/board/b'); const board = (await f.service.catalog())[0];
-    f.sidebar.querySelector<HTMLButtonElement>('button[aria-label="' + t('kanban.openReference') + '"]')!.click();
-    await vi.waitFor(() => expect(f.active().querySelector('[data-form=reference]')).not.toBeNull()); await idle(f.active);
-    const field = f.active().querySelector<HTMLInputElement>('[name=reference]')!;
-    field.value = 'KB-' + board.number + '#' + board.items[0].number; field.dispatchEvent(new Event('input', {bubbles: true}));
-    f.active().querySelector<HTMLButtonElement>('[data-form=reference] button')!.click();
-    await vi.waitFor(() => expect(f.workbench.getActiveResourceId()).toBe('/board/b/card')); await idle(f.active);
-    expect(f.active().querySelector('[data-panel] h3')?.textContent).toBe('A long item title');
+it('keeps search, create and refresh in the shared browser header without a reference lookup', async () => {
+    const f = await fixture('/');
+    const search = f.sidebar.querySelector<HTMLInputElement>('input[type=search]')!;
+    const create = f.sidebar.querySelector<HTMLButtonElement>('button[aria-label="' + t('kanban.newBoard') + '"]')!;
+    const refresh = f.sidebar.querySelector<HTMLButtonElement>('button[aria-label="' + t('kanban.refresh') + '"]')!;
+    expect(search.closest('.vfs-node-list__header')?.contains(create)).toBe(true);
+    expect(search.closest('.vfs-node-list__header')?.contains(refresh)).toBe(true);
+    expect(f.sidebar.querySelector('button[aria-label="' + t('kanban.openReference') + '"]')).toBeNull();
 });

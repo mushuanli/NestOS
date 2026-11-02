@@ -115,4 +115,4 @@ NestOS 的默认目录、远程 HttpSeqClient、Session 来源读取、发布 Ag
 
 Boards may store automation settings with opaque planner/executor references and trusted coordinator/worker principals. `configure-automation` changes configuration only; the host owns model calls and scheduling. Existing unassigned work may join a sealed plan with `expectedRevision`; adoption preserves its identity and manual dependencies. `edit-item` updates unplanned work while published definitions remain immutable. Execution bridges accept a dynamic `autoDispatch` predicate so pausing prevents new claims while existing admissions are still inspected. Optional client `automationCatalog` and `analysisStatus` ports supply the generic configuration UI and analysis details.
 
-宿主已有工作区导航时，可直接构造 `KanbanWorkbench` 并省略 `sidebar`，通过 `createBoard()`、`lookupReference()` 接入导航动作，通过 `committed` 刷新目录；`mountKanban` 的独立默认侧栏保持可用。父项详情提供子事项分页与新建入口，子项通过 `planning.parentId` 关联父项，执行依赖仍单独保存在 `planning.dependencies`。
+宿主已有工作区导航时，可直接构造 `KanbanWorkbench` 并省略 `sidebar`，通过 `createBoard()` 接入导航动作，通过 `committed` 刷新目录；`mountKanban` 的独立默认侧栏保持可用。父项详情提供子事项分页与新建入口，子项通过 `planning.parentId` 关联父项，执行依赖仍单独保存在 `planning.dependencies`。

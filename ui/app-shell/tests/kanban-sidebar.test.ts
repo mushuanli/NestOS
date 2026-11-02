@@ -10,7 +10,7 @@ const board = (id: string): KanbanBoardSummary => ({id, title: id, number: 1, it
 async function fixture() {
     const catalog = vi.fn(async () => [board('Initial')]), report = vi.fn(), navigate = vi.fn(async () => {});
     const container = document.createElement('aside'); document.body.append(container);
-    const sidebar = new KanbanSidebar({container, service: {catalog} as unknown as KanbanClient, navigate, create: vi.fn(), lookup: vi.fn(), report});
+    const sidebar = new KanbanSidebar({container, service: {catalog} as unknown as KanbanClient, navigate, create: vi.fn(), report});
     cleanups.push(() => sidebar.destroy()); await sidebar.start();
     return {sidebar, container, catalog, report, navigate};
 }

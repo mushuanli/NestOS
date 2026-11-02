@@ -107,7 +107,13 @@ export function escalationReasons(board: KanbanBoard, item: KanbanItem, now: num
 
 function eventData(command: KanbanCommand, state: KanbanState): KanbanEvent['data'] {
     if (command.type === 'apply-discovery') return discoveryEvent(state, command.batch);
-    if (isWorkflowCommand(command)) return {readyItemIds:state.workflow?.ready, ...('dispatchId' in command ? {dispatchId:command.dispatchId} : {planId:command.plan.id}), ...('outcome' in command ? {reason:`execution-${command.outcome}`} : {})};
+    if (isWorkflowCommand(command)) return {readyItemIds:state.workflow?.ready, ...('dispatchId' in command ? {dispatchId:command.dispatchId} : {planId:command.plan.id}), ...('outcome' in command ? {reason:`execution-${command.outcome}`, code: command.code, status: state.board.items.find(item => item.id === state.workflow?.dispatches[command.dispatchId]?.itemId)?.status} : command.type === 'accept-execution' ? {reason: command.accept ? 'accepted' : 'rejected'} : {})};
+    if (command.type === 'create-item') return {itemTitle: command.item.title};
+    if (command.type === 'link-reference') return {reference: command.reference};
+    if (command.type === 'block-item') return {reason: command.reason};
+    if (command.type === 'release-item') return {reason: command.next === 'cancelled' ? 'cancelled' : 'released'};
+    if (command.type === 'review') return {reason: command.accept ? 'accepted' : 'rejected',
+        dispatchId: Object.values(state.workflow?.dispatches ?? {}).find(dispatch => dispatch.itemId === command.itemId && dispatch.outcome === 'succeeded')?.id};
     if (command.type === 'append-record') return {recordId: command.record.id, reason: command.record.kind === 'decision' ? 'decision-draft' : 'log'};
     if (command.type === 'review-record' || command.type === 'link-record') return {recordId: command.recordId};
     if (command.type === 'archive-items') return {itemIds: command.itemIds, reason: command.reason};

@@ -159,3 +159,6 @@
 
 .kanban-layout {display:grid;grid-template-columns:minmax(180px,240px) minmax(0,1fr);height:100%;min-height:0;}
 @media (max-width: 640px) {.kanban-layout {grid-template-columns:minmax(0,1fr);}.kanban-layout > aside {max-height:30vh;}}
+
+.kanban__session-links { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.kanban__session-links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--kanban-color-primary, #2563eb); padding: 6px 0; }

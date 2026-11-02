@@ -246,3 +246,5 @@ browser/study-sources 将可引用工作区和项目文件视图适配为独立�
 窗口标题栏在窗口列表前保留上层目录图标；首页图标位于窗口管理弹层搜索框左侧同一行，通过 Drawer 的 search.mountLeading 装配，进入当前工作区根页面；根导航页隐藏上层目录。目录动作由宿主解析资源路由，会话回到所属项目目录，文件回到父目录；切换不关闭其他窗口或丢弃草稿。
 
 非侧栏内容标题栏优先通过 WorkbenchTabs.mountTitleBar 接入 ui-common.contentTitleBar，顺序为返回、编辑/未保存状态、可选项目与标题、向上、窗口列表和更多。ui-common 只拥有 DOM、样式和响应式规则；路由、上下层、窗口管理与资源菜单归 app-shell。独立库通过可选插槽接受完整标题栏，不新增应用依赖；提供完整端口时禁止重复挂载 compact/window 局部标题。保留原输入和菜单节点，重绑定先释放旧租约，迟到销毁不得移走新标题栏的控件。应用手机 JS 使用 MOBILE_NAVIGATION_QUERY，底部导航显隐只由 mobile-shell-state 统一决定。
+
+看板侧栏通过 vfs-ui BrowserOptions.navigationHeader:inline 与 toolbarOptions 的公开能力将搜索、新建、刷新放在同一行，不挂按编号打开入口。会话链接由 kanban/links 适配 NestOS 路由：执行会话用稳定 ID，原生会话按引用所属 projectId/profileId 解析；普通点击保留应用路由，浏览器修饰键及显式新标签入口不被 click 委托拦截。

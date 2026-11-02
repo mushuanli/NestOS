@@ -1,3 +1,4 @@
+import {KanbanWorkLog} from './work-log';
 import {KanbanAutomationJournal} from './automation-journal';
 import {createRecordExecution, validateRemoteReferences} from './record-execution';
 import {createPersonalKanbanAutomation, type PersonalKanbanAutomationOptions} from './personal-automation';
@@ -18,14 +19,18 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     await new KanbanExamples(store).seed();
     const journal = new KanbanAutomationJournal(fs); await journal.open();
     const base = personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions});
-    const service = createNestOSKanban({...base, actor: {kind: 'human', id: 'admin'}});
+    const workLog = new KanbanWorkLog(fs, events, base.log); await workLog.open();
+    const withLogs = {...base, onCommitted: (boardId: string, source: import('@itookit/kanban/contracts').KanbanService) => workLog.synchronize(boardId, source)};
+    const service = createNestOSKanban({...withLogs, actor: {kind: 'human', id: 'admin'}});
     const records = automationOptions?.projects ? createRecordExecution({service, journal, projects: automationOptions.projects, log: base.log}) : undefined;
-    const automation = automationOptions ? createPersonalKanbanAutomation({...automationOptions, fs, service, journal, log: base.log,
-        serviceFor: actor => createNestOSKanban({...base, actor})}) : undefined;
+    const automation = automationOptions ? createPersonalKanbanAutomation({...automationOptions, fs, service, journal, workLog, log: base.log,
+        serviceFor: actor => createNestOSKanban({...withLogs, actor})}) : undefined;
     try {await service.scan();await reportKanbanHealth(events);}
     catch(error) {await reportKanbanHealth(events,error);}
     return {...service,
-        ...(records ? {recordResources: records.recordResources, runRecord: records.runRecord, recordExecutions: records.recordExecutions} : {}),
+        records: (boardId: string, query?: import('@itookit/kanban/contracts').KanbanRecordQuery) => workLog.records(service, boardId, query),
+        record: (boardId: string, recordId: string) => workLog.record(service, boardId, recordId),
+        ...(records ? {recordResources: records.recordResources, runRecord: records.runRecord, recordExecutions: async (boardId: string, recordId: string) => (await workLog.record(service, boardId, recordId)).kind === 'decision' ? records.recordExecutions(boardId, recordId) : []} : {}),
         ...(automation ? {automationCatalog: automation.automationCatalog, analysisStatus: automation.analysisStatus} : {}),
         scan: async () => {
             await service.scan();
@@ -66,6 +71,7 @@ function personalOptions({store, journal, events, diagnostics, sessions, kernel,
             await authorizeAutomation(input, automationOptions?.catalog);
             if (command?.type === 'configure-automation' && command.settings.preparation)
                 automationOptions?.validatePreparation?.(command.settings.preparation, command.settings.preparationOptions);
+            if (command?.type === 'append-record' && command.record.id.startsWith('activity-')) throw new KanbanError('RESERVED_RECORD_ID');
             if (command?.type === 'append-record' && command.record.externalRefs?.length) {
                 if (!automationOptions?.projects) throw new KanbanError('PROJECT_SELECTION_UNAVAILABLE');
                 await validateRemoteReferences(automationOptions.projects, command.record);

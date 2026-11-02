@@ -41,7 +41,7 @@ export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, it
         ${archived ? '' : detailForms(ui, board, item, actor)}
         ${item.planning?.parentId ? `<p>${escapeHTML(ui.text('parent'))}: <button type="button" data-item="${escapeAttr(item.planning.parentId)}">${escapeHTML(board.items.find(parent => parent.id === item.planning?.parentId)?.title ?? item.planning.parentId)}</button></p>` : ''}
         <section data-children></section><section data-related-records></section><h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, item.sources ?? [])}
-        <div data-analysis></div><div data-execution-session></div>
+        <div data-analysis></div><div data-execution-session></div><section data-reference-links></section>
         <h4>${escapeHTML(ui.text('sessions'))}</h4>${item.participants.map(p => `<button type="button" data-session="${escapeAttr(p.sessionId)}">${escapeHTML(p.sessionId)} · ${escapeHTML(p.roles.join(', '))}</button>`).join('') || `<p>${escapeHTML(ui.text('none'))}</p>`}
         ${archived ? '' : `<form data-form="session">${suggestionField({name: 'sessionId', label: 'session', kind: 'session', manual: true, required: true})}<button>${escapeHTML(ui.text('registerSession'))}</button></form>`}
         <details><summary>${escapeHTML(ui.text('eventsHelp'))}</summary><ol>${events.map(event => `<li>${escapeHTML(event.kind)} · ${escapeHTML(event.actor.id ?? event.actor.agentId ?? '')} · ${escapeHTML(new Date(event.at).toLocaleString())}${event.data.message ? `<p>${escapeHTML(event.data.message)}</p>` : ''}</li>`).join('')}</ol></details>`;

@@ -151,3 +151,43 @@ it('runs a decision on its current board by default and requires an explicit act
     separate.closest('details')!.open = true; await click(f.root, '[data-action=run-record-separate]');
     expect(runRecord).toHaveBeenLastCalledWith(board.id, expect.objectContaining({placement: 'new-board'}));
 });
+it('renders real Session anchors and preserves modified clicks for browser tabs', async () => {
+    const f = await fixture();
+    const board = await f.service.create({id: 'links', title: 'Links', scope: {kind: 'system'}, members: [{kind: 'human', id: 'person', responsibility: 'Manage'}]});
+    await f.service.execute(board.id, {operationId: 'task', expectedRevision: board.revision, command: {type: 'create-item', item: {id: 'task', title: 'Task', responsibility: 'Work', acceptance: 'Verified'}}});
+    Object.assign(f.service, {executionSession: async () => ({current: {sessionId: 'execution', title: 'Execution', state: 'running', observedAt: 1}, history: [{sessionId: 'execution', current: true}]})});
+    const {KanbanWorkbench} = await import('../src/ui');
+    const editor = document.createElement('main'); document.body.append(editor); const openSession = vi.fn(async () => {});
+    const view = new KanbanWorkbench({editor, service: f.service, presentation: presentation('links'), selected: vi.fn(), openSession,
+        sessionUrl: id => '#/workbench/' + id, initialResource: '/board/links/task'}); closes.push(() => view.destroy()); await view.start();
+    const anchor = editor.querySelector<HTMLAnchorElement>('a[data-session=execution]')!;
+    expect(anchor.href).toContain('#/workbench/execution'); expect(editor.querySelector<HTMLAnchorElement>('a[target=_blank]')!.rel).toContain('noopener');
+    const modified = new MouseEvent('click', {bubbles: true, cancelable: true, ctrlKey: true}); anchor.dispatchEvent(modified);
+    expect(modified.defaultPrevented).toBe(false); expect(openSession).not.toHaveBeenCalled();
+    anchor.click(); await vi.waitFor(() => expect(openSession).toHaveBeenCalledWith('execution'));
+});
+it('shows projected activity as a read-only record with independently resolved Session links', async () => {
+    const f = await fixture(); const board = await f.service.create({id: 'logs', title: 'Logs', scope: {kind: 'system'}, members: [{kind: 'human', id: 'person', responsibility: 'Manage'}]});
+    const record = {id: 'activity-one', title: 'Completed', kind: 'log', content: 'Verified', status: 'confirmed', origin: 'flow', author: {kind: 'service', id: 'system'}, createdAt: 1, updatedAt: 1,
+        itemIds: [], sources: [], revision: 1, activity: {stage: 'execution.succeeded', result: 'success'}, externalRefs: [{system: 'opaque', id: 'session'}]};
+    const executions = vi.fn(async () => {throw new Error('Must not query a log as a decision');});
+    Object.assign(f.service, {record: async () => record, recordExecutions: executions});
+    const {KanbanWorkbench} = await import('../src/ui'); const editor = document.createElement('main'); document.body.append(editor);
+    const view = new KanbanWorkbench({editor, service: f.service, presentation: presentation('logs'), selected: vi.fn(), openSession: vi.fn(), initialResource: '/board/logs/@record/activity-one',
+        referenceLink: async () => ({href: '#/workbench/session', label: 'Execution', sessionId: 'session'})}); closes.push(() => view.destroy()); await view.start();
+    expect(editor.querySelector('[data-form=record-link]')).toBeNull(); expect(executions).not.toHaveBeenCalled();
+    expect(editor.querySelector<HTMLAnchorElement>('[data-reference-links] a')!.href).toContain('#/workbench/session');
+});
+it('returns an updated log view to the first page when background activity invalidates its cursor', async () => {
+    const f = await fixture();
+    await f.service.create({id: 'paging', title: 'Paging', scope: {kind: 'system'}, members: [{kind: 'human', id: 'person', responsibility: 'Manage'}]});
+    const records = vi.fn(async (_board: string, query?: {cursor?: string}) => {
+        if (query?.cursor) throw Object.assign(new Error('Stale'), {code: 'CURSOR_STALE'});
+        return {revision: 1, total: 100, items: [], nextCursor: 'first-page'};
+    }); Object.assign(f.service, {records});
+    await f.view.openResource('/board/paging/@log'); await click(f.root, '[data-action=records-next]');
+    expect(records.mock.calls.some(call => call[1]?.cursor === 'first-page')).toBe(true);
+    expect(records.mock.calls.at(-1)![1]?.cursor).toBeUndefined();
+    expect(f.root.querySelector('[data-action=records-first]')).toBeNull();
+    expect(f.root.querySelector('[data-error]')?.textContent).toBe('');
+});

@@ -6,7 +6,12 @@ export interface KanbanAmendment {
     proposedBy: KanbanPrincipal; sources: KanbanSourceRef[]; createdAt: number;
     status: 'pending' | 'accepted' | 'rejected'; reviewedAt?: number; reviewedBy?: KanbanPrincipal; reason?: string;
 }
+export interface KanbanRecordActivity {
+    actor?: KanbanPrincipal; stage: string; result: 'success' | 'failure' | 'cancelled'; dispatchId?: string; code?: string; fields?: Record<string, string | number>;
+}
 export interface KanbanProjectRecord {
+    /** Immutable, host-projected activity; decisions remain in the coordination store. */
+    activity?: KanbanRecordActivity;
     externalRefs?: import('./configuration').KanbanExternalReference[];
     coordination?: {manager: KanbanPrincipal; executor?: KanbanPrincipal};
     number?: number;

@@ -29,6 +29,7 @@ import { createFileChatHandler } from './projects/file-chat';
 import { createOcrControls } from './configuration/ocr-controls';
 import { ConfigurationDeletionDialog } from './configuration/delete-dialog';
 import { createTwinModule } from './digital-twin';
+import {sessionUrl, kanbanReferenceLink} from './kanban/links';
 import {createKanbanWorkspace} from './kanban';
 import {createMailModule} from './mail';
 import {createCalendarModule} from './calendar';
@@ -349,7 +350,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         if (strategyType === 'kanban') {
             const module = createKanbanWorkspace({service: services.kanban, sidebar: sidebarEl, editor: editorEl,
-                windows: windowBinding, initialResource,
+                windows: windowBinding, initialResource, sessionUrl, referenceLink: kanbanReferenceLink(services.projects),
                 selected: path => selectionHistory(elementId, path, 'replace'),
                 openSession: id => handleNavigationRequest({target: 'chat', resourceId: id})});
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);

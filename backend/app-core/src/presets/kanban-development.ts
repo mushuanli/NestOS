@@ -36,13 +36,17 @@ export function developmentPreparation(options: Options): NonNullable<PersonalKa
         requireValue(template?.connection && template.connection.enabled !== false, 'NATIVE_CONNECTION_REQUIRED');
         const projectId = selected[0].id, directory = '_nestos/worktrees/' + input.dispatch.id;
         const record = await prepareWorkspace(options, journal, input, projectId, template.connection.profileId, directory);
+        await input.reportActivity?.({stage: 'worktree.prepared', result: 'success', fields: {directory: record.directory, branch: record.repositories[0]?.branch ?? '', baseCommit: record.repositories[0]?.baseCommit ?? ''},
+            references: [{system: 'nestos-worktree', id: input.dispatch.id, revision: JSON.stringify({projectId, directory: record.directory, repositories: record.repositories})}]});
         const root = options.remote.list(projectId).find(mount => mount.at === '/')!;
         const connection = {...template.connection, id: 'work-' + input.dispatch.id, projectId, nodeConnectionId: root.connectionId!, directory};
         const existing = await options.connections.get(connection.id);
         if (existing) requireValue(JSON.stringify(existing.connection) === JSON.stringify(connection), 'WORK_CONNECTION_CHANGED');
         else await options.connections.save(connection, 0);
         const definition = workerDefinition(source.definition, source.systemPrompt?.content ?? [], input, connection.id, record.policy);
-        return developmentStage(input.dispatch.id, 'agent.publish', () => publishManagedAgent(options.agents, journal, definition));
+        const target = await developmentStage(input.dispatch.id, 'agent.publish', () => publishManagedAgent(options.agents, journal, definition));
+        await input.reportActivity?.({stage: 'agent.prepared', result: 'success', fields: {agentId: target.id}});
+        return target;
     };
 }
 async function prepareWorkspace(options: Options, journal: KanbanAutomationJournal, input: Input, projectId: string, profileId: string, directory: string): Promise<DevelopmentWorkspaceRecord> {

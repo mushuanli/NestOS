@@ -21,7 +21,7 @@ export function developmentAnalysis(options: Options): NonNullable<PersonalKanba
             const policy = await developmentPolicy(journal, options.fs, view.fs, input.id, settings);
             let target = input.target;
             const source = target.kind === 'agent' ? await options.agents.getAgentRevision?.(target.id, target.version) : undefined;
-            if (source?.definition.execution?.kind === 'harness') target = await prepare({target, preparation, item: input.item, options: settings, stage: 'decision',
+            if (source?.definition.execution?.kind === 'harness') target = await prepare({reportActivity: input.reportActivity, target, preparation, item: input.item, options: settings, stage: 'decision',
                 dispatch: {id: input.id, itemId: input.item.id, itemRevision: input.item.revision, planId: input.id, planRevision: 1,
                     principal: input.board.automation!.coordinator, definitionDigest: target.digest, attempt: 1, fence: input.id, preparedAt: Date.now(), outcome: 'prepared', inputs: {}}});
             return {target, instruction: policy.prompts.files.find(file => file.name === 'decision.md')!.content};

@@ -3,9 +3,9 @@ import {KanbanSuggestions} from './suggestions';
 import {mountTitleBar as mountSharedTitleBar} from '@itookit/ui-common';
 import {KanbanDrawer, drawerMarkup, preserveBoardScroll} from './drawer';
 import {escapeHTML} from './html';
-import {panelHeader} from './panel-header';
 import {childrenView, childType} from './children';
-import {referenceLookup} from './view';
+import {linkPair} from './session-links';
+import {failureDetails} from './diagnostics';
 import {randomUUID} from '../utils';
 import type {KanbanUIOptions} from './ports';
 import {createRenderer} from './renderer';
@@ -32,6 +32,7 @@ export class KanbanWorkbench {
     private eventGeneration = 0;
     private abort = new AbortController();
     private busy = false;
+    private operationStage = 'ui.operation';
     private dirty = false;
     private visible = true;
     private invalid = false;
@@ -62,6 +63,7 @@ export class KanbanWorkbench {
             if (event.key === 'Escape' && this.drawer.open) {event.preventDefault(); void this.run(() => this.requestClose(false));}
         }, {signal});
         for (const element of sidebar ? [sidebar, editor] : [editor]) element.addEventListener('click', event => {
+            if (event instanceof MouseEvent && (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0)) return;
             if (!(event.target as HTMLElement).closest('[data-action], [data-board], [data-item], [data-session], [data-record], [data-context]')) return;
             void this.run(async () => {
                 await this.click(event);
@@ -102,10 +104,6 @@ export class KanbanWorkbench {
         if (this.dirty) throw new Error(this.ui.label('unsaved'));
         this.showBoardForm();
     });}
-    lookupReference(): Promise<void> {return this.run(async () => {
-        if (this.dirty) throw new Error(this.ui.label('unsaved'));
-        this.drawer.show(panelHeader(this.options.presentation, this.ui.label('openReference')) + referenceLookup(this.options.presentation), 'reference');
-    });}
     private showBoardForm(): void {this.itemId = ''; this.drawer.show(this.ui.newBoardForm(), 'new-board'); this.dirty = true;}
     getActiveResourceId(): string {return this.boardId ? `/board/${encodeURIComponent(this.boardId)}${this.recordId ? '/@record/' + encodeURIComponent(this.recordId) : this.itemId ? '/' + encodeURIComponent(this.itemId) : this.recordKind ? '/@' + this.recordKind : ''}` : '/';}
     getViewState() {
@@ -129,17 +127,20 @@ export class KanbanWorkbench {
     private async refresh(): Promise<void> {
         const service = this.options.service, generation = ++this.generation, events = this.eventGeneration;
         if (!service) {this.content().innerHTML = `<p>${escapeHTML(this.ui.label('unavailable'))}</p>`; return;}
+        this.operationStage = 'ui.catalog';
         const [boards, actor] = await Promise.all([service.catalog?.() ?? service.list(), service.currentPrincipal()]);
         if (!this.alive(generation)) return;
         this.actor = actor;
         if (!this.boardId && this.options.initialResource === undefined) this.boardId = boards[0]?.id ?? '';
         this.board = boards.find(board => board.id === this.boardId);
-        if (this.boardId && !this.board) throw new Error('BOARD_NOT_FOUND');
+        if (this.boardId && !this.board) throw Object.assign(new Error('Board unavailable'), {code: 'BOARD_NOT_FOUND'});
         if(this.query.execution&&this.query.execution!=='all'&&!service.queryActivity) throw Object.assign(new Error('Execution Session projection unavailable'),{code:'EXECUTION_SESSION_UNAVAILABLE'});
+        this.operationStage = 'ui.query';
         const page = this.board ? await (service.queryActivity?.(this.boardId,this.query) ?? service.query(this.boardId, this.query)) : undefined;
         if (!this.alive(generation)) return;
         this.page = page; this.invalid = events !== this.eventGeneration;
         if (this.options.sidebar) this.options.sidebar.innerHTML = this.ui.navigation(boards, this.boardId);
+        this.operationStage = 'ui.render';
         preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity, !!service.automationCatalog) : this.ui.catalogView(boards);});
         if (this.recordKind) await this.showRecords(generation);
         if (!this.alive(generation)) return;
@@ -148,7 +149,7 @@ export class KanbanWorkbench {
         if (navigation && !this.options.mountTitleBar) this.releaseNavigation = this.options.mountNavigation?.(navigation);
         if (this.recordId) await this.showRecord(this.recordId, generation);
         else if (this.itemId) await this.showItem(generation);
-        this.options.selected(this.getActiveResourceId());
+        this.operationStage = 'ui.selection'; this.options.selected(this.getActiveResourceId());
     }
     private async showItem(generation = this.generation): Promise<void> {
         const service = this.options.service;
@@ -157,35 +158,58 @@ export class KanbanWorkbench {
         if (!this.alive(generation)) return;
         this.item = item; this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, events.filter(event => event.itemId === item.id).reverse()), 'item:' + item.id);
         if (this.board.automation) this.panel().querySelector('[data-analysis]')!.innerHTML = analysisView(this.options.presentation, analysis ?? null);
-        if(execution) this.panel().querySelector('[data-execution-session]')!.innerHTML=this.ui.executionSessionView(execution,!!this.options.executionReference&&!archive&&!['completed','cancelled'].includes(item.status));
+        if(execution) this.panel().querySelector('[data-execution-session]')!.innerHTML=this.ui.executionSessionView(execution,!!this.options.executionReference&&!archive&&!['completed','cancelled'].includes(item.status), this.options.sessionUrl);
         this.panel().querySelector('[data-related-records]')!.innerHTML = `<h4>${escapeHTML(this.ui.label('relatedRecords'))} (${records.total})</h4>${this.ui.recordLinks(records, this.board)}<div class="kanban__actions">${this.ui.button('new-log', 'newLog')}${this.ui.button('new-decision', 'newDecision')}</div>`;
+        await this.showReferenceLinks(item.externalRefs ?? [], generation, new Set(execution?.history.map(binding => binding.sessionId)));
         await this.showChildren(generation);
         this.options.selected(this.getActiveResourceId());
     }
     private async showChildren(generation: number, cursor?: string): Promise<void> {
         const {service} = this.options, item = this.item, board = this.board;
         if (!service || !item || !board || !childType(board, item)) return;
-        const page = await service.query(board.id, {parentId: item.id, view: 'all', limit: 50, ...(cursor ? {cursor} : {})});
+        const query = {parentId: item.id, view: 'all' as const, limit: 50, ...(cursor ? {cursor} : {})};
+        const page = await (service.queryActivity?.(board.id, query) ?? service.query(board.id, query));
         if (!this.alive(generation)) return;
-        this.panel().querySelector('[data-children]')!.innerHTML = childrenView(this.options.presentation, page, cursor, !['completed', 'cancelled'].includes(item.status) && !item.closedAt);
+        this.panel().querySelector('[data-children]')!.innerHTML = childrenView(this.options.presentation, page, cursor, !['completed', 'cancelled'].includes(item.status) && !item.closedAt, this.options.sessionUrl);
     }
     private async showRecords(generation: number): Promise<void> {
         if (!this.recordKind || !this.options.service) return;
-        const page = await this.options.service.records(this.boardId, {kind: this.recordKind, limit: 50, ...(this.recordCursor ? {cursor: this.recordCursor} : {})});
+        let page: import('../contracts').KanbanRecordPage;
+        try {page = await this.options.service.records(this.boardId, {kind: this.recordKind, limit: 50, ...(this.recordCursor ? {cursor: this.recordCursor} : {})});}
+        catch (error) {
+            if ((error as {code?: string})?.code !== 'CURSOR_STALE' || !this.recordCursor) throw error;
+            this.recordCursor = undefined;
+            page = await this.options.service.records(this.boardId, {kind: this.recordKind, limit: 50});
+        }
         if (!this.alive(generation)) return;
         this.recordPage = page; this.content().innerHTML = this.ui.recordsView(page, this.recordKind, !!this.recordCursor, this.board);
     }
     private async showRecord(id: string, generation = this.generation): Promise<void> {
         if (!this.options.service) return;
         const record = await this.options.service.record(this.boardId, id);
-        const executions = await this.options.service.recordExecutions?.(this.boardId, id);
+        const executions = record.kind === 'decision' ? await this.options.service.recordExecutions?.(this.boardId, id) : undefined;
         if (!this.alive(generation)) return;
-        this.recordId = id; this.drawer.show(this.ui.recordDetail(record, this.board!, executions), 'record:' + id); this.options.selected(this.getActiveResourceId());
+        this.recordId = id; this.drawer.show(this.ui.recordDetail(record, this.board!, executions), 'record:' + id); await this.showReferenceLinks(record.externalRefs ?? [], generation); this.options.selected(this.getActiveResourceId());
+    }
+    private async showReferenceLinks(references: import('../contracts').KanbanExternalReference[], generation: number, skip = new Set<string>()): Promise<void> {
+        if (!this.options.referenceLink) return;
+        const started = Date.now();
+        const results = await Promise.allSettled(references.filter(ref => !skip.has(ref.id)).map(ref => this.options.referenceLink!(ref)));
+        if (!this.alive(generation)) return;
+        const links = results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []);
+        const slot = this.panel().querySelector('[data-reference-links]');
+        if (slot) slot.innerHTML = links.map(link => linkPair(this.options.presentation, link.href, link.label, link.sessionId)).join('');
+        const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (errors.length) {
+            const raw = (errors[0].reason as {code?: unknown})?.code, code = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'SESSION_LINK_UNAVAILABLE';
+            if (slot) {const error = document.createElement('p'); error.setAttribute('role', 'alert'); error.textContent = this.ui.label('sessionLinkUnavailable') + ' (' + code + ')'; slot.append(error);}
+            this.options.presentation.log?.({operationId: randomUUID(), stage: 'ui.reference-links', result: 'failure', code, ...failureDetails(errors[0].reason), durationMs: Date.now() - started});
+        }
     }
     private async click(event: Event): Promise<void> {
-        const target = (event.target as HTMLElement).closest<HTMLElement>('button'); if (!target || target.matches(':disabled')) return;
+        const target = (event.target as HTMLElement).closest<HTMLElement>('button, a'); if (!target || target.matches(':disabled')) return;
         for (const menu of this.options.editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (!menu.contains(target)) menu.open = false;
-        if (target.dataset.session) {await this.options.openSession(target.dataset.session); return;}
+        if (target.dataset.session) {event.preventDefault(); await this.options.openSession(target.dataset.session); return;}
         if (this.dirty && !['close-panel', 'copy-reference', 'copy-link'].includes(target.dataset.action ?? '')) throw new Error(this.ui.label('unsaved'));
         const path = this.navigationTarget(target);
         if (path && this.options.navigate) {await this.options.navigate(path); return;}
@@ -295,13 +319,14 @@ export class KanbanWorkbench {
     private async run(action: () => Promise<void>): Promise<void> {
         if (this.busy || this.abort.signal.aborted) return;
         const operationId = randomUUID(), started = Date.now();
+        this.operationStage = 'ui.operation';
         this.busy = true; this.status(this.ui.label('loading')); this.error(''); this.options.editor.setAttribute('aria-busy', 'true'); this.options.editor.inert = true;
         let succeeded = false;
         try {await action(); succeeded = true;}
         catch (error) {
             const raw = (error as {code?: unknown})?.code;
-            try {this.options.presentation.log?.({operationId, stage: 'ui.operation', result: 'failure', code: typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'KANBAN_OPERATION_FAILED', durationMs: Date.now() - started});} catch { /* Reporting cannot alter drafts. */ }
-            if (!this.abort.signal.aborted) this.error(errorText(error, this.ui.label));
+            try {this.options.presentation.log?.({operationId, stage: this.operationStage, result: 'failure', ...failureDetails(error), code: typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'KANBAN_OPERATION_FAILED', durationMs: Date.now() - started});} catch { /* Reporting cannot alter drafts. */ }
+            if (!this.abort.signal.aborted) this.error(errorText(error, this.ui.label, this.operationStage));
         }
         finally {
             this.busy = false;
@@ -378,13 +403,15 @@ export class KanbanWorkbench {
         this.options.editor.querySelector<HTMLElement>('[data-retry]')!.hidden = !message || (this.drawer?.open ?? false);
     }
 }
-function errorText(error: unknown, label: (key: string) => string): string {
+function errorText(error: unknown, label: (key: string) => string, stage: string): string {
     const code = (error as {outcome?: string})?.outcome === 'unknown' ? 'WRITE_OUTCOME_UNKNOWN' : (error as {code?: unknown})?.code;
     if (code === 'REVISION_CONFLICT' || code === 'CURSOR_STALE') return label('conflict');
     if (error instanceof Error && error.message === label('unsaved')) return error.message;
     const safe = typeof code === 'string' && /^[A-Z_]{1,80}$/.test(code) ? code : 'KANBAN_OPERATION_FAILED';
     const translated = label('errors.' + safe);
-    return translated !== 'kanban.errors.' + safe && translated !== 'errors.' + safe ? `${translated} (${safe})` : `${label('failed')}: ${safe}`;
+    const details = safe === 'KANBAN_OPERATION_FAILED' ? failureDetails(error) : {};
+    const diagnostic = details.errorName ? `\n${label('diagnostic')}: ${stage} · ${details.errorName}${details.source ? ' · ' + details.source : ''}` : '';
+    return (translated !== 'kanban.errors.' + safe && translated !== 'errors.' + safe ? `${translated} (${safe})` : `${label('failed')}: ${safe}`) + diagnostic;
 }
 
 export async function mountKanban(container: HTMLElement, options: Omit<KanbanUIOptions, 'sidebar' | 'editor'>) {

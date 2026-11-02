@@ -8,6 +8,7 @@ import {KanbanError} from '@itookit/kanban';
 interface WorkExecutionPolicy {maxDepth: number; timeoutMs?: number | null}
 interface FrozenWork {schema: 1; dispatch: KanbanDispatch; input: IndependentCallInput; policy: WorkExecutionPolicy}
 export interface PublishedKanbanWorkOptions {
+    onSessionPrepared?(dispatch: KanbanDispatch, item: KanbanItem, sessionId: string): Promise<void>;
     title?(dispatch: KanbanDispatch): string;
     observe?(dispatch: KanbanDispatch, observation: KanbanExecutionObservation): Promise<KanbanExecutionObservation>;
     calls: Pick<IndependentCallService,'prepareTaskCall'|'submitPreparedTaskCall'|'inspectTaskCallSubmission'|'list'>; kernel: Pick<Kernel,'task'>;
@@ -22,7 +23,9 @@ export interface PublishedKanbanWorkOptions {
 export function createPublishedKanbanWorkExecutor(options: PublishedKanbanWorkOptions): KanbanExecutionPort {
     return {
         async prepare(dispatch: KanbanDispatch, item: KanbanItem): Promise<FrozenWork> {
-            const sessionId=await options.prepareSession(dispatch.id), binding=await options.binding(dispatch, item);
+            const sessionId=await options.prepareSession(dispatch.id);
+            await options.onSessionPrepared?.(dispatch, item, sessionId);
+            const binding=await options.binding(dispatch, item);
             const input: IndependentCallInput={title:options.title?.(dispatch) ?? 'Kanban work', request:{expectedSessionId:sessionId,expectedBranch:'main',expectedTarget:binding.target,
                 target:{kind:binding.target.kind,id:binding.target.id,version:binding.target.version},overrides:binding.overrides,
                 source:{kind:'composer',text:JSON.stringify({item,inputs:dispatch.inputs,dependencies:await options.context?.(dispatch,item),planId:dispatch.planId,planRevision:dispatch.planRevision}),attachments:[],values:{}},

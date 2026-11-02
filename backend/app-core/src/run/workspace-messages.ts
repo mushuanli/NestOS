@@ -18,7 +18,7 @@ export async function initializeWorkspaceMessages(fs: IFileSystem, directory: st
     const protocol = JSON.stringify({...base, message: {schema: 'work-message/1', ...scope, id: '<unique-id>',
         type: 'progress', content: '<message text, at most 8000 characters>'}, bodyAlias: 'Legacy body is accepted only when content is absent.'});
     if (await fs.driver.exists(directory + '/protocol.json')) {
-        const existing = await fs.driver.readContent(directory + '/protocol.json', {encoding: 'utf-8', length: 65537});
+        const existing = new TextDecoder('utf-8', {fatal: true}).decode(await readMessageBytes(fs, directory + '/protocol.json'));
         if (existing !== protocol && existing !== JSON.stringify(base)) throw new FSError('ECONFLICT', 'Workspace protocol identity changed');
     } else await fs.driver.createFile({parentPath: directory, name: 'protocol.json', content: protocol});
 }
@@ -31,8 +31,7 @@ export async function consumeWorkspaceMessages(fs: IFileSystem, directory: strin
     const messages: WorkspaceMessage[] = [];
     for (const file of files.sort((a, b) => a.name.localeCompare(b.name))) {
         if (file.type !== 'file' || !/^[a-zA-Z0-9_-]{1,128}\.json$/.test(file.name)) continue;
-        const bytes = await fs.driver.readContent(directory + '/inbox/' + file.name, {encoding: 'binary', length: 65537});
-        if (bytes.byteLength > 65536) throw new FSError('EINVAL', 'Workspace message exceeds 64 KiB');
+        const bytes = await readMessageBytes(fs, directory + '/inbox/' + file.name);
         const message = parseWorkspaceMessage(new TextDecoder('utf-8', {fatal: true}).decode(bytes), scope);
         if (file.name !== message.id + '.json') throw new FSError('EINVAL', 'Workspace message filename does not match its identity');
         const digest = sha256HexSync(bytes), key = 'workspace-message:' + scope.attemptId + ':' + message.id;
@@ -63,4 +62,17 @@ export function parseWorkspaceMessage(text: string, scope: WorkspaceMessageScope
         || ['runId', 'itemId', 'attemptId'].some(key => value[key as keyof WorkspaceMessageScope] !== scope[key as keyof WorkspaceMessageScope]))
         throw new FSError('EINVAL', 'Workspace message schema or execution scope is invalid');
     return value;
+}
+
+/** Range reads must fit the advertised size; remote backends reject short ranges. */
+async function readMessageBytes(fs: IFileSystem, path: string): Promise<ArrayBuffer> {
+    const before = await fs.driver.getNode(path);
+    if (before?.type !== 'file' || !Number.isSafeInteger(before.size) || before.size < 1) throw new FSError('EINVAL', 'Workspace message is not a nonempty regular file');
+    if (before.size > 65536) throw new FSError('EINVAL', 'Workspace message exceeds 64 KiB');
+    const bytes = await fs.driver.readContent(path, {encoding: 'binary', length: before.size});
+    const after = await fs.driver.getNode(path);
+    if (bytes.byteLength !== before.size || after?.type !== 'file' || after.size !== before.size
+        || after.revision !== before.revision || after.modifiedAt !== before.modifiedAt)
+        throw new FSError('ECONFLICT', 'Workspace message changed while reading');
+    return bytes;
 }

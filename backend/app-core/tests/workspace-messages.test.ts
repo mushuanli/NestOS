@@ -46,3 +46,17 @@ it('documents the message fields and accepts the original body spelling without 
     expect(parseWorkspaceMessage(JSON.stringify({...message, body: content}), scope).content).toBe(content);
     expect(() => parseWorkspaceMessage(JSON.stringify({...f.message, body: content}), scope)).toThrow('both');
 });
+
+it('fits remote range reads to the file size instead of treating a maximum as an exact range', async () => {
+    const f = await fixture(); await f.publish();
+    const original = f.fs.driver.readContent.bind(f.fs.driver);
+    vi.spyOn(f.fs.driver, 'readContent').mockImplementation((async (path: string, options?: {length?: number}) => {
+        const node = await f.fs.driver.getNode(path);
+        if (options?.length && node?.type === 'file' && options.length > node.size) throw new Error('Short remote range');
+        return original(path, options);
+    }) as typeof f.fs.driver.readContent);
+    const deliver = vi.fn(async () => {});
+    await consumeWorkspaceMessages(f.fs, directory, scope, f.journal, deliver);
+    await initializeWorkspaceMessages(f.fs, directory, scope);
+    expect(deliver).toHaveBeenCalledTimes(1);
+});

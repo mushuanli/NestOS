@@ -376,8 +376,7 @@ export class WorkbenchTabs<T> {
             this.openedDrawer.content.append(notice);
         }
         const toolbar = this.openedToolbar();
-        toolbar.append(this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved())),
-            this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen())));
+        this.appendOpenedActions(toolbar);
         this.openedDrawer.content.append(toolbar);
         if (this.windows) this.renderWindows();
         else {
@@ -388,6 +387,15 @@ export class WorkbenchTabs<T> {
         this.barWindows.button.classList.add('workbench-tabs__bar-windows');
         this.barWindows.update(this.windowCount()); this.bar.append(this.barWindows.button);
         this.tabViewport.update();
+    }
+    private appendOpenedActions(toolbar: HTMLElement): void {
+        const actions = document.createElement('div'); actions.className = 'workbench-tabs__opened-actions';
+        const reopen = this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen()), 'ui-nav-button');
+        reopen.dataset.action = 'reopen-tab'; decorateButton(reopen, FILE_BROWSER_ICONS.restore, t('workbench.reopen'), true);
+        const saved = this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved()), 'ui-nav-button');
+        saved.dataset.action = 'close-saved-tabs'; decorateButton(saved, FILE_BROWSER_ICONS.closeSaved, t('workbench.closeSaved'), true);
+        const close = toolbar.querySelector<HTMLButtonElement>('[data-action=close-selected-tabs]')!; close.classList.add('ui-nav-button');
+        actions.append(reopen, saved, close); toolbar.append(actions);
     }
     private windowCount(): number { return this.windows?.registry.items().length ?? this.entries.size; }
     private isCurrent(id: string): boolean { return id === this.currentId && (!this.windows || this.windows.isActive()); }

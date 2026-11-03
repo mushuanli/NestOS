@@ -51,6 +51,7 @@ export const FILE_BROWSER_ICONS = {
     addFolder: svg('<path d="M3 7V5h7l2 3h9v12H3zM12 11v6m-3-3h6"/>', 'add-folder'),
     more: svg('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>', 'more'),
     close: svg('<path d="m6 6 12 12M6 18 18 6"/>', 'close'),
+    closeSaved: svg('<rect x="7" y="3" width="14" height="14" rx="2"/><path d="M17 17v4H3V7h4m4 0 6 6m0-6-6 6"/>', 'close-saved'),
     chevron: svg('<path d="m8 10 4 4 4-4"/>', 'chevron'),
     maximize: svg('<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>', 'maximize'),
     restore: svg('<rect x="7" y="3" width="14" height="14" rx="2"/><path d="M17 17v4H3V7h4"/>', 'restore'),

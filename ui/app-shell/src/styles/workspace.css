@@ -411,6 +411,7 @@
 .workbench-tabs__opened-toolbar label { display: flex; align-items: center; gap: 6px; }
 .workbench-tabs__opened-toolbar button { border: 0; background: transparent; padding: 4px 6px; color: inherit; cursor: pointer; }
 .workbench-tabs__opened-toolbar button:disabled { opacity: .4; cursor: default; }
+.workbench-tabs__opened-actions { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }
 .workbench-tabs__opened-row { padding: 3px 6px; gap: 2px; }
 .workbench-tabs__opened-row.is-active { background: var(--vfs-active-bg, #eef2ff); }
 .workbench-tabs__opened-row > input { flex: 0 0 auto; margin: 0 4px; }

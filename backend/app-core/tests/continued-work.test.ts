@@ -61,3 +61,22 @@ it('distinguishes a confirmed writer rejection from an uncertain submitted reque
     const error = await sessionSubmission(options).start(request).catch(error => error);
     expect(error.code).toBe('EIO'); expect(error.executionOutcome).toBeUndefined(); expect(lease.dispose).toHaveBeenCalledOnce();
 });
+it('retries recovery of the original Session on observation after a boot-time lease refusal without submitting input', async () => {
+    const recover = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true), read = vi.fn(async () => null), open = vi.fn();
+    const port = sessionSubmission({contexts: {open}, repository: {readDocument: read}, ensureWritable: recover} as any);
+    const request = {expectedSessionId: 'original', submission: {id: 'frozen'}} as any;
+    expect(await port.inspect(request)).toMatchObject({outcome: 'unknown', code: 'SESSION_WRITER_UNAVAILABLE'});
+    expect(read).not.toHaveBeenCalled();
+    expect(await port.inspect(request)).toMatchObject({outcome: 'unknown', code: 'SUBMISSION_RECEIPT_UNKNOWN'});
+    expect(recover).toHaveBeenNthCalledWith(2, 'original'); expect(open).not.toHaveBeenCalled();
+});
+it('reattaches a host execution context to a running admitted round without submitting it again', async () => {
+    const request = {expectedSessionId: 'original', submission: {id: 'frozen', source: {kind: 'conversation', ownerId: 'original', id: 'frozen'}}} as any;
+    const round = {id: 'frozen', sessionId: 'original', submission: request.submission, status: 'running', executions: [{role: 'primary', taskId: 'task'}]};
+    const task = {id: 'task', rootTaskId: 'task', labels: {roundId: 'frozen'}, effects: {native: {status: 'leased'}}};
+    const execute = vi.fn(), lease = {commandBus: {execute}, dispose: vi.fn()}, open = vi.fn(async () => lease);
+    const port = sessionSubmission({contexts: {open}, ensureWritable: async () => true, repository: {readDocument: async () => JSON.stringify(round)},
+        kernel: {task: async () => task, inspectSession: async () => ({snapshot: async () => ({tasks: [task]})})}} as any);
+    expect(await port.inspect(request)).toMatchObject({outcome: 'running'});
+    expect(open).toHaveBeenCalledWith('original'); expect(lease.dispose).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled();
+});

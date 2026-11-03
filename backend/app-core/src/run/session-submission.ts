@@ -7,9 +7,13 @@ interface Options {contexts: Pick<ConversationContexts, 'open'>; repository: Pic
     kernel: Pick<Kernel, 'task' | 'inspectSession'>; ensureWritable?(sessionId: string): Promise<boolean>}
 function requireValue(value: unknown, code: string): asserts value {if (!value) throw failure(code);}
 export interface SessionSubmissionObservation {sessionId: string; outcome: 'running' | 'unknown' | 'succeeded' | 'failed' | 'cancelled'; code?: string}
-/** Submit through the ordinary durable Session queue; observation never activates a view. */
+/** Recover the admitted Session and inspect durable facts without activating a view or replaying input. */
 export function sessionSubmission(options: Options) {
-    const inspect = (request: SubmissionRequest) => inspectSubmission(options, request);
+    const inspect = async (request: SubmissionRequest): Promise<SessionSubmissionObservation> => {
+        if (options.ensureWritable && !await options.ensureWritable(request.expectedSessionId!))
+            return {sessionId: request.expectedSessionId!, outcome: 'unknown', code: 'SESSION_WRITER_UNAVAILABLE'};
+        return inspectSubmission(options, request);
+    };
     return {inspect, async start(request: SubmissionRequest) {
         requireValue(request.expectedSessionId && request.submission?.id && request.expectedBranch, 'SUBMISSION_INVALID');
         if (options.ensureWritable && !await options.ensureWritable(request.expectedSessionId))
@@ -32,6 +36,10 @@ async function inspectSubmission(options: Options, request: SubmissionRequest): 
     const round = JSON.parse(raw) as Round;
     requireValue(round.id === id && round.sessionId === sessionId
         && JSON.stringify(round.submission) === JSON.stringify(request.submission), 'SUBMISSION_HISTORY_CONFLICT');
+    if (!['completed', 'failed', 'cancelled'].includes(round.status)) {
+        const lease = await options.contexts.open(sessionId);
+        await lease.dispose();
+    }
     const primary = round.executions.find(execution => execution.role === 'primary');
     if (!primary) return {sessionId, outcome: 'unknown', code: 'SUBMISSION_EXECUTION_MISSING'};
     const task = await options.kernel.task(sessionId, primary.taskId);

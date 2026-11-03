@@ -55,6 +55,7 @@ export const FILE_BROWSER_ICONS = {
     chevron: svg('<path d="m8 10 4 4 4-4"/>', 'chevron'),
     maximize: svg('<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>', 'maximize'),
     restore: svg('<rect x="7" y="3" width="14" height="14" rx="2"/><path d="M17 17v4H3V7h4"/>', 'restore'),
+    reopen: svg('<path d="M3 10V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M3 7h18"/><path d="m6 12-4 4 4 4m-4-4h7a5 5 0 0 1 5 5"/>', 'reopen'),
     move: svg('<path d="M3 7V5h7l2 3h9v12H3M3 14h11m-4-4 4 4-4 4"/>', 'move'),
     delete: svg('<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>', 'delete'),
     keep: svg('<path d="m5 12 4 4L19 6"/>', 'keep'),

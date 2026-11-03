@@ -391,7 +391,7 @@ export class WorkbenchTabs<T> {
     private appendOpenedActions(toolbar: HTMLElement): void {
         const actions = document.createElement('div'); actions.className = 'workbench-tabs__opened-actions';
         const reopen = this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen()), 'ui-nav-button');
-        reopen.dataset.action = 'reopen-tab'; decorateButton(reopen, FILE_BROWSER_ICONS.restore, t('workbench.reopen'), true);
+        reopen.dataset.action = 'reopen-tab'; decorateButton(reopen, FILE_BROWSER_ICONS.reopen, t('workbench.reopen'), true);
         const saved = this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved()), 'ui-nav-button');
         saved.dataset.action = 'close-saved-tabs'; decorateButton(saved, FILE_BROWSER_ICONS.closeSaved, t('workbench.closeSaved'), true);
         const close = toolbar.querySelector<HTMLButtonElement>('[data-action=close-selected-tabs]')!; close.classList.add('ui-nav-button');

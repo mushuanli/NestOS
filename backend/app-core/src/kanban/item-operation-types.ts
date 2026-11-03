@@ -21,6 +21,8 @@ export interface ReviewAdapter {
     runningVersion?(): string | undefined;
     snapshot(board: KanbanBoard, item: KanbanItem): Promise<ReviewSnapshot>;
     prepareAnalysis(input: {id: string; board: KanbanBoard; item: KanbanItem; snapshot: ReviewSnapshot}): Promise<SubmissionRequest>;
+    exchange?(job: ReviewJob, observation: import('../run/session-submission').SessionSubmissionObservation): Promise<import('../run/session-submission').SessionSubmissionObservation>;
+    close?(): Promise<void>;
     readAnalysis(job: ReviewJob): Promise<unknown | undefined>;
 }
 export interface ReviewOperationsOptions {

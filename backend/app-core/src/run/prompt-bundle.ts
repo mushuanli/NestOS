@@ -30,13 +30,15 @@ export async function freezePrompts(journal: PromptJournal, key: string, resolve
 
 /** The manifest is the publication boundary; every existing byte must match the snapshot. */
 export async function publishPromptBundle(fs: IFileSystem, directory: string, bundle: PromptBundle, context: unknown): Promise<string> {
-    for (const file of bundle.files) await publishFile(fs, directory + '/prompts', file.name, file.content);
     const manifest = bundleManifest(bundle, context);
-    await publishFile(fs, directory, 'manifest.json', manifest);
+    if (new TextEncoder().encode(manifest).byteLength > 65536) throw failure('PROMPT_MANIFEST_LIMIT');
+    for (const file of bundle.files) await publishImmutableFile(fs, directory + '/prompts', file.name, file.content);
+    await publishImmutableFile(fs, directory, 'manifest.json', manifest);
     return sha256HexSync(manifest);
 }
 
-async function publishFile(fs: IFileSystem, directory: string, name: string, content: string): Promise<void> {
+export async function publishImmutableFile(fs: IFileSystem, directory: string, name: string, content: string): Promise<void> {
+    if (new TextEncoder().encode(content).byteLength > 65536) throw failure('PROMPT_FILE_INVALID');
     const path = directory + '/' + name;
     if (await fs.driver.exists(path)) {
         if (await readPrompt(fs, path) !== content) throw failure('PROMPT_SNAPSHOT_CHANGED');

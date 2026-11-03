@@ -35,7 +35,9 @@ export async function consumeWorkspaceMessages(fs: IFileSystem, directory: strin
     for (const file of files.sort((a, b) => a.name.localeCompare(b.name))) {
         if (file.type !== 'file' || !/^[a-zA-Z0-9_-]{1,128}\.(yaml|yml|json)$/.test(file.name)) continue;
         const bytes = await readMessageBytes(fs, directory + '/inbox/' + file.name);
-        const message = parseWorkspaceMessage(new TextDecoder('utf-8', {fatal: true}).decode(bytes), scope);
+        const text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+        if ((parseSessionFile(text) as {schema?: string})?.schema === 'work-message/2') continue;
+        const message = parseWorkspaceMessage(text, scope);
         if (file.name.slice(0,file.name.lastIndexOf('.')) !== message.id) throw new FSError('EINVAL', 'Workspace message filename does not match its identity');
         const digest = sha256HexSync(bytes), key = 'workspace-message:' + scope.attemptId + ':' + message.id;
         const receipt = await journal.update<Receipt>(key, old => {

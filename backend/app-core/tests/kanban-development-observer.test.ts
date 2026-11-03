@@ -1,4 +1,4 @@
-import {afterEach, expect, it} from 'vitest';
+import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {createKanbanModule} from '@itookit/kanban';
 import {SeqKanbanStore} from '@itookit/kanban/storage';
@@ -6,11 +6,12 @@ import type {KanbanCommand, KanbanService} from '@itookit/kanban/contracts';
 import {KanbanAutomationJournal} from '../src/kanban/automation-journal';
 import {UserEventService} from '../src/events/service';
 import {initializeWorkspaceMessages} from '../src/run/workspace-messages';
+import {publishPromptBundle} from '../src/run/prompt-bundle';
 import {developmentObserver} from '../src/presets/kanban-development-observer';
 
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of closes.splice(0).reverse()) await close();});
-async function fixture(verifyDelivery?: (dispatchId: string) => Promise<void>, lifecycle?: Parameters<typeof developmentObserver>[0]['lifecycle']) {
+async function fixture(verifyDelivery?: (dispatchId: string) => Promise<void>, lifecycle?: Parameters<typeof developmentObserver>[0]['lifecycle'], exchange?: Parameters<typeof developmentObserver>[0]['exchange']) {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); closes.push(() => manager.dispose());
     const fs = await manager.openFileSystem('/'), store = await SeqKanbanStore.open(fs), journal = new KanbanAutomationJournal(fs);
     await journal.open();
@@ -31,12 +32,12 @@ async function fixture(verifyDelivery?: (dispatchId: string) => Promise<void>, l
     await journal.update('worktree:attempt', () => ({directory: '/workspace/_nestos/worktrees/attempt', branch: 'work/attempt', baseCommit: 'a'.repeat(40)}));
     await initializeWorkspaceMessages(fs, directory, scope);
     const events = await UserEventService.open(fs);
-    const observer = developmentObserver({fs, events, verifyDelivery, lifecycle, kernel: {inspectSession: async () => ({getShared: async () => undefined})},
+    const observer = developmentObserver({fs, events, verifyDelivery, lifecycle, exchange, kernel: {inspectSession: async () => ({getShared: async () => undefined})},
         projects: {get: async () => ({path: '/project'}) as never, openWorkspace: async () => ({fs, dispose: async () => {}}) as never}, wake() {}});
     closes.push(() => observer.dispose());
     const publish = (id: string, type: string) => fs.driver.createFile({parentPath: directory + '/inbox', name: id + '.json',
         content: JSON.stringify({schema: 'work-message/1', ...scope, id, type, content: 'Business message'})});
-    return {publish, service, events, journal, observe: (outcome: 'running' | 'succeeded') => observer.observe({boardId: 'board', dispatch,
+    return {fs, directory, scope, publish, service, events, journal, observe: (outcome: 'running' | 'succeeded') => observer.observe({boardId: 'board', dispatch,
         service, worker, observation: {outcome, ...(outcome === 'succeeded' ? {outputs: []} : {})}})};
 }
 it('requires a result and native completion before returning a reviewable observation', async () => {
@@ -90,4 +91,18 @@ it('publishes artifacts from immutable result files rather than session summarie
     expect(result.outputs).toHaveLength(1);
     const payload=await f.journal.get<string>('artifact:'+result.outputs![0].sha256);
     expect(JSON.parse(payload!)).toEqual([expect.objectContaining({id:'file-result',type:'result',content:'Business message'})]);
+});
+
+it('keeps the task claimed and skips delivery/finalization while a context continuation runs', async () => {
+    let waiting = true;
+    const verify = vi.fn(async () => {}), enqueue = vi.fn(async () => {});
+    const exchange = vi.fn(async () => ({outcome: waiting ? 'running' as const : 'succeeded' as const, code: waiting ? 'WORKSPACE_CONTEXT_PENDING' : undefined}));
+    const f = await fixture(verify, {enqueue, scan: async () => {}, dispose: async () => {}, settled: async () => true}, exchange);
+    const prompts = {version: 1 as const, files: []}, policy = {commit: 'changes', prompts};
+    await f.journal.update('development-workspace:attempt', () => ({projectId: 'project', directory: '/workspace/_nestos/worktrees/attempt', policy, repositories: [], availableRepositories: []}));
+    await publishPromptBundle(f.fs, f.directory, prompts, {...f.scope, entry: 'prompts/task.md', commit: 'changes', repositories: [], availableRepositories: []});
+    expect(await f.observe('succeeded')).toMatchObject({outcome: 'running', code: 'WORKSPACE_CONTEXT_PENDING'});
+    expect((await f.service.item('board', 'item')).item.status).toBe('claimed'); expect(verify).not.toHaveBeenCalled(); expect(enqueue).not.toHaveBeenCalled();
+    waiting = false; await f.publish('result', 'result'); expect(await f.observe('succeeded')).toMatchObject({outcome: 'succeeded'});
+    expect(verify).toHaveBeenCalledOnce(); expect(enqueue).toHaveBeenCalledOnce();
 });

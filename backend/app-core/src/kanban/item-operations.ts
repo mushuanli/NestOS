@@ -34,7 +34,7 @@ export function createItemOperations(options: ReviewOperationsOptions) {
             return context.jobs.filter(job => job.sessionId).map(job => ({sessionId: job.sessionId!, purpose: job.action === 'analyze' ? 'execution' : 'finalization',
                 execution: {id: job.id, purpose: job.action === 'analyze' ? 'execution' : 'finalization', state: job.state === 'succeeded' ? 'completed' : job.state, code: job.code, createdAt: job.createdAt}}));
         },
-        async quiesce() {stopped = true; await Promise.allSettled([...tails.values()]); await options.journal.drain();}};
+        async quiesce() {stopped = true; await Promise.allSettled([...tails.values()]); await options.adapter.close?.(); await options.journal.drain();}};
 }
 async function load(options: ReviewOperationsOptions, board: string, item: string, observe: boolean): Promise<Context> {
     const [definition, entry, saved] = await Promise.all([options.service.read(board), options.service.item(board, item), options.journal.get<ReviewSettings>(reviewKey(board, item))]);
@@ -66,8 +66,8 @@ function operation(context: Context, action: ReviewAction, active: boolean, supp
     const enabled = supported && !context.archived && !finished && !active && ready && (!configurable || !!binding);
     return {id: action, label: t(('kanban.operationAction.' + action) as Parameters<typeof t>[0]),
         state: action === 'accept' && context.item.status === 'completed' ? 'succeeded' : job?.phase !== undefined && job.phase !== 'settled' ? job.state : job?.state ?? (enabled ? action === 'accept' || action === 'merge' ? 'waiting-confirmation' : 'ready' : 'unavailable'), enabled,
-        code: job?.code, runId: job?.id, sessionId: job?.sessionId, configurable, binding, openSessionOnRun: action === 'analyze',
-        reason: enabled || finished ? undefined : t(!supported ? 'kanban.operationNeedsDelivery' : active ? 'kanban.operationBusy' : configurable && !binding ? 'kanban.operationNeedsFlow' : 'kanban.operationNeedsPrevious'),
+        code: job?.code === 'WORKSPACE_CONTEXT_PENDING' ? undefined : job?.code, runId: job?.id, sessionId: job?.sessionId, configurable, binding, openSessionOnRun: action === 'analyze',
+        reason: job?.code === 'WORKSPACE_CONTEXT_PENDING' ? t('kanban.contextPending') : enabled || finished ? undefined : t(!supported ? 'kanban.operationNeedsDelivery' : active ? 'kanban.operationBusy' : configurable && !binding ? 'kanban.operationNeedsFlow' : 'kanban.operationNeedsPrevious'),
         summary: (action === 'analyze' || action === 'merge') && plan ? plan.summary + '\n' + t('kanban.operationVersions', {source: plan.sourceVersion, target: plan.targetVersion}) : resultSummary(job?.result),
         fields: action === 'merge' && plan ? plan.conflicts.map(conflict => ({id: conflict.id, label: conflict.path + ' · ' + conflict.reason, choices: conflict.options})) : undefined,
         confirmation: action === 'deploy' ? t('kanban.operationConfirmDeploy') : action === 'accept' ? t('kanban.operationConfirmAcceptance') : action === 'merge' ? t('kanban.operationConfirmMerge') : undefined};

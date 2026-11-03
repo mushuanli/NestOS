@@ -345,10 +345,10 @@ NestOS 工作区通过 vfs-ui BrowserSource 共享一份侧栏，只读取 catal
 
 - `protocol.json`：work-message/1、runId、itemId、attemptId 和容量规则。
 - `inbox/<id>.json`：Agent 向宿主发布的不可变 progress、clarification、error、result 消息；临时文件写完后原子重命名。protocol.json 提供完整消息示例，正文使用 content；兼容初版未声明正文字段时写入的 body，但两者不能同时出现。每条消息使用不同 id，正文最多 8000 字符、单文件最多 64 KiB、目录最多 200 项。
-- `outbox/`：预留宿主回复目录，当前尚不自动将回复续发到原生会话。
+- `outbox/`：宿主发布 `work-message/2` 上下文响应；按下文文件交换协议续办原会话。旧版用户澄清回复仍不自动续发。
 - `artifacts/`：开发产物位置；result 只是交付申请，完成仍需真实执行终态、产物核验与独立 accept-execution。
 
-Cells 的作用域目录订阅通过现有 SSE/inotify 唤醒；旧节点或丢失事件时保留宿主扫描作为补偿。消息以持久收据去重，校验文件名、schema 与运行作用域；改写已发布消息报冲突。clarification/error 写入看板消息日志、阻塞事项并发全局通知。当前澄清后自动回复与续轮尚未闭环，不能把收到回复或解除阻塞声称为已完成。诊断仅包含阶段、安全错误码、耗时和关联 ID；消息正文只进入业务记录。
+Cells 的作用域目录订阅通过现有 SSE/inotify 唤醒；旧节点或丢失事件时保留宿主扫描作为补偿。消息以持久收据去重，校验文件名、schema 与运行作用域；改写已发布消息报冲突。clarification/error 写入看板消息日志、阻塞事项并发全局通知。用户澄清后的自动回复仍未闭环；上下文查询另走下文的持久请求／响应协议，收到响应或续办轮次结束都不代表任务完成。诊断仅包含阶段、安全错误码、耗时和关联 ID；消息正文只进入业务记录。
 
 CLI 提供 `kanban list/create/show/targets/resources/execute/record/records/run/runs/workflow/events`、`agent list/show/save/status/publish/receipt/connections/bind` 和 `notify list`。写入命令从 `--file` 读取冻结 JSON；核对沿用原操作身份，未知结果不自动换 ID 重发。
 
@@ -619,3 +619,49 @@ prepared/removing/cleaned 回执持久化。进入移除前的失败释放该次
 操作意图先保存在原 automation journal，再提交原 Session 或独立 Flow 调用。重启或丢失响应后，只核对原提交身份；只有明确未接纳的所有权拒绝可以重试。相同健康状态不追加日志；变化的阶段与具体错误写任务日志。操作会话加入既有会话关系投影。活动操作阻止工作区清理，显式清理与同任务操作共用串行边界。
 
 合并分析核对主工作区干净、保留交付与原冻结提交策略，继续原逻辑 Session 和原生 binding，不能新建替代会话。任务专用目录为 `_nestos/kanban/review/<operationId>/`，冻结 manifest 和项目/全局覆盖的 `task-merge-pre.md`、`task-merge-post.md`；Agent 通过 `analysis.yaml` 的 `nestos.file-result/1` 信封返回版本绑定的分析。每个冲突提供有限命名候选项，界面初始不代选。合并调用携带确认 ID、分析 ID/摘要、源/目标版本和用户逐项选择；发送前重新核对版本，实际合入工具必须在副作用前再次核验。验收通过要求构建/替换回执与宿主实际运行版本匹配，再使用既有 `accept-execution`，不自动合并或清理。
+
+
+### 提交来源与双向文件上下文
+
+新建开发工作区通过 `presets/kanban-commit-context` 冻结提交来源：用户存储的稳定 scope、项目、看板、事项及修订、执行身份和 workContext（包括来源决策的已保存运行快照）。上下文按 SHA-256 保存于原 automation journal，准备阶段发布 `commit-trailers.txt`。Conventional Commits 标题保持不变；允许 worktree 提交时，每个新提交附加 NestOS-Scope / NestOS-Board / NestOS-Task / NestOS-Execution / NestOS-Context trailer。changes 模式仍禁止提交。交付核验逐仓库读取真实 Git trailer，与冻结身份核对，再将提交列表关联到原派发；不自动 amend、合并或提交用户改动。历史无元数据的工作区继续沿用旧契约，不伪造来源。
+
+合并分析开始前，宿主有界读取源／目标对称差的最近提交，验证提交可达性及元数据所属用户存储和项目，读取冻结任务／决策与当前修订。`commit-contexts.json` 保存预载数据，manifest 仅保存其路径与摘要，避免重复正文挤占 manifest 容量；历史缺失、外部提交或范围超限明确进入 unresolved，不推断其他 task。独立仓库查询仅接受已登记模块；引用必须为完整提交 SHA，Git 参数不接收任意修订表达式。
+
+通用机制在 `run/file-exchange-protocol`、`run/file-exchange` 与 `run/file-session-continuation`，业务方法声明和 Git／看板查询在 presets。Cells 不识别 task、decision 或 merge，也不新增 MCP 通道。旧 `protocol.json` 与 work-message/1 保留；新增 `exchange.json` 声明本次 scopeId（派发或合并操作 ID）、可调用方法和请求例子。这个通信 scopeId 与 Git trailer 中的用户存储 scope 是不同身份。
+
+```yaml
+# inbox/<request-id>.yaml
+schema: work-message/2
+id: "<request-id>"
+type: request
+scopeId: "<exchange.json 中的 scopeId>"
+method: kanban.context.resolve
+waitForResponse: true
+params:
+  repository: "."
+  commits: ["<完整提交 SHA>"]
+  include: [task, decisions, acceptance]
+```
+
+最终响应位于 `outbox/<request-id>.yaml`，包含 schema、独立响应 id、type=response、scopeId、replyTo、规范化请求的 requestDigest、status=ok/error，以及 payload 或安全错误码。Agent 先发布临时文件再原子重命名，然后结束本轮；禁止同时发布完成结果、轮询等待或写 outbox。响应不修改已发布文件，刷新上下文必须使用新的请求 ID。请求 ID 相同而内容不同、作用域不符、响应改写或同时发布最终结果与待处理请求都拒绝。单文件最多 64 KiB；单批最多 16 个请求，单次交换最多 128 个请求，沿用邮箱最多 200 项及有界 YAML 解析。
+
+现有目录事件负责唤醒，宿主定时扫描补漏。原生 turn 运行期间仅登记请求，待正式执行回执证明已结束后，才解析 Git 查询并写响应，避开 Cells 的外部写入保护。查询结果先持久化再发布，网络／存储故障保留待恢复；只有明确的应用拒绝才发布 error 响应。之后冻结续办请求并先持久化 submitting，再提交同一逻辑 Session、分支、原生 binding 和 generation；消息引用响应路径与 SHA-256。等待上下文保持事项未完成，不触发成功／失败收尾；仍需最终结果、原生终态、交付核验和独立验收。
+
+```mermaid
+sequenceDiagram
+    participant A as 原 Session 中的 Agent
+    participant F as worktree 文件邮箱
+    participant H as NestOS 协调器
+    participant J as 既有持久 journal
+    A->>F: 原子发布 request，结束本轮
+    F-->>H: 目录事件／扫描补漏
+    H->>J: 冻结请求身份与查询响应
+    H->>F: 原子发布不可变 response
+    H->>J: 冻结原 Session 续办请求并领取 submitting
+    H->>A: 原 Session 续办，携带文件路径与摘要
+    A->>F: 最终结果或新请求
+```
+
+httpd 退出后从原 journal 和文件重新核对：已冻结响应不重新查询，响应已发布而续办回执丢失时只 inspect 原提交，不换 ID 重发。只有明确未接纳的所有权拒绝允许沿原身份再试。Cells 退出时保留等待／unknown；恢复文件连接后继续核对，不能用新 epoch 下旧收据缺失证明未执行。原生上下文代次变化、执行归属不可确认或恢复能力不足时明确阻塞，不创建替代会话。协议文件跟随既有安全工作区归档，活动／未知派发仍阻止清理。正常核对不重复追加业务日志；上下文响应和续办变化通过稳定消息身份进入任务日志，正文与凭据不进入诊断日志。
+
+验证包含真实 Git trailer／可达性／历史与当前决策查询，内存 VFS + SeqFile 的请求与响应改写、双端协调实例恢复、发布中断、丢失提交回执、批量和多轮续办、显式错误、取消以及等待期间禁止交付／收尾。此类故障通过确定性端口注入覆盖，未为测试向用户原生会话发送诊断提示，也未声称已执行真实 Cells 杀进程验收。

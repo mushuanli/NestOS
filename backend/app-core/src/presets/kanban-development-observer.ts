@@ -1,3 +1,4 @@
+import {t} from '@itookit/common';
 import {DirectorySubscriptions} from '../run/directory-subscriptions';
 import {verifyPromptBundle} from '../run/prompt-bundle';
 import type {DevelopmentWorkspaceRecord} from './kanban-development';
@@ -14,7 +15,8 @@ import type {PersonalKanbanAutomationOptions} from '../kanban/personal-automatio
 import type {UserEventService} from '../events/service';
 
 type Input = Parameters<NonNullable<PersonalKanbanAutomationOptions['observeWork']>>[0];
-interface Options {verifyDelivery?(dispatchId: string): Promise<void>;
+interface Options {exchange?: ReturnType<typeof import('./kanban-file-exchange').developmentWorkExchange>;
+    verifyDelivery?(dispatchId: string): Promise<void>;
     lifecycle?: Pick<ReturnType<typeof import('./kanban-development-lifecycle').developmentLifecycle>, 'enqueue' | 'scan' | 'dispose' | 'settled'>;
     kernel: ContextInspector; fs: IFileSystem; events: UserEventService; projects: Pick<ProjectService, 'get' | 'openWorkspace'>;
     remote?: Pick<import('../projects/remote-mounts').ProjectRemoteMountService, 'projectHarness'>; wake(): void}
@@ -49,6 +51,8 @@ export function developmentObserver(options: Options) {
                 {...scope, entry: 'prompts/task.md', commit: workspace.policy.commit, repositories: workspace.repositories, availableRepositories: workspace.availableRepositories,...(workspace.context===undefined?{}:{input:workspace.context})});
             const messages = await consumeWorkspaceMessages(view.fs, directory, scope, journal,
                 message => deliver(options, journal, input, message));
+            if (workspace && options.exchange && !messages.some(message => ['error', 'clarification'].includes(message.type))) input = {...input, observation: await options.exchange({id: input.dispatch.id, record: workspace, service: input.service, observation: input.observation, finalPublished: async () => (await consumeWorkspaceMessages(view.fs, directory, scope, journal, message => deliver(options, journal, input, message))).some(message => message.type === 'result'), report: (stage, id, code) =>
+                deliver(options, journal, input, {schema: 'work-message/1', ...scope, id: 'context-' + stage + '-' + id, type: 'progress', content: t(('kanban.fileExchange.' + stage) as Parameters<typeof t>[0]) + (code ? ': ' + code : '')})})};
             if (['failed', 'cancelled'].includes(input.observation.outcome)) {
                 await options.lifecycle?.enqueue(input.boardId, input.dispatch, item, input.observation);
                 await close(input.dispatch.id);

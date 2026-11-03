@@ -34,8 +34,7 @@ export async function advanceReviewJob(options: ReviewOperationsOptions, job: Re
             if (job.request) await options.submission.start(job.request); else await options.published.start(job.input!);
         }
         if (job.phase === 'settled') return job;
-        const observation = job.request ? await options.submission.inspect(job.request).then(row => ({state: row.outcome === 'cancelled' ? 'failed' as const : row.outcome, sessionId: row.sessionId, code: row.code, output: undefined}))
-            : await options.published.inspect(job.input!);
+        const observation = await observeReview(options, job);
         if (!['succeeded', 'failed'].includes(observation.state)) return save(options, job, {...job, state: observation.state, sessionId: observation.sessionId, code: observation.code});
         const output = observation.state === 'succeeded' ? job.request ? await options.adapter.readAnalysis(job) : observation.output : undefined;
         if (observation.state === 'succeeded' && output === undefined) return save(options, job, {...job, state: 'unknown', code: 'OPERATION_RESULT_PENDING', sessionId: observation.sessionId});
@@ -49,11 +48,17 @@ export async function advanceReviewJob(options: ReviewOperationsOptions, job: Re
     } catch (error) {
         const code = safeCode(error, 'OPERATION_OBSERVATION_FAILED'), notStarted = (error as {executionOutcome?: string})?.executionOutcome === 'not-started';
         const retry = notStarted && (error as {retryable?: boolean}).retryable === true || code === 'REVISION_CONFLICT';
-        const terminal = notStarted && !retry || code.startsWith('OPERATION_RESULT_') || code.startsWith('MERGE_PLAN_') || code.startsWith('OPERATION_SOURCE_CHANGED') || code === 'OPERATION_RUNNING_VERSION_MISMATCH';
+        const terminal = ['FILE_EXCHANGE_SCOPE_INVALID', 'FILE_EXCHANGE_REQUEST_CHANGED', 'FILE_EXCHANGE_RESPONSE_CHANGED', 'FILE_EXCHANGE_RESULT_CONFLICT', 'FILE_EXCHANGE_LIMIT', 'FILE_EXCHANGE_CONTEXT_CHANGED'].includes(code) || notStarted && !retry || code.startsWith('OPERATION_RESULT_') || code.startsWith('MERGE_PLAN_') || code.startsWith('OPERATION_SOURCE_CHANGED') || code === 'OPERATION_RUNNING_VERSION_MISMATCH';
         if (job.code !== code || terminal && job.phase !== 'settled' || retry && job.phase !== 'prepared')
             options.log({operationId: job.id, stage: 'review.' + job.action, result: 'failure', code, durationMs: Date.now() - started});
         return save(options, job, {...job, phase: retry ? 'prepared' : terminal ? 'settled' : job.phase, state: terminal ? 'failed' : 'unknown', code});
     }
+}
+async function observeReview(options: ReviewOperationsOptions, job: ReviewJob) {
+    if (!job.request) return options.published.inspect(job.input!);
+    let row = await options.submission.inspect(job.request);
+    if (options.adapter.exchange) row = await options.adapter.exchange(job, row);
+    return {state: row.outcome === 'cancelled' ? 'failed' as const : row.outcome, sessionId: row.sessionId, code: row.code, output: undefined};
 }
 async function acceptReview(options: ReviewOperationsOptions, job: ReviewJob): Promise<ReviewJob> {
     const {item} = await options.service.item(job.boardId, job.itemId), command = job.command!;

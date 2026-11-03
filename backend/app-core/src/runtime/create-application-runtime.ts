@@ -6,6 +6,7 @@ import {developmentContinuation} from '../presets/kanban-development-continuatio
 import {sessionSubmission} from '../run/session-submission';
 import {developmentLifecycle} from '../presets/kanban-development-lifecycle';
 import {developmentWorkResources, developmentSessionResources} from '../presets/kanban-work-resources';
+import {developmentWorkExchange} from '../presets/kanban-file-exchange';
 import {developmentReviewAdapter} from '../presets/kanban-development-review';
 import {itemOperationReporter} from '../kanban/item-operation-log';
 import {createItemOperations} from '../kanban/item-operations';
@@ -595,13 +596,15 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 if (!await recovery.acquireLater(id)) throw Object.assign(new Error('Lifecycle Session is owned'), {code: 'AUTOMATION_SESSION_OWNED'});
                 return id;
             }}) : undefined;
-        const developmentMessages = developmentObserver({kernel: kernelCore, fs: systemFS, events, projects, remote: remoteConnections, lifecycle,
+        const fileSubmission = sessionSubmission({contexts: conversationContexts, repository: sessionRepository, kernel: kernelCore, ensureWritable: conversationOptions.ensureWritable});
+        const developmentMessages = developmentObserver({exchange: developmentBindings && independentCalls ? developmentWorkExchange({...developmentBindings,
+            journal: new KanbanAutomationJournal(systemFS), kernel: kernelCore, calls: independentCalls, submission: fileSubmission}) : undefined, kernel: kernelCore, fs: systemFS, events, projects, remote: remoteConnections, lifecycle,
             verifyDelivery: verifyDevelopment ? id => developmentOperations.run(() => verifyDevelopment(id)) : undefined,
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
             itemOperations: developmentBindings ? context => createItemOperations({...context,
-                adapter: developmentReviewAdapter({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore, runningVersion: options.runningVersion}),
+                adapter: developmentReviewAdapter({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore, runningVersion: options.runningVersion, submission: fileSubmission, wake: () => wakeKanban()}),
                 published: publishedOperation({calls: independentCalls, kernel: kernelCore, ensureSession: (id, title) => sessionRepository.ensureSession(id, title),
                     prepareSession: async id => {await initializeProjects(); await prepareChildExecution(id); return recovery.acquireLater(id);}}),
                 submission: sessionSubmission({contexts: conversationContexts, repository: sessionRepository, kernel: kernelCore, ensureWritable: conversationOptions.ensureWritable}),

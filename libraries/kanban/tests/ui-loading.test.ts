@@ -100,3 +100,17 @@ it('loads host work resources only on expansion and leaves retained resources pr
     expect(f.editor.querySelector<HTMLButtonElement>('[data-action=cleanup-work-resource]')!.disabled).toBe(true);
     expect(f.service.cleanupWorkResource).not.toHaveBeenCalled(); expect(f.editor.inert).not.toBe(true);
 });
+it('preserves an expanded resource section when an event refresh invalidates its pending read', async () => {
+    const f = await fixture(), gate = deferred<[]>();
+    const resources = [{id: 'tree', kind: 'opaque', title: 'Workspace', location: '/retained', version: 'v1',
+        state: 'retained' as const, reasons: ['UNMERGED'], properties: [], canCleanup: false}];
+    f.service.workResources = vi.fn().mockReturnValueOnce(gate.promise).mockResolvedValue(resources);
+    const view = await f.mount(), section = f.editor.querySelector<HTMLDetailsElement>('[data-work-resources]')!;
+    section.open = true;
+    await vi.waitFor(() => expect(f.service.workResources).toHaveBeenCalledOnce());
+    view.invalidateFromEvents();
+    await vi.waitFor(() => expect(f.editor.querySelector('[data-work-resource]')).not.toBeNull());
+    expect(f.editor.querySelector('[data-work-resources]')).toBe(section); expect(section.open).toBe(true);
+    gate.resolve([]); await Promise.resolve(); await Promise.resolve();
+    expect(f.editor.querySelector('[data-work-resource]')).not.toBeNull();
+});

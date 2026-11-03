@@ -222,7 +222,11 @@ export class KanbanWorkbench {
     }
     private loadItemSections(generation: number, item: KanbanItem, archived: boolean): void {
         const service = this.options.service!, boardId = this.boardId;
-        if (service.workResources) this.setSection('[data-work-resource-section]', `<details data-work-resources><summary>${escapeHTML(this.ui.label('workResourceTitle'))}</summary><button type="button" data-action="refresh-work-resources">${escapeHTML(this.ui.label('refresh'))}</button><div data-work-resource-body></div></details>`);
+        if (service.workResources) {
+            const resources = this.panel().querySelector<HTMLDetailsElement>('[data-work-resources]');
+            if (!resources) this.setSection('[data-work-resource-section]', `<details data-work-resources><summary>${escapeHTML(this.ui.label('workResourceTitle'))}</summary><button type="button" data-action="refresh-work-resources">${escapeHTML(this.ui.label('refresh'))}</button><div data-work-resource-body></div></details>`);
+            else if (resources.open) void this.loadWorkResources();
+        }
         void this.supplement('ui.item.events', generation, () => service.events(boardId, 0, 200), events => {
             this.setSection('[data-item-events]', this.ui.itemEventsView(events.filter(event => event.itemId === item.id).reverse()));
         }, '[data-item-events]');

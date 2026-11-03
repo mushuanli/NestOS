@@ -9,6 +9,7 @@ export interface KanbanSessionActivityQuery extends KanbanItemQuery {execution?:
 export interface KanbanSessionItemSummary extends KanbanItemSummary {execution?: KanbanExecutionSession}
 export interface KanbanSessionItemPage extends Omit<KanbanItemPage,'items'> {items: KanbanSessionItemSummary[]}
 export interface KanbanExecutionSessionDetail {
+    continuation?: {previousDispatchId: string};
     current?: KanbanExecutionSession;
     history: Array<{sessionId: string; bindingId?: string; current: boolean}>;
 }

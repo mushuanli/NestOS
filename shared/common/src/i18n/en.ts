@@ -164,6 +164,8 @@ export const en: LocaleStrings = {
     'kanban.activity.association.observed': 'Existing execution associations observed',
     'kanban.activity.task.created': 'Task created',
     'kanban.activity.execution.prepared': 'Execution dispatched',
+    'kanban.activity.execution.continued': 'Continuation requested in original execution session',
+    'kanban.continueExecution': 'Continue original task',
     'kanban.activity.session.prepared': 'Caller session prepared',
     'kanban.activity.worktree.prepared': 'Worktree prepared',
     'kanban.activity.agent.prepared': 'Execution agent prepared',

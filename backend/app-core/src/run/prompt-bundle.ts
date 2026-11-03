@@ -20,7 +20,7 @@ export async function readPrompt(fs: IFileSystem, path: string, onRevision?: (re
 export async function freezePrompts(journal: PromptJournal, key: string, resolve: () => Promise<PromptFile[]>): Promise<PromptBundle> {
     const saved = await journal.get<PromptBundle>(key); if (saved) return saved;
     const files = await resolve();
-    if (files.length > 16 || new Set(files.map(file => file.name)).size !== files.length) throw failure('PROMPT_BUNDLE_INVALID');
+    if (files.length > 32 || new Set(files.map(file => file.name)).size !== files.length) throw failure('PROMPT_BUNDLE_INVALID');
     for (const file of files) {
         if (!/^[a-zA-Z0-9_-]+\.md$/.test(file.name) || file.sha256 !== sha256HexSync(file.content)
             || new TextEncoder().encode(file.content).byteLength > 65536) throw failure('PROMPT_BUNDLE_INVALID');

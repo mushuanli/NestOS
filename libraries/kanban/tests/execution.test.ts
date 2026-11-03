@@ -7,7 +7,7 @@ afterEach(async()=>{for(const close of closes.splice(0).reverse()) await close()
 async function fixture(autoAccept=false) {
     const backend=new MemoryBackend(),{manager}=await createVFS({rootBackend:backend});closes.push(()=>manager.dispose());
     const fs=await manager.openFileSystem('/'),store=await SeqKanbanStore.open(fs), log=vi.fn();
-    const api=(id:string)=>createKanbanModule({store,actor:{kind:'service',id},authorize:async()=>{},log});
+    const api=(id:string)=>createKanbanModule({store,actor:{kind:'service',id},authorize:async()=>{},log,now:()=>Date.now()});
     const service=api('manager'),worker=api('worker');let serial=0;
     await service.create({id:'b',title:'Work',scope:{kind:'system'},members:[{kind:'service',id:'manager',responsibility:'Manage',roles:['coordinator','reviewer']},{kind:'service',id:'worker',responsibility:'Build',roles:['worker']}],policy:{requireEstimate:false,review:autoAccept?'assignee':'independent'}});
     const run=async(command:KanbanCommand,actor:KanbanModuleHandle=service)=>actor.execute('b',{operationId:`op-${++serial}`,expectedRevision:(await actor.read('b')).revision,command});
@@ -28,6 +28,31 @@ it('preserves submission identity after response loss and only inspects it after
     const restarted=await f.bridge();await restarted.scan();await restarted.scan();
     expect(f.executor.start).toHaveBeenCalledTimes(1);expect(f.executor.prepare).toHaveBeenCalledTimes(1);expect(f.executor.inspect).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(f.log.mock.calls)).not.toContain('secret request body');
+});
+it('continues with a new fence, preserves the failed attempt and restores only the new request after restart', async () => {
+    const f = await fixture(); await f.prepare();
+    vi.mocked(f.executor.start).mockResolvedValueOnce({outcome: 'failed', code: 'EFFECT_TIMEOUT'});
+    const first = await f.bridge(); await first.scan(); await first.quiesce();
+    const old = (await f.service.workflow('b')).dispatches.d;
+    f.executor.prepareContinuation = vi.fn(async (dispatch, _item, previous) => ({dispatchId: dispatch.id, previous}));
+    await f.run({type: 'continue-execution', previousDispatchId: 'd', dispatchId: 'continued'});
+    const next = (await f.service.workflow('b')).dispatches.continued;
+    expect(next.fence).not.toBe(old.fence); expect(next.continuation).toEqual({previousDispatchId: 'd'});
+    await expect(f.run({type: 'observe-execution', dispatchId: 'd', fence: old.fence, outcome: 'succeeded'})).rejects.toMatchObject({code: 'STALE_EXECUTION_RESULT'});
+    vi.mocked(f.executor.start).mockRejectedValueOnce(Object.assign(new Error('lost response'), {code: 'EIO'}));
+    const running = await f.bridge(); await running.scan(); await running.quiesce();
+    const restarted = await f.bridge(); await restarted.scan();
+    expect(f.executor.start).toHaveBeenCalledTimes(2); expect(f.executor.prepareContinuation).toHaveBeenCalledOnce();
+    expect(f.executor.prepareContinuation).toHaveBeenCalledWith(expect.objectContaining({id: 'continued'}), expect.anything(), {dispatchId: 'd'});
+    expect((await f.service.workflow('b')).dispatches.d).toEqual(old);
+    await expect(f.run({type: 'continue-execution', previousDispatchId: 'd', dispatchId: 'duplicate'})).rejects.toMatchObject({code: 'ITEM_NOT_CONTINUABLE'});
+});
+it('refuses continuation for completed work and by a worker without coordinator authority', async () => {
+    const f = await fixture(true); await f.prepare();
+    vi.mocked(f.executor.start).mockResolvedValueOnce({outcome: 'succeeded'});
+    const bridge = await f.bridge(); await bridge.scan();
+    await expect(f.run({type: 'continue-execution', previousDispatchId: 'd', dispatchId: 'extra'})).rejects.toMatchObject({code: 'EXECUTION_NOT_CONTINUABLE'});
+    await expect(f.run({type: 'continue-execution', previousDispatchId: 'd', dispatchId: 'extra'}, f.worker)).rejects.toMatchObject({code: 'COORDINATOR_REQUIRED'});
 });
 it('allows only one submitting bridge across concurrent observers',async()=>{
     const f=await fixture();await f.prepare();const first=await f.bridge(),second=await f.bridge();

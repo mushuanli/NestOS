@@ -6,8 +6,9 @@ import {principal} from './identity';
 import {publishPlan, requireCoordinator, type ApplyWorkCommand} from './workflow-plans';
 import {catalog} from './planning';
 import {executionObservationChanged} from './execution-observation';
+import {continueExecution} from './workflow-continuation';
 export function isWorkflowCommand(command: KanbanCommand): command is KanbanWorkflowCommand {
-    return ['publish-plan','prepare-dispatch','observe-execution','accept-execution'].includes(command.type);
+    return ['publish-plan','prepare-dispatch','continue-execution','observe-execution','accept-execution'].includes(command.type);
 }
 /** Plan definitions and live admissions cannot be bypassed by ordinary board commands. */
 export function protectWorkflowItem(state: KanbanState, command: KanbanCommand): void {
@@ -28,6 +29,7 @@ export function applyWorkflow(state: KanbanState, command: KanbanWorkflowCommand
     let changed = true;
     if (command.type === 'publish-plan') publishPlan(state,command.plan,actor,apply);
     else if (command.type === 'prepare-dispatch') prepare(state,command,actor,now,apply);
+    else if (command.type === 'continue-execution') continueExecution(state, command, actor, now, apply);
     else if (command.type === 'observe-execution') changed = observe(state,command,actor,now);
     else accept(state,command,actor,apply);
     refreshReady(state);

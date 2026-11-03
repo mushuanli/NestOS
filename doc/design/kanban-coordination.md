@@ -543,6 +543,35 @@ C4Container
 
 相同 dispatch 的 outcome、code 和 outputs 未变化时，observe-execution 只更新必要的执行租约，不追加业务事件、不更新事项定义 revision/updatedAt，也不重发状态通知。独立 renew 同样只续租。执行桥正常 inspect 不写诊断；状态/错误变化、初次派发及读取错误恢复仍保留。任务详情折叠历史同状态续租事件，原始事件保持可审计；工作日志保留真正的 unknown→running 恢复，不按阶段永久吞掉后续变化。
 
+### 显式续办与重启恢复
+
+`continue-execution` 显式指定失败或取消的前一派发及全新的派发 ID。协调者才能请求；完成事项、过期前驱、仍未结算的执行、变更的计划或额外人工阻塞均拒绝。命令同事务领取新 fence，保留原派发终态，新的 attempt 通过 continuation.previousDispatchId 追溯来源。迟到的旧结果不能改变新尝试。请求 operationId、dispatchId 和 expectedRevision 必须冻结，HTTP 结果未知时只核对原回执。
+
+独立执行桥只增加可选 prepareContinuation 端口。它读取前次已冻结的执行请求，再按原有 prepared/submitting 准入记录启动；重启只 inspect 已提交的同一请求。NestOS 使用正式 Session 提交队列，在原主执行 Session、分支和显式 Harness context binding 上创建一个新轮次；不重新创建主 Session、工作树或规划 Agent。普通 Session 提交与冷回执观察封装在 run/session-submission，业务判断归 kanban/continued-work 及产品预设。
+
+开发预设冻结原 commit/modules 约束，核验原调用、收尾调用和原生会话已停止，拒绝已清理/变更的工作区。保留未提交修改，将本轮 prompt、manifest 和协议发布到原工作树 `_nestos/kanban/continuations/<dispatch-id>/`。该目录的 inbox/outbox 使用新 attemptId；旧邮箱仅供查看，不参与本轮状态判定。项目级 `_nestos/kanban/policies/<profile>/task-continue-pre.md` 优先于 NestOS 用户策略，task-continue-post.md 可选；冻结后重启不重新读取作者文件。沿用 task.md 的交付与 succ/fail/cancel/clear 收尾规则。prompt bundle 最多 32 个文件，单文件仍限 64 KiB。
+
+UI 的“续办原任务”只对宿主声明的可续办前驱显示，CLI `kanban continue <board-id> --file request.json` 使用相同的正式命令。续办请求进入看板日志；会话仍沿用原始深链，执行历史保留各次派发关联。重启恢复不自动把所有失败事项重新派发；已登记的续办请求由原执行桥和 Session 恢复链继续处理，成功必须经过原生终态、文件结果和交付验证后进入验收。
+
+```mermaid
+sequenceDiagram
+    participant U as 用户 / CLI
+    participant K as Kanban 持久协调
+    participant B as 执行桥
+    participant S as 原主 Session
+    participant W as 原工作树 / 本轮邮箱
+    U->>K: continue-execution(前驱, 新派发 ID)
+    K->>K: 保留旧终态，领取新 fence
+    B->>K: 读取持久意图
+    B->>W: 冻结本轮 prompt、协议和上下文
+    B->>S: 同一 Session 提交稳定轮次 ID
+    Note over K,S: httpd 重启后只恢复原轮次与观察
+    S->>W: 新 attemptId 的沟通和结果文件
+    B->>S: 冷读取原轮次与执行树终态
+    B->>W: 核验结果和 Git 交付
+    B->>K: 同步执行结果与验收状态
+```
+
 ### 关联工作区与受保护清理
 
 KanbanClient 的可选 workResources(boardId,itemId) 与 cleanupWorkResource(boardId,{operationId,itemId,resourceId,version}) 是通用宿主端口，资源返回身份、位置、状态、属性、阻塞原因和检查版本。库不包含 Git、Cells、远程项目或路径策略。任务详情展开“执行工作区”时才查询，避免首屏、后台刷新反复检查远程仓库；CLI 同名子命令复用同一服务及授权。

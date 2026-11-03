@@ -29,6 +29,12 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     try {await service.scan();await reportKanbanHealth(events);}
     catch(error) {await reportKanbanHealth(events,error);}
     return {...service,
+        ...(automationOptions?.continuation && service.executionSession ? {executionSession: async (boardId: string, itemId: string) => {
+            const detail = await service.executionSession!(boardId, itemId), {item} = await service.item(boardId, itemId);
+            const previous = Object.values((await service.workflow(boardId)).dispatches).filter(row => row.itemId === itemId).sort((a, b) => b.attempt - a.attempt)[0];
+            return {...detail, ...(['backlog', 'open'].includes(item.status) && previous && ['failed', 'cancelled'].includes(previous.outcome)
+                ? {continuation: {previousDispatchId: previous.id}} : {})};
+        }} : {}),
         ...automationOptions?.workResources?.({service, workLog, journal}),
         records: (boardId: string, query?: import('@itookit/kanban/contracts').KanbanRecordQuery) => workLog.records(service, boardId, query),
         record: (boardId: string, recordId: string) => workLog.record(service, boardId, recordId),
@@ -71,6 +77,10 @@ function personalOptions({store, journal, events, diagnostics, sessions, kernel,
         authorize: async (input: Parameters<import('./module').NestOSKanbanOptions['authorize']>[0]) => {
             const {board, command} = input;
             await authorizeAutomation(input, automationOptions?.catalog);
+            if (command?.type === 'continue-execution') {
+                if (!automationOptions?.continuation) throw new KanbanError('CONTINUATION_UNSUPPORTED');
+                if (!board.automation?.enabled) throw new KanbanError('AUTOMATION_PAUSED');
+            }
             if(command&&automationOptions?.projects)await validateWorkProjects(automationOptions.projects,board,command,automationOptions.requiresItemResource?.(board)===true);
             if (command?.type === 'configure-automation' && command.settings.preparation)
                 automationOptions?.validatePreparation?.(command.settings.preparation, command.settings.preparationOptions);

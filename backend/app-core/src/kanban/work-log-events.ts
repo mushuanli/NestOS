@@ -6,6 +6,7 @@ export function eventActivity(event: KanbanEvent): KanbanRecordActivity | undefi
     const base = {actor: {kind: event.actor.kind ?? 'agent' as const, id: event.actor.id ?? event.actor.agentId ?? 'unknown'}, result: 'success' as const, ...(event.data.dispatchId ? {dispatchId: event.data.dispatchId} : {})};
     if (event.kind === 'create-item') return {...base, stage: 'task.created'};
     if (event.kind === 'prepare-dispatch') return {...base, stage: 'execution.prepared'};
+    if (event.kind === 'continue-execution') return {...base, stage: 'execution.continued'};
     if (event.kind === 'submit') return {...base, stage: 'execution.review'};
     if (event.kind === 'close-plan' || event.kind === 'review' && event.data.reason === 'accepted' || event.kind === 'accept-execution' && event.data.reason === 'accepted') return {...base, stage: 'task.completed'};
     if (event.kind === 'cancel-item' || event.kind === 'release-item' && event.data.reason === 'cancelled') return {...base, stage: 'task.cancelled', result: 'cancelled'};

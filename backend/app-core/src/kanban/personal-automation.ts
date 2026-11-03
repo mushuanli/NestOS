@@ -14,8 +14,10 @@ import {KanbanAutomationJournal} from './automation-journal';
 import {analyzeItem, analysisStatus, safeCode} from './automation-analysis';
 import {automationCatalog, automationTarget, assertAutomationPrincipals} from './automation-targets';
 import {requireValue} from './validation';
+import {withContinuedWork, type ContinueWorkOptions} from './continued-work';
 
 export interface PersonalKanbanAutomationOptions {
+    continuation?: Pick<ContinueWorkOptions, 'submission' | 'prepare'>;
     workResources?(context: {service: KanbanService; workLog: KanbanWorkLog; journal: KanbanAutomationJournal}): Pick<import('@itookit/kanban/contracts').KanbanClient, 'workResources' | 'cleanupWorkResource'>;
     executionResource?(sessionId:string,branch:string):Promise<string|undefined>;
     requiresItemResource?(board:KanbanBoard):boolean;
@@ -101,11 +103,12 @@ async function planNext(options: Options, board: KanbanBoard, prepareSession: (i
 async function createBridge(options: Options, boardId: string, prepareSession: (id: string) => Promise<string>) {
     const manager = async () => {const board = await options.service.read(boardId); return options.serviceFor(board.automation!.coordinator);};
     const service = await manager();
-    const executor = createPublishedKanbanWorkExecutor({...options, prepareSession,
+    const observe = options.observeWork ? async (dispatch: import('@itookit/kanban/contracts').KanbanDispatch, observation: import('@itookit/kanban/execution').KanbanExecutionObservation) => options.observeWork!({boardId, dispatch, observation,
+        service, worker: options.serviceFor(dispatch.principal)}) : undefined;
+    const primary = createPublishedKanbanWorkExecutor({...options, prepareSession,
         onSessionPrepared: (dispatch, item, sessionId) => options.workLog?.append(options.service, boardId, item.id, {stage: 'session.prepared', result: 'success', actor: dispatch.principal, dispatchId: dispatch.id,
             references: [{system: 'nestos-execution-session', id: sessionId, revision: dispatch.id}]}) ?? Promise.resolve(),
-        observe: options.observeWork ? async (dispatch, observation) => options.observeWork!({boardId, dispatch, observation,
-            service, worker: options.serviceFor(dispatch.principal)}) : undefined,
+        observe,
         context: async (_dispatch, item) => dependencyResults(options, boardId, item),
         binding: async (dispatch, item) => {
             const board = await options.service.read(boardId);
@@ -118,6 +121,7 @@ async function createBridge(options: Options, boardId: string, prepareSession: (
             }
             return {target};
         }});
+    const executor = options.continuation ? withContinuedWork(primary, {...options.continuation, calls: options.calls, kernel: options.kernel, observe}) : primary;
     return createNestOSKanbanExecutionBridge({fs: options.fs, directory: '/var/lib/kanban/automation/' + encodeURIComponent(boardId), boardId,
         service, worker: async principal => options.serviceFor(principal), executor,
         autoDispatch: async () => (await options.service.read(boardId)).automation?.enabled === true,

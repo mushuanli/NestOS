@@ -340,6 +340,9 @@ export class KanbanWorkbench {
         if (target.dataset.record) {this.itemId = ''; this.item = undefined; await this.showRecord(target.dataset.record); return;}
         if (target.dataset.item) {this.recordId = ''; this.itemId = target.dataset.item; await this.showItem(); return;}
         const action = target.dataset.action;
+        if (action === 'continue-execution' && this.item && target.dataset.dispatch) {
+            await this.execute({type: 'continue-execution', previousDispatchId: target.dataset.dispatch, dispatchId: randomUUID()}); return;
+        }
         if (action === 'refresh-work-resources') {await this.loadWorkResources(); return;}
         if (action === 'cleanup-work-resource' && this.item && this.options.service?.cleanupWorkResource) {
             if (!globalThis.confirm(this.ui.label('cleanupWorkResourceConfirm'))) return;

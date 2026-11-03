@@ -165,6 +165,8 @@ export const zhCN = {
     'kanban.activity.association.observed': '已有执行关联快照',
     'kanban.activity.task.created': '任务已创建',
     'kanban.activity.execution.prepared': '执行已派发',
+    'kanban.activity.execution.continued': '已登记续办，沿用原执行会话',
+    'kanban.continueExecution': '续办原任务',
     'kanban.activity.session.prepared': '调用会话已准备',
     'kanban.activity.worktree.prepared': '工作树已准备',
     'kanban.activity.agent.prepared': '执行 Agent 已准备',

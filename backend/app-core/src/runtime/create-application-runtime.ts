@@ -2,6 +2,8 @@ import {nativeSessionResource} from '../projects/session-resource';
 import {OperationLifetime} from '../run/operation-lifetime';
 import {developmentAnalysis} from '../presets/kanban-development-analysis';
 import {developmentDelivery} from '../presets/kanban-development-delivery';
+import {developmentContinuation} from '../presets/kanban-development-continuation';
+import {sessionSubmission} from '../run/session-submission';
 import {developmentLifecycle} from '../presets/kanban-development-lifecycle';
 import {developmentWorkResources} from '../presets/kanban-work-resources';
 import {KanbanAutomationJournal} from '../kanban/automation-journal';
@@ -577,6 +579,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const analyzeDevelopment = developmentBindings ? developmentAnalysis(developmentBindings,()=>wakeKanban()) : undefined;
         if(analyzeDevelopment)cleanupFns.push(()=>analyzeDevelopment.dispose());
         const verifyDevelopment = developmentBindings ? developmentDelivery(systemFS, developmentBindings.remote, developmentBindings.provider) : undefined;
+        const continueDevelopment = developmentBindings && independentCalls ? developmentContinuation({...developmentBindings,
+            journal: new KanbanAutomationJournal(systemFS), calls: independentCalls, kernel: kernelCore}) : undefined;
         const lifecycle = independentCalls ? developmentLifecycle({journal: new KanbanAutomationJournal(systemFS), events, calls: independentCalls, kernel: kernelCore,
             authorize: async (boardId): Promise<boolean> => (await kanban.read(boardId)).automation?.enabled === true,
             prepareSession: async id => {
@@ -590,6 +594,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
+            continuation: continueDevelopment ? {submission: sessionSubmission({contexts: conversationContexts, repository: sessionRepository, kernel: kernelCore}),
+                prepare: input => developmentOperations.run(() => continueDevelopment(input))} : undefined,
             workResources: developmentBindings ? context => {
                 const resources = developmentWorkResources({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore});
                 return {workResources: (boardId, itemId) => developmentOperations.run(() => resources.workResources(boardId, itemId)),

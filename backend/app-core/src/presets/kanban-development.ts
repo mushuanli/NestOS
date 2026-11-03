@@ -21,7 +21,7 @@ interface Options {fs: IFileSystem; agents: IAgentManagementService; connections
     remote: ProjectRemoteMountService; provider: RemoteFileSourceProvider;
     projects: Pick<import('@itookit/app-contracts/services').ProjectService, 'get' | 'openWorkspace'>}
 type Input = Parameters<NonNullable<PersonalKanbanAutomationOptions['prepareWork']>>[0];
-export interface DevelopmentWorkspaceRecord {projectId: string; directory: string; repositories: WorktreeRepository[]; availableRepositories: WorktreeRepository[]; policy: DevelopmentPolicy; context?:unknown}
+export interface DevelopmentWorkspaceRecord {projectId: string; directory: string; worktreeId?: string; communicationDirectory?: string; repositories: WorktreeRepository[]; availableRepositories: WorktreeRepository[]; policy: DevelopmentPolicy; context?:unknown}
 
 /** Product policy selects resources; generic Kanban persists opaque preparation options. */
 export function developmentPreparation(options: Options): NonNullable<PersonalKanbanAutomationOptions['prepareWork']> {

@@ -27,8 +27,10 @@ export function developmentWorkResources(options: Options) {
 async function references(options: Options, boardId: string, itemId: string): Promise<KanbanExternalReference[]> {
     const {item} = await options.service.item(boardId, itemId), refs = [...item.externalRefs ?? []]; let cursor: string | undefined;
     const workflow = await options.service.workflow(boardId);
-    for (const dispatch of Object.values(workflow.dispatches)) if (dispatch.itemId === itemId
-        && await options.journal.get<PreparedWorktree>('worktree:' + dispatch.id)) refs.push({system: 'nestos-worktree', id: dispatch.id});
+    for (const dispatch of Object.values(workflow.dispatches)) if (dispatch.itemId === itemId) {
+        const tree = await options.journal.get<PreparedWorktree>('worktree:' + dispatch.id);
+        if (tree) refs.push({system: 'nestos-worktree', id: tree.id ?? dispatch.id});
+    }
     do {
         const page = await options.workLog.records(options.service, boardId, {itemId, kind: 'log', limit: 200, ...(cursor ? {cursor} : {})});
         refs.push(...page.items.flatMap(row => row.externalRefs ?? [])); cursor = page.nextCursor;

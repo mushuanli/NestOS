@@ -10,6 +10,7 @@ export interface KanbanExecutionObservation {
     outputs?: KanbanArtifactRef[]; code?: string;
 }
 export interface KanbanExecutionPort {
+    prepareContinuation?(dispatch: KanbanDispatch, item: KanbanItem, previousRequest: unknown): Promise<unknown>;
     /** Persistable request; preparing cannot submit agent work. */
     prepare(dispatch: KanbanDispatch, item: KanbanItem): Promise<unknown>;
     start(request: unknown): Promise<KanbanExecutionObservation>;
@@ -86,7 +87,7 @@ async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, 
         if(!record) {
             stage='prepare';await options.authorize(stage,dispatch);if(!active()) return;
             const item=(await options.service.item(options.boardId,dispatch.itemId)).item;if(!active()) return;
-            const request=await options.executor.prepare(dispatch,item);if(!active()) return;
+            const request=await prepareRequest(options, path, dispatch, item);if(!active()) return;
             record=await track(savePrepared(options,path,dispatch,request));
         }
         if(!active()) return;
@@ -104,6 +105,15 @@ async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, 
     if (stage !== 'inspect' || executionObservationChanged(dispatch, result) || previousFailure && !failures.has(dispatch.id))
         try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,...(failures.has(dispatch.id)?{retryAfterMs:Math.max(0,failures.get(dispatch.id)!.retryAt-Date.now())}:{}),durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
     if(active()) try {await linkSession(options,dispatch,result.executionSessionId);if(active()) await settle(options,dispatch,result);} catch(error) {if(safeCode(error)!=='REVISION_CONFLICT') throw error;}
+}
+async function prepareRequest(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch, item: KanbanItem): Promise<unknown> {
+    if (!dispatch.continuation) return options.executor.prepare(dispatch, item);
+    if (!options.executor.prepareContinuation) throw new KanbanError('CONTINUATION_UNSUPPORTED');
+    const previous = (await options.service.workflow(options.boardId)).dispatches[dispatch.continuation.previousDispatchId];
+    if (!previous || previous.itemId !== dispatch.itemId) throw new KanbanError('CONTINUATION_SCOPE_MISMATCH');
+    const record = await loadRecord(options, path, previous);
+    if (!record) throw new KanbanError('EXECUTION_JOURNAL_MISSING');
+    return options.executor.prepareContinuation(dispatch, item, record.request);
 }
 async function loadRecord(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch): Promise<ExecutionRecord|undefined> {
     const raw=await options.fs.meta.seq!.getEntry(path,dispatch.id); if(!raw) return;

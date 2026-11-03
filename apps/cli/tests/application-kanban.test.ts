@@ -19,3 +19,12 @@ it('passes frozen mutations unchanged and never retries an unknown outcome', asy
 it('fails explicitly when the host has no Kanban service', async () => {
     await expect(kanbanCommand({services: {}} as ApplicationClient, ['list'], {})).rejects.toMatchObject({code: 'ECAPABILITY'});
 });
+it('passes an explicit continuation identity through the normal durable command path', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kanban-continue-')); paths.push(directory);
+    const file = join(directory, 'request.json'), request = {operationId: 'intent', expectedRevision: 5,
+        command: {type: 'continue-execution', previousDispatchId: 'failed', dispatchId: 'continuation'}};
+    await writeFile(file, JSON.stringify(request));
+    const execute = vi.fn(async () => ({})), client = {services: {kanban: {execute}}} as unknown as ApplicationClient;
+    await kanbanCommand(client, ['continue', 'board'], {file});
+    expect(execute).toHaveBeenCalledExactlyOnceWith('board', request);
+});

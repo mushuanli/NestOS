@@ -26,6 +26,11 @@ export async function kanbanCommand(client: ApplicationClient, args: string[], o
     if (action === 'records') return service.records(boardId);
     if (action === 'events') return service.events(boardId, itemId ? integer(itemId) : undefined);
     if (action === 'execute') return service.execute(boardId, await jsonFile<Parameters<Service['execute']>[1]>(options.file));
+    if (action === 'continue') {
+        const request = await jsonFile<Parameters<Service['execute']>[1]>(options.file);
+        if (request.command?.type !== 'continue-execution') throw new Error('kanban continue requires a frozen continue-execution request');
+        return service.execute(boardId, request);
+    }
     if (action === 'analysis' && itemId && service.analysisStatus) return service.analysisStatus(boardId, itemId);
     if (action === 'item' && itemId) return service.item(boardId, itemId);
     if (action === 'record' && itemId) return service.record(boardId, itemId);

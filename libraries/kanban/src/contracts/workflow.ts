@@ -12,6 +12,7 @@ export interface KanbanWorkPlan {
 }
 export interface KanbanPublishedPlan extends Omit<KanbanWorkPlan, 'items'> {itemIds: string[]; definitions: Record<string, {digest: string; inputs: KanbanWorkDefinition['inputs']; outputs: string[]}>}
 export interface KanbanDispatch {
+    continuation?: {previousDispatchId: string; instruction?: string};
     id: string; itemId: string; itemRevision: number; planId: string; planRevision: number;
     principal: KanbanPrincipal; definitionDigest: string; attempt: number; fence: string; preparedAt: number;
     outcome: 'prepared' | 'running' | 'unknown' | 'succeeded' | 'failed' | 'cancelled' | 'accepted' | 'rejected';
@@ -19,6 +20,7 @@ export interface KanbanDispatch {
 }
 export interface KanbanWorkflowState {plans: Record<string, KanbanPublishedPlan>; dispatches: Record<string, KanbanDispatch>; ready: string[]; completedPlans: string[]}
 export type KanbanWorkflowCommand =
+    | {type: 'continue-execution'; previousDispatchId: string; dispatchId: string; instruction?: string}
     | {type: 'publish-plan'; plan: KanbanWorkPlan}
     | {type: 'prepare-dispatch'; itemId: string; dispatchId: string; estimate?: KanbanEstimate}
     | {type: 'observe-execution'; dispatchId: string; fence: string; outcome: 'running' | 'unknown' | 'succeeded' | 'failed' | 'cancelled'; outputs?: KanbanArtifactRef[]; code?: string}

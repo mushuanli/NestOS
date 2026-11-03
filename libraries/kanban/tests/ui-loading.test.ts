@@ -114,3 +114,9 @@ it('preserves an expanded resource section when an event refresh invalidates its
     gate.resolve([]); await Promise.resolve(); await Promise.resolve();
     expect(f.editor.querySelector('[data-work-resource]')).not.toBeNull();
 });
+it('shows continuation only when the host provides an eligible predecessor', async () => {
+    const f = await fixture();
+    f.service.executionSession = vi.fn(async () => ({history: [], continuation: {previousDispatchId: 'failed'}}));
+    await f.mount();
+    await vi.waitFor(() => expect(f.editor.querySelector('[data-action=continue-execution]')?.getAttribute('data-dispatch')).toBe('failed'));
+});

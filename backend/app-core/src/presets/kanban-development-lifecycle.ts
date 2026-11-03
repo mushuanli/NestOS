@@ -64,13 +64,15 @@ async function enqueue(options: Options, state: State, boardId: string, dispatch
         const policy = workspace?.policy ?? await options.journal.get<DevelopmentPolicy>('development-policy:' + dispatch.id);
         const file = kind + '.md', prompt = policy?.prompts.files.find(entry => entry.name === file)?.content;
         const hooks=policy?lifecyclePromptFiles(policy.prompts,kind,observation.outcome as 'succeeded'|'failed'|'cancelled'):[];
+        if (dispatch.continuation && policy?.prompts.files.some(file => file.name === kind + '-continue-post.md')) hooks.unshift(kind + '-continue-post.md');
         if (!prompt || !hasMarkdownSection(prompt, stage)&&!hooks.length) return;
         const id = dispatch.id + '-postload-' + observation.outcome, key = 'development-lifecycle:' + id;
         if (state.stopped) return;
         if (!await options.journal.get<Job>(key)) {
             if (target) await options.journal.update<TargetRef>('lifecycle-target:' + id, old => old ?? target);
             const hookDispatch = {...dispatch, id};
-            const hookItem = {...item, responsibility: `Execute ONLY ${stage} and the non-destructive cleanup guidance in _nestos/kanban/prompts/${file}. The original task is terminal. Do not implement, commit, merge, push, or publish primary result. Report retained work and recovery information. Original code: ${observation.code ?? 'NONE'}. Read the frozen prompts from the manifest, followed by these optional files in order: ${hooks.map(name=>'_nestos/kanban/prompts/'+name).join(', ')||'(none)'}.`,
+            const directory = workspace?.communicationDirectory?.replace('/workspace/', '') ?? '_nestos/kanban';
+            const hookItem = {...item, responsibility: `Execute ONLY ${stage} and the non-destructive cleanup guidance in ${directory}/prompts/${file}. The original task is terminal. Do not implement, commit, merge, push, or publish primary result. Report retained work and recovery information. Original code: ${observation.code ?? 'NONE'}. Read the frozen prompts from the manifest, followed by these optional files in order: ${hooks.map(name=>directory+'/prompts/'+name).join(', ')||'(none)'}.`,
                 acceptance: 'Return a concise lifecycle summary. Preserve repository state and mailbox history.'};
             const request = await state.executor.prepare(hookDispatch, hookItem);
             await options.journal.update<Job>(key, old => old ?? {id, boardId, dispatch: hookDispatch, stage, request, phase: 'prepared'});

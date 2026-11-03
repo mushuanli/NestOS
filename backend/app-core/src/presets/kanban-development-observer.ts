@@ -29,24 +29,25 @@ export function developmentObserver(options: Options) {
         const {item} = await input.service.item(input.boardId, input.dispatch.itemId);
         const projectId = item.externalRefs?.find(ref => ref.system === REMOTE_PROJECT_REFERENCE)?.id;
         if (!projectId) throw Object.assign(new Error('Missing workspace project binding'), {code: 'WORKSPACE_PROJECT_MISSING'});
+        const workspace = await journal.get<DevelopmentWorkspaceRecord>('development-workspace:' + input.dispatch.id);
+        const directory = workspace?.communicationDirectory ?? worktree.directory + '/_nestos/kanban';
         if(options.remote)await watches.ensure(input.dispatch.id,async()=>{
             const client=await options.remote!.projectHarness(projectId);
             try {
-                const stop=client.subscribeDirectoryPath?.('_nestos/worktrees/'+input.dispatch.id+'/_nestos/kanban/inbox',options.wake);
+                const stop=client.subscribeDirectoryPath?.(directory.replace('/workspace/', '') + '/inbox',options.wake);
                 return async()=>{stop?.();await client.close();};
             }catch(error){await client.close();throw error;}
         });
-        await linkReference(journal, input, {system: 'nestos-worktree', id: input.dispatch.id,
+        await linkReference(journal, input, {system: 'nestos-worktree', id: workspace?.worktreeId ?? worktree.id ?? input.dispatch.id,
             revision: JSON.stringify({projectId, directory: worktree.directory, branch: worktree.branch, baseCommit: worktree.baseCommit})});
         await linkResult(options, journal, input, projectId);
         const folder = await options.projects.get(projectId), view = await options.projects.openWorkspace(folder.path);
         try {
             const scope = {runId: item.externalRefs?.find(ref => ref.system === 'nestos-decision-run')?.id ?? input.dispatch.planId,
                 itemId: item.id, attemptId: input.dispatch.id};
-            const workspace = await journal.get<DevelopmentWorkspaceRecord>('development-workspace:' + input.dispatch.id);
-            if (workspace) await verifyPromptBundle(view.fs, workspace.directory + '/_nestos/kanban', workspace.policy.prompts,
+            if (workspace) await verifyPromptBundle(view.fs, directory, workspace.policy.prompts,
                 {...scope, entry: 'prompts/task.md', commit: workspace.policy.commit, repositories: workspace.repositories, availableRepositories: workspace.availableRepositories,...(workspace.context===undefined?{}:{input:workspace.context})});
-            const messages = await consumeWorkspaceMessages(view.fs, '/workspace/_nestos/worktrees/' + input.dispatch.id + '/_nestos/kanban', scope, journal,
+            const messages = await consumeWorkspaceMessages(view.fs, directory, scope, journal,
                 message => deliver(options, journal, input, message));
             if (['failed', 'cancelled'].includes(input.observation.outcome)) {
                 await options.lifecycle?.enqueue(input.boardId, input.dispatch, item, input.observation);
@@ -86,7 +87,8 @@ async function linkResult(options: Options, journal: KanbanAutomationJournal, in
     const sessionId = input.observation.executionSessionId;
     if (!sessionId) return;
     const catalog = await readContextCatalog(options.kernel, sessionId);
-    const binding = Object.values(catalog.value.bindings).find(binding => binding.connectionId === 'work-' + input.dispatch.id);
+    const workspace = await journal.get<DevelopmentWorkspaceRecord>('development-workspace:' + input.dispatch.id);
+    const binding = Object.values(catalog.value.bindings).find(binding => binding.connectionId === 'work-' + (workspace?.worktreeId ?? input.dispatch.id));
     if (!binding?.nativeRef?.sessionId) return;
     await linkReference(journal, input, {system: 'nestos-native-session', id: binding.nativeRef.sessionId,
         revision: JSON.stringify({projectId, connectionId: binding.connectionId, profileId: binding.nativeRef.profileId,

@@ -13,7 +13,7 @@ import {UserEventService} from '../../../backend/app-core/src/events/service';
 const visibility = vi.hoisted(() => vi.fn());
 const invalidateEvents = vi.hoisted(() => vi.fn());
 const lifecycle = vi.hoisted(() => ({ start: vi.fn(async () => {}), open: vi.fn(async (_id: string) => {}),
-    destroy: vi.fn(async () => {}), scope: '/', restoreScope: vi.fn(async (_scope: string) => {}), before: undefined as (() => void) | undefined, configure: vi.fn(), selection: undefined as ((id: string) => void) | undefined }));
+    destroy: vi.fn(async () => {}), expand: vi.fn(), scope: '/', restoreScope: vi.fn(async (_scope: string) => {}), before: undefined as (() => void) | undefined, configure: vi.fn(), selection: undefined as ((id: string) => void) | undefined }));
 
 vi.mock('../src/ThemeService', () => ({
     themeService: { init: vi.fn(async () => {}), destroy: vi.fn(), setMode: vi.fn(async () => {}) },
@@ -38,6 +38,7 @@ vi.mock('../src/core/Workbench', () => ({
     Workbench: class {
         constructor(config: any) { lifecycle.selection = config.onSessionChange; lifecycle.before = config.onBeforeNavigate; lifecycle.configure(config); }
         setVisible = visibility;
+        expandNavigation = lifecycle.expand;
         invalidateFromEvents = invalidateEvents;
         suspendForRecovery = vi.fn();
         start = lifecycle.start;
@@ -99,6 +100,7 @@ afterEach(() => {
     document.body.innerHTML = '';
     history.replaceState(null, '', '/');
     lifecycle.scope = '/'; lifecycle.restoreScope.mockReset().mockImplementation(async scope => {lifecycle.scope = scope;});
+    lifecycle.expand.mockClear();
     vi.restoreAllMocks(); lifecycle.start.mockReset().mockResolvedValue(); lifecycle.open.mockReset().mockResolvedValue(); lifecycle.destroy.mockReset().mockResolvedValue();
 });
 
@@ -449,4 +451,18 @@ it('records the actual list presentation after navigating to a category with a r
         await app.navigate('settings','category');
         expect(history.state).toMatchObject({resourceId:'category',mobileView:'list'});
     }finally{await app.destroy();}
+});
+it('routes window Home to the module sidebar and records a returnable list page without opening a root window', async () => {
+    navigationDOM(); const app = await initTestApp({services: makeRuntime(), workspaces: [workspace], ui: testUI()});
+    const layout = document.querySelector<HTMLElement>('.mm-layout')!, sidebar = layout.querySelector<HTMLElement>('.mm-sidebar')!;
+    try {
+        await app.navigate('settings', 'kept-file'); layout.dataset.mobileView = 'detail'; sidebar.classList.add('is-collapsed');
+        const opened = lifecycle.open.mock.calls.length, windows = lifecycle.configure.mock.calls.at(-1)![0].windows;
+        await windows.showNavigation();
+        expect(lifecycle.open).toHaveBeenCalledTimes(opened); expect(lifecycle.expand).toHaveBeenCalledOnce();
+        expect(layout.dataset.mobileView).toBe('list'); expect(sidebar.classList.contains('is-collapsed')).toBe(false);
+        expect(location.hash).toBe('#/settings'); expect(history.state).toMatchObject({resourceId: null, mobileView: 'list'});
+        history.back(); await vi.waitFor(() => expect(history.state).toMatchObject({resourceId: 'kept-file', mobileView: 'detail'}));
+        await vi.waitFor(() => expect(layout.dataset.mobileView).toBe('detail'));
+    } finally {await app.destroy();}
 });

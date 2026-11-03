@@ -2,6 +2,7 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {WorkbenchTabs} from '../src/workbench/tabs';
 import {WorkbenchWindows} from '../src/workbench/windows';
+import {mountApplicationNavigation} from '../src/navigation/window-navigation';
 import {t, getLogger} from '@itookit/common';
 
 afterEach(() => {document.body.replaceChildren(); vi.restoreAllMocks();});
@@ -47,7 +48,8 @@ it('retains a failed window when closing selected windows across workspaces', as
     await chat.tabs.destroy(); await toolbox.tabs.destroy();
 });
 it('navigates home and to the current parent without closing windows, and hides up on the root page', async () => {
-    const container = document.createElement('section'); document.body.append(container);
+    const layout = document.createElement('div'), sidebar = document.createElement('aside'), container = document.createElement('section');
+    layout.className = 'mm-layout'; sidebar.className = 'mm-sidebar is-collapsed'; layout.dataset.mobileView = 'detail'; layout.append(sidebar, container); document.body.append(layout);
     const activate = vi.fn(async (id: string) => {tabs.activate(id);});
     const tabs = new WorkbenchTabs(container, {activate, dispose: async () => {}, empty() {}, error: vi.fn()});
     const header = document.createElement('div'); container.append(header);
@@ -59,11 +61,13 @@ it('navigates home and to the current parent without closing windows, and hides 
     await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('/notes'));
     tabs.activate('/notes/draft.md'); tabs.rename('/notes/draft.md', '/moved/draft.md', 'Draft'); up.click();
     await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('/moved'));
+    tabs.activate('/moved/draft.md');
     expect(header.querySelector('[data-window-navigation=home]')).toBeNull();
     const home = tabs.opened.querySelector<HTMLButtonElement>('[data-window-navigation=home]')!;
     expect(home.parentElement?.nextElementSibling?.matches('input[type=search]')).toBe(true); home.click();
-    await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('/'));
-    expect(up.hidden).toBe(true); expect(file.panel.querySelector('textarea')).toBe(input); expect(input.value).toBe('unsaved');
+    await vi.waitFor(() => expect(layout.dataset.mobileView).toBe('list'));
+    expect(sidebar.classList.contains('is-collapsed')).toBe(false); expect(activate).not.toHaveBeenCalledWith('/');
+    expect(tabs.current).toBe(file); tabs.activate('/'); expect(up.hidden).toBe(true); expect(file.panel.querySelector('textarea')).toBe(input); expect(input.value).toBe('unsaved');
     expect(tabs.values()).toHaveLength(2);
     release(); expect(header.children).toHaveLength(0); await tabs.destroy();
 });
@@ -82,16 +86,36 @@ it('reports a parent navigation failure with a specific diagnostic and keeps the
     expect(JSON.stringify(logs)).not.toContain('/private');
     release(); await tabs.destroy();
 });
-it('shows workspace navigation in the shared window list without requiring an opened window in that workspace',async()=>{
-    const activate=vi.fn(async()=>{});
-    const registry=new WorkbenchWindows(()=>[{id:'kanban',title:'Kanban',active:true,activate:async()=>{}},{id:'notes',title:'Notes',active:false,activate}]);
-    const container=document.createElement('section');document.body.append(container);
+it('borrows the real program nav below the window list and restores it without recreating buttons',async()=>{
+    HTMLDialogElement.prototype.showModal ??= function(){this.open=true;};
+    HTMLDialogElement.prototype.close ??= function(){this.open=false;this.dispatchEvent(new Event('close'));};
+    vi.spyOn(HTMLDialogElement.prototype,'showModal').mockImplementation(function(){this.open=true;});
+    vi.spyOn(HTMLDialogElement.prototype,'close').mockImplementation(function(){this.open=false;this.dispatchEvent(new Event('close'));});
+    const nav=document.createElement('nav');nav.className='app-sidebar';nav.innerHTML='<button class="app-nav-btn active" data-target="notes">Notes</button>';document.body.append(nav);
+    const button=nav.querySelector<HTMLButtonElement>('button')!,navigate=vi.fn();
+    button.addEventListener('click',event=>{event.stopPropagation();navigate();});
+    const registry=new WorkbenchWindows(mountApplicationNavigation),container=document.createElement('section');document.body.append(container);
     const tabs=new WorkbenchTabs(container,{activate:async()=>{},dispose:async()=>{},empty(){},error:vi.fn()},undefined,
         {registry,id:'kanban',isActive:()=>true,navigate:async()=>{}});
-    await tabs.open('/board','Board',false);
-    const current=tabs.opened.querySelector('[data-workspace-nav=kanban]');
-    expect(current?.getAttribute('aria-current')).toBe('page');
-    tabs.opened.querySelector<HTMLButtonElement>('[data-workspace-nav=notes]')!.click();
-    await vi.waitFor(()=>expect(activate).toHaveBeenCalledTimes(1));expect(tabs.values()).toHaveLength(1);
-    await tabs.destroy();
+    const current=await tabs.open('/board','Board',false),input=document.createElement('textarea');input.value='Draft';current.panel.append(input);
+    const slot=document.createElement('div');container.append(slot);tabs.mountWindowList(slot);
+    slot.querySelector<HTMLButtonElement>('.workbench-window-list')!.click();
+    let dialog=document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+    expect(dialog.lastElementChild?.firstElementChild).toBe(nav);expect(dialog.lastElementChild?.previousElementSibling).toBe(tabs.opened);
+    registry.setQuery('no matching window');expect(dialog.querySelector('.app-nav-btn')).toBe(button);expect(button.classList.contains('active')).toBe(true);
+    expect(document.querySelectorAll('.app-sidebar')).toHaveLength(1);expect(document.querySelector('[data-workspace-nav]')).toBeNull();
+    button.click();expect(navigate).toHaveBeenCalledOnce();expect(nav.parentElement).toBe(document.body);expect(document.querySelector('.workbench-opened-sheet')).toBeNull();
+    expect(current.panel.querySelector('textarea')).toBe(input);expect(input.value).toBe('Draft');
+    slot.querySelector<HTMLButtonElement>('.workbench-window-list')!.click();dialog=document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+    expect(dialog.contains(nav)).toBe(true);await tabs.destroy();expect(nav.parentElement).toBe(document.body);expect(document.querySelectorAll('.app-sidebar')).toHaveLength(1);
+});
+it.each(['chat','kanban','notes','private','calendar','twin','toolbox','settings'])('uses the same sidebar navigation port for %s Home',async id=>{
+    const registry=new WorkbenchWindows(),container=document.createElement('section');document.body.append(container);
+    const showNavigation=vi.fn(async()=>{}),activate=vi.fn(async()=>{});
+    const tabs=new WorkbenchTabs(container,{activate,dispose:async()=>{},empty(){},error:vi.fn()},undefined,
+        {registry,id,isActive:()=>true,navigate:async()=>{},showNavigation});
+    const current=await tabs.open('/kept','Draft',false);
+    tabs.opened.querySelector<HTMLButtonElement>('[data-window-navigation=home]')!.click();
+    await vi.waitFor(()=>expect(showNavigation).toHaveBeenCalledOnce());expect(activate).not.toHaveBeenCalled();
+    expect(tabs.current).toBe(current);expect(tabs.values()).toHaveLength(1);await tabs.destroy();
 });

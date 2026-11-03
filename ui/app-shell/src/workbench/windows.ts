@@ -21,15 +21,12 @@ export interface WorkbenchWindowBinding {
     id: string;
     isActive(): boolean;
     navigate(id: string): Promise<void>;
+    showNavigation?(): Promise<void>;
 }
 
-export interface WorkbenchNavigation {
-    id:string; title:string; icon?:string; active:boolean;
-    activate():Promise<void>;
-}
 export class WorkbenchWindows {
-    constructor(private readonly navigationSource?:()=>WorkbenchNavigation[]) {}
-    navigation():WorkbenchNavigation[]{return this.navigationSource?.()??[];}
+    constructor(private readonly navigationMount?:(container:HTMLElement,close:()=>void)=>(()=>void)|undefined) {}
+    mountNavigation(container:HTMLElement,close:()=>void):(()=>void)|undefined {return this.navigationMount?.(container,close);}
     private readonly sources = new Map<string, {source: WindowSource; render(): void}>();
     private readonly closed: string[] = [];
     query = '';

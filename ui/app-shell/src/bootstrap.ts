@@ -8,6 +8,7 @@ import {withAssistantShortcut} from './navigation/assistant-actions';
 import {installAssistantMenu} from './navigation/assistant-menu';
 import {createEditorSwapFactory} from './browser/editor-swap';
 import { WorkbenchWindows } from './workbench/windows';
+import {mountApplicationNavigation, revealWorkspaceNavigation} from './navigation/window-navigation';
 import {t as translate} from '@itookit/common';
 import {rememberPagePresentation, writePageHistory, type PagePresentation} from './navigation/page-history';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
@@ -284,12 +285,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const navigationObservers = new Map<WorkspaceController, () => void>();
     let visibleWorkspaceId: string | undefined;
-    const windows = new WorkbenchWindows(()=>[...new Map([...document.querySelectorAll<HTMLButtonElement>('.app-nav-btn[data-target]')]
-        .map(button=>[button.dataset.target!,button] as const)).values()].map(button=>({
-        id:button.dataset.target!,title:button.getAttribute('aria-label')||button.title||button.textContent?.trim()||button.dataset.target!,
-        icon:button.querySelector('svg, i, [aria-hidden="true"]')?.outerHTML,active:button.dataset.target===visibleWorkspaceId,
-        activate:()=>navigateWorkspace(button.dataset.target!),
-    }))); windows.query = options.recovery?.openedQuery ?? '';
+    const windows = new WorkbenchWindows(mountApplicationNavigation); windows.query = options.recovery?.openedQuery ?? '';
     let navigationRevision = 0, closed = false;
     // Deduplicate concurrent loads: if the same workspace is loading, reuse the promise.
     const pendingLoads = new Map<string, Promise<WorkspaceController | undefined>>();
@@ -301,7 +297,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     ): Promise<WorkspaceController | undefined> => {
         const { elementId } = wsConfig;
         const windowBinding = {registry: windows, id: elementId, isActive: () => visibleWorkspaceId === elementId,
-            navigate: (id: string) => handleNavigationRequest({target: wsConfig.slug, resourceId: id})};
+            navigate: (id: string) => handleNavigationRequest({target: wsConfig.slug, resourceId: id}),
+            showNavigation: () => showWorkspaceNavigation(elementId)};
 
         const container = document.getElementById(elementId);
         if (!container) {
@@ -523,6 +520,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             captureRecovery: () => manager.captureRecovery(), restoreRecovery: state => manager.restoreRecovery(state),
             suspendForRecovery: () => manager.suspendForRecovery(), assertRecovery: () => manager.assertRecovery(),
             setVisible: visible => manager.setVisible?.(visible),
+            expandNavigation: () => manager.expandNavigation(),
             ...(manager.setNavigationVisible ? {setNavigationVisible: (visible: boolean) => manager.setNavigationVisible(visible)} : {}),
             openResource: id => manager.openFile(id), createResource: options => manager.createAndOpenFile(options),
             getActiveResourceId: () => manager.getActiveFilePath(),
@@ -580,12 +578,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         return routeMap[resolvedDefault] ?? workspaces[0]?.elementId ?? '';
     };
 
-    const updateHistory = (wsId: string, resourceId: string | null, mode: 'push' | 'replace'): void => {
+    const updateHistory = (wsId: string, resourceId: string | null, mode: 'push' | 'replace', mobileView?: string): void => {
         if (closed) return;
         const slug = reverseRouteMap[wsId] ?? wsId;
         const hash = resourceId ? `#/${slug}/${encodeURIComponent(resourceId)}` : `#/${slug}`;
-        const view = mode === 'replace' && visibleWorkspaceId === wsId
-            ? document.getElementById(wsId)?.querySelector<HTMLElement>('.mm-layout')?.dataset.mobileView : resourceId ? 'detail' : 'list';
+        const view = mobileView ?? (mode === 'replace' && visibleWorkspaceId === wsId
+            ? document.getElementById(wsId)?.querySelector<HTMLElement>('.mm-layout')?.dataset.mobileView : resourceId ? 'detail' : 'list');
         writePageHistory(wsId, resourceId, hash, mode, view);
     };
 
@@ -777,6 +775,14 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const navigateWorkspace=async(targetId:string)=>{
         rememberCurrentPage();const lastId=entryResource(targetId);updateHistory(targetId,lastId,'push');
         await performNavigation(targetId,lastId??undefined);
+    };
+    const showWorkspaceNavigation = async (workspaceId: string): Promise<void> => {
+        rememberCurrentPage();
+        if (visibleWorkspaceId !== workspaceId) await performNavigation(workspaceId);
+        const layout = document.getElementById(workspaceId)?.querySelector<HTMLElement>('.mm-layout');
+        const manager = managerCache.get(workspaceId); manager?.expandNavigation?.();
+        revealWorkspaceNavigation(layout); updateHistory(workspaceId, null, 'push', 'list'); rememberCurrentPage();
+        await manager?.setNavigationVisible?.(true);
     };
     document.querySelectorAll('.app-nav-btn[data-target]').forEach(btn => {
         btn.addEventListener('click', (e) => {

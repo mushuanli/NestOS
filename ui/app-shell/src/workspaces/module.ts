@@ -7,6 +7,7 @@ export type WorkspaceHandle = WorkspaceController & Partial<WorkspaceCreation> &
     restoreResource?(id: string): Promise<void>;
     getNavigationScope?(): string;
     restoreNavigationScope?(scope: string): Promise<void>;
+    expandNavigation?(): void;
 };
 export interface WorkspaceModule {
     workbench: WorkspaceHandle;
@@ -26,6 +27,7 @@ export function createWorkspaceModule(controller: WorkspaceHandle, dispose: () =
         ...(controller.assertRecovery ? {assertRecovery: () => controller.assertRecovery!()} : {}),
         ...(controller.setVisible ? { setVisible: (visible: boolean) => controller.setVisible!(visible) } : {}),
         ...(controller.setNavigationVisible ? { setNavigationVisible: (visible: boolean) => controller.setNavigationVisible!(visible) } : {}),
+        ...(controller.expandNavigation ? { expandNavigation: () => controller.expandNavigation!() } : {}),
         openResource: id => controller.openResource(id),
         getActiveResourceId: () => controller.getActiveResourceId(),
         ...(controller.restoreResource ? { restoreResource: (id: string) => controller.restoreResource!(id) } : {}),

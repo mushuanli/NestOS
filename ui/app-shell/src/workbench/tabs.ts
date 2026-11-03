@@ -4,6 +4,7 @@ import { decorateButton, decorateResourceButton } from './controls';
 import type { IEditor } from '@itookit/ui-common-adapter';
 import type { WorkbenchSnapshot } from './state';
 import {navigateWorkspaceBack} from '../navigation/page-history';
+import {revealWorkspaceNavigation} from '../navigation/window-navigation';
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import {windowNavigation} from './window-navigation';
 import {openedButton} from './opened-button';
@@ -52,7 +53,7 @@ export class WorkbenchTabs<T> {
     readonly opened = document.createElement('div');
     private readonly openedDrawer = new Drawer({title: t('workbench.opened'), showHeader: false, collapsible: false,
         search: {label: t('workbench.findOpened'), mountLeading: container => {
-            const home = windowNavigation({home: () => {this.openedDialog?.close(); this.runNavigation('home');}});
+            const home = windowNavigation({home: () => {this.closeOpenedDialog?.(); this.runNavigation('home');}});
             container.append(...home.buttons); return () => home.destroy();
         }, onChange: query => {if (this.windows) this.windows.registry.setQuery(query); else {this.openedQuery = query; this.render();}}}});
     private readonly bar = document.createElement('div');
@@ -74,6 +75,7 @@ export class WorkbenchTabs<T> {
     private readonly abort = new AbortController();
     private readonly compactViews = new Map<ReturnType<typeof compactNavigation>, HTMLElement | undefined>();
     private openedDialog?: HTMLDialogElement;
+    private closeOpenedDialog?: () => void;
     private readonly windowButtons = new Set<ReturnType<typeof openedButton>>();
     private readonly barWindows = openedButton(origin => this.showOpened(origin));
     private sidebarObserver?: MutationObserver;
@@ -157,7 +159,10 @@ export class WorkbenchTabs<T> {
         const operationId = randomUUID(), started = performance.now();
         const task = async () => {
             try {
-                if (kind === 'home') await this.actions.activate('/');
+                if (kind === 'home') {
+                    if (this.windows?.showNavigation) await this.windows.showNavigation();
+                    else revealWorkspaceNavigation(this.container);
+                }
                 else if (this.actions.parent) await this.actions.parent(tab!);
                 else await this.actions.activate(tab!.id.slice(0, tab!.id.lastIndexOf('/')) || '/');
                 navigationLog.debug('window.navigate', {operationId, operation: kind, stage: 'navigate', result: 'success', durationMs: Math.round(performance.now() - started)});
@@ -171,23 +176,34 @@ export class WorkbenchTabs<T> {
     }
     private showOpened(origin?: HTMLElement): void {
         if (this.openedDialog?.open) return;
+        this.closeOpenedDialog?.();
         origin ??= document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
         const dialog = document.createElement('dialog'); dialog.className = 'workbench-opened-sheet';
         dialog.setAttribute('aria-label', t('workbench.opened'));
         const heading = document.createElement('strong'); heading.textContent = t('workbench.opened');
-        const close = this.button(t('action.close'), () => dialog.close());
+        const close = this.button(t('action.close'), () => this.closeOpenedDialog?.());
         decorateButton(close, FILE_BROWSER_ICONS.close, t('action.close'), true);
         const header = document.createElement('div'); header.className = 'workbench-opened-sheet__header'; header.append(heading, close);
-        const placeholder = document.createComment('opened documents'); this.opened.before(placeholder);
-        dialog.append(header, this.opened); document.body.append(dialog); this.openedDialog = dialog;
-        dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
-        dialog.addEventListener('close', () => {
-            placeholder.replaceWith(this.opened); dialog.remove(); this.openedDialog = undefined;
-            const fallback = this.current?.panel.querySelector<HTMLButtonElement>('.workbench-window-list');
-            (origin?.isConnected && !origin.closest('[hidden]') ? origin : fallback)?.focus();
-        }, {once: true});
+        this.mountOpenedDialog(dialog, header, origin);
         dialog.showModal();
         if (this.windows) this.windows.registry.describe(); else this.describeOpened();
+    }
+    private mountOpenedDialog(dialog: HTMLDialogElement, header: HTMLElement, origin?: HTMLElement): void {
+        const placeholder = document.createComment('opened documents'); this.opened.before(placeholder);
+        const footer = document.createElement('footer'); footer.className = 'workbench-opened-sheet__navigation';
+        dialog.append(header, this.opened, footer); document.body.append(dialog); this.openedDialog = dialog;
+        let released = false, releaseNavigation: (() => void) | undefined;
+        const release = () => {
+            if (released) return; released = true; releaseNavigation?.();
+            placeholder.replaceWith(this.opened); dialog.remove(); this.openedDialog = undefined; this.closeOpenedDialog = undefined;
+            const fallback = this.current?.panel.querySelector<HTMLButtonElement>('.workbench-window-list');
+            (origin?.isConnected && !origin.closest('[hidden]') ? origin : fallback)?.focus();
+        };
+        this.closeOpenedDialog = () => {dialog.close(); release();};
+        releaseNavigation = this.windows?.registry.mountNavigation(footer, this.closeOpenedDialog);
+        if (!releaseNavigation) footer.remove();
+        dialog.addEventListener('click', event => {if (event.target === dialog) this.closeOpenedDialog?.();});
+        dialog.addEventListener('close', release, {once: true});
     }
     private describeOpened(): void {
         if (this.describing || !this.actions.describe) return;
@@ -359,7 +375,6 @@ export class WorkbenchTabs<T> {
             notice.textContent = this.windows.registry.error; notice.append(this.button(t('action.close'), () => this.windows?.registry.clearError()));
             this.openedDrawer.content.append(notice);
         }
-        const navigation=this.openedNavigation();if(navigation)this.openedDrawer.content.append(navigation);
         const toolbar = this.openedToolbar();
         toolbar.append(this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved())),
             this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen())));
@@ -373,19 +388,6 @@ export class WorkbenchTabs<T> {
         this.barWindows.button.classList.add('workbench-tabs__bar-windows');
         this.barWindows.update(this.windowCount()); this.bar.append(this.barWindows.button);
         this.tabViewport.update();
-    }
-    private openedNavigation():HTMLElement|undefined {
-        const items=this.windows?.registry.navigation();if(!items?.length)return;
-        const navigation=document.createElement('nav');navigation.className='workbench-opened-navigation';
-        navigation.setAttribute('aria-label',t('workbench.navigation'));
-        for(const item of items) {
-            const button=this.button(item.title,()=>{this.openedDialog?.close();this.run(item.activate());});
-            button.dataset.workspaceNav=item.id;
-            if(item.icon)decorateResourceButton(button,item.icon,item.title);
-            if(item.active)button.setAttribute('aria-current','page');
-            navigation.append(button);
-        }
-        return navigation;
     }
     private windowCount(): number { return this.windows?.registry.items().length ?? this.entries.size; }
     private isCurrent(id: string): boolean { return id === this.currentId && (!this.windows || this.windows.isActive()); }
@@ -524,7 +526,7 @@ export class WorkbenchTabs<T> {
     }
     async destroy(): Promise<void> {
         this.sidebarObserver?.disconnect(); this.barWindows.destroy();
-        this.openedDialog?.close();
+        this.closeOpenedDialog?.();
         this.unregisterWindows?.(); this.unregisterWindows = undefined;
         this.disposing = true; this.tabViewport.destroy();
         for (const tab of this.values()) await this.close(tab.id, false);

@@ -620,6 +620,7 @@
 .workbench-window-navigation { flex-shrink: 0; }
 .workbench-window-navigation[hidden] { display: none; }
 
-.workbench-opened-navigation { display: flex; gap: 8px; overflow-x: auto; flex-shrink: 0; padding: 0 4px 8px; }
-.workbench-opened-navigation > button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; flex-shrink: 0; }
-.workbench-opened-navigation > button[aria-current=page] { outline: 2px solid var(--color-primary, #5277dd); outline-offset: -2px; }
+.workbench-opened-sheet__navigation { flex-shrink: 0; min-width: 0; }
+.workbench-opened-sheet__navigation .app-sidebar { position: static; display: flex; align-items: center; gap: 8px; width: 100%; height: auto; padding: 8px 0 env(safe-area-inset-bottom, 0px); border: 0; border-top: 1px solid var(--border-color, #e5e7eb); overflow: visible; }
+.workbench-opened-sheet__navigation .app-sidebar__brand { flex-shrink: 0; margin: 0; }
+.workbench-opened-sheet__navigation .main-nav-list { flex: 1; min-width: 0; width: auto; flex-direction: row; flex-wrap: wrap; justify-content: space-around; }

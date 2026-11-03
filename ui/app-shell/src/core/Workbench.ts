@@ -329,6 +329,9 @@ export class Workbench {
         else if (visible && this.navigationVisible && (this.dirty || this.engine.revision !== this.loadedRevision || performance.now() - this.loadedAt >= 15000)) await this.refresh();
     }
 
+    public expandNavigation(): void {
+        if (this.config.sidebarContainer.classList.contains('is-collapsed')) this.vfsUI.toggleSidebar();
+    }
     public async setNavigationVisible(visible: boolean): Promise<void> {
         if (this.dialogs.signal.aborted) return;
         this.navigationVisible = visible; this.vfsUI.setVisible(visible && this.visible);

@@ -569,6 +569,9 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.navigationVisible) await this.setNavigationVisible(true);
         else this.sidebarUI.setVisible?.(false);
     }
+    expandNavigation(): void {
+        if (this.sidebar.classList.contains('is-collapsed')) this.sidebarUI?.toggleSidebar();
+    }
     async setNavigationVisible(visible: boolean): Promise<void> {
         if (this.closed) return;
         this.navigationVisible = visible;

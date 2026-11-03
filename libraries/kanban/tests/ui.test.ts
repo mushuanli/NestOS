@@ -208,3 +208,22 @@ it('uses a single locked resource for a task child and keeps decision resource s
     await f.view.openResource('/board/resource-work/@decision');await click(f.root,'[data-action=new-decision]');
     expect(f.root.querySelector<HTMLSelectElement>('[name=recordResources]')?.multiple).toBe(true);
 });
+
+it('opens the card execution link directly without opening task details or nesting interactive controls',async()=>{
+    const f=await fixture();
+    await f.service.create({id:'direct-session',title:'Board',scope:{kind:'system'},members:[{kind:'human',id:'person',responsibility:'Manage'}],policy:{requireEstimate:false}});
+    await f.service.execute('direct-session',{operationId:'create',expectedRevision:1,command:{type:'create-item',item:{id:'task',title:'Task',responsibility:'Work',acceptance:'Verified'}}});
+    Object.assign(f.service,{queryActivity:async(board:string,query:Parameters<typeof f.service.query>[1])=>{
+        const page=await f.service.query(board,query);
+        return {...page,items:page.items.map(item=>({...item,execution:{sessionId:'execution',state:'running',observedAt:1}}))};
+    }});
+    const {KanbanWorkbench}=await import('../src/ui');
+    const editor=document.createElement('main');document.body.append(editor);const openSession=vi.fn(async()=>{});
+    const view=new KanbanWorkbench({editor,service:f.service,presentation:presentation('direct'),selected:vi.fn(),openSession,
+        sessionUrl:id=>'#/workbench/'+id,initialResource:'/board/direct-session'});closes.push(()=>view.destroy());await view.start();
+    const link=editor.querySelector<HTMLAnchorElement>('.kanban__card a[data-session=execution]')!;
+    expect(link.textContent).toBe('direct:executionSession');expect(link.closest('button')).toBeNull();
+    expect(editor.querySelector('.kanban__card button[data-item=task]')).not.toBeNull();
+    link.click();await vi.waitFor(()=>expect(openSession).toHaveBeenCalledExactlyOnceWith('execution'));
+    expect(editor.querySelector<HTMLElement>('[data-panel]')!.hidden).toBe(true);
+});

@@ -522,3 +522,5 @@ C4Container
 决策创建、确认、运行与项目选择由 Kanban 宿主持久化；Agent 不负责查询这些身份。`work-context.ts` 从看板事实和决策运行记录组装 board（id/title）、decision（sourceBoardId/recordId/recordRevision/runId）、task（id/parentId/title/responsibility/acceptance/dependencies）、projects。规划和开发共用该上下文构造器，子任务通过同一 runId 继承决策来源。
 
 准备工作区时将上下文随执行策略冻结，写入 `_nestos/kanban/manifest.json` 的 `context.input`。同一 manifest 还包含 runId、itemId、attemptId 及协议与仓库范围；重启核对完整 manifest，不能在旧尝试中替换当前看板或决策。Session prompt 只要求读取该文件并遵循文件协议。来源身份由宿主负责，VFS 和通用文件交换不识别 Kanban 字段，Agent 无须调用 Kanban API。
+
+看板任务卡片的「执行会话」为独立锚点，任务标题按钮仍打开详情；会话入口和任务按钮是兄弟节点，避免在按钮内嵌套链接。详情标题中的「执行会话」同样支持打开当前会话；新标签页及修饰键保持浏览器原生语义。任务详情诊断区分 load/render/session/references/children 阶段，不将所有问题合并为 ui.render。

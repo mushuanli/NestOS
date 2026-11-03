@@ -146,7 +146,7 @@ export class KanbanWorkbench {
         this.page = page; this.invalid = events !== this.eventGeneration;
         if (this.options.sidebar) this.options.sidebar.innerHTML = this.ui.navigation(boards, this.boardId);
         this.operationStage = 'ui.render';
-        preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity, !!service.automationCatalog) : this.ui.catalogView(boards);});
+        preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.board && page ? this.ui.boardView(this.board, page, this.query, !!service.queryActivity, !!service.automationCatalog, this.options.sessionUrl) : this.ui.catalogView(boards);});
         if (this.recordKind) await this.showRecords(generation);
         if (!this.alive(generation)) return;
         this.releaseNavigation?.(); this.releaseNavigation = undefined;
@@ -159,13 +159,18 @@ export class KanbanWorkbench {
     private async showItem(generation = this.generation): Promise<void> {
         const service = this.options.service;
         if (!service || !this.board || !this.itemId) return;
+        this.operationStage='ui.item.load';
         const [{item, archive}, events, records, execution, analysis] = await Promise.all([service.item(this.boardId, this.itemId), service.events(this.boardId, 0, 200), service.records(this.boardId, {itemId: this.itemId, limit: 10}),service.executionSession?.(this.boardId,this.itemId), this.board.automation ? service.analysisStatus?.(this.boardId,this.itemId) : undefined]);
         if (!this.alive(generation)) return;
+        this.operationStage='ui.item.render';
         this.item = item; this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, events.filter(event => event.itemId === item.id).reverse()), 'item:' + item.id);
         if (this.board.automation) this.panel().querySelector('[data-analysis]')!.innerHTML = analysisView(this.options.presentation, analysis ?? null);
+        this.operationStage='ui.item.session';
         if(execution) this.panel().querySelector('[data-execution-session]')!.innerHTML=this.ui.executionSessionView(execution,!!this.options.executionReference&&!archive&&!['completed','cancelled'].includes(item.status), this.options.sessionUrl);
         this.panel().querySelector('[data-related-records]')!.innerHTML = `<h4>${escapeHTML(this.ui.label('relatedRecords'))} (${records.total})</h4>${this.ui.recordLinks(records, this.board)}<div class="kanban__actions">${this.ui.button('new-log', 'newLog')}${this.ui.button('new-decision', 'newDecision')}</div>`;
+        this.operationStage='ui.item.references';
         await this.showReferenceLinks(item.externalRefs ?? [], generation, new Set(execution?.history.map(binding => binding.sessionId)));
+        this.operationStage='ui.item.children';
         await this.showChildren(generation);
         this.options.selected(this.getActiveResourceId());
     }

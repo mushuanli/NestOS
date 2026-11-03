@@ -162,3 +162,6 @@
 
 .kanban__session-links { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .kanban__session-links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--kanban-color-primary, #2563eb); padding: 6px 0; }
+
+.kanban .kanban__item-open { display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.kanban__item-open:focus-visible { outline: 2px solid var(--kanban-color-primary, #5277dd); outline-offset: 3px; }

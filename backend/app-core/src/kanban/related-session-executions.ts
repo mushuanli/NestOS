@@ -34,9 +34,10 @@ async function projectExecution(options: SessionExecutionOptions, readers: Reade
     if (task) requireValue(task.sessionId === sessionId && task.labels?.roundId === round.id
         && (!primary?.invocation || task.labels?.invocationId === primary.invocation.invocationId), 'SESSION_RELATION_EXECUTION_MISMATCH');
     const state = executionState(round, task, snapshot);
+    const completedAt = task ? task.exit?.completedAt : round.completedAt;
     const turnId = primary?.invocation ? await executionTurn(options.kernel, sessionId, primary.invocation.invocationId, await readers.catalog(sessionId)) : undefined;
     return {...execution, roundId: round.id, state, createdAt: round.createdAt,
-        ...(['completed', 'failed', 'cancelled'].includes(state) && round.completedAt ? {completedAt: round.completedAt} : {}),
+        ...(['completed', 'failed', 'cancelled'].includes(state) && completedAt !== undefined ? {completedAt} : {}),
         ...(turnId ? {turnId} : {}), ...(resources?.length ? {resources} : {})};
 }
 

@@ -331,6 +331,7 @@ export const zhCN = {
     'kanban.sessionTurnId': 'Turn ID',
     'kanban.sessionPreviousExecution': '前次执行',
     'kanban.sessionExecutionStarted': '开始时间',
+    'kanban.sessionExecutionPrepared': '登记时间',
     'kanban.sessionExecutionEnded': '结束时间',
     'kanban.workResourceLocation': '目录',
     'kanban.sessionPurpose.execution': '主执行',

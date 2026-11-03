@@ -330,6 +330,7 @@ export const en: LocaleStrings = {
     'kanban.sessionTurnId': 'Turn ID',
     'kanban.sessionPreviousExecution': 'Previous execution',
     'kanban.sessionExecutionStarted': 'Started at',
+    'kanban.sessionExecutionPrepared': 'Prepared at',
     'kanban.sessionExecutionEnded': 'Ended at',
     'kanban.workResourceLocation': 'Directory',
     'kanban.sessionPurpose.execution': 'Primary execution',

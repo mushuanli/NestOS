@@ -56,7 +56,7 @@ it('projects each Round and native turn separately, using Kernel facts while pre
         executions:[{role:'primary',taskId:'t1',invocation:invocation('i1')}],input:[{content:'PRIVATE_INPUT'}],output:[{content:'PRIVATE_OUTPUT'}]}));
     f.bodies.set('main/round-d2.json',JSON.stringify({id:'d2',sessionId:'main',status:'failed',createdAt:30,completedAt:31,
         executions:[{role:'primary',taskId:'t2',invocation:invocation('i2')}],error:'PRIVATE_ERROR'}));
-    f.tasks.set('main',[{id:'t1',sessionId:'main',version:1,effects:{},labels:{roundId:'d1',invocationId:'i1'},exit:{status:'failed'}},
+    f.tasks.set('main',[{id:'t1',sessionId:'main',version:1,effects:{},labels:{roundId:'d1',invocationId:'i1'},exit:{status:'failed',completedAt:21}},
         {id:'t2',sessionId:'main',status:'running',version:1,effects:{},labels:{roundId:'d2',invocationId:'i2'}}]);
     const operation={operationId:'op-2',fingerprint:'digest',invocationId:'i2',executionRef:{taskId:'t2',effectId:'effect'}};
     f.shared.set('main/harness.context.bindings',{version:1,sessionId:'main',bindings:{binding:{id:'binding',sessionId:'main',revision:1,
@@ -69,7 +69,7 @@ it('projects each Round and native turn separately, using Kernel facts while pre
     await f.journal.update('worktree:d2',()=>({id:'original-tree',directory:'/workspace/tree',branch:'work/original-tree'}));
     const reader=relatedExecutionReader({...f,resources:id=>developmentSessionResources(f.journal,id)} as never);
     const first=await reader('main',{id:'d1',purpose:'execution'}),second=await reader('main',{id:'d2',purpose:'execution'});
-    expect(first).toMatchObject({roundId:'d1',turnId:'turn-1',state:'failed',completedAt:20});
+    expect(first).toMatchObject({roundId:'d1',turnId:'turn-1',state:'failed',completedAt:21});
     expect(second).toMatchObject({roundId:'d2',turnId:'turn-2',state:'running'});expect(second.completedAt).toBeUndefined();
     expect(first.resources).toEqual(second.resources);expect(first.resources?.[0].value).toBe('original-tree');
     expect(JSON.stringify([first,second])).not.toContain('PRIVATE_');

@@ -37,7 +37,7 @@ function executionView(ui: KanbanPresentation, run: KanbanSessionExecution): str
     const label = run.previousDispatchId ? ui.text('sessionContinuation') : ui.text('sessionPurpose.' + run.purpose);
     const showState = run.state && run.state !== run.outcome && !(run.state === 'completed' && ['succeeded', 'accepted', 'rejected'].includes(run.outcome ?? ''));
     const fields: Array<[string, string | undefined]> = [[ui.text('sessionExecutionId'), run.id], [ui.text('sessionRoundId'), run.roundId], [ui.text('sessionTurnId'), run.turnId],
-        [ui.text('sessionPreviousExecution'), run.previousDispatchId], [ui.text('sessionExecutionStarted'), date(run.createdAt)], [ui.text('sessionExecutionEnded'), date(run.completedAt)],
+        [ui.text('sessionPreviousExecution'), run.previousDispatchId], [ui.text(run.roundId ? 'sessionExecutionStarted' : 'sessionExecutionPrepared'), date(run.createdAt)], [ui.text('sessionExecutionEnded'), date(run.completedAt)],
         ...run.resources?.map(resource => [resource.label, resource.value] as [string, string]) ?? []];
     return `<li class="kanban__session-run"><p>${escapeHTML(label)}${run.attempt ? ' · #' + run.attempt : ''}${run.outcome ? ' · ' + escapeHTML(ui.text('sessionRunOutcome.' + run.outcome)) : ''}${showState ? ' · ' + escapeHTML(ui.text('sessionState.' + run.state)) : ''}</p>
         <dl>${fields.filter((field): field is [string, string] => field[1] !== undefined).map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`).join('')}</dl>${run.code ? `<p role="alert">${escapeHTML(run.code)}</p>` : ''}</li>`;

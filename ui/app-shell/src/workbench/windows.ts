@@ -23,7 +23,13 @@ export interface WorkbenchWindowBinding {
     navigate(id: string): Promise<void>;
 }
 
+export interface WorkbenchNavigation {
+    id:string; title:string; icon?:string; active:boolean;
+    activate():Promise<void>;
+}
 export class WorkbenchWindows {
+    constructor(private readonly navigationSource?:()=>WorkbenchNavigation[]) {}
+    navigation():WorkbenchNavigation[]{return this.navigationSource?.()??[];}
     private readonly sources = new Map<string, {source: WindowSource; render(): void}>();
     private readonly closed: string[] = [];
     query = '';

@@ -27,11 +27,18 @@ export function recordDetail(ui: KanbanPresentation, record: KanbanProjectRecord
         <p>${escapeHTML(ui.text(record.kind))} · ${escapeHTML(ui.text(record.status))} · ${escapeHTML(ui.text(record.origin))}</p>${record.activity ? '' : `<small>${escapeHTML(ui.text('recordId'))}: ${escapeHTML(record.id)}</small>`}<p>${escapeHTML(ui.text('author'))}: ${escapeHTML(record.author.id)} · ${escapeHTML(new Date(record.createdAt).toLocaleString())}</p>
         <section data-reference-links></section><section class="kanban__prose"><h4>${escapeHTML(ui.text('content'))}</h4><p>${escapeHTML(record.content)}</p>${record.rationale ? `<h4>${escapeHTML(ui.text('rationale'))}</h4><p>${escapeHTML(record.rationale)}</p>` : ''}</section>
         ${record.status === 'draft' ? `<div class="kanban__actions">${button(ui, 'confirm-record', 'confirmRecord')}${button(ui, 'reject-record', 'rejectRecord')}</div>` : ''}
-        ${record.kind === 'decision' && record.status === 'confirmed' && executions ? `<div class="kanban__actions">${button(ui, 'run-record', 'runRecord')}<details><summary>${escapeHTML(ui.text('referenceActions'))}</summary>${button(ui, 'run-record-separate', 'runRecordSeparate')}</details></div><p>${escapeHTML(ui.text('runRecordHelp'))}</p>${executions.map(run => `<p><button type="button" ${run.rootItemId && run.boardId === board.id ? `data-item="${escapeAttr(run.rootItemId)}"` : `data-board="${escapeAttr(run.boardId)}"`}>${escapeHTML(ui.text(run.rootItemId && run.boardId === board.id ? 'executionWork' : 'executionBoard'))}</button> · ${escapeHTML(ui.text(run.state))}${run.code ? ` · ${escapeHTML(run.code)}` : ''}</p>`).join('')}` : ''}
+        ${record.kind === 'decision' && record.status === 'confirmed' && executions ? recordExecutionView(ui, board, executions) : ''}
         ${(record.externalRefs ?? []).map(ref => `<p>${escapeHTML(ref.system)}: ${escapeHTML(ref.id)}</p>`).join('')}
         ${record.supersedes ? recordLink(ui, record.supersedes, 'supersedes') : ''}${record.supersededBy ? recordLink(ui, record.supersededBy, 'superseded') : ''}
         <h4>${escapeHTML(ui.text('itemIds'))}</h4>${record.itemIds.map(id => `<button type="button" data-item="${escapeAttr(id)}">${escapeHTML(board.items.find(item => item.id === id)?.title ?? id)}</button>`).join('')}
         ${record.activity ? '' : `<form data-form="record-link">${suggestionField({name: 'itemId', label: 'itemIds', kind: 'item', required: true})}<button>${escapeHTML(ui.text('linkRecord'))}</button></form>`}<h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, record.sources)}`;
+}
+function recordExecutionView(ui: KanbanPresentation, board: KanbanBoardSummary, executions: import('../contracts').KanbanRecordExecution[]): string {
+    const completed = executions.some(run => run.state === 'completed');
+    const actions = completed ? `<p>${escapeHTML(ui.text('completedFollowup'))}</p>`
+        : `${button(ui, 'run-record', 'runRecord')}<details><summary>${escapeHTML(ui.text('referenceActions'))}</summary>${button(ui, 'run-record-separate', 'runRecordSeparate')}</details>`;
+    return `<div class="kanban__actions">${actions}</div>${completed ? '' : `<p>${escapeHTML(ui.text('runRecordHelp'))}</p>`}
+        ${executions.map(run => `<p><button type="button" ${run.rootItemId && run.boardId === board.id ? `data-item="${escapeAttr(run.rootItemId)}"` : `data-board="${escapeAttr(run.boardId)}"`}>${escapeHTML(ui.text(run.rootItemId && run.boardId === board.id ? 'executionWork' : 'executionBoard'))}</button> · ${escapeHTML(ui.text(run.state))}${run.code ? ` · ${escapeHTML(run.code)}` : ''}</p>`).join('')}`;
 }
 function recordLink(ui: KanbanPresentation, id: string, key: string): string {return `<p>${escapeHTML(ui.text(key))}: <button type="button" data-record="${escapeAttr(id)}">${escapeHTML(id)}</button></p>`;}
 export function amendmentsView(ui: KanbanPresentation, item: KanbanItem): string {

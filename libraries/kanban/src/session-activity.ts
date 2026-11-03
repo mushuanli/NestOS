@@ -39,7 +39,7 @@ function createSessionInspector(options:KanbanSessionActivityOptions|undefined,l
             const row=await options.source.inspect(board,sessionId);
             if(row.sessionId!==sessionId) throw new KanbanError('SESSION_ACTIVITY_SCOPE_MISMATCH');
             const stale=row.stale||row.observedAt===undefined||now()-row.observedAt>90000;
-            const value:KanbanExecutionSession={sessionId,title:row.title?.slice(0,256),state:row.state,lastActivityAt:row.lastActivityAt,observedAt:row.observedAt,stale,
+            const value:KanbanExecutionSession={sessionId,...(typeof row.resourceId==='string'&&row.resourceId.length<=4096&&!row.resourceId.includes('\0')?{resourceId:row.resourceId}:{}),title:row.title?.slice(0,256),state:row.state,lastActivityAt:row.lastActivityAt,observedAt:row.observedAt,stale,
                 recent:!stale&&row.lastActivityAt!==undefined&&row.lastActivityAt<=now()&&now()-row.lastActivityAt<=600000,...(row.code&&/^[A-Z][A-Z0-9_]{0,79}$/.test(row.code)?{code:row.code}:{})};
             if(cache.size>=256) cache.delete(cache.keys().next().value!);cache.set(key,value);return value;
         } catch(error) {

@@ -52,7 +52,7 @@ type PersonalOptions = {
 };
 function personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions}: PersonalOptions) {
     return {
-        executionSessions:sessions&&kernel?{source:createLocalKanbanSessionSource(sessions,kernel)}:undefined,
+        executionSessions:sessions&&kernel?{source:createLocalKanbanSessionSource(sessions,kernel,automationOptions?.executionResource)}:undefined,
         suggestions: async (_board, kind, search, limit) => {
             if (kind !== 'session') return undefined;
             const rows = await sessions?.listSummaries?.() ?? [];

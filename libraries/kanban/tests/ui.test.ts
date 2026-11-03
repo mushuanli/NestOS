@@ -215,15 +215,24 @@ it('opens the card execution link directly without opening task details or nesti
     await f.service.execute('direct-session',{operationId:'create',expectedRevision:1,command:{type:'create-item',item:{id:'task',title:'Task',responsibility:'Work',acceptance:'Verified'}}});
     Object.assign(f.service,{queryActivity:async(board:string,query:Parameters<typeof f.service.query>[1])=>{
         const page=await f.service.query(board,query);
-        return {...page,items:page.items.map(item=>({...item,execution:{sessionId:'execution',state:'running',observedAt:1}}))};
+        return {...page,items:page.items.map(item=>({...item,execution:{sessionId:'execution',resourceId:'/native/execution',state:'running',observedAt:1}}))};
     }});
     const {KanbanWorkbench}=await import('../src/ui');
     const editor=document.createElement('main');document.body.append(editor);const openSession=vi.fn(async()=>{});
     const view=new KanbanWorkbench({editor,service:f.service,presentation:presentation('direct'),selected:vi.fn(),openSession,
         sessionUrl:id=>'#/workbench/'+id,initialResource:'/board/direct-session'});closes.push(()=>view.destroy());await view.start();
-    const link=editor.querySelector<HTMLAnchorElement>('.kanban__card a[data-session=execution]')!;
+    const link=editor.querySelector<HTMLAnchorElement>('.kanban__card a[data-session="/native/execution"]')!;
     expect(link.textContent).toBe('direct:executionSession');expect(link.closest('button')).toBeNull();
     expect(editor.querySelector('.kanban__card button[data-item=task]')).not.toBeNull();
-    link.click();await vi.waitFor(()=>expect(openSession).toHaveBeenCalledExactlyOnceWith('execution'));
+    link.click();await vi.waitFor(()=>expect(openSession).toHaveBeenCalledExactlyOnceWith('/native/execution'));
     expect(editor.querySelector<HTMLElement>('[data-panel]')!.hidden).toBe(true);
+});
+
+it('removes run actions for completed decisions and directs users to new follow-up tasks',async()=>{
+    const {recordDetail}=await import('../src/ui/context-view');
+    const html=recordDetail(presentation('done'),{id:'decision',kind:'decision',status:'confirmed',title:'Done',author:{id:'person'},itemIds:[],sources:[],createdAt:1} as never,
+        {id:'board',title:'Board',items:[]} as never,[{id:'run',boardId:'board',state:'completed'} as never]);
+    const root=document.createElement('div');root.innerHTML=html;
+    expect(root.querySelector('[data-action=run-record]')).toBeNull();expect(root.querySelector('[data-action=run-record-separate]')).toBeNull();
+    expect(root.textContent).toContain('done:completedFollowup');
 });

@@ -1,3 +1,4 @@
+import {nativeSessionResource} from '../projects/session-resource';
 import {OperationLifetime} from '../run/operation-lifetime';
 import {developmentAnalysis} from '../presets/kanban-development-analysis';
 import {developmentDelivery} from '../presets/kanban-development-delivery';
@@ -588,6 +589,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
+            executionResource:remoteConnections?nativeSessionResource(kernelCore,projects,remoteConnections):undefined,
             projects, requiresItemResource:requiresDevelopmentProject,
             validatePreparation: (reference, settings) => {
                 if (reference.system !== 'nestos-work-preparation' || reference.id !== 'git-worktree' || reference.revision !== '1')

@@ -524,3 +524,11 @@ C4Container
 准备工作区时将上下文随执行策略冻结，写入 `_nestos/kanban/manifest.json` 的 `context.input`。同一 manifest 还包含 runId、itemId、attemptId 及协议与仓库范围；重启核对完整 manifest，不能在旧尝试中替换当前看板或决策。Session prompt 只要求读取该文件并遵循文件协议。来源身份由宿主负责，VFS 和通用文件交换不识别 Kanban 字段，Agent 无须调用 Kanban API。
 
 看板任务卡片的「执行会话」为独立锚点，任务标题按钮仍打开详情；会话入口和任务按钮是兄弟节点，避免在按钮内嵌套链接。详情标题中的「执行会话」同样支持打开当前会话；新标签页及修饰键保持浏览器原生语义。任务详情诊断区分 load/render/session/references/children 阶段，不将所有问题合并为 ui.render。
+
+### 原始执行过程与完成后的后续工作
+
+一项任务每次执行只有一个主执行绑定；NestOS Session ID 与原生 Session ID 描述同一次执行的不同层次，不表示重复开发。默认会话入口使用宿主提供的 `resourceId` 打开原始执行过程，保留逻辑 Session ID 用于活动与回执核对。原始上下文从当前分支唯一的有效 binding 和已授权项目挂载解析；多个候选或授权不符时不猜测目标。独立 Kanban 库只透传不透明资源 ID，不识别 Codex 或项目路由。
+
+决策的执行完成后移除两种运行入口，新 operationId 也拒绝重新运行（DECISION_EXECUTION_COMPLETED）。原 operationId 的回执核对保留幂等性。之后发现问题应在适当看板创建新任务，关联原决策或已完成任务；不通过重新运行已完成决策覆盖原验收事实。
+
+共享窗口列表在搜索/窗口条目前显示宿主注入的 nav 切换，当前 nav 显示选中状态。切换复用全局导航入口，保留已打开窗口及草稿；业务导航名称与回调由宿主提供，vfs-ui 的窗口按钮仍只调用 open callback。

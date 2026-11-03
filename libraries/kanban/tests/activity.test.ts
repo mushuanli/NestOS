@@ -11,7 +11,7 @@ it('drains admitted resource observations before closing core queries and refuse
     const gate = new Promise<void>(resolve => {release = resolve;}), started = new Promise<void>(resolve => {entered = resolve;});
     const inspect = vi.fn(async (_board: unknown, sessionId: string) => {
         entered(); await gate;
-        return {sessionId, state: 'running' as const, observedAt: Date.now(), stale: false};
+        return {sessionId, resourceId:'/native/job-1',state: 'running' as const, observedAt: Date.now(), stale: false};
     });
     const service = createKanbanActivityModule({store, referenceSystem: 'external-job', actor: {kind: 'human', id: 'owner'},
         authorize: async () => {}, log: vi.fn(), executionSessions: {source: {authorizeBinding: async () => {}, inspect}}});
@@ -23,7 +23,7 @@ it('drains admitted resource observations before closing core queries and refuse
     let closed = false; const closing = service.quiesce().then(() => {closed = true;});
     await expect(service.read('b')).rejects.toMatchObject({code: 'SERVICE_STOPPING'});
     expect(closed).toBe(false); release();
-    expect((await reading).items[0].execution).toMatchObject({sessionId: 'job-1', state: 'running'});
+    expect((await reading).items[0].execution).toMatchObject({sessionId: 'job-1',resourceId:'/native/job-1', state: 'running'});
     await closing; expect(closed).toBe(true);
     await expect(service.queryActivity('b')).rejects.toMatchObject({code: 'SERVICE_STOPPING'});
 });

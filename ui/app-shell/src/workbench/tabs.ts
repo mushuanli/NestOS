@@ -359,6 +359,7 @@ export class WorkbenchTabs<T> {
             notice.textContent = this.windows.registry.error; notice.append(this.button(t('action.close'), () => this.windows?.registry.clearError()));
             this.openedDrawer.content.append(notice);
         }
+        const navigation=this.openedNavigation();if(navigation)this.openedDrawer.content.append(navigation);
         const toolbar = this.openedToolbar();
         toolbar.append(this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved())),
             this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen())));
@@ -372,6 +373,19 @@ export class WorkbenchTabs<T> {
         this.barWindows.button.classList.add('workbench-tabs__bar-windows');
         this.barWindows.update(this.windowCount()); this.bar.append(this.barWindows.button);
         this.tabViewport.update();
+    }
+    private openedNavigation():HTMLElement|undefined {
+        const items=this.windows?.registry.navigation();if(!items?.length)return;
+        const navigation=document.createElement('nav');navigation.className='workbench-opened-navigation';
+        navigation.setAttribute('aria-label',t('workbench.navigation'));
+        for(const item of items) {
+            const button=this.button(item.title,()=>{this.openedDialog?.close();this.run(item.activate());});
+            button.dataset.workspaceNav=item.id;
+            if(item.icon)decorateResourceButton(button,item.icon,item.title);
+            if(item.active)button.setAttribute('aria-current','page');
+            navigation.append(button);
+        }
+        return navigation;
     }
     private windowCount(): number { return this.windows?.registry.items().length ?? this.entries.size; }
     private isCurrent(id: string): boolean { return id === this.currentId && (!this.windows || this.windows.isActive()); }

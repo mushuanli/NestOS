@@ -16,6 +16,7 @@ import {automationCatalog, automationTarget, assertAutomationPrincipals} from '.
 import {requireValue} from './validation';
 
 export interface PersonalKanbanAutomationOptions {
+    executionResource?(sessionId:string,branch:string):Promise<string|undefined>;
     requiresItemResource?(board:KanbanBoard):boolean;
     readAnalysisOutput?(id:string):Promise<unknown|undefined>;
     onAnalysis?(input: {boardId: string; id: string; item: KanbanItem; target: import('@itookit/llm-flow/contracts').TargetRef; outcome: 'succeeded' | 'failed' | 'cancelled'; code?: string}): Promise<void>;

@@ -106,6 +106,8 @@ it('creates a single task for one project and derives completion only from its o
     await f.command({type: 'review', itemId: run.rootItemId!, accept: true});
     await f.open().scan();
     expect((await f.open().recordExecutions('source', 'small'))[0].state).toBe('completed');
+    const completed=await f.service.record('source','small');
+    await expect(f.open().runRecord('source',{operationId:'after-completed',recordId:'small',expectedRevision:completed.revision})).rejects.toMatchObject({code:'DECISION_EXECUTION_COMPLETED'});
     expect((await f.service.read('source')).items.find(item => item.id === 'unrelated')?.blocked).toBeDefined();
 });
 it('closes the feature after its own children complete and keeps the approved decision', async () => {

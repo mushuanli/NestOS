@@ -90,6 +90,7 @@ async function prepare(options: Options, boardId: string, request: KanbanRecordR
     const placement = request.placement ?? 'current-board';
     requireValue(['current-board', 'new-board'].includes(placement), 'INVALID_EXECUTION_PLACEMENT');
     const saved = await options.journal.update<SavedRun[]>('record-runs:' + boardId, previous => {
+        requireValue(!previous?.some(row => row.recordId === record.id && row.state === 'completed'), 'DECISION_EXECUTION_COMPLETED');
         const same = previous?.find(row => row.id === id || row.recordId === record.id && decisionSignature(row.record) === decisionSignature(record));
         if (same) {requireValue(!same.placement || same.placement === placement, 'DECISION_EXECUTION_PLACEMENT_CONFLICT'); return previous!;}
         requireValue(!previous?.some(row => row.recordId === record.id && !['completed', 'failed'].includes(row.state)), 'DECISION_EXECUTION_UNSETTLED');

@@ -284,7 +284,11 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const navigationObservers = new Map<WorkspaceController, () => void>();
     let visibleWorkspaceId: string | undefined;
-    const windows = new WorkbenchWindows(); windows.query = options.recovery?.openedQuery ?? '';
+    const windows = new WorkbenchWindows(()=>[...document.querySelectorAll<HTMLButtonElement>('.app-nav-btn[data-target]')].map(button=>({
+        id:button.dataset.target!,title:button.getAttribute('aria-label')||button.title||button.textContent?.trim()||button.dataset.target!,
+        icon:button.querySelector('svg')?.outerHTML,active:button.dataset.target===visibleWorkspaceId,
+        activate:()=>navigateWorkspace(button.dataset.target!),
+    }))); windows.query = options.recovery?.openedQuery ?? '';
     let navigationRevision = 0, closed = false;
     // Deduplicate concurrent loads: if the same workspace is loading, reuse the promise.
     const pendingLoads = new Map<string, Promise<WorkspaceController | undefined>>();
@@ -769,16 +773,17 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const entryResource = (id: string) => isProjectWorkspace(id)
         ? '/' : managerCache.get(id)?.getActiveResourceId() ?? null;
 
+    const navigateWorkspace=async(targetId:string)=>{
+        rememberCurrentPage();const lastId=entryResource(targetId);updateHistory(targetId,lastId,'push');
+        await performNavigation(targetId,lastId??undefined);
+    };
     document.querySelectorAll('.app-nav-btn[data-target]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation(); // prevent bubbling to delegated handler in app-specific main.ts
             const targetId = (e.currentTarget as HTMLElement).dataset.target;
             if (!targetId) return;
-            rememberCurrentPage();
-            const lastId = entryResource(targetId);
-            updateHistory(targetId, lastId, 'push');
-            void performNavigation(targetId, lastId ?? undefined);
+            void navigateWorkspace(targetId);
         }, { signal: navigationSignal });
     });
 

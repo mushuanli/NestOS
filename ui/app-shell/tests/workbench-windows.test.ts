@@ -82,3 +82,16 @@ it('reports a parent navigation failure with a specific diagnostic and keeps the
     expect(JSON.stringify(logs)).not.toContain('/private');
     release(); await tabs.destroy();
 });
+it('shows workspace navigation in the shared window list without requiring an opened window in that workspace',async()=>{
+    const activate=vi.fn(async()=>{});
+    const registry=new WorkbenchWindows(()=>[{id:'kanban',title:'Kanban',active:true,activate:async()=>{}},{id:'notes',title:'Notes',active:false,activate}]);
+    const container=document.createElement('section');document.body.append(container);
+    const tabs=new WorkbenchTabs(container,{activate:async()=>{},dispose:async()=>{},empty(){},error:vi.fn()},undefined,
+        {registry,id:'kanban',isActive:()=>true,navigate:async()=>{}});
+    await tabs.open('/board','Board',false);
+    const current=tabs.opened.querySelector('[data-workspace-nav=kanban]');
+    expect(current?.getAttribute('aria-current')).toBe('page');
+    tabs.opened.querySelector<HTMLButtonElement>('[data-workspace-nav=notes]')!.click();
+    await vi.waitFor(()=>expect(activate).toHaveBeenCalledTimes(1));expect(tabs.values()).toHaveLength(1);
+    await tabs.destroy();
+});

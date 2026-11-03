@@ -5,12 +5,13 @@ import type {KanbanSessionPhase} from '@itookit/kanban/contracts';
 import {KanbanError} from '@itookit/kanban';
 import type {KanbanSessionSource} from '@itookit/kanban/activity';
 /** Cold Session metadata only; never resumes, attaches, or exposes Task records. */
-export function createLocalKanbanSessionSource(repository: Pick<ISessionRepository,'getManifest'>, kernel: Pick<Kernel,'sessionActivity'>): KanbanSessionSource {
+export function createLocalKanbanSessionSource(repository: Pick<ISessionRepository,'getManifest'>, kernel: Pick<Kernel,'sessionActivity'>,resource?:(sessionId:string,branch:string)=>Promise<string|undefined>): KanbanSessionSource {
     return {async authorizeBinding(_board,sessionId) {await sessionManifest(repository,sessionId);},async inspect(_board,sessionId) {
         const manifest=await sessionManifest(repository,sessionId), activity=await kernel.sessionActivity(sessionId);
         if(activity.sessionId!==sessionId) throw new KanbanError('SESSION_ACTIVITY_SCOPE_MISMATCH');
         const lastActivityAt=activity.lastActivityAt ?? activity.latestExit?.at;
-        return {sessionId,title:manifest.title,state:sessionPhase(activity),lastActivityAt,observedAt:Date.now(),stale:false};
+        const resourceId=await resource?.(sessionId,manifest.currentBranch);
+        return {sessionId,...(resourceId?{resourceId}:{}),title:manifest.title,state:sessionPhase(activity),lastActivityAt,observedAt:Date.now(),stale:false};
     }};
 }
 async function sessionManifest(repository:Pick<ISessionRepository,'getManifest'>,sessionId:string) {

@@ -2,7 +2,7 @@ import type {KanbanService} from './contracts';
 import type {KanbanItemPage, KanbanItemQuery, KanbanItemSummary} from './planning';
 export type KanbanSessionPhase = 'running' | 'queued' | 'waiting' | 'waiting-input' | 'waiting-approval' | 'paused' | 'idle' | 'completed' | 'failed' | 'cancelled' | 'unknown';
 export interface KanbanExecutionSession {
-    sessionId: string; title?: string; state: KanbanSessionPhase;
+    sessionId: string; resourceId?:string; title?: string; state: KanbanSessionPhase;
     lastActivityAt?: number; observedAt?: number; stale: boolean; recent: boolean; code?: string;
 }
 export interface KanbanSessionActivityQuery extends KanbanItemQuery {execution?: 'all' | 'running' | 'recent' | 'active'}

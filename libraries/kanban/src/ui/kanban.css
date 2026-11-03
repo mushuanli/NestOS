@@ -183,3 +183,10 @@
 .kanban__review-guide { padding: 12px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; }
 .kanban__review-guide ol { padding-inline-start: 20px; margin: 8px 0; }
 .kanban__review-guide li { margin: 8px 0; }
+
+.kanban__operations { display: grid; gap: 12px; padding-inline-start: 24px; }
+.kanban__operations > li { border: 1px solid var(--border-color, #8885); border-radius: 8px; padding: 12px; min-width: 0; overflow-wrap: anywhere; }
+.kanban__operations form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.kanban__operations label { display: grid; gap: 4px; max-width: 100%; }
+.kanban__operations select { max-width: 100%; }
+.kanban__operation-summary { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

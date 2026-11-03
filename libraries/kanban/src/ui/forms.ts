@@ -32,14 +32,15 @@ function dateInput(at?: number): string {
     const date = new Date(at); return new Date(at - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 const save = (ui: KanbanPresentation) => `<div class="kanban__actions"><button>${escapeHTML(ui.text('save'))}</button>${button(ui, 'close-panel', 'close')}</div>`;
-export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, events: KanbanEvent[], relatedSessions = false, guidance?: KanbanReviewGuidance): string {
+export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, events: KanbanEvent[], relatedSessions = false, guidance?: KanbanReviewGuidance, interactive = false): string {
     return `${panelHeader(ui, item.title, board, item)}
         <p>${escapeHTML(ui.text('origin'))}: ${escapeHTML(item.origin ? ui.text(item.origin.kind === 'discovery' ? 'flow' : 'manual') + ' · ' + item.origin.principal.id : ui.text('unknownOrigin'))}</p>
         <dl><dt>${escapeHTML(ui.text('itemId'))}</dt><dd>${escapeHTML(item.id)}</dd><dt>${escapeHTML(ui.text('responsibility'))}</dt><dd>${escapeHTML(item.responsibility)}</dd>
         <dt>${escapeHTML(ui.text('acceptance'))}</dt><dd>${escapeHTML(item.acceptance)}</dd><dt>${escapeHTML(ui.text('owner'))}</dt><dd>${escapeHTML(item.owner?.id ?? item.owner?.agentId ?? ui.text('none'))}</dd></dl>
         <p>${escapeHTML(ui.text(item.status))}${item.blocked ? ' · ' + escapeHTML(ui.text('blocked') + ': ' + item.blocked.reason) : ''}</p>
-        ${item.status === 'review' ? reviewGuidance(ui, guidance) : ''}
-        <div class="kanban__actions">${controls(ui, board, item, actor, archived)}</div>
+        ${interactive ? '<section data-item-operations></section>' : ''}
+        ${item.status === 'review' ? interactive ? `<details><summary>${escapeHTML(ui.text('reviewFlow'))}</summary>${reviewGuidance(ui, guidance)}</details>` : reviewGuidance(ui, guidance) : ''}
+        <div class="kanban__actions">${controls(ui, board, item, actor, archived, interactive)}</div>
         ${amendmentsView(ui, item)}
         ${archived ? '' : detailForms(ui, board, item, actor)}
         ${item.planning?.parentId ? `<p>${escapeHTML(ui.text('parent'))}: <button type="button" data-item="${escapeAttr(item.planning.parentId)}">${escapeHTML(board.items.find(parent => parent.id === item.planning?.parentId)?.title ?? item.planning.parentId)}</button></p>` : ''}
@@ -57,13 +58,13 @@ function reviewGuidance(ui: KanbanPresentation, guidance?: KanbanReviewGuidance)
 export function itemEventsView(ui: KanbanPresentation, events: KanbanEvent[]): string {
     return `<details><summary>${escapeHTML(ui.text('eventsHelp'))}</summary><ol>${meaningfulItemEvents(events).map(event => `<li>${escapeHTML(event.kind)} · ${escapeHTML(event.actor.id ?? event.actor.agentId ?? '')} · ${escapeHTML(new Date(event.at).toLocaleString())}${event.data.message ? `<p>${escapeHTML(event.data.message)}</p>` : ''}</li>`).join('')}</ol></details>`;
 }
-function controls(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean): string {
+function controls(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, interactive = false): string {
     if (archived) return button(ui, 'restore', 'restore');
     if (['completed', 'cancelled'].includes(item.status)) return button(ui, 'archive', 'archiveItem');
     const executable = executableWorkItem(board,item);
     let result = item.status === 'proposed' ? button(ui, 'publish', 'publish') : item.status === 'backlog' && executable ? button(ui, 'ready', 'ready') : item.status === 'open' ? button(ui, 'defer', 'defer') : '';
     if (owns(item, actor) && item.status === 'claimed') result += button(ui, 'renew', 'renew');
-    if (item.status === 'review' && !owns(item, actor)) result += button(ui, 'accept', 'accept') + button(ui, 'reject', 'reject');
+    if (item.status === 'review' && !owns(item, actor)) result += interactive ? '' : button(ui, 'accept', 'accept') + button(ui, 'reject', 'reject');
     if (item.blocked) result += button(ui, 'unblock', 'unblock');
     if (item.status === 'review' && owns(item, actor) && board.policy.review !== 'assignee') result += `<p>${escapeHTML(ui.text('noReview'))}</p>`;
     return result;

@@ -6,6 +6,8 @@ import {escapeHTML} from './html';
 import {childrenView, childType} from './children';
 import {linkPair} from './session-links';
 import {failureDetails} from './diagnostics';
+import {itemOperationsView} from './operations';
+import type {KanbanItemOperations} from '../contracts';
 import {workResourcesView} from './work-resources';
 import {relatedSessionsView} from './session-view';
 import {randomUUID} from '../utils';
@@ -21,6 +23,7 @@ export class KanbanWorkbench {
     private automationCatalog?: import('../contracts').KanbanAutomationCatalog;
     private item?: KanbanItem;
     private itemArchived = false;
+    private operations?: KanbanItemOperations;
     private boardId = '';
     private recordKind?: 'log' | 'decision';
     private recordId = '';
@@ -160,7 +163,7 @@ export class KanbanWorkbench {
             ? service.queryActivity(this.boardId, this.query) : service.query(this.boardId, this.query);
     }
     private async refreshActivity(generation: number): Promise<void> {
-        if (this.item && this.itemId) {await this.loadExecutionSections(generation, this.item, this.itemArchived); return;}
+        if (this.item && this.itemId) {await Promise.all([this.loadExecutionSections(generation, this.item, this.itemArchived), this.operations?.operations.some(operation => ["running", "unknown"].includes(operation.state)) ? this.loadOperations(generation) : undefined]); return;}
         if (!this.board || this.recordId || this.recordKind || !this.options.service?.queryActivity) return;
         await this.supplement('ui.activity', generation, () => this.options.service!.queryActivity!(this.boardId, this.query), page => {
             if (page.revision !== this.page?.revision) {this.invalid = true; this.refreshInBackground(); return;}
@@ -218,7 +221,7 @@ export class KanbanWorkbench {
         if (!this.alive(generation)) return;
         this.operationStage='ui.item.render';
         const referencesChanged = this.item?.id === item.id && JSON.stringify(this.item.externalRefs) !== JSON.stringify(item.externalRefs);
-        if (!this.drawer.open || this.itemArchived !== !!archive || JSON.stringify(this.item) !== JSON.stringify(item)) this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, [], !!service.executionSession, this.options.reviewGuidance?.(this.board, item)), 'item:' + item.id);
+        if (!this.drawer.open || this.itemArchived !== !!archive || JSON.stringify(this.item) !== JSON.stringify(item)) this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, [], !!service.executionSession, this.options.reviewGuidance?.(this.board, item), !!service.itemOperations && !archive && (this.options.itemOperationsAvailable?.(this.board, item) ?? true)), 'item:' + item.id);
         this.item = item; this.itemArchived = !!archive;
         this.loadItemSections(generation, item, !!archive);
         const resources = this.panel().querySelector<HTMLDetailsElement>('[data-work-resources]');
@@ -242,6 +245,7 @@ export class KanbanWorkbench {
         void this.supplement('ui.item.records', generation, () => service.records(boardId, {itemId: item.id, limit: 10}), records => {
             this.setSection('[data-related-records]', `<h4>${escapeHTML(this.ui.label('relatedRecords'))} (${records.total})</h4>${this.ui.recordLinks(records, this.board!)}<div class="kanban__actions">${this.ui.button('new-log', 'newLog')}${this.ui.button('new-decision', 'newDecision')}</div>`);
         }, '[data-related-records]');
+        void this.loadOperations(generation);
         void this.loadExecutionSections(generation, item, archived, true);
         if (!service.executionSession) this.loadReferenceSection(generation, item);
         void this.supplement('ui.item.children', generation, () => this.showChildren(generation), () => {}, '[data-children]');
@@ -256,6 +260,29 @@ export class KanbanWorkbench {
             this.setSection('[data-analysis]', analysisView(this.options.presentation, analysis ?? null));
         }, '[data-analysis]'));
         await Promise.all(reads);
+    }
+    private async loadOperations(generation: number): Promise<void> {
+        const service = this.options.service, item = this.item;
+        if (!service?.itemOperations || !item || !this.panel().querySelector('[data-item-operations]')) return;
+        await this.supplement('ui.item.operations', generation, () => service.itemOperations!(this.boardId, item.id), view => {
+            this.operations = view;
+            this.setSection('[data-item-operations]', itemOperationsView(this.options.presentation, view, this.options.sessionUrl));
+        }, '[data-item-operations]');
+    }
+    private async submitOperation(form: HTMLFormElement, data: FormData, binding: boolean): Promise<void> {
+        const service = this.options.service!, action = form.dataset.operation!, itemId = this.item!.id;
+        const request = {operationId: form.dataset.resourceId!, itemId, action, expectedRevision: form.dataset.revision!};
+        const entry = this.operations?.operations.find(operation => operation.id === action);
+        this.operationStage = binding ? 'ui.operation.bind' : 'ui.operation.start';
+        const view = binding ? await service.bindItemOperation!(this.boardId, {...request, target: JSON.parse(value(data, 'target'))})
+            : await service.runItemOperation!(this.boardId, {...request, confirmed: data.has('confirmed'),
+                selections: Object.fromEntries((entry?.fields ?? []).map(field => [field.id, value(data, 'choice-' + field.id)]))});
+        this.dirty = false; this.operations = view; this.options.committed?.();
+        this.setSection('[data-item-operations]', itemOperationsView(this.options.presentation, view, this.options.sessionUrl));
+        this.options.changed?.();
+        const result = view.operations.find(operation => operation.id === action);
+        if (!binding && result?.state === 'succeeded') await this.refresh();
+        if (!binding && entry?.openSessionOnRun && result?.sessionId) await this.options.openSession(result.sessionId);
     }
     private loadReferenceSection(generation: number, item: KanbanItem, skip?: Set<string>): void {
         void this.supplement('ui.item.references', generation, () => this.showReferenceLinks(item.externalRefs ?? [], generation, skip), () => {}, '[data-reference-links]');
@@ -412,6 +439,7 @@ export class KanbanWorkbench {
         if (action === 'records-next' || action === 'records-first') {this.recordCursor = action === 'records-next' ? this.recordPage?.nextCursor : undefined; await this.refresh(); return;}
         if ((action === 'confirm-record' || action === 'reject-record') && this.recordId) {await this.execute({type: 'review-record', recordId: this.recordId, accept: action === 'confirm-record'}); return;}
         if (action === 'next' || action === 'first') {this.query.cursor = action === 'next' ? this.page?.nextCursor : undefined; await this.refresh(); return;}
+        if (action === 'refresh-item-operations') {this.dirty = false; await this.loadOperations(this.generation); this.options.changed?.(); return;}
         if (action === 'refresh') {await this.refresh(); return;}
         if (action && this.item) await this.execute(actionCommand(action, this.item));
     }
@@ -434,6 +462,7 @@ export class KanbanWorkbench {
         const form = event.target as HTMLFormElement, kind = form.dataset.form, data = new FormData(form);
         form.dataset.resourceId ??= randomUUID();
         if (!form.reportValidity()) return;
+        if (kind === 'item-operation' || kind === 'operation-binding') {await this.submitOperation(form, data, kind === 'operation-binding'); return;}
         if (kind === 'reference') {await this.openReference(value(data, 'reference')); return;}
         if (kind === 'filter') {
             if (this.dirty) throw new Error(this.ui.label('unsaved'));

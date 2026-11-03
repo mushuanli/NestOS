@@ -18,3 +18,4 @@ export type {KanbanAutomationSettings, KanbanAutomationOption, KanbanAutomationT
 export {sameAutomationBinding} from './automation';
 export type {KanbanItemResourceCatalog, KanbanRecordResource, KanbanRecordExecution, KanbanRecordRunRequest} from './record-execution';
 export type {KanbanWorkResource, KanbanWorkResourceCleanup, KanbanWorkResourceQuery} from './work-resources';
+export type {KanbanOperationChoice, KanbanOperationField, KanbanItemOperation, KanbanItemOperations, KanbanItemOperationRequest, KanbanItemOperationBinding} from './operations';

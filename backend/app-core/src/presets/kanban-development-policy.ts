@@ -75,9 +75,9 @@ async function resolveLifecyclePrompts(fs:IFileSystem,project:IFileSystem,profil
         const name=entry+'-'+suffix+'.md',local='/workspace/_nestos/kanban/policies/'+profile+'/'+name;
         const global='/var/lib/kanban/policies/'+profile+'/'+name;
         const projectOverride=await project.driver.exists(local),source=projectOverride?project:fs,path=projectOverride?local:global;
-        if (!projectOverride && name === 'task-continue-pre.md' && !await fs.driver.exists(global)) {
+        if (!projectOverride && ['task-continue-pre.md', 'task-merge-pre.md', 'task-merge-post.md'].includes(name) && !await fs.driver.exists(global)) {
             try {await fs.driver.createFile({parentPath: global.slice(0, global.lastIndexOf('/')), name,
-                content: defaults['task-continue-pre.md'], recursive: true});}
+                content: defaults[name as keyof typeof defaults], recursive: true});}
             catch (error) {if ((error as {code?: string}).code !== 'EEXIST') throw error;}
         }
         if(await source.driver.exists(path)) {

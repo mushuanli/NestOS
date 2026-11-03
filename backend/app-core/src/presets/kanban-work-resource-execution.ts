@@ -1,3 +1,4 @@
+import {jobKey, reviewKey, type ReviewJob, type ReviewSettings} from '../kanban/item-operation-types';
 import {readContextCatalog, type ContextInspector} from '../projects/harness-context-catalog';
 import type {IndependentCallService} from '@itookit/llm-session';
 import type {IndependentCallView} from '@itookit/llm-session/contracts';
@@ -14,6 +15,13 @@ type NativeState = ReturnType<ProjectConversationPort['snapshot']>;
 /** Inspect original calls and native turns without activating Sessions or acquiring writers. */
 export async function workResourceExecution(options: ResourceExecutionOptions, id: string, projectId: string): Promise<string[]> {
     const callers = [id], reasons: string[] = [];
+    for (const scope of await options.journal.get<Array<{board: string; item: string}>>('review-operation-scopes') ?? []) {
+        const settings = await options.journal.get<ReviewSettings>(reviewKey(scope.board, scope.item));
+        for (const key of settings?.jobs ?? []) {
+            const job = await options.journal.get<ReviewJob>(jobKey(key));
+            if (job?.phase !== 'settled' && (job?.snapshot.context as {worktreeId?: string})?.worktreeId === id) return ['WORKTREE_IN_USE'];
+        }
+    }
     for (const key of await options.journal.get<string[]>('development-lifecycle-index') ?? []) {
         const job = await options.journal.get<{dispatch: {id: string}; request: {input: {request: {expectedSessionId: string}}}}>(key);
         if (job?.dispatch.id.startsWith(id + '-postload-')) callers.push(job.request.input.request.expectedSessionId);

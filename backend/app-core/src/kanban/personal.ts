@@ -20,35 +20,42 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     const store = await openPersonalKanbanStore(fs);
     await new KanbanExamples(store).seed();
     const journal = new KanbanAutomationJournal(fs); await journal.open();
-    const base = personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions});
+    let operations: ReturnType<typeof import('./item-operations').createItemOperations> | undefined;
+    const base = personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions: automationOptions ? {...automationOptions,
+        relatedSessions: async (board, item) => [...await automationOptions.relatedSessions?.(board, item) ?? [], ...await operations?.sessions(board, item) ?? []]} : undefined});
     const workLog = new KanbanWorkLog(fs, events, base.log); await workLog.open();
     const withLogs = {...base, onCommitted: (boardId: string, source: import('@itookit/kanban/contracts').KanbanService) => workLog.synchronize(boardId, source)};
     const service = createNestOSKanban({...withLogs, actor: {kind: 'human', id: 'admin'}});
+    operations = automationOptions?.itemOperations?.({service, journal, workLog, log: base.log});
+    const resources = automationOptions?.workResources?.({service, workLog, journal});
     const records = automationOptions?.projects ? createRecordExecution({service, journal, projects: automationOptions.projects, requiresItemResource:automationOptions.requiresItemResource, log: base.log}) : undefined;
     const automation = automationOptions ? createPersonalKanbanAutomation({...automationOptions, fs, service, journal, workLog, log: base.log,
         serviceFor: actor => createNestOSKanban({...withLogs, actor})}) : undefined;
     try {await service.scan();await reportKanbanHealth(events);}
     catch(error) {await reportKanbanHealth(events,error);}
     return {...service,
+        ...(operations ? {itemOperations: operations.itemOperations, runItemOperation: operations.runItemOperation, bindItemOperation: operations.bindItemOperation} : {}),
         ...(automationOptions?.continuation && service.executionSession ? {executionSession: async (boardId: string, itemId: string, query?: import('@itookit/kanban/contracts').KanbanSessionDetailQuery) => {
             const detail = await service.executionSession!(boardId, itemId, query), {item} = await service.item(boardId, itemId);
             const previous = Object.values((await service.workflow(boardId)).dispatches).filter(row => row.itemId === itemId).sort((a, b) => b.attempt - a.attempt)[0];
             return {...detail, ...(['backlog', 'open'].includes(item.status) && previous && ['failed', 'cancelled'].includes(previous.outcome)
                 ? {continuation: {previousDispatchId: previous.id}} : {})};
         }} : {}),
-        ...automationOptions?.workResources?.({service, workLog, journal}),
+        ...resources,
+        ...(resources?.cleanupWorkResource && operations ? {cleanupWorkResource: (board: string, request: import('@itookit/kanban/contracts').KanbanWorkResourceCleanup) =>
+            operations!.guardResource(board, request.itemId, () => resources.cleanupWorkResource!(board, request))} : {}),
         records: (boardId: string, query?: import('@itookit/kanban/contracts').KanbanRecordQuery) => workLog.records(service, boardId, query),
         record: (boardId: string, recordId: string) => workLog.record(service, boardId, recordId),
         ...(records ? {itemResources: records.itemResources, recordResources: records.recordResources, runRecord: records.runRecord, recordExecutions: async (boardId: string, recordId: string) => (await workLog.record(service, boardId, recordId)).kind === 'decision' ? records.recordExecutions(boardId, recordId) : []} : {}),
         ...(automation ? {automationCatalog: automation.automationCatalog, analysisStatus: automation.analysisStatus} : {}),
         scan: async () => {
             await service.scan();
-            const results = await Promise.allSettled([records?.scan(), automation?.scan()]);
+            const results = await Promise.allSettled([records?.scan(), automation?.scan(), operations?.scan()]);
             const failures = results.filter(result => result.status === 'rejected');
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'KANBAN_SCAN_FAILED');
         },
-        quiesce: async () => {await records?.quiesce(); await automation?.quiesce(); await service.quiesce();},
-        dispose: async () => {await records?.quiesce(); await automation?.quiesce(); await service.dispose();}};
+        quiesce: async () => {await records?.quiesce(); await operations?.quiesce(); await automation?.quiesce(); await service.quiesce();},
+        dispose: async () => {await records?.quiesce(); await operations?.quiesce(); await automation?.quiesce(); await service.dispose();}};
 }
 
 

@@ -17,6 +17,8 @@ import {requireValue} from './validation';
 import {withContinuedWork, type ContinueWorkOptions} from './continued-work';
 
 export interface PersonalKanbanAutomationOptions {
+    itemOperations?(context: {service: KanbanService; journal: KanbanAutomationJournal; workLog: KanbanWorkLog;
+        log: import('./item-operation-types').ReviewOperationsOptions['log']}): ReturnType<typeof import('./item-operations').createItemOperations>;
     relatedSessions?(boardId: string, itemId: string): Promise<import('@itookit/kanban/contracts').KanbanSessionAssociation[]>;
     sessionExecutionResources?(id: string): Promise<Array<{label: string; value: string}>>;
     continuation?: Pick<ContinueWorkOptions, 'submission' | 'prepare'>;

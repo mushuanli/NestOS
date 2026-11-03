@@ -63,6 +63,7 @@ export class KanbanWindowWorkbench {
     private createPage(tab: WorkbenchTab<Page>): void {
         const editor = document.createElement('div'); tab.panel.append(editor);
         const view = new KanbanView({...this.options, sidebar: undefined, editor, initialResource: tab.id,
+            itemOperationsAvailable: (_board, item) => !!item.externalRefs?.some(ref => ref.system === "nestos-worktree"),
             presentation: kanbanPresentation, executionReference: executionSessionReference, reviewGuidance: this.options.reviewGuidance ?? kanbanReviewGuidance,
             navigate: path => this.navigate(path), changed: () => this.updatePage(tab),
             selected: () => this.updatePage(tab), committed: () => this.navigation.invalidate(),

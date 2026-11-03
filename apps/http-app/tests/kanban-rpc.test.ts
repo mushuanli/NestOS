@@ -7,6 +7,9 @@ import {executionSessionReference} from '@itookit/app-contracts';
 
 it('exposes user-bound Kanban commands, queries and system notifications through real RPC', async () => {
     const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'web', startupMode: 'interactive', digitalTwinAutoStart: false});
+    const operationView = {revision: 'snapshot', operations: [{id: 'merge', label: 'Merge', state: 'waiting-confirmation', enabled: true, fields: [{id: 'file', label: 'File', choices: [{id: 'keep', label: 'Keep'}]}]}]};
+    const operationPorts = {itemOperations: vi.fn(async () => operationView), runItemOperation: vi.fn(async () => operationView), bindItemOperation: vi.fn(async () => operationView)};
+    Object.assign(runtime.kanban, operationPorts);
     const view = await openApplicationView(runtime), report = vi.fn();
     let server!: RpcPeer;
     const client = new RpcPeer('client', call => server.handle(call), report, installViewProjections);
@@ -45,6 +48,11 @@ it('exposes user-bound Kanban commands, queries and system notifications through
         expect(related.sessionsCode).toBeUndefined();
         expect((await kanban.queryActivity(board.id,{view:'all'})).items.find((item:{id:string})=>item.id==='card').execution.sessionId).toBe(sessionId);
         expect(JSON.stringify(execution)).not.toContain('taskId');
+        expect(await kanban.itemOperations(board.id, 'card')).toEqual(operationView);
+        const operation = {operationId: 'merge-review', itemId: 'card', action: 'merge', expectedRevision: 'snapshot', confirmed: true, selections: {file: 'keep'}};
+        expect(await kanban.runItemOperation(board.id, operation)).toEqual(operationView); expect(operationPorts.runItemOperation).toHaveBeenCalledWith(board.id, operation);
+        const binding = {operationId: 'bind-review', itemId: 'card', action: 'merge', expectedRevision: 'snapshot', target: {system: 'nestos-published-flow', id: 'merge-project', revision: '1'}};
+        expect(await kanban.bindItemOperation(board.id, binding)).toEqual(operationView); expect(operationPorts.bindItemOperation).toHaveBeenCalledWith(board.id, binding);
         const current = await kanban.read(board.id);
         await kanban.execute(board.id, {operationId: 'record-log', expectedRevision: current.revision, command: {type: 'append-record', record: {id: 'log', kind: 'log', title: 'Work evidence', content: 'PRIVATE_LOG_BODY', itemIds: ['card'], sources: []}}});
         expect((await kanban.records(board.id, {itemId: 'card'})).items).toEqual(expect.arrayContaining([expect.objectContaining({id: 'log', kind: 'log'})]));

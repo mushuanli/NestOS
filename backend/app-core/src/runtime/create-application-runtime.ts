@@ -6,6 +6,10 @@ import {developmentContinuation} from '../presets/kanban-development-continuatio
 import {sessionSubmission} from '../run/session-submission';
 import {developmentLifecycle} from '../presets/kanban-development-lifecycle';
 import {developmentWorkResources, developmentSessionResources} from '../presets/kanban-work-resources';
+import {developmentReviewAdapter} from '../presets/kanban-development-review';
+import {itemOperationReporter} from '../kanban/item-operation-log';
+import {createItemOperations} from '../kanban/item-operations';
+import {publishedOperation} from '../run/published-operation';
 import {KanbanAutomationJournal} from '../kanban/automation-journal';
 import {developmentCatalog, validateDevelopmentOptions, requiresDevelopmentProject} from '../presets/kanban-development-policy';
 import {prepareHarnessDraftConnection} from '../projects/harness-draft-connection';
@@ -149,6 +153,8 @@ export interface ApplicationRuntime {
 }
 
 export interface ApplicationRuntimeOptions {
+    /** Trusted build identity of the running host, independent of a next-start release pointer. */
+    runningVersion?: string;
     /** Optional host integrations own bindings and execution, never the portable board library. */
     configureKanban?(context: {fs: import('@itookit/vfs-core').IFileSystem; service: import('@itookit/kanban').KanbanModuleHandle;
         kernel: import('@itookit/durable-kernel').Kernel; calls?: import('@itookit/llm-session').IndependentCallService;
@@ -594,6 +600,15 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
+            itemOperations: developmentBindings ? context => createItemOperations({...context,
+                adapter: developmentReviewAdapter({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore, runningVersion: options.runningVersion}),
+                published: publishedOperation({calls: independentCalls, kernel: kernelCore, ensureSession: (id, title) => sessionRepository.ensureSession(id, title),
+                    prepareSession: async id => {await initializeProjects(); await prepareChildExecution(id); return recovery.acquireLater(id);}}),
+                submission: sessionSubmission({contexts: conversationContexts, repository: sessionRepository, kernel: kernelCore, ensureWritable: conversationOptions.ensureWritable}),
+                catalog: () => commandBus.execute('session.targets.list'),
+                sessionResource: remoteConnections ? id => nativeSessionResource(kernelCore, projects, developmentBindings!.remote)(id, 'main') : undefined,
+                report: itemOperationReporter(context),
+            }) : undefined,
             relatedSessions: lifecycle ? (boardId, itemId) => lifecycle.sessions(boardId, itemId) : undefined,
             sessionExecutionResources: id => developmentSessionResources(new KanbanAutomationJournal(systemFS), id),
             continuation: continueDevelopment ? {submission: sessionSubmission({contexts: conversationContexts, repository: sessionRepository, kernel: kernelCore,
@@ -666,7 +681,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             if (!startup.active) return;
             kanbanMonitor = startKanbanMonitor({service: {scan:async()=>{const results = await Promise.allSettled([kanban.scan(), developmentMessages.scan(), ...kanbanIntegrations.map(integration => integration.scan())]);
                 const failures = results.filter(result => result.status === 'rejected');
-                if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'KANBAN_SCAN_FAILED');}}, initialScan: kanbanIntegrations.length > 0, subscribeTick: tick => {
+                if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'KANBAN_SCAN_FAILED');}}, initialScan: kanbanIntegrations.length > 0 || !!developmentBindings, subscribeTick: tick => {
                 wakeKanban = tick;
                 const timer = setInterval(tick, 5_000); return () => {wakeKanban = () => {}; clearInterval(timer);};
             }, subscribeChanges: tick => systemFS.on('seq:committed', event => {if(event.payload.paths.includes('/var/lib/kanban/boards.seq')) tick();}),

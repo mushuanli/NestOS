@@ -8,6 +8,7 @@ export interface KanbanPresentation {
 }
 export interface KanbanReviewGuidance {title: string; paragraphs: string[]}
 export interface KanbanUIOptions {
+    itemOperationsAvailable?(board: KanbanBoardSummary, item: KanbanItem): boolean;
     reviewGuidance?(board: KanbanBoardSummary, item: KanbanItem): KanbanReviewGuidance | undefined;
     service?: KanbanClient;
     /** Omit when the host owns shared workspace navigation. */

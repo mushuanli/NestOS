@@ -111,6 +111,8 @@ VFS `seq:committed` 可用于唤醒宿主，但持久状态与定期补扫才是
 
 NestOS 的默认目录、远程 HttpSeqClient、Session 来源读取、发布 Agent/Flow、Kernel 回执、系统 notify 与调度接线均位于 `backend/app-core/src/kanban/`。扫描状态机、批量提交、远程事务编码与执行恢复归独立库；UI 的 NestOS 包装位于 `ui/app-shell/src/kanban/`。应用入口只导出实际 NestOS 绑定，不代转出库 API，核心没有这些运行依赖。完整规范见 [Kanban 协调设计](../../doc/design/kanban-coordination.md)。
 
+会话活动入口 `executionSession(boardId, itemId)` 只读取当前执行摘要。显式传入 `{includeRelated: true}` 时，通过可选 `KanbanSessionSource.related` 合并宿主关联与已有执行绑定、参与者；返回的 `sessions` 按不透明 Session ID 去重，各自包含用途和 `executions` 执行记录。续办在同一 Session 下保留不同尝试，`current` 仅由正式执行绑定决定。UI 在展开「相关会话」时加载，支持刷新和宿主注入的原始资源链接；普通活动轮询不读取历史。资源属性由宿主提供，库不识别工作区、Git 或原生会话协议。
+
 ## Optional automation integration
 
 Boards may store automation settings with opaque planner/executor references and trusted coordinator/worker principals. `configure-automation` changes configuration only; the host owns model calls and scheduling. Existing unassigned work may join a sealed plan with `expectedRevision`; adoption preserves its identity and manual dependencies. `edit-item` updates unplanned work while published definitions remain immutable. Execution bridges accept a dynamic `autoDispatch` predicate so pausing prevents new claims while existing admissions are still inspected. Optional client `automationCatalog` and `analysisStatus` ports supply the generic configuration UI and analysis details.

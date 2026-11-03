@@ -4,6 +4,7 @@ import {principal,principalKey,candidates} from './identity';
 import {KanbanError} from './ports';
 import {querySessionItems} from './session-activity-query';
 import {randomUUID} from './utils';
+import {sessionAssociations, projectRelatedSessions} from './session-relations';
 export interface KanbanSessionActivityOptions {source: KanbanSessionSource; now?:()=>number}
 export function executionBindings(refs: KanbanExternalReference[] | undefined, referenceSystem: string) {return (refs ?? []).filter(ref=>ref.system===referenceSystem);}
 function currentBinding(refs: KanbanExternalReference[]|undefined, itemId:string, workflow:KanbanWorkflowState, referenceSystem: string) {
@@ -24,11 +25,24 @@ export function createKanbanSessionActivity(core: KanbanService, options: Kanban
     };
     return {
         queryActivity:(boardId:string,query:import('./contracts').KanbanSessionActivityQuery={})=>querySessionItems(core,boardId,query,rows=>project(boardId,rows)),
-        async executionSession(boardId:string,itemId:string) {
+        async executionSession(boardId:string,itemId:string, query: import('./contracts').KanbanSessionDetailQuery = {}) {
+            const started = Date.now();
+            if (!query || typeof query !== 'object' || Array.isArray(query) || Object.keys(query).some(key => key !== 'includeRelated') || query.includeRelated !== undefined && typeof query.includeRelated !== 'boolean') throw new KanbanError('INVALID_QUERY');
             const {item}=await core.item(boardId,itemId),bindings=executionBindings(item.externalRefs,referenceSystem);
-            if(!bindings.length)return {history:[]};
+            if(!bindings.length && !query.includeRelated)return {history:[]};
             const [board,workflow]=await Promise.all([boardMetadata(core,boardId),core.workflow(boardId)]),last=currentBinding(item.externalRefs,itemId,workflow,referenceSystem);
-            return {current:last?await inspect(board,last.id):undefined,history:bindings.map(ref=>({sessionId:ref.id,bindingId:ref.revision,current:ref===last})).reverse()};
+            let sessionsCode: string | undefined;
+            const related = query.includeRelated ? await options?.source.related?.(board, item, workflow).catch(error => {
+                const candidate = (error as {code?: string})?.code;
+                sessionsCode = candidate && /^[A-Z][A-Z0-9_]{0,79}$/.test(candidate) ? candidate : 'SESSION_RELATIONS_FAILED';
+                try {log({operationId: randomUUID(), stage: 'session.relations', result: 'failure', code: sessionsCode, durationMs: Date.now() - started});} catch { /* Diagnostics cannot hide known associations. */ }
+                return [];
+            }) : [];
+            const sessions = query.includeRelated ? await projectRelatedSessions([
+                ...sessionAssociations(item, bindings, workflow), ...related ?? [],
+            ], last?.id, id => inspect(board, id)) : undefined;
+            return {current:last?(sessions?.find(row=>row.sessionId===last.id) ?? await inspect(board,last.id)):undefined,
+                history:bindings.map(ref=>({sessionId:ref.id,bindingId:ref.revision,current:ref===last})).reverse(), ...(sessions ? {sessions} : {}), ...(sessionsCode ? {sessionsCode} : {})};
         },
         validate:(board:KanbanBoard,command:KanbanCommand|undefined,actor:KanbanActor)=>validateBinding(core,options,board,command,actor,referenceSystem),
     };
@@ -42,7 +56,7 @@ function createSessionInspector(options:KanbanSessionActivityOptions|undefined,l
             const row=await options.source.inspect(board,sessionId);
             if(row.sessionId!==sessionId) throw new KanbanError('SESSION_ACTIVITY_SCOPE_MISMATCH');
             const stale=row.stale||row.observedAt===undefined||now()-row.observedAt>90000;
-            const value:KanbanExecutionSession={sessionId,...(typeof row.resourceId==='string'&&row.resourceId.length<=4096&&!row.resourceId.includes('\0')?{resourceId:row.resourceId}:{}),title:row.title?.slice(0,256),state:row.state,lastActivityAt:row.lastActivityAt,observedAt:row.observedAt,stale,
+            const value:KanbanExecutionSession={sessionId,...(typeof row.resourceId==='string'&&row.resourceId.length<=4096&&!row.resourceId.includes('\0')?{resourceId:row.resourceId}:{}),title:row.title?.slice(0,256),state:row.state,createdAt:row.createdAt,lastActivityAt:row.lastActivityAt,observedAt:row.observedAt,stale,
                 recent:!stale&&row.lastActivityAt!==undefined&&row.lastActivityAt<=now()&&now()-row.lastActivityAt<=600000,...(row.code&&/^[A-Z][A-Z0-9_]{0,79}$/.test(row.code)?{code:row.code}:{})};
             if(cache.size>=256) cache.delete(cache.keys().next().value!);cache.set(key,value);return value;
         } catch(error) {

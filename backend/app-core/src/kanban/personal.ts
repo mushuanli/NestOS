@@ -13,6 +13,7 @@ import {openPersonalKanbanStore} from './store';
 import {KanbanExamples} from '../presets/kanban-examples';
 import {KanbanError} from '@itookit/kanban';
 import {createLocalKanbanSessionSource} from './session-source';
+import {relatedKanbanSessions} from './related-sessions';
 
 /** The authenticated runtime owns this user store; project boards require their own binding. */
 export async function createPersonalKanban(fs: IFileSystem, events: UserEventService, diagnostics: DiagnosticJournal, sessions?: Pick<import('@itookit/llm-session/contracts').ISessionRepository, 'listSummaries'|'getManifest'>, kernel?: Pick<import('@itookit/durable-kernel').Kernel,'sessionActivity'>, automationOptions?: PersonalKanbanAutomationOptions) {
@@ -29,8 +30,8 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     try {await service.scan();await reportKanbanHealth(events);}
     catch(error) {await reportKanbanHealth(events,error);}
     return {...service,
-        ...(automationOptions?.continuation && service.executionSession ? {executionSession: async (boardId: string, itemId: string) => {
-            const detail = await service.executionSession!(boardId, itemId), {item} = await service.item(boardId, itemId);
+        ...(automationOptions?.continuation && service.executionSession ? {executionSession: async (boardId: string, itemId: string, query?: import('@itookit/kanban/contracts').KanbanSessionDetailQuery) => {
+            const detail = await service.executionSession!(boardId, itemId, query), {item} = await service.item(boardId, itemId);
             const previous = Object.values((await service.workflow(boardId)).dispatches).filter(row => row.itemId === itemId).sort((a, b) => b.attempt - a.attempt)[0];
             return {...detail, ...(['backlog', 'open'].includes(item.status) && previous && ['failed', 'cancelled'].includes(previous.outcome)
                 ? {continuation: {previousDispatchId: previous.id}} : {})};
@@ -59,7 +60,9 @@ type PersonalOptions = {
 };
 function personalOptions({store, journal, events, diagnostics, sessions, kernel, automationOptions}: PersonalOptions) {
     return {
-        executionSessions:sessions&&kernel?{source:createLocalKanbanSessionSource(sessions,kernel,automationOptions?.executionResource)}:undefined,
+        executionSessions:sessions&&kernel?{source:{...createLocalKanbanSessionSource(sessions,kernel,automationOptions?.executionResource),
+            ...(automationOptions ? {related: relatedKanbanSessions({journal, calls: automationOptions.calls,
+                repository: automationOptions.sessions, kernel: automationOptions.kernel, resources: automationOptions.sessionExecutionResources})} : {})}}:undefined,
         suggestions: async (_board, kind, search, limit) => {
             if (kind !== 'session') return undefined;
             const rows = await sessions?.listSummaries?.() ?? [];

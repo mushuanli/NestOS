@@ -11,7 +11,7 @@ export function createLocalKanbanSessionSource(repository: Pick<ISessionReposito
         if(activity.sessionId!==sessionId) throw new KanbanError('SESSION_ACTIVITY_SCOPE_MISMATCH');
         const lastActivityAt=activity.lastActivityAt ?? activity.latestExit?.at;
         const resourceId=await resource?.(sessionId,manifest.currentBranch);
-        return {sessionId,...(resourceId?{resourceId}:{}),title:manifest.title,state:sessionPhase(activity),lastActivityAt,observedAt:Date.now(),stale:false};
+        return {sessionId,...(resourceId?{resourceId}:{}),title:manifest.title,createdAt:manifest.createdAt,state:sessionPhase(activity),lastActivityAt,observedAt:Date.now(),stale:false};
     }};
 }
 async function sessionManifest(repository:Pick<ISessionRepository,'getManifest'>,sessionId:string) {

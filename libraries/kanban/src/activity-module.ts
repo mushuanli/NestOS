@@ -9,7 +9,7 @@ export interface KanbanActivityModuleOptions extends KanbanModuleOptions {
 }
 export interface KanbanActivityHandle extends CoreHandle {
     queryActivity: (boardId: string, query?: KanbanSessionActivityQuery) => Promise<KanbanSessionItemPage>;
-    executionSession: (boardId: string, itemId: string) => Promise<KanbanExecutionSessionDetail>;
+    executionSession: (boardId: string, itemId: string, query?: import('./contracts').KanbanSessionDetailQuery) => Promise<KanbanExecutionSessionDetail>;
 }
 
 /** Application integrations stay outside the portable core. */

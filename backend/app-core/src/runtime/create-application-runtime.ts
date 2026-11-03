@@ -5,7 +5,7 @@ import {developmentDelivery} from '../presets/kanban-development-delivery';
 import {developmentContinuation} from '../presets/kanban-development-continuation';
 import {sessionSubmission} from '../run/session-submission';
 import {developmentLifecycle} from '../presets/kanban-development-lifecycle';
-import {developmentWorkResources} from '../presets/kanban-work-resources';
+import {developmentWorkResources, developmentSessionResources} from '../presets/kanban-work-resources';
 import {KanbanAutomationJournal} from '../kanban/automation-journal';
 import {developmentCatalog, validateDevelopmentOptions, requiresDevelopmentProject} from '../presets/kanban-development-policy';
 import {prepareHarnessDraftConnection} from '../projects/harness-draft-connection';
@@ -594,6 +594,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
+            sessionExecutionResources: id => developmentSessionResources(new KanbanAutomationJournal(systemFS), id),
             continuation: continueDevelopment ? {submission: sessionSubmission({contexts: conversationContexts, repository: sessionRepository, kernel: kernelCore,
                 ensureWritable: conversationOptions.ensureWritable}),
                 prepare: input => developmentOperations.run(() => continueDevelopment(input))} : undefined,

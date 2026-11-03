@@ -73,9 +73,24 @@ async function loadJob(options: AnalysisOptions, board: KanbanBoard, item: Kanba
         job = await options.journal.update<Job>(key, previous => previous ?? candidate);
     }
     if (!options.active()) return;
+    if (currentKey !== key) await options.journal.update<{keys: string[]; indexed?: boolean}>('analysis-history:' + JSON.stringify([board.id, item.id]), old =>
+        ({...old, keys: [...new Set([...old?.keys ?? [], ...currentKey ? [currentKey] : [], key])]}));
     await options.journal.update(keyFor(board.id, item.id), () => key);
     if (!options.active()) return;
     return {key, job};
+}
+/** Rebuild legacy history once; the hash proves board/item scope even when item IDs overlap. */
+export async function analysisHistory(journal: KanbanAutomationJournal, boardId: string, itemId: string) {
+    const key = 'analysis-history:' + JSON.stringify([boardId, itemId]);
+    let saved = await journal.get<{keys: string[]; indexed?: boolean}>(key);
+    if (!saved?.indexed) {
+        const rows = await journal.find<Job>('analysis:', (job, entryKey) => job.status?.itemId === itemId
+            && entryKey === 'analysis:' + sha256HexSync(JSON.stringify([boardId, itemId, job.itemRevision, job.signature])));
+        saved = await journal.update<{keys: string[]; indexed?: boolean}>(key, old =>
+            ({keys: [...new Set([...old?.keys ?? [], ...rows.map(row => row.key)])], indexed: true}));
+    }
+    const jobs = await Promise.all(saved.keys.map(key => journal.get<Job>(key)));
+    return jobs.filter((job): job is Job => !!job);
 }
 function newJob(board: KanbanBoard, item: KanbanItem, target: TargetRef, signature: string, id = randomUUID(), instruction = preset.instruction): Job {
     const context = board.items.map(({id, title, responsibility, acceptance, planning, status}) => ({id, title, responsibility, acceptance, planning, status}));

@@ -7,6 +7,7 @@ import {childrenView, childType} from './children';
 import {linkPair} from './session-links';
 import {failureDetails} from './diagnostics';
 import {workResourcesView} from './work-resources';
+import {relatedSessionsView} from './session-view';
 import {randomUUID} from '../utils';
 import type {KanbanUIOptions} from './ports';
 import {createRenderer} from './renderer';
@@ -55,6 +56,7 @@ export class KanbanWorkbench {
         }, {signal});
         editor.addEventListener('toggle', event => {
             const opened = event.target;
+            if (opened instanceof HTMLDetailsElement && opened.open && opened.hasAttribute('data-related-sessions')) {void this.loadRelatedSessions(); return;}
             if (opened instanceof HTMLDetailsElement && opened.open && opened.hasAttribute('data-work-resources')) {void this.loadWorkResources(); return;}
             if (!(opened instanceof HTMLDetailsElement) || !opened.open || !opened.hasAttribute('data-popover')) return;
             for (const menu of editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (menu !== opened) menu.open = false;
@@ -215,13 +217,15 @@ export class KanbanWorkbench {
         const {item, archive} = loaded ?? await service.item(this.boardId, this.itemId);
         if (!this.alive(generation)) return;
         this.operationStage='ui.item.render';
-        if (!this.drawer.open || this.itemArchived !== !!archive || JSON.stringify(this.item) !== JSON.stringify(item)) this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, []), 'item:' + item.id);
+        if (!this.drawer.open || this.itemArchived !== !!archive || JSON.stringify(this.item) !== JSON.stringify(item)) this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, [], !!service.executionSession), 'item:' + item.id);
         this.item = item; this.itemArchived = !!archive;
         this.loadItemSections(generation, item, !!archive);
         this.options.selected(this.getActiveResourceId());
     }
     private loadItemSections(generation: number, item: KanbanItem, archived: boolean): void {
         const service = this.options.service!, boardId = this.boardId;
+        if (service.executionSession && !this.panel().querySelector('[data-related-sessions]'))
+            this.setSection('[data-related-sessions-section]', `<details data-related-sessions><summary>${escapeHTML(this.ui.label('relatedSessions'))}</summary><button type="button" data-action="refresh-related-sessions">${escapeHTML(this.ui.label('refresh'))}</button><div data-related-sessions-body></div></details>`);
         if (service.workResources) {
             const resources = this.panel().querySelector<HTMLDetailsElement>('[data-work-resources]');
             if (!resources) this.setSection('[data-work-resource-section]', `<details data-work-resources><summary>${escapeHTML(this.ui.label('workResourceTitle'))}</summary><button type="button" data-action="refresh-work-resources">${escapeHTML(this.ui.label('refresh'))}</button><div data-work-resource-body></div></details>`);
@@ -328,8 +332,23 @@ export class KanbanWorkbench {
             if (this.item?.id === itemId && this.boardId === boardId) this.setSection('[data-work-resource-body]', workResourcesView(this.options.presentation, resources));
         }, '[data-work-resource-body]');
     }
+    private async loadRelatedSessions(refresh = false): Promise<void> {
+        const service = this.options.service, boardId = this.boardId, itemId = this.item?.id;
+        const details = this.panel().querySelector<HTMLDetailsElement>('[data-related-sessions]');
+        if (!service?.executionSession || !itemId || !details || details.dataset.loading || !refresh && details.dataset.loaded) return;
+        details.dataset.loading = 'true';
+        this.setSection('[data-related-sessions-body]', `<p role="status">${escapeHTML(this.ui.label('loading'))}</p>`);
+        try {
+            await this.supplement('ui.item.related-sessions', this.generation, () => service.executionSession!(boardId, itemId, {includeRelated: true}), detail => {
+                if (this.item?.id !== itemId || this.boardId !== boardId) return;
+                this.setSection('[data-related-sessions-body]', relatedSessionsView(this.options.presentation, detail, this.options.sessionUrl));
+                details.dataset.loaded = 'true';
+            }, '[data-related-sessions-body]');
+        } finally {delete details.dataset.loading;}
+    }
     private async click(event: Event): Promise<void> {
         const target = (event.target as HTMLElement).closest<HTMLElement>('button, a'); if (!target || target.matches(':disabled')) return;
+        if (target.dataset.action === 'refresh-related-sessions') {await this.loadRelatedSessions(true); return;}
         for (const menu of this.options.editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (!menu.contains(target)) menu.open = false;
         if (target.dataset.session) {event.preventDefault(); await this.options.openSession(target.dataset.session); return;}
         if (this.dirty && !['close-panel', 'copy-reference', 'copy-link'].includes(target.dataset.action ?? '')) throw new Error(this.ui.label('unsaved'));

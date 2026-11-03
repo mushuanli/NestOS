@@ -3,7 +3,7 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {createKanbanModule, SeqKanbanStore} from '../src';
 import {KanbanWorkbench} from '../src/ui';
-import type {KanbanClient, KanbanSessionItemPage} from '../src/contracts';
+import type {KanbanClient, KanbanSessionItemPage, KanbanExecutionSessionDetail} from '../src/contracts';
 
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of closes.splice(0).reverse()) await close(); vi.useRealTimers(); vi.restoreAllMocks(); document.body.replaceChildren();});
@@ -31,6 +31,28 @@ it('shows and unlocks the primary task while supplementary reads remain pending'
     expect(f.editor.hasAttribute('aria-busy')).toBe(false); expect(f.editor.inert).not.toBe(true);
     expect(vi.mocked(f.service.queryActivity!).mock.calls.every(([, query]) => query?.parentId === 'one')).toBe(true);
     await view.openResource('/'); expect(view.getActiveResourceId()).toBe('/');
+});
+it('loads the related Session list only on expansion, links the native Session, and preserves it across activity polling', async () => {
+    const f = await fixture(), state = {sessionId:'original',resourceId:'/native/original',title:'Original <Session>',state:'running' as const,stale:false,recent:true};
+    const detail: KanbanExecutionSessionDetail = {current:state,history:[{sessionId:'original',current:true}],sessions:[{...state,current:true,purposes:['execution'],executions:[
+        {id:'first',purpose:'execution',attempt:1,outcome:'failed'}, {id:'second',purpose:'execution',attempt:2,previousDispatchId:'first',roundId:'second',turnId:'turn-2',state:'running'},
+    ]}]};
+    const execution = vi.fn(async (_board, _item, query) => query?.includeRelated ? detail : {current:state,history:detail.history});
+    f.service.executionSession = execution; const view = await f.mount();
+    await vi.waitFor(()=>expect(f.editor.querySelector('[data-related-sessions]')).not.toBeNull());
+    expect(execution.mock.calls.filter(([, , query])=>query?.includeRelated)).toHaveLength(0);
+    const section = f.editor.querySelector<HTMLDetailsElement>('[data-related-sessions]')!;
+    section.open = true; section.dispatchEvent(new Event('toggle'));
+    await vi.waitFor(()=>expect(f.editor.querySelectorAll('[data-related-session]')).toHaveLength(1));
+    expect(execution.mock.calls.filter(([, , query])=>query?.includeRelated)).toHaveLength(1);
+    expect(section.querySelector('a')?.getAttribute('href')).toBe('#/workbench/%2Fnative%2Foriginal');
+    expect(section.querySelector('a[target="_blank"]')).not.toBeNull(); expect(section.querySelector('session')).toBeNull();
+    expect(section.textContent).toContain('turn-2'); expect(section.textContent).toContain('sessionContinuation');
+    await (view as any).refreshActivity((view as any).generation);
+    expect(f.editor.querySelector('[data-related-sessions]')).toBe(section); expect(section.open).toBe(true);
+    expect(execution.mock.calls.filter(([, , query])=>query?.includeRelated)).toHaveLength(1);
+    section.querySelector<HTMLButtonElement>('[data-action="refresh-related-sessions"]')!.click();
+    await vi.waitFor(()=>expect(execution.mock.calls.filter(([, , query])=>query?.includeRelated)).toHaveLength(2));
 });
 it('shows an unfiltered board before activity is available and preserves card DOM on activity updates', async () => {
     const f = await fixture(), page = await f.service.query('work', {view: 'all', limit: 50}), gate = deferred<KanbanSessionItemPage>();

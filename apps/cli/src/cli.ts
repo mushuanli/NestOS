@@ -179,6 +179,7 @@ function help(): string {
         `  nestos kanban item|record <board-id> <id> | execute <board-id> --file request.json\n` +
         `  nestos kanban work-resources <board-id> <item-id> | cleanup-work-resource <board-id> --file request.json\n` +
         `  nestos kanban continue <board-id> --file request.json  (continue-execution with stable operation/dispatch IDs)\n` +
+        `  nestos kanban sessions <board-id> <item-id>  (related Sessions and execution history)\n` +
         `  nestos kanban item-resources <board-id> [parent-id] | resources | runs <board-id> <record-id> | run <board-id> --file request.json\n` +
         `  nestos agent list|connections|targets | show|status <agent-id>\n` +
         `  nestos agent save|publish|receipt|bind --file request.json\n` +

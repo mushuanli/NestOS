@@ -529,6 +529,12 @@ C4Container
 
 一项任务每次执行只有一个主执行绑定；NestOS Session ID 与原生 Session ID 描述同一次执行的不同层次，不表示重复开发。默认会话入口使用宿主提供的 `resourceId` 打开原始执行过程，保留逻辑 Session ID 用于活动与回执核对。原始上下文从当前分支唯一的有效 binding 和已授权项目挂载解析；多个候选或授权不符时不猜测目标。独立 Kanban 库只透传不透明资源 ID，不识别 Codex 或项目路由。
 
+任务详情的「相关会话」按 Session ID 去重，并标识主执行、规划、修复澄清、收尾和讨论用途；一个会话可兼具多个用途。续办保留原 Session，每次派发作为该会话下的独立执行记录，记录 attempt、前次派发、Round／原生 turn、状态和起止时间；宿主可补充已持久化的工作区与分支属性。默认入口仍由正式执行绑定决定，最新活动和收尾会话不替代主执行；子任务仅查询自身关联。
+
+`executionSession(boardId, itemId, {includeRelated: true})` 显式加载完整列表，普通活动查询维持原成本；独立库通过可选 `KanbanSessionSource.related` 注入关联，不依赖 Session／Kernel。NestOS 从执行绑定、规划 journal、收尾 journal 和参与者投影；规划旧记录按原 board/item/revision/signature 摘要核验并补建历史索引，后续规划追加索引而非覆盖历史。修复会话使用现有 `link-reference`：`system: nestos-fix-session`、`id: 实际 Session ID`，可选 `revision: Round ID`；登记不等于启动或完成任务。实际规划／收尾 Session 来自正式调用回执，不将 caller Session 当成另一执行会话。
+
+列表在展开时读取，支持显式刷新及新标签页访问；15 秒轮询不枚举历史，重绘当前活动时保留已展开列表。读取只观察原持久记录，不提交指令、不取得 writer、不打开或恢复 Session。单会话的状态由授权冷摘要读取；执行状态核对对应 Kernel 任务及子树，原生 turn 按原 Invocation 检查 checkpoint／活动 journal，避免将新 turn 错配给旧轮次。缺失数据保留未知和具体错误码，不伪造完成时间。CLI `kanban sessions <board-id> <item-id>` 使用同一接口。
+
 决策的执行完成后移除两种运行入口，新 operationId 也拒绝重新运行（DECISION_EXECUTION_COMPLETED）。原 operationId 的回执核对保留幂等性。之后发现问题应在适当看板创建新任务，关联原决策或已完成任务；不通过重新运行已完成决策覆盖原验收事实。
 
 共享窗口列表的弹窗底部直接借用程序现有 nav DOM，保留原按钮、选中状态、助手和手机更多入口；关闭、切换或销毁时归还，不复制导航数据或重建一组按钮。Home 通过同一个宿主 showNavigation 端口展开当前模块 sidebar，保留窗口与草稿，历史记录为模块 list 页面，不打开 `/` 资源或新增窗口。vfs-ui 的窗口按钮仍只调用 open callback。

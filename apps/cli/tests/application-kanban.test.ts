@@ -19,6 +19,12 @@ it('passes frozen mutations unchanged and never retries an unknown outcome', asy
 it('fails explicitly when the host has no Kanban service', async () => {
     await expect(kanbanCommand({services: {}} as ApplicationClient, ['list'], {})).rejects.toMatchObject({code: 'ECAPABILITY'});
 });
+it('queries the complete Session association list without sending or activating any Session', async () => {
+    const executionSession=vi.fn(async()=>({sessions:[],history:[]})),execute=vi.fn();
+    const client={services:{kanban:{executionSession,execute}}} as unknown as ApplicationClient;
+    expect(await kanbanCommand(client,['sessions','board','task'],{})).toEqual({sessions:[],history:[]});
+    expect(executionSession).toHaveBeenCalledExactlyOnceWith('board','task',{includeRelated:true}); expect(execute).not.toHaveBeenCalled();
+});
 it('passes an explicit continuation identity through the normal durable command path', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kanban-continue-')); paths.push(directory);
     const file = join(directory, 'request.json'), request = {operationId: 'intent', expectedRevision: 5,

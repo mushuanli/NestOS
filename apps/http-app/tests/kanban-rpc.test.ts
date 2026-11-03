@@ -40,6 +40,9 @@ it('exposes user-bound Kanban commands, queries and system notifications through
         await kanban.execute(board.id,{operationId:'bind-execution-session',expectedRevision:(await kanban.read(board.id)).revision,command:{type:'link-reference',itemId:'card',reference:executionSessionReference(sessionId,'binding-one')}});
         const execution=await kanban.executionSession(board.id,'card');expect(execution.current.sessionId).toBe(sessionId);
         expect(execution.history).toEqual([{sessionId,bindingId:'binding-one',current:true}]);
+        const related = await kanban.executionSession(board.id,'card',{includeRelated:true});
+        expect(related.sessions).toEqual([expect.objectContaining({sessionId,current:true,purposes:['execution'],executions:[]})]);
+        expect(related.sessionsCode).toBeUndefined();
         expect((await kanban.queryActivity(board.id,{view:'all'})).items.find((item:{id:string})=>item.id==='card').execution.sessionId).toBe(sessionId);
         expect(JSON.stringify(execution)).not.toContain('taskId');
         const current = await kanban.read(board.id);

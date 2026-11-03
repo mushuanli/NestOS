@@ -170,3 +170,10 @@
 .kanban__work-resource p, .kanban__work-resource dd { overflow-wrap: anywhere; }
 .kanban__work-resource dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; }
 .kanban__work-resource dd { margin: 0; }
+.kanban__session-list { list-style: none; padding: 0; margin: 0; }
+.kanban__related-session { min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--border-color, #ddd); overflow-wrap: anywhere; }
+.kanban__session-heading .kanban__session-links { display: flex; flex-wrap: nowrap; min-width: 0; }
+.kanban__session-heading a:first-child { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kanban__session-heading a:last-child { flex-shrink: 0; }
+.kanban__session-run dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; }
+.kanban__session-run dd { margin: 0; overflow-wrap: anywhere; }

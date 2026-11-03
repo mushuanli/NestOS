@@ -33,6 +33,10 @@ export async function kanbanCommand(client: ApplicationClient, args: string[], o
     }
     if (action === 'analysis' && itemId && service.analysisStatus) return service.analysisStatus(boardId, itemId);
     if (action === 'item' && itemId) return service.item(boardId, itemId);
+    if (action === 'sessions' && itemId) {
+        if (!service.executionSession) throw Object.assign(new Error('Session relations require a newer host'), {code: 'ECAPABILITY'});
+        return service.executionSession(boardId, itemId, {includeRelated: true});
+    }
     if (action === 'record' && itemId) return service.record(boardId, itemId);
     if (action === 'runs' && itemId && service.recordExecutions) return service.recordExecutions(boardId, itemId);
     if (action === 'run' && service.runRecord) return service.runRecord(boardId, await jsonFile<Parameters<NonNullable<Service['runRecord']>>[1]>(options.file));

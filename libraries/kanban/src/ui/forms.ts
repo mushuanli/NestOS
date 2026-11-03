@@ -32,7 +32,7 @@ function dateInput(at?: number): string {
     const date = new Date(at); return new Date(at - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 const save = (ui: KanbanPresentation) => `<div class="kanban__actions"><button>${escapeHTML(ui.text('save'))}</button>${button(ui, 'close-panel', 'close')}</div>`;
-export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, events: KanbanEvent[]): string {
+export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, events: KanbanEvent[], relatedSessions = false): string {
     return `${panelHeader(ui, item.title, board, item)}
         <p>${escapeHTML(ui.text('origin'))}: ${escapeHTML(item.origin ? ui.text(item.origin.kind === 'discovery' ? 'flow' : 'manual') + ' · ' + item.origin.principal.id : ui.text('unknownOrigin'))}</p>
         <dl><dt>${escapeHTML(ui.text('itemId'))}</dt><dd>${escapeHTML(item.id)}</dd><dt>${escapeHTML(ui.text('responsibility'))}</dt><dd>${escapeHTML(item.responsibility)}</dd>
@@ -43,8 +43,8 @@ export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, it
         ${archived ? '' : detailForms(ui, board, item, actor)}
         ${item.planning?.parentId ? `<p>${escapeHTML(ui.text('parent'))}: <button type="button" data-item="${escapeAttr(item.planning.parentId)}">${escapeHTML(board.items.find(parent => parent.id === item.planning?.parentId)?.title ?? item.planning.parentId)}</button></p>` : ''}
         <section data-children></section><section data-related-records></section><h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, item.sources ?? [])}
-        <div data-analysis></div><div data-execution-session></div><section data-reference-links></section><section data-work-resource-section></section>
-        <h4>${escapeHTML(ui.text('sessions'))}</h4>${item.participants.map(p => `<button type="button" data-session="${escapeAttr(p.sessionId)}">${escapeHTML(p.sessionId)} · ${escapeHTML(p.roles.join(', '))}</button>`).join('') || `<p>${escapeHTML(ui.text('none'))}</p>`}
+        <div data-analysis></div><div data-execution-session></div><section data-related-sessions-section></section><section data-reference-links></section><section data-work-resource-section></section>
+        ${relatedSessions ? '' : `<h4>${escapeHTML(ui.text('sessions'))}</h4>${item.participants.map(p => `<button type="button" data-session="${escapeAttr(p.sessionId)}">${escapeHTML(p.sessionId)} · ${escapeHTML(p.roles.join(', '))}</button>`).join('') || `<p>${escapeHTML(ui.text('none'))}</p>`}`}
         ${archived ? '' : `<form data-form="session">${suggestionField({name: 'sessionId', label: 'session', kind: 'session', manual: true, required: true})}<button>${escapeHTML(ui.text('registerSession'))}</button></form>`}
         <section data-item-events>${itemEventsView(ui, events)}</section>`;
 }

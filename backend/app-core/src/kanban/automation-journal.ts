@@ -15,6 +15,15 @@ export class KanbanAutomationJournal {
     async get<T>(key: string): Promise<T | undefined> {
         const raw = await this.fs.meta.seq!.getEntry(path, key); return raw ? JSON.parse(raw) as T : undefined;
     }
+    async find<T>(keyPrefix: string, matches: (value: T, key: string) => boolean): Promise<Array<{key: string; value: T}>> {
+        const rows: Array<{key: string; value: T}> = [];
+        await this.fs.meta.seq!.walkEntries(path, entry => {
+            const value = JSON.parse(entry.value) as T;
+            if (matches(value, entry.key)) rows.push({key: entry.key, value});
+            requireValue(rows.length <= 1000, 'SESSION_RELATION_LIMIT'); return true;
+        }, {keyPrefix});
+        return rows;
+    }
     update<T>(key: string, change: (previous: T | undefined) => T): Promise<T> {
         const pending = this.commit(key, change).finally(() => {this.writes.delete(pending);});
         this.writes.add(pending); return pending;

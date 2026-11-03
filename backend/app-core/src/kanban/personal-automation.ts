@@ -17,6 +17,7 @@ import {requireValue} from './validation';
 import {withContinuedWork, type ContinueWorkOptions} from './continued-work';
 
 export interface PersonalKanbanAutomationOptions {
+    sessionExecutionResources?(id: string): Promise<Array<{label: string; value: string}>>;
     continuation?: Pick<ContinueWorkOptions, 'submission' | 'prepare'>;
     workResources?(context: {service: KanbanService; workLog: KanbanWorkLog; journal: KanbanAutomationJournal}): Pick<import('@itookit/kanban/contracts').KanbanClient, 'workResources' | 'cleanupWorkResource'>;
     executionResource?(sessionId:string,branch:string):Promise<string|undefined>;

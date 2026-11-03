@@ -13,6 +13,14 @@ import {archiveWorktree} from './kanban-work-resource-archive';
 import type {RemoteFileSourceProvider} from '../projects/remote-mounts';
 
 const log = createModuleLogger('kanban-work-resources');
+/** Display persisted associations without inspecting Git or contacting a node. */
+export async function developmentSessionResources(journal: import('../kanban/automation-journal').KanbanAutomationJournal, executionId: string) {
+    const id = executionId.replace(/-postload-(succeeded|failed|cancelled)$/, '');
+    const tree = await journal.get<PreparedWorktree>('worktree:' + id);
+    if (!tree) return [];
+    return [{label: 'Worktree', value: tree.id}, {label: t('kanban.workResourceBranch'), value: tree.branch},
+        {label: t('kanban.workResourceLocation'), value: tree.directory}];
+}
 interface Options extends ResourceExecutionOptions {
     fs: IFileSystem; provider: RemoteFileSourceProvider; service: KanbanService; workLog: KanbanWorkLog;
     projects: Pick<import('@itookit/app-contracts/services').ProjectService, 'get' | 'openWorkspace'>;

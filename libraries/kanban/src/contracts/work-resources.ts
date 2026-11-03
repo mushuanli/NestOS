@@ -1,0 +1,10 @@
+/** Host-owned execution resources; the coordination library does not interpret their backend. */
+export interface KanbanWorkResource {
+    id: string; kind: string; title: string; location: string; version: string;
+    state: 'in-use' | 'retained' | 'cleanup-ready' | 'cleaned' | 'unknown';
+    reasons: string[]; properties: Array<{label: string; value: string}>;
+    canCleanup: boolean;
+}
+export interface KanbanWorkResourceCleanup {
+    operationId: string; itemId: string; resourceId: string; version: string;
+}

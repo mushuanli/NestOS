@@ -15,6 +15,8 @@ export interface KanbanExecutionSessionDetail {
 
 /** Transport-facing service with optional authorized resource activity. */
 export interface KanbanClient extends KanbanService {
+    workResources?(boardId: string, itemId: string): Promise<import('./work-resources').KanbanWorkResource[]>;
+    cleanupWorkResource?(boardId: string, request: import('./work-resources').KanbanWorkResourceCleanup): Promise<import('./work-resources').KanbanWorkResource>;
     itemResources?(boardId:string,parentId?:string):Promise<import('./record-execution').KanbanItemResourceCatalog>;
     recordResources?(): Promise<import('./record-execution').KanbanRecordResource[]>;
     runRecord?(boardId: string, request: import('./record-execution').KanbanRecordRunRequest): Promise<import('./record-execution').KanbanRecordExecution>;

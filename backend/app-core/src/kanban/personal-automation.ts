@@ -16,6 +16,7 @@ import {automationCatalog, automationTarget, assertAutomationPrincipals} from '.
 import {requireValue} from './validation';
 
 export interface PersonalKanbanAutomationOptions {
+    workResources?(context: {service: KanbanService; workLog: KanbanWorkLog; journal: KanbanAutomationJournal}): Pick<import('@itookit/kanban/contracts').KanbanClient, 'workResources' | 'cleanupWorkResource'>;
     executionResource?(sessionId:string,branch:string):Promise<string|undefined>;
     requiresItemResource?(board:KanbanBoard):boolean;
     readAnalysisOutput?(id:string):Promise<unknown|undefined>;

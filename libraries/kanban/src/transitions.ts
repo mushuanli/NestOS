@@ -14,7 +14,7 @@ export function transition(state: KanbanState, item: KanbanItem, command: ItemCo
         owned(item, actor, command.token, now);
         if (command.type === 'submit') requireValue(catalog(state).filter(i => i.planning.parentId === item.id).every(terminal), 'CHILDREN_UNFINISHED');
         ownerUpdate(state.board, item, command, now, token);}
-    item.revision++; item.updatedAt = now;
+    if (command.type !== 'renew') {item.revision++; item.updatedAt = now;}
 }
 function claim(state: KanbanState, item: KanbanItem, command: Extract<ItemCommand, {type: 'claim' | 'accept-transfer'}>, actor: KanbanActor, now: number, token: string): void {
     const board = state.board, key = principalKey(principal(actor));

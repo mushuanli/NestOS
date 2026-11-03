@@ -5,6 +5,7 @@ import {identity, requireValue} from './rules';
 import {principal} from './identity';
 import {publishPlan, requireCoordinator, type ApplyWorkCommand} from './workflow-plans';
 import {catalog} from './planning';
+import {executionObservationChanged} from './execution-observation';
 export function isWorkflowCommand(command: KanbanCommand): command is KanbanWorkflowCommand {
     return ['publish-plan','prepare-dispatch','observe-execution','accept-execution'].includes(command.type);
 }
@@ -22,13 +23,15 @@ export function protectWorkflowItem(state: KanbanState, command: KanbanCommand):
     const live=Object.values(state.workflow.dispatches).some(dispatch=>dispatch.itemId===command.itemId&&['prepared','running','unknown','succeeded'].includes(dispatch.outcome));
     if (live) requireValue(!['request-transfer','accept-transfer','release-item','cancel-item'].includes(command.type),'EXECUTION_UNSETTLED');
 }
-export function applyWorkflow(state: KanbanState, command: KanbanWorkflowCommand, actor: KanbanActor, now: number, apply: ApplyWorkCommand): void {
+export function applyWorkflow(state: KanbanState, command: KanbanWorkflowCommand, actor: KanbanActor, now: number, apply: ApplyWorkCommand): boolean {
     state.workflow ??= {plans:{},dispatches:{},ready:[],completedPlans:[]};
+    let changed = true;
     if (command.type === 'publish-plan') publishPlan(state,command.plan,actor,apply);
     else if (command.type === 'prepare-dispatch') prepare(state,command,actor,now,apply);
-    else if (command.type === 'observe-execution') observe(state,command,actor,now);
+    else if (command.type === 'observe-execution') changed = observe(state,command,actor,now);
     else accept(state,command,actor,apply);
     refreshReady(state);
+    return changed;
 }
 function prepare(state: KanbanState, command: Extract<KanbanWorkflowCommand,{type:'prepare-dispatch'}>, actor: KanbanActor, now: number, apply: ApplyWorkCommand): void {
     identity(command.dispatchId); const workflow=state.workflow!;
@@ -47,14 +50,15 @@ function prepare(state: KanbanState, command: Extract<KanbanWorkflowCommand,{typ
     const attempt=Math.max(0,...Object.values(workflow.dispatches).filter(dispatch=>dispatch.itemId===item.id).map(dispatch=>dispatch.attempt))+1;
     workflow.dispatches[command.dispatchId]={id:command.dispatchId,itemId:item.id,itemRevision:item.revision,planId:plan.id,planRevision:plan.revision,principal:principal(actor),definitionDigest:plan.definitions[item.id].digest,attempt,fence:item.owner!.token,preparedAt:now,outcome:'prepared',inputs};
 }
-function observe(state: KanbanState, command: Extract<KanbanWorkflowCommand,{type:'observe-execution'}>, actor: KanbanActor, now: number): void {
+function observe(state: KanbanState, command: Extract<KanbanWorkflowCommand,{type:'observe-execution'}>, actor: KanbanActor, now: number): boolean {
     requireCoordinator(state,actor); const dispatch=activeDispatch(state,command.dispatchId);
     requireValue(command.fence===dispatch.fence && ['prepared','running','unknown'].includes(dispatch.outcome),'STALE_EXECUTION_RESULT');
     requireValue(['running','unknown','succeeded','failed','cancelled'].includes(command.outcome),'INVALID_EXECUTION_OUTCOME');
     if(command.code!==undefined) requireValue(/^[A-Z][A-Z0-9_]{0,79}$/.test(command.code),'INVALID_ERROR_CODE');
     const item=state.board.items.find(item=>item.id===dispatch.itemId)!;
     const outputs=command.outputs ?? [];validateOutputs(outputs);
-    if (['running', 'unknown'].includes(command.outcome)) item.owner!.leaseUntil = now + state.board.policy.leaseMs;
+    if (['running', 'unknown'].includes(command.outcome)) item.owner!.leaseUntil = Math.max(item.owner!.leaseUntil, now + state.board.policy.leaseMs);
+    if (!executionObservationChanged(dispatch, command)) return false;
     if(command.outcome==='succeeded') {
         const required=state.workflow!.plans[dispatch.planId].definitions[item.id].outputs;
         requireValue(required.every(name=>outputs.some(output=>output.name===name)),'REQUIRED_OUTPUT_MISSING');
@@ -63,6 +67,7 @@ function observe(state: KanbanState, command: Extract<KanbanWorkflowCommand,{typ
         item.status='backlog';item.blocked={reason:command.code ?? 'EXECUTION_FAILED',at:now};delete item.owner;
     }
     dispatch.outcome=command.outcome==='succeeded'&&state.board.policy.review==='assignee'?'accepted':command.outcome;dispatch.code=command.code;item.updatedAt=now;item.revision++;dispatch.itemRevision=item.revision;
+    return true;
 }
 function accept(state: KanbanState, command: Extract<KanbanWorkflowCommand,{type:'accept-execution'}>, actor: KanbanActor, apply: ApplyWorkCommand): void {
     requireCoordinator(state,actor);const dispatch=activeDispatch(state,command.dispatchId);

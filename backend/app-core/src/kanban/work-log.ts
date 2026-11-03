@@ -93,8 +93,8 @@ function parseCursor(cursor: string | undefined, board: string, query: string): 
 }
 function factKey(activity: KanbanRecordActivity, refs: KanbanExternalReference[], itemId: string, fallback: string): string {
     const tree = refs.find(ref => ref.system === 'nestos-worktree');
-    if (tree) return `${tree.id}:worktree.prepared`;
-    if (activity.dispatchId) return `${activity.dispatchId}:${activity.stage}:${activity.code ?? ''}`;
+    if (tree && activity.stage === 'worktree.prepared') return `${tree.id}:worktree.prepared`;
+    if (activity.dispatchId) return `${activity.dispatchId}:${activity.stage}:${activity.code ?? ''}${['execution.running', 'execution.unknown'].includes(activity.stage) && fallback.startsWith('event:') ? ':' + fallback : ''}`;
     const ref = refs.find(ref => ['nestos-native-session', 'nestos-execution-session'].includes(ref.system));
     return ref ? JSON.stringify([itemId, activity.stage, ref.system, ref.id]) : fallback;
 }

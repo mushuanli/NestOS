@@ -20,6 +20,8 @@ export async function kanbanCommand(client: ApplicationClient, args: string[], o
     if (!boardId) throw new Error('Missing board id');
     if (action === 'item-resources' && service.itemResources) return service.itemResources(boardId, itemId);
     if (action === 'show') return service.read(boardId);
+    if (action === 'work-resources' && itemId && service.workResources) return service.workResources(boardId, itemId);
+    if (action === 'cleanup-work-resource' && service.cleanupWorkResource) return service.cleanupWorkResource(boardId, await jsonFile<Parameters<NonNullable<Service['cleanupWorkResource']>>[1]>(options.file));
     if (action === 'workflow') return service.workflow(boardId);
     if (action === 'records') return service.records(boardId);
     if (action === 'events') return service.events(boardId, itemId ? integer(itemId) : undefined);

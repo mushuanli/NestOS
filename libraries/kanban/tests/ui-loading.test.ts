@@ -88,3 +88,15 @@ it('isolates supplementary failures and reports safe stage diagnostics without h
     expect(f.log).toHaveBeenCalledWith(expect.objectContaining({stage: 'ui.item.session', result: 'failure', code: 'EIO'}));
     expect(JSON.stringify(f.log.mock.calls)).not.toContain('PRIVATE_MESSAGE');
 });
+it('loads host work resources only on expansion and leaves retained resources protected', async () => {
+    const f = await fixture();
+    f.service.workResources = vi.fn(async () => [{id: 'tree', kind: 'opaque', title: 'Workspace', location: '/retained',
+        version: 'v1', state: 'retained', reasons: ['UNMERGED'], properties: [{label: 'Branch', value: 'work/one'}], canCleanup: false}]);
+    f.service.cleanupWorkResource = vi.fn();
+    await f.mount(); expect(f.service.workResources).not.toHaveBeenCalled();
+    const section = f.editor.querySelector<HTMLDetailsElement>('[data-work-resources]')!;
+    section.open = true; section.dispatchEvent(new Event('toggle'));
+    await vi.waitFor(() => expect(f.editor.querySelector('[data-work-resource]')?.textContent).toContain('work/one'));
+    expect(f.editor.querySelector<HTMLButtonElement>('[data-action=cleanup-work-resource]')!.disabled).toBe(true);
+    expect(f.service.cleanupWorkResource).not.toHaveBeenCalled(); expect(f.editor.inert).not.toBe(true);
+});

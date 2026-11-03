@@ -31,7 +31,7 @@ it('persists created, cancelled and blocked logs and aggregates child work under
     const reopened = new KanbanWorkLog(f.fs); await reopened.open();
     expect(await reopened.record(f.service, 'board', page.items[0].id)).toMatchObject({activity: {stage: 'task.cancelled'}, status: 'confirmed'});
 });
-it('logs session/worktree bindings, completion, cancellation and errors once per execution phase', async () => {
+it('logs real execution transitions and bindings while omitting unchanged renewals', async () => {
     const f = await fixture(); await f.create('task');
     const principal = {kind: 'human' as const, id: 'admin'};
     await f.command({type: 'publish-plan', plan: {schema: 'kanban.plan/1', id: 'plan', revision: 1, sealed: true,
@@ -43,10 +43,12 @@ it('logs session/worktree bindings, completion, cancellation and errors once per
     const dispatch = (await f.service.workflow('board')).dispatches.dispatch;
     await f.command({type: 'observe-execution', dispatchId: 'dispatch', fence: dispatch.fence, outcome: 'running'});
     await f.command({type: 'observe-execution', dispatchId: 'dispatch', fence: dispatch.fence, outcome: 'running'});
+    await f.command({type: 'observe-execution', dispatchId: 'dispatch', fence: dispatch.fence, outcome: 'unknown', code: 'OFFLINE'});
+    await f.command({type: 'observe-execution', dispatchId: 'dispatch', fence: dispatch.fence, outcome: 'running'});
     await f.command({type: 'observe-execution', dispatchId: 'dispatch', fence: dispatch.fence, outcome: 'failed', code: 'EXECUTOR_FAILED'});
     const page = await f.records({kind: 'log', limit: 200});
     expect(page.items.filter(row => row.activity?.stage === 'worktree.prepared')).toHaveLength(1);
-    expect(page.items.filter(row => row.activity?.stage === 'execution.running')).toHaveLength(1);
+    expect(page.items.filter(row => row.activity?.stage === 'execution.running')).toHaveLength(2);
     expect(page.items.find(row => row.activity?.stage === 'execution.failed')).toMatchObject({activity: {result: 'failure', code: 'EXECUTOR_FAILED'}});
     const session = page.items.find(row => row.activity?.stage === 'session.bound')!;
     expect(session.externalRefs).toContainEqual({system: 'nestos-execution-session', id: 'session', revision: 'dispatch'});

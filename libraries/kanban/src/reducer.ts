@@ -21,7 +21,8 @@ export function reduce(state: KanbanState, command: KanbanCommand, actor: Kanban
     if (!workflowInternal) protectWorkflowItem(state, command);
     const board = state.board;
     if (command.type === 'scan') { scan(state, actor, operationId, now); refreshReady(state); return state; }
-    if (isWorkflowCommand(command)) applyWorkflow(state, command, actor, now, (inner, owner = actor) => {reduce(state,inner,owner,operationId,now,token,true);});
+    let recordEvent = command.type !== 'renew';
+    if (isWorkflowCommand(command)) recordEvent = applyWorkflow(state, command, actor, now, (inner, owner = actor) => {reduce(state,inner,owner,operationId,now,token,true);});
     else if (command.type === 'apply-discovery') applyDiscovery(state, command.batch, actor, now);
     else if (isRecordCommand(command)) applyRecord(state, command, actor, now);
     else if (command.type === 'review-amendment') reviewAmendment(board, command, actor, now);
@@ -40,7 +41,7 @@ export function reduce(state: KanbanState, command: KanbanCommand, actor: Kanban
     } else transition(state, itemFor(board, command.itemId), command, actor, now, token);
     numberEntities(state); refreshReady(state);
     board.revision++;
-    append(state, actor, operationId, now, command.type, 'itemId' in command ? command.itemId : command.type === 'create-item' ? command.item.id : 'dispatchId' in command ? state.workflow?.dispatches[command.dispatchId]?.itemId : undefined,
+    if (recordEvent) append(state, actor, operationId, now, command.type, 'itemId' in command ? command.itemId : command.type === 'create-item' ? command.item.id : 'dispatchId' in command ? state.workflow?.dispatches[command.dispatchId]?.itemId : undefined,
         eventData(command, state),
         command.type === 'message' ? command.recipientSessionIds : undefined);
     scan(state, actor, operationId, now);

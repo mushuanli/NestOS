@@ -23,3 +23,5 @@ automation 设置只保存不透明绑定及协调/执行主体；configure-auto
 宿主拥有共享导航时可省略 sidebar，实例只监听、渲染和销毁自己的 editor；独立 mountKanban 默认仍创建侧栏。createBoard 提供语义命令，committed 只通知已成功提交的变更，宿主不得用模拟点击接入。父项详情按 parentId 有界分页读取子事项，新建子事项预填合法工作类型与父项，父子关系和依赖关系分别校验。
 
 KanbanProjectRecord.activity 是宿主投影的只读日志元数据，不作为协调命令输入。UI 不为自动日志读取决策执行状态或提供编辑关联表单。sessionUrl/referenceLink 注入可访问锚点；修饰键和 target=_blank 保留浏览器行为，不将业务会话命名空间硬编码进库。子事项卡片中的导航按钮和会话链接使用兄弟节点，禁止嵌套可交互元素。
+
+observe-execution 状态/错误/产物不变时只续租，不追加事件或推进事项 revision/updatedAt；正常 inspect 不记录诊断。历史相同观察事件仅在任务详情展示中折叠，原始审计不重写，错误变化与恢复仍保留。workResources/cleanupWorkResource 是可选宿主能力，资源生命周期和清理授权由宿主检查；UI 仅在展开资源区时查询，不在首屏或活动轮询中检查工作区。库不识别 Git、worktree 路径或强制删除规则。

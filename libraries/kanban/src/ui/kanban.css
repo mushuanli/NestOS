@@ -166,3 +166,7 @@
 .kanban .kanban__item-open { display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
 .kanban__item-open:focus-visible { outline: 2px solid var(--kanban-color-primary, #5277dd); outline-offset: 3px; }
 .kanban [data-item-execution]:empty { display: none; }
+.kanban__work-resource { padding: 12px 0; border-bottom: 1px solid var(--border-color, #ddd); }
+.kanban__work-resource p, .kanban__work-resource dd { overflow-wrap: anywhere; }
+.kanban__work-resource dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; }
+.kanban__work-resource dd { margin: 0; }

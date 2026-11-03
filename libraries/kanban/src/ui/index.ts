@@ -6,6 +6,7 @@ import {escapeHTML} from './html';
 import {childrenView, childType} from './children';
 import {linkPair} from './session-links';
 import {failureDetails} from './diagnostics';
+import {workResourcesView} from './work-resources';
 import {randomUUID} from '../utils';
 import type {KanbanUIOptions} from './ports';
 import {createRenderer} from './renderer';
@@ -54,6 +55,7 @@ export class KanbanWorkbench {
         }, {signal});
         editor.addEventListener('toggle', event => {
             const opened = event.target;
+            if (opened instanceof HTMLDetailsElement && opened.open && opened.hasAttribute('data-work-resources')) {void this.loadWorkResources(); return;}
             if (!(opened instanceof HTMLDetailsElement) || !opened.open || !opened.hasAttribute('data-popover')) return;
             for (const menu of editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (menu !== opened) menu.open = false;
         }, {capture: true, signal});
@@ -220,6 +222,7 @@ export class KanbanWorkbench {
     }
     private loadItemSections(generation: number, item: KanbanItem, archived: boolean): void {
         const service = this.options.service!, boardId = this.boardId;
+        if (service.workResources) this.setSection('[data-work-resource-section]', `<details data-work-resources><summary>${escapeHTML(this.ui.label('workResourceTitle'))}</summary><button type="button" data-action="refresh-work-resources">${escapeHTML(this.ui.label('refresh'))}</button><div data-work-resource-body></div></details>`);
         void this.supplement('ui.item.events', generation, () => service.events(boardId, 0, 200), events => {
             this.setSection('[data-item-events]', this.ui.itemEventsView(events.filter(event => event.itemId === item.id).reverse()));
         }, '[data-item-events]');
@@ -313,6 +316,14 @@ export class KanbanWorkbench {
             this.options.presentation.log?.({operationId: randomUUID(), stage: 'ui.reference-links', result: 'failure', code, ...failureDetails(errors[0].reason), durationMs: Date.now() - started});
         }
     }
+    private async loadWorkResources(): Promise<void> {
+        const service = this.options.service, boardId = this.boardId, itemId = this.item?.id;
+        if (!service?.workResources || !itemId) return;
+        this.setSection('[data-work-resource-body]', `<p role="status">${escapeHTML(this.ui.label('loading'))}</p>`);
+        await this.supplement('ui.item.work-resources', this.generation, () => service.workResources!(boardId, itemId), resources => {
+            if (this.item?.id === itemId && this.boardId === boardId) this.setSection('[data-work-resource-body]', workResourcesView(this.options.presentation, resources));
+        }, '[data-work-resource-body]');
+    }
     private async click(event: Event): Promise<void> {
         const target = (event.target as HTMLElement).closest<HTMLElement>('button, a'); if (!target || target.matches(':disabled')) return;
         for (const menu of this.options.editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (!menu.contains(target)) menu.open = false;
@@ -325,6 +336,12 @@ export class KanbanWorkbench {
         if (target.dataset.record) {this.itemId = ''; this.item = undefined; await this.showRecord(target.dataset.record); return;}
         if (target.dataset.item) {this.recordId = ''; this.itemId = target.dataset.item; await this.showItem(); return;}
         const action = target.dataset.action;
+        if (action === 'refresh-work-resources') {await this.loadWorkResources(); return;}
+        if (action === 'cleanup-work-resource' && this.item && this.options.service?.cleanupWorkResource) {
+            if (!globalThis.confirm(this.ui.label('cleanupWorkResourceConfirm'))) return;
+            try {await this.options.service.cleanupWorkResource(this.boardId, {operationId: randomUUID(), itemId: this.item.id, resourceId: target.dataset.resource!, version: target.dataset.version!});}
+            finally {await this.loadWorkResources();} return;
+        }
         if (action === 'close-panel' || action === 'dismiss-panel') {await this.requestClose(action === 'close-panel'); return;}
         if (action === 'copy-reference' || action === 'copy-link') {await this.ui.copyReference(target.closest<HTMLElement>('[data-action]')!); return;}
         if (action === 'automation' && this.board && this.options.service?.automationCatalog) {

@@ -2,6 +2,7 @@ import {sha256HexSync, randomUUID} from './utils';
 import type {IFileSystem} from '@itookit/vfs-core';
 import type {KanbanDispatch, KanbanService, KanbanItem, KanbanArtifactRef, KanbanPrincipal, KanbanEstimate} from './contracts';
 import {KanbanError} from './ports';
+import {executionObservationChanged} from './execution-observation';
 
 export interface KanbanExecutionObservation {
     executionSessionId?: string;
@@ -79,6 +80,7 @@ async function runBridge(options: KanbanExecutionBridgeOptions, path: string, ac
 }
 async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch, active: () => boolean, track: TrackWrite, failures: Map<string, ReadFailure>): Promise<void> {
     const start=Date.now(); let stage: 'inspect' | 'prepare' | 'start'='inspect', result: KanbanExecutionObservation;
+    const previousFailure = failures.has(dispatch.id);
     try {
         let record=await loadRecord(options,path,dispatch);if(!active()) return;
         if(!record) {
@@ -99,7 +101,8 @@ async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, 
             failures.set(dispatch.id, {code: result.code!, count, retryAt: Date.now() + Math.min(60000, 1000 * 2 ** Math.min(count - 1, 6))});
         }
     }
-    try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,...(failures.has(dispatch.id)?{retryAfterMs:Math.max(0,failures.get(dispatch.id)!.retryAt-Date.now())}:{}),durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
+    if (stage !== 'inspect' || executionObservationChanged(dispatch, result) || previousFailure && !failures.has(dispatch.id))
+        try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,...(failures.has(dispatch.id)?{retryAfterMs:Math.max(0,failures.get(dispatch.id)!.retryAt-Date.now())}:{}),durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
     if(active()) try {await linkSession(options,dispatch,result.executionSessionId);if(active()) await settle(options,dispatch,result);} catch(error) {if(safeCode(error)!=='REVISION_CONFLICT') throw error;}
 }
 async function loadRecord(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch): Promise<ExecutionRecord|undefined> {
@@ -132,7 +135,7 @@ async function settle(options: KanbanExecutionBridgeOptions, dispatch: KanbanDis
     if(!current||!['prepared','running','unknown'].includes(current.outcome)) return;
     const board=await options.service.read(options.boardId), item=board.items.find(item=>item.id===dispatch.itemId);
     const renew=['running','unknown'].includes(result.outcome) && (item?.owner?.leaseUntil ?? 0) <= Date.now() + board.policy.leaseMs / 2;
-    if(!renew&&current.outcome===result.outcome&&current.code===result.code&&JSON.stringify(current.outputs ?? [])===JSON.stringify(result.outputs ?? [])) return;
+    if(!renew&&!executionObservationChanged(current,result)) return;
     const {outcome,outputs,code}=result, observation={outcome,...(outputs?{outputs}:{}),...(code?{code}:{})};
     const digest=sha256HexSync(JSON.stringify(observation));
     await options.service.execute(board.id,{operationId:`settle:${dispatch.id}:${digest}:${board.revision}`,expectedRevision:board.revision,

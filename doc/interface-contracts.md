@@ -405,3 +405,7 @@ publish-plan → prepare-dispatch → observe-execution → accept-execution 表
 ChatOptions.ocr 是独立 llm-ui 的可选识别端口，支持 recognize、read、prepare 与安全阶段诊断。进度、取消、失败重试、结果审阅及按附件稳定身份/修订插入与移除均由库负责；模型连接与提示词不进入库。应用 OcrControls/OcrSettingsState 属于 app-contracts/services，配置表单属于 llm-ui/settings；聊天设置不重复模型配置。
 
 历史与实时输出共用 ToolOutputGroups：连续工具消息、混合助手消息中相邻的工具 part 合并为一个默认折叠组；普通正文和用户消息分隔组。分组按稳定成员身份复用节点与展开状态，批量折叠和搜索定位仍可用。cells 保留完整事实，UI 折叠不改变日志、执行结果、历史分页或传输截断标记。
+
+## Kanban 工作资源
+
+`KanbanClient.workResources(boardId,itemId)` 返回通用 `KanbanWorkResource[]`：`id/kind/title/location/version/state/reasons/properties/canCleanup`。状态为 `in-use | retained | cleanup-ready | cleaned | unknown`。`cleanupWorkResource(boardId,{operationId,itemId,resourceId,version})` 是显式副作用端口，由宿主复验身份、检查版本、资源是否占用及交付是否保留。UI 延迟到展开资源区才查询；只读查询不获取 Session writer。HTTP 能力表分别声明为 query/async，CLI 的 `kanban work-resources` 与 `cleanup-work-resource --file` 复用同一接口，不允许浏览器提交 Git 命令或宿主路径。

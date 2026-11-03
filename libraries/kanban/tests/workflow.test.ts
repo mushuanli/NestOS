@@ -43,6 +43,26 @@ it('rejects cycles and incomplete output contracts without publishing any items 
     await expect(f.run(f.managerApi,{type:'observe-execution',dispatchId:'d',fence,outcome:'succeeded'})).rejects.toMatchObject({code:'REQUIRED_OUTPUT_MISSING'});
     expect(await f.store.read('b')).toEqual(saved);
 });
+it('persists lease renewal without repeating execution events or changing the task definition revision', async () => {
+    vi.useFakeTimers({toFake: ['Date']});
+    try {
+        const f = await fixture(); await f.run(f.managerApi, {type: 'publish-plan', plan: f.plan});
+        await f.run(f.worker, {type: 'prepare-dispatch', itemId: 'schema', dispatchId: 'heartbeat'});
+        const fence = (await f.managerApi.workflow('b')).dispatches.heartbeat.fence;
+        const observe = (outcome: 'running' | 'unknown', code?: string) => f.run(f.managerApi, {type: 'observe-execution', dispatchId: 'heartbeat', fence, outcome, code});
+        await observe('running'); const before = (await f.managerApi.item('b', 'schema')).item;
+        const events = (await f.managerApi.events('b')).length;
+        vi.setSystemTime(Date.now() + 300000); await observe('running');
+        const after = (await f.managerApi.item('b', 'schema')).item;
+        expect(after.owner!.leaseUntil).toBeGreaterThan(before.owner!.leaseUntil);
+        expect(after.revision).toBe(before.revision); expect(after.updatedAt).toBe(before.updatedAt);
+        expect(await f.managerApi.events('b')).toHaveLength(events);
+        await observe('unknown', 'OFFLINE'); await observe('unknown', 'OFFLINE');
+        await observe('unknown', 'RECEIPT_MISSING'); await observe('running');
+        expect((await f.managerApi.events('b')).filter(row => row.kind === 'observe-execution')).toHaveLength(4);
+        await expect(f.run(f.managerApi, {type: 'observe-execution', dispatchId: 'heartbeat', fence: 'stale', outcome: 'running'})).rejects.toMatchObject({code: 'STALE_EXECUTION_RESULT'});
+    } finally {vi.useRealTimers();}
+});
 it('does not reassign unknown work or accept stale callbacks, and blocks confirmed failures',async()=>{
     const f=await fixture();await f.run(f.managerApi,{type:'publish-plan',plan:f.plan});await f.run(f.worker,{type:'prepare-dispatch',itemId:'schema',dispatchId:'d'});
     const fence=(await f.managerApi.workflow('b')).dispatches.d.fence;

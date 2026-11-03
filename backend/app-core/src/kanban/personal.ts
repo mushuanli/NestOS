@@ -29,6 +29,7 @@ export async function createPersonalKanban(fs: IFileSystem, events: UserEventSer
     try {await service.scan();await reportKanbanHealth(events);}
     catch(error) {await reportKanbanHealth(events,error);}
     return {...service,
+        ...automationOptions?.workResources?.({service, workLog, journal}),
         records: (boardId: string, query?: import('@itookit/kanban/contracts').KanbanRecordQuery) => workLog.records(service, boardId, query),
         record: (boardId: string, recordId: string) => workLog.record(service, boardId, recordId),
         ...(records ? {itemResources: records.itemResources, recordResources: records.recordResources, runRecord: records.runRecord, recordExecutions: async (boardId: string, recordId: string) => (await workLog.record(service, boardId, recordId)).kind === 'decision' ? records.recordExecutions(boardId, recordId) : []} : {}),

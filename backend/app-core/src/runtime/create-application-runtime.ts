@@ -3,6 +3,7 @@ import {OperationLifetime} from '../run/operation-lifetime';
 import {developmentAnalysis} from '../presets/kanban-development-analysis';
 import {developmentDelivery} from '../presets/kanban-development-delivery';
 import {developmentLifecycle} from '../presets/kanban-development-lifecycle';
+import {developmentWorkResources} from '../presets/kanban-work-resources';
 import {KanbanAutomationJournal} from '../kanban/automation-journal';
 import {developmentCatalog, validateDevelopmentOptions, requiresDevelopmentProject} from '../presets/kanban-development-policy';
 import {prepareHarnessDraftConnection} from '../projects/harness-draft-connection';
@@ -589,6 +590,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
+            workResources: developmentBindings ? context => developmentWorkResources({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore}) : undefined,
             executionResource:remoteConnections?nativeSessionResource(kernelCore,projects,remoteConnections):undefined,
             projects, requiresItemResource:requiresDevelopmentProject,
             validatePreparation: (reference, settings) => {

@@ -34,6 +34,16 @@ it('allows only one submitting bridge across concurrent observers',async()=>{
     await Promise.all([first.scan(),second.scan()]);
     expect(f.executor.start).toHaveBeenCalledTimes(1);expect(f.executor.inspect).toHaveBeenCalledTimes(1);
 });
+it('keeps healthy inspections silent and records an actual observation change', async () => {
+    const f = await fixture(); await f.prepare(); const bridge = await f.bridge(); await bridge.scan();
+    const inspectLogs = () => f.log.mock.calls.filter(([row]) => row.stage === 'bridge.inspect');
+    vi.mocked(f.executor.inspect).mockResolvedValue({outcome: 'running'});
+    await bridge.scan(); await bridge.scan(); expect(inspectLogs()).toHaveLength(0);
+    vi.mocked(f.executor.inspect).mockResolvedValue({outcome: 'unknown', code: 'OFFLINE'});
+    await bridge.scan(); await bridge.scan(); expect(inspectLogs()).toHaveLength(1);
+    vi.mocked(f.executor.inspect).mockResolvedValue({outcome: 'running'});
+    await bridge.scan(); expect(inspectLogs()).toHaveLength(2); expect(f.executor.start).toHaveBeenCalledOnce();
+});
 it('links the actual execution Session to the work item once, retaining the dispatch identity',async()=>{
     const f=await fixture();await f.prepare();vi.mocked(f.executor.start).mockResolvedValueOnce({outcome:'running',executionSessionId:'execution-session'});
     const bridge=await f.bridge();await bridge.scan();

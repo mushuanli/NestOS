@@ -172,6 +172,7 @@
 .kanban__work-resource dd { margin: 0; }
 .kanban__session-list { list-style: none; padding: 0; margin: 0; }
 .kanban__related-session { min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--border-color, #ddd); overflow-wrap: anywhere; }
+.kanban__related-session > small { display: block; margin-top: 4px; line-height: 1.5; }
 .kanban__session-heading .kanban__session-links { display: flex; flex-wrap: nowrap; min-width: 0; }
 .kanban__session-heading a:first-child { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kanban__session-heading a:last-child { flex-shrink: 0; }

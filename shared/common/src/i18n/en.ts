@@ -298,6 +298,7 @@ export const en: LocaleStrings = {
     'kanban.workResourceState.cleanup-ready': 'Ready for cleanup',
     'kanban.workResourceState.cleaned': 'Cleaned',
     'kanban.workResourceState.unknown': 'Needs verification',
+    'kanban.workResourceReason.WORK_RESOURCE_NODE_BUSY': 'The node is busy; recheck later. Cleanup has not been approved.',
     'kanban.workResourceReason.WORKTREE_MISSING': 'Worktree is missing without a cleanup receipt',
     'kanban.workResourceReason.WORKTREE_DIRTY': 'Uncommitted or untracked changes prevent cleanup',
     'kanban.workResourceReason.WORKTREE_NOT_INTEGRATED': 'Commits have not been integrated into the target branch',

@@ -137,5 +137,7 @@ async function remove(options: Options, resource: ResourceScope, key: string, bo
     } finally {await view.dispose();}
 }
 function safeCode(error: unknown): string {
-    const code = (error as {code?: unknown})?.code; return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'WORK_RESOURCE_CHECK_FAILED';
+    const value = error as {code?: unknown; remoteCode?: unknown}, code = value?.remoteCode ?? value?.code;
+    if (code === 'EBUSY') return 'WORK_RESOURCE_NODE_BUSY';
+    return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'WORK_RESOURCE_CHECK_FAILED';
 }

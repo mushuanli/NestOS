@@ -6,11 +6,22 @@ import type {PreparedWorktree} from './worktree-preparation';
 
 export interface WorktreeRepository {path: string; branch: string; baseCommit: string}
 export async function gitWorkspace(process: RemoteProcessHandle, cwd: string, args: string[], allowFailure = false) {
-    const result = await process.nativeShell.exec('git', args, {cwd, timeoutMs: 120000});
+    const result = await admittedGit(process, cwd, args);
     const codes: Record<string, string> = {submodule: 'MODULE_INITIALIZATION_FAILED', switch: 'MODULE_BRANCH_CREATION_FAILED',
         'ls-tree': 'MODULE_BASE_READ_FAILED', status: 'WORKSPACE_STATUS_FAILED', 'hash-object': 'DELIVERY_FILE_HASH_FAILED'};
     if (result.code !== 0 && !allowFailure) throw Object.assign(failure(codes[args[0]] ?? 'WORKSPACE_GIT_FAILED'), {stage: args[0], exitCode: result.code});
     return result;
+}
+/** A rejected admission ran no process; uncertain outcomes must never be replayed. */
+async function admittedGit(process: RemoteProcessHandle, cwd: string, args: string[]) {
+    for (let attempt = 0; ; attempt++) {
+        try {return await process.nativeShell.exec('git', args, {cwd, timeoutMs: 120000});}
+        catch (error) {
+            const value = error as {code?: string; remoteCode?: string; outcome?: string};
+            if (attempt >= 2 || (value.remoteCode ?? value.code) !== 'EBUSY' || value.outcome !== 'not-committed') throw error;
+            await new Promise(resolve => setTimeout(resolve, 50 * 2 ** attempt));
+        }
+    }
 }
 
 export async function prepareWorktreeModules(journal: PromptJournal, tree: PreparedWorktree, modules: string[], process: RemoteProcessHandle): Promise<WorktreeRepository[]> {

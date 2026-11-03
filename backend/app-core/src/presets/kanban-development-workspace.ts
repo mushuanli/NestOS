@@ -1,8 +1,17 @@
 import type {RemoteFileSourceProvider, ProjectRemoteMountService, RemoteProcessHandle} from '../projects/remote-mounts';
 import {requireValue} from '../kanban/validation';
+const queues = new WeakMap<ProjectRemoteMountService, Map<string, Promise<void>>>();
 
 /** Acquire the existing authorized project process; lifecycle stages share this boundary. */
-export async function developmentWorkspace<T>(remote: ProjectRemoteMountService, provider: RemoteFileSourceProvider,
+export function developmentWorkspace<T>(remote: ProjectRemoteMountService, provider: RemoteFileSourceProvider,
+    projectId: string, work: (process: RemoteProcessHandle, nodeConnectionId: string) => Promise<T>): Promise<T> {
+    const root = remote.list(projectId).find(mount => mount.at === '/'), key = root?.serverId ?? root?.connectionId ?? projectId;
+    let nodes = queues.get(remote); if (!nodes) {nodes = new Map(); queues.set(remote, nodes);}
+    const pending = (nodes.get(key) ?? Promise.resolve()).then(() => useWorkspace(remote, provider, projectId, work));
+    const tail = pending.then(() => {}, () => {}); nodes.set(key, tail);
+    void tail.then(() => {if (nodes!.get(key) === tail) nodes!.delete(key);}); return pending;
+}
+async function useWorkspace<T>(remote: ProjectRemoteMountService, provider: RemoteFileSourceProvider,
     projectId: string, work: (process: RemoteProcessHandle, nodeConnectionId: string) => Promise<T>): Promise<T> {
     const root = remote.list(projectId).find(mount => mount.at === '/');
     requireValue(root?.connectionId && root.serverProjectId && root.access === 'rw', 'REMOTE_WORKSPACE_REQUIRED');

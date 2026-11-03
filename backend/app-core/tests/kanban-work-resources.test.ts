@@ -54,6 +54,15 @@ it('checks real Git ancestry, uncommitted changes and ignored files before offer
     await mkdir(join(f.physical, 'cache')); await writeFile(join(f.physical, 'cache/private'), 'Keep');
     expect(worktreeBlockers(await inspectWorktree(f.process, f.tree))).toContain('WORKTREE_UNTRACKED_IGNORED');
 });
+it('excludes only archived protocol evidence without enumerating ignored dependency files', async () => {
+    const f = await fixture();
+    await mkdir(join(f.physical, '_nestos/kanban/inbox'), {recursive: true});
+    await writeFile(join(f.physical, '_nestos/kanban/inbox/result.yaml'), 'Evidence');
+    expect(worktreeBlockers(await inspectWorktree(f.process, f.tree, '_nestos/kanban/'))).toEqual([]);
+    await writeFile(join(f.physical, '_nestos/private'), 'Keep');
+    expect(worktreeBlockers(await inspectWorktree(f.process, f.tree, '_nestos/kanban/'))).toContain('WORKTREE_UNTRACKED_IGNORED');
+    expect(f.commands.some(args => args[0] === 'ls-files' && args.includes('--directory'))).toBe(true);
+});
 it('archives evidence before safe removal, deletes only the merged branch and returns the original receipt on retry', async () => {
     const f = await fixture(), preview = (await f.api.workResources('board', 'item'))[0];
     expect(preview).toMatchObject({id: 'ready', state: 'cleanup-ready', canCleanup: true});
@@ -102,4 +111,21 @@ it('recovers a historical resource association from its original dispatch withou
     const f = await fixture(); f.item.externalRefs = f.item.externalRefs.filter(row => row.system !== 'nestos-worktree');
     (f.service as any).workflow = async () => ({dispatches: {ready: {id: 'ready', itemId: 'item', outcome: 'accepted'}, other: {id: 'foreign', itemId: 'elsewhere', outcome: 'accepted'}}});
     expect(await f.api.workResources('board', 'item')).toEqual([expect.objectContaining({id: 'ready', state: 'cleanup-ready'})]);
+});
+it('serializes checks on the same node and never replays an unknown process admission', async () => {
+    const f = await fixture(), shell = (f.process as any).nativeShell, original = shell.exec; let active = 0;
+    shell.exec = vi.fn(async (...args: unknown[]) => {
+        expect(active).toBe(0); active++;
+        try {await new Promise(resolve => setTimeout(resolve, 2)); return await original(...args);}
+        finally {active--;}
+    });
+    await Promise.all([f.api.workResources('board', 'item'), f.api.workResources('board', 'item')]);
+    shell.exec = vi.fn(async () => {throw Object.assign(new Error('unknown'), {code: 'EIO', remoteCode: 'EBUSY', outcome: 'unknown'});});
+    expect((await f.api.workResources('board', 'item'))[0]).toMatchObject({state: 'unknown', canCleanup: false});
+    expect(shell.exec).toHaveBeenCalledOnce();
+});
+it('retries only a busy admission that the node confirms did not start', async () => {
+    const f = await fixture(), shell = (f.process as any).nativeShell, original = shell.exec;
+    shell.exec = vi.fn().mockRejectedValueOnce(Object.assign(new Error('busy'), {code: 'EIO', remoteCode: 'EBUSY', outcome: 'not-committed'})).mockImplementation(original);
+    expect((await f.api.workResources('board', 'item'))[0]).toMatchObject({state: 'cleanup-ready'});
 });

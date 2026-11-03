@@ -299,6 +299,7 @@ export const zhCN = {
     'kanban.workResourceState.cleanup-ready': '可清理',
     'kanban.workResourceState.cleaned': '已清理',
     'kanban.workResourceState.unknown': '待核对',
+    'kanban.workResourceReason.WORK_RESOURCE_NODE_BUSY': '节点当前忙，稍后重新核对；尚未确认可以清理',
     'kanban.workResourceReason.WORKTREE_MISSING': '工作树不存在，缺少清理回执',
     'kanban.workResourceReason.WORKTREE_DIRTY': '有未提交或未跟踪的修改，不能清理',
     'kanban.workResourceReason.WORKTREE_NOT_INTEGRATED': '提交尚未合入目标分支，不能清理',

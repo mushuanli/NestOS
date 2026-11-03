@@ -549,6 +549,8 @@ KanbanClient 的可选 workResources(boardId,itemId) 与 cleanupWorkResource(boa
 
 NestOS 的 Git 策略位于 presets/kanban-work-resources：从事项和工作日志中找到既有 nestos-worktree 引用，再核对 automation journal 冻结的项目、任务及 worktree，不按分支名猜归属。历史缺失归属证据的资源只展示，不清理。资源区显示项目、目录、分支、当前目标分支以及使用中/保留/可清理/已清理/待核对。
 
+工作区进程操作按远程节点串行，Git 事实检查逐命令执行，避免 Cells 进程准入互斥导致 EBUSY。只有节点明确返回 not-committed 的 EBUSY 才短暂重试，未知结果不重放；节点忙时展示具体原因并禁止清理。忽略文件按目录汇总，并通过路径规则排除待归档协议目录，避免遍历依赖目录产生超限输出。运行时关闭会等待正在进行的资源检查与清理。
+
 只有协调者可显式清理。关联任务必须 completed，原调用及其终态 hook 必须全部 settled，原生当前 turn 不活跃且观察可信；prepared/running/unknown/succeeded 待验收派发均阻止清理。宿主读取根工作区的实际当前分支作为合入目标，检查工作树注册、分支与冻结身份一致、工作树无修改/未跟踪文件，且 worktree HEAD 是目标 HEAD 的祖先；仅聊天声称合入、补丁相似或任务已完成都不能替代 Git 证明。未初始化的模块保持不动；已初始化模块和协议目录之外的忽略文件保留，当前不会强制删除它们。
 
 清理先冻结检查版本并 CAS 领取唯一操作，再将 _nestos/kanban 下的协议、冻结 prompt、沟通及结果归档到用户存储 /var/lib/kanban/worktree-archives/<id>/。单文件最多 1 MiB、总计 16 MiB、最多 1000 条目；字节摘要、读取前后版本和归档幂等核对必须通过。随后重新核对任务、原生调用和 Git 事实，才执行 git worktree remove 及 git branch -d；不使用 --force 或 -D，不自动合并、提交或丢弃修改。目录移除后的归档、会话历史和关联仍保留。

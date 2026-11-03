@@ -590,7 +590,11 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             wake: () => wakeKanban()});
         cleanupFns.push(() => developmentMessages.dispose());
         const kanban = await createPersonalKanban(systemFS, events, diagnostics, sessionRepository,kernelCore, independentCalls ? {
-            workResources: developmentBindings ? context => developmentWorkResources({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore}) : undefined,
+            workResources: developmentBindings ? context => {
+                const resources = developmentWorkResources({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore});
+                return {workResources: (boardId, itemId) => developmentOperations.run(() => resources.workResources(boardId, itemId)),
+                    cleanupWorkResource: (boardId, request) => developmentOperations.run(() => resources.cleanupWorkResource(boardId, request))};
+            } : undefined,
             executionResource:remoteConnections?nativeSessionResource(kernelCore,projects,remoteConnections):undefined,
             projects, requiresItemResource:requiresDevelopmentProject,
             validatePreparation: (reference, settings) => {

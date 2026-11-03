@@ -19,7 +19,9 @@ export class KanbanDrawer {
             this.restoreTarget = active ?? undefined; this.restoreItem = active?.dataset.item; this.restoreRecord = active?.dataset.record;
         }
         this.focusRequested ||= same && panel.contains(document.activeElement);
+        const retained = same ? ['[data-work-resource-section]', '[data-related-sessions-section]'].map(selector => ({selector, node: panel.querySelector(selector)})) : [];
         panel.innerHTML = html;
+        for (const {selector, node} of retained) if (node?.hasChildNodes()) panel.querySelector(selector)?.replaceWith(node);
         const error = document.createElement('p'); error.dataset.panelError = ''; error.setAttribute('role', 'alert');
         const header = panel.querySelector('.kanban__panel-header'); if (header) header.after(error); else panel.prepend(error);
         panel.hidden = false; panel.scrollTop = top;

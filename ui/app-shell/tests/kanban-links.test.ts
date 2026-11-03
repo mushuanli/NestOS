@@ -9,6 +9,7 @@ it('uses stable execution and native Session routes and resolves the bound proje
     const native = await resolve({system: 'nestos-native-session', id: 'native', revision: JSON.stringify({projectId: 'x1', profileId: 'codex', dispatchId: 'attempt'})});
     expect(get).toHaveBeenCalledWith('x1');
     expect(decodeURIComponent(native!.href.split('#/workbench/')[1])).toBe('/folder:x1/@harness/codex/native');
+    expect(native!.sessionId).toBe('/folder:x1/@harness/codex/native');
     expect(await resolve({system: 'other', id: 'opaque'})).toBeUndefined();
     expect(await resolve({system: 'nestos-native-session', id: 'native', revision: 'INVALID'})).toBeUndefined();
 });

@@ -99,6 +99,7 @@ export {SESSION_BROWSER_SCOPE} from '../persistence/documents';
 
 /** One navigation request. `fileNavigation` decides how the content column follows a file. */
 export interface OpenResourceOptions {
+    newTab?: boolean;
     initialInputState?: { text?: string; agentId?: string };
     reload?: boolean;
     preserveProject?: boolean;
@@ -813,8 +814,8 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
     /** Stale bookmarks must not abort the entire application bootstrap. */
-    async restoreResource(resourceId: string): Promise<void> {
-        try { await this.openResource(resourceId); }
+    async restoreResource(resourceId: string, options?: OpenResourceOptions): Promise<void> {
+        try { if (options) await this.openResource(resourceId, options); else await this.openResource(resourceId); }
         catch (error) {
             if (localizeMountError(error) !== error) { this.report(error); return; }
             if (!(error instanceof URIError) && !(error instanceof FSError && ['EINVAL', 'ENOENT'].includes(error.code))) throw error;
@@ -943,6 +944,10 @@ export class SessionWorkbench implements WorkspaceController {
         const operation = this.tail.then(async () => {
             if (this.closed) throw new Error('Session workspace closed');
             load.check();
+            if (options.newTab) {
+                if (this.tabs.current) this.tabs.keep(this.tabs.current.id);
+                this.tabs.keep(id);
+            }
             this.openingProjects = new Map();
             if (id === this.active && !options.reload && !this.tabs.current?.failed && (branch === undefined || branch === this.activeBranch)) {
                 if (target.kind === 'project-files' || target.kind === 'files') this.scheduleFileNavigation(path, options.fileNavigation);
@@ -982,7 +987,7 @@ export class SessionWorkbench implements WorkspaceController {
                 this.onSelect(this.getActiveResourceId()!); return;
             }
             if (existing?.value) await this.tabs.close(tabId, false);
-            await this.tabs.open(tabId, path.split('/').pop() || t('project.workspace'), target.kind !== 'session'); load.check();
+            await this.tabs.open(tabId, path.split('/').pop() || t('project.workspace'), !options.newTab && target.kind !== 'session'); load.check();
             if (!await load.read(() => this.checkRemoteFiles(path, target, load))) {
                 this.active = path; this.activeBranch = undefined; this.onSelect(path);
                 this.scheduleFileNavigation(path, options.fileNavigation); return;

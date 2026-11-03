@@ -601,7 +601,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 prepare: input => developmentOperations.run(() => continueDevelopment(input))} : undefined,
             workResources: developmentBindings ? context => {
                 const resources = developmentWorkResources({...developmentBindings, ...context, calls: independentCalls, kernel: kernelCore});
-                return {workResources: (boardId, itemId) => developmentOperations.run(() => resources.workResources(boardId, itemId)),
+                return {workResources: (boardId, itemId, query) => developmentOperations.run(() => resources.workResources(boardId, itemId, query)),
                     cleanupWorkResource: (boardId, request) => developmentOperations.run(() => resources.cleanupWorkResource(boardId, request))};
             } : undefined,
             executionResource:remoteConnections?nativeSessionResource(kernelCore,projects,remoteConnections):undefined,

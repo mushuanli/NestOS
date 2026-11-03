@@ -217,9 +217,15 @@ export class KanbanWorkbench {
         const {item, archive} = loaded ?? await service.item(this.boardId, this.itemId);
         if (!this.alive(generation)) return;
         this.operationStage='ui.item.render';
-        if (!this.drawer.open || this.itemArchived !== !!archive || JSON.stringify(this.item) !== JSON.stringify(item)) this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, [], !!service.executionSession), 'item:' + item.id);
+        const referencesChanged = this.item?.id === item.id && JSON.stringify(this.item.externalRefs) !== JSON.stringify(item.externalRefs);
+        if (!this.drawer.open || this.itemArchived !== !!archive || JSON.stringify(this.item) !== JSON.stringify(item)) this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, [], !!service.executionSession, this.options.reviewGuidance?.(this.board, item)), 'item:' + item.id);
         this.item = item; this.itemArchived = !!archive;
         this.loadItemSections(generation, item, !!archive);
+        const resources = this.panel().querySelector<HTMLDetailsElement>('[data-work-resources]');
+        if (referencesChanged && resources) {
+            resources.dataset.associationRevision = String(Number(resources.dataset.associationRevision ?? 0) + 1);
+            delete resources.dataset.loaded; if (resources.open) void this.loadWorkResources(false, true);
+        }
         this.options.selected(this.getActiveResourceId());
     }
     private loadItemSections(generation: number, item: KanbanItem, archived: boolean): void {
@@ -228,8 +234,7 @@ export class KanbanWorkbench {
             this.setSection('[data-related-sessions-section]', `<details data-related-sessions><summary>${escapeHTML(this.ui.label('relatedSessions'))}</summary><button type="button" data-action="refresh-related-sessions">${escapeHTML(this.ui.label('refresh'))}</button><div data-related-sessions-body></div></details>`);
         if (service.workResources) {
             const resources = this.panel().querySelector<HTMLDetailsElement>('[data-work-resources]');
-            if (!resources) this.setSection('[data-work-resource-section]', `<details data-work-resources><summary>${escapeHTML(this.ui.label('workResourceTitle'))}</summary><button type="button" data-action="refresh-work-resources">${escapeHTML(this.ui.label('refresh'))}</button><div data-work-resource-body></div></details>`);
-            else if (resources.open) void this.loadWorkResources();
+            if (!resources) this.setSection('[data-work-resource-section]', `<details data-work-resources><summary>${escapeHTML(this.ui.label('workResourceTitle'))}</summary><p>${escapeHTML(this.ui.label('workResourceHelp'))}</p><div class="kanban__actions"><button type="button" data-action="refresh-work-resources">${escapeHTML(this.ui.label('refresh'))}</button><button type="button" data-action="inspect-work-resources">${escapeHTML(this.ui.label('inspectWorkResources'))}</button></div><div data-work-resource-body></div></details>`);
         }
         void this.supplement('ui.item.events', generation, () => service.events(boardId, 0, 200), events => {
             this.setSection('[data-item-events]', this.ui.itemEventsView(events.filter(event => event.itemId === item.id).reverse()));
@@ -324,13 +329,25 @@ export class KanbanWorkbench {
             this.options.presentation.log?.({operationId: randomUUID(), stage: 'ui.reference-links', result: 'failure', code, ...failureDetails(errors[0].reason), durationMs: Date.now() - started});
         }
     }
-    private async loadWorkResources(): Promise<void> {
+    private async loadWorkResources(inspect = false, refresh = false): Promise<void> {
         const service = this.options.service, boardId = this.boardId, itemId = this.item?.id;
-        if (!service?.workResources || !itemId) return;
-        this.setSection('[data-work-resource-body]', `<p role="status">${escapeHTML(this.ui.label('loading'))}</p>`);
-        await this.supplement('ui.item.work-resources', this.generation, () => service.workResources!(boardId, itemId), resources => {
-            if (this.item?.id === itemId && this.boardId === boardId) this.setSection('[data-work-resource-body]', workResourcesView(this.options.presentation, resources));
-        }, '[data-work-resource-body]');
+        const section = this.panel().querySelector<HTMLDetailsElement>('[data-work-resources]');
+        if (!service?.workResources || !itemId || !section || section.dataset.loading || !refresh && section.dataset.loaded) return;
+        const operationId = randomUUID(), started = Date.now(), revision = section.dataset.associationRevision; section.dataset.loading = 'true';
+        if (!section.dataset.loaded) this.setSection('[data-work-resource-body]', `<p role="status">${escapeHTML(this.ui.label('loading'))}</p>`);
+        try {
+            const resources = await service.workResources(boardId, itemId, {inspect});
+            if (this.abort.signal.aborted || !section.isConnected || this.item?.id !== itemId || this.boardId !== boardId || revision !== section.dataset.associationRevision) return;
+            this.setSection('[data-work-resource-body]', workResourcesView(this.options.presentation, resources)); section.dataset.loaded = 'true';
+        } catch (error) {
+            if (!section.isConnected || this.abort.signal.aborted) return;
+            this.reportRead('ui.item.work-resources', error, operationId, started);
+            const body = section.querySelector('[data-work-resource-body]'), notice = document.createElement('p');
+            notice.setAttribute('role', 'alert'); notice.textContent = errorText(error, this.ui.label, 'ui.item.work-resources'); body?.append(notice);
+        } finally {
+            delete section.dataset.loading;
+            if (!this.abort.signal.aborted && section.isConnected && section.open && revision !== section.dataset.associationRevision) void this.loadWorkResources(false, true);
+        }
     }
     private async loadRelatedSessions(refresh = false): Promise<void> {
         const service = this.options.service, boardId = this.boardId, itemId = this.item?.id;
@@ -351,7 +368,7 @@ export class KanbanWorkbench {
         if (target.dataset.action === 'refresh-related-sessions') {await this.loadRelatedSessions(true); return;}
         for (const menu of this.options.editor.querySelectorAll<HTMLDetailsElement>('[data-popover][open]')) if (!menu.contains(target)) menu.open = false;
         if (target.dataset.session) {event.preventDefault(); await this.options.openSession(target.dataset.session); return;}
-        if (this.dirty && !['close-panel', 'copy-reference', 'copy-link'].includes(target.dataset.action ?? '')) throw new Error(this.ui.label('unsaved'));
+        if (this.dirty && !['close-panel', 'copy-reference', 'copy-link', 'copy-resource'].includes(target.dataset.action ?? '')) throw new Error(this.ui.label('unsaved'));
         const path = this.navigationTarget(target);
         if (path && this.options.navigate) {await this.options.navigate(path); return;}
         if (target.dataset.board) {await this.navigate(target.dataset.board); return;}
@@ -362,14 +379,14 @@ export class KanbanWorkbench {
         if (action === 'continue-execution' && this.item && target.dataset.dispatch) {
             await this.execute({type: 'continue-execution', previousDispatchId: target.dataset.dispatch, dispatchId: randomUUID()}); return;
         }
-        if (action === 'refresh-work-resources') {await this.loadWorkResources(); return;}
+        if (action === 'refresh-work-resources' || action === 'inspect-work-resources') {await this.loadWorkResources(action === 'inspect-work-resources', true); return;}
         if (action === 'cleanup-work-resource' && this.item && this.options.service?.cleanupWorkResource) {
             if (!globalThis.confirm(this.ui.label('cleanupWorkResourceConfirm'))) return;
             try {await this.options.service.cleanupWorkResource(this.boardId, {operationId: randomUUID(), itemId: this.item.id, resourceId: target.dataset.resource!, version: target.dataset.version!});}
-            finally {await this.loadWorkResources();} return;
+            finally {await this.loadWorkResources(false, true);} return;
         }
         if (action === 'close-panel' || action === 'dismiss-panel') {await this.requestClose(action === 'close-panel'); return;}
-        if (action === 'copy-reference' || action === 'copy-link') {await this.ui.copyReference(target.closest<HTMLElement>('[data-action]')!); return;}
+        if (action === 'copy-reference' || action === 'copy-link' || action === 'copy-resource') {await this.ui.copyReference(target.closest<HTMLElement>('[data-action]')!); return;}
         if (action === 'automation' && this.board && this.options.service?.automationCatalog) {
             this.automationCatalog = await this.options.service.automationCatalog();
             this.itemId = ''; this.drawer.show(automationForm(this.options.presentation, this.board, this.automationCatalog), 'automation'); this.dirty = true; return;
@@ -579,4 +596,4 @@ export async function mountKanban(container: HTMLElement, options: Omit<KanbanUI
 }
 export {KanbanSuggestionPicker} from './suggestion-picker';
 export type {SuggestionField} from './suggestion-field';
-export type {KanbanUIOptions, KanbanPresentation} from './ports';
+export type {KanbanUIOptions, KanbanPresentation, KanbanReviewGuidance} from './ports';

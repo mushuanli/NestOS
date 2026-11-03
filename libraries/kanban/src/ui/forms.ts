@@ -1,5 +1,5 @@
 import {executableWorkItem, DEFAULT_KANBAN_WORK_TYPES} from '../contracts';
-import type {KanbanPresentation} from './ports';
+import type {KanbanPresentation, KanbanReviewGuidance} from './ports';
 import {childType} from './children';
 import {panelHeader} from './panel-header';
 import {suggestionField, selectedItems} from './suggestion-field';
@@ -32,12 +32,13 @@ function dateInput(at?: number): string {
     const date = new Date(at); return new Date(at - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 const save = (ui: KanbanPresentation) => `<div class="kanban__actions"><button>${escapeHTML(ui.text('save'))}</button>${button(ui, 'close-panel', 'close')}</div>`;
-export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, events: KanbanEvent[], relatedSessions = false): string {
+export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean, events: KanbanEvent[], relatedSessions = false, guidance?: KanbanReviewGuidance): string {
     return `${panelHeader(ui, item.title, board, item)}
         <p>${escapeHTML(ui.text('origin'))}: ${escapeHTML(item.origin ? ui.text(item.origin.kind === 'discovery' ? 'flow' : 'manual') + ' · ' + item.origin.principal.id : ui.text('unknownOrigin'))}</p>
         <dl><dt>${escapeHTML(ui.text('itemId'))}</dt><dd>${escapeHTML(item.id)}</dd><dt>${escapeHTML(ui.text('responsibility'))}</dt><dd>${escapeHTML(item.responsibility)}</dd>
         <dt>${escapeHTML(ui.text('acceptance'))}</dt><dd>${escapeHTML(item.acceptance)}</dd><dt>${escapeHTML(ui.text('owner'))}</dt><dd>${escapeHTML(item.owner?.id ?? item.owner?.agentId ?? ui.text('none'))}</dd></dl>
         <p>${escapeHTML(ui.text(item.status))}${item.blocked ? ' · ' + escapeHTML(ui.text('blocked') + ': ' + item.blocked.reason) : ''}</p>
+        ${item.status === 'review' ? reviewGuidance(ui, guidance) : ''}
         <div class="kanban__actions">${controls(ui, board, item, actor, archived)}</div>
         ${amendmentsView(ui, item)}
         ${archived ? '' : detailForms(ui, board, item, actor)}
@@ -45,8 +46,13 @@ export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, it
         <section data-children></section><section data-related-records></section><h4>${escapeHTML(ui.text('sources'))}</h4>${sourcesView(ui, item.sources ?? [])}
         <div data-analysis></div><div data-execution-session></div><section data-related-sessions-section></section><section data-reference-links></section><section data-work-resource-section></section>
         ${relatedSessions ? '' : `<h4>${escapeHTML(ui.text('sessions'))}</h4>${item.participants.map(p => `<button type="button" data-session="${escapeAttr(p.sessionId)}">${escapeHTML(p.sessionId)} · ${escapeHTML(p.roles.join(', '))}</button>`).join('') || `<p>${escapeHTML(ui.text('none'))}</p>`}`}
-        ${archived ? '' : `<form data-form="session">${suggestionField({name: 'sessionId', label: 'session', kind: 'session', manual: true, required: true})}<button>${escapeHTML(ui.text('registerSession'))}</button></form>`}
+        ${archived ? '' : `<details><summary>${escapeHTML(ui.text('registerSession'))}</summary><p>${escapeHTML(ui.text('registerSessionHelp'))}</p><form data-form="session">${suggestionField({name: 'sessionId', label: 'session', kind: 'session', manual: true, required: true})}<button>${escapeHTML(ui.text('registerSession'))}</button></form></details>`}
         <section data-item-events>${itemEventsView(ui, events)}</section>`;
+}
+function reviewGuidance(ui: KanbanPresentation, guidance?: KanbanReviewGuidance): string {
+    const [summary, ...steps] = guidance?.paragraphs ?? [ui.text('reviewHelp')];
+    return `<section class="kanban__review-guide"><strong>${escapeHTML(guidance?.title ?? ui.text('reviewHelpTitle'))}</strong><p>${escapeHTML(summary)}</p>
+        ${steps.length ? `<details><summary>${escapeHTML(ui.text('reviewFlow'))}</summary><ol>${steps.map(text => `<li>${escapeHTML(text)}</li>`).join('')}</ol></details>` : ''}</section>`;
 }
 export function itemEventsView(ui: KanbanPresentation, events: KanbanEvent[]): string {
     return `<details><summary>${escapeHTML(ui.text('eventsHelp'))}</summary><ol>${meaningfulItemEvents(events).map(event => `<li>${escapeHTML(event.kind)} · ${escapeHTML(event.actor.id ?? event.actor.agentId ?? '')} · ${escapeHTML(new Date(event.at).toLocaleString())}${event.data.message ? `<p>${escapeHTML(event.data.message)}</p>` : ''}</li>`).join('')}</ol></details>`;

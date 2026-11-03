@@ -29,8 +29,28 @@ interface Cleanup {operationId: string; boardId: string; itemId: string; version
 interface ResourceScope {id: string; item: Awaited<ReturnType<KanbanService['item']>>['item']; record: DevelopmentWorkspaceRecord; tree: PreparedWorktree}
 
 export function developmentWorkResources(options: Options) {
-    return {workResources: (boardId: string, itemId: string) => list(options, boardId, itemId),
+    return {workResources: async (boardId: string, itemId: string, query?: import('@itookit/kanban/contracts').KanbanWorkResourceQuery) => {
+        const started = Date.now(), operationId = randomUUID(), stage = query?.inspect === false ? 'associations' : 'inspect';
+        try {
+            requireValue(query === undefined || !!query && typeof query === 'object' && !Array.isArray(query) && Object.keys(query).every(key => key === 'inspect')
+                && (query.inspect === undefined || typeof query.inspect === 'boolean'), 'INVALID_WORK_RESOURCE_QUERY');
+            const rows = await (query?.inspect === false ? associations(options, boardId, itemId) : list(options, boardId, itemId));
+            log.debug('work-resource.list', {operation: 'work-resource.list', operationId, stage, result: 'success', count: rows.length, durationMs: Date.now() - started}); return rows;
+        } catch (error) {
+            log.warn('work-resource.list', {operation: 'work-resource.list', operationId, stage, result: 'failure', code: safeCode(error), durationMs: Date.now() - started}); throw error;
+        }
+    },
         cleanupWorkResource: (boardId: string, request: KanbanWorkResourceCleanup) => cleanup(options, boardId, structuredClone(request))};
+}
+async function associations(options: Options, boardId: string, itemId: string): Promise<KanbanWorkResource[]> {
+    const refs = await references(options, boardId, itemId), rows: KanbanWorkResource[] = [];
+    for (let offset = 0; offset < refs.length; offset += 8) rows.push(...await Promise.all(refs.slice(offset, offset + 8).map(async (ref): Promise<KanbanWorkResource> => {
+        const [tree, cleanup] = await Promise.all([options.journal.get<PreparedWorktree>('worktree:' + ref.id), options.journal.get<Cleanup>('worktree-cleanup:' + ref.id)]);
+        return {id: ref.id, kind: 'git-worktree', title: tree?.branch ?? ref.id, location: tree?.directory ?? ref.id, version: '',
+            state: cleanup?.phase === 'cleaned' ? 'cleaned' : 'associated', reasons: [], canCleanup: false,
+            properties: tree ? [{label: t('kanban.workResourceBranch'), value: tree.branch}] : []};
+    })));
+    return rows;
 }
 async function references(options: Options, boardId: string, itemId: string): Promise<KanbanExternalReference[]> {
     const {item} = await options.service.item(boardId, itemId), refs = [...item.externalRefs ?? []]; let cursor: string | undefined;

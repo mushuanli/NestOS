@@ -1,12 +1,14 @@
-import type {KanbanClient, KanbanExternalReference} from '../contracts';
+import type {KanbanClient, KanbanExternalReference, KanbanBoardSummary, KanbanItem} from '../contracts';
 import type {ContentTitleBarParts} from '@itookit/ui-common';
 export interface KanbanPresentation {
     text(key: string, values?: Record<string, string | number>): string;
-    icons: {refreshView: string; more: string; close: string; back?: string};
+    icons: {refreshView: string; more: string; close: string; back?: string; copy?: string};
     log?(event: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; count?: number; errorName?: string; source?: string; durationMs: number}): void;
     referenceUrl?(path: string): string;
 }
+export interface KanbanReviewGuidance {title: string; paragraphs: string[]}
 export interface KanbanUIOptions {
+    reviewGuidance?(board: KanbanBoardSummary, item: KanbanItem): KanbanReviewGuidance | undefined;
     service?: KanbanClient;
     /** Omit when the host owns shared workspace navigation. */
     sidebar?: HTMLElement;

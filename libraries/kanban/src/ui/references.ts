@@ -15,6 +15,10 @@ export function referenceMenu(ui: KanbanPresentation, board: KanbanBoardSummary,
 export async function copyReference(ui: KanbanPresentation, button: HTMLElement): Promise<void> {
     const value = button.dataset.copy ?? '';
     const text = button.dataset.action === 'copy-link' ? ui.referenceUrl?.(value) ?? value : value;
-    try {await navigator.clipboard.writeText(text); button.textContent = ui.text('copied');}
+    try {
+        await navigator.clipboard.writeText(text);
+        if (button.dataset.action === 'copy-resource') {button.title = ui.text('copied'); button.setAttribute('aria-label', ui.text('copied'));}
+        else button.textContent = ui.text('copied');
+    }
     catch {throw Object.assign(new Error(ui.text('copyFailed')), {code:'COPY_FAILED'});}
 }

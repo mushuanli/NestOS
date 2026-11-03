@@ -175,6 +175,10 @@
 .kanban__related-session > small { display: block; margin-top: 4px; line-height: 1.5; }
 .kanban__session-heading .kanban__session-links { display: flex; flex-wrap: nowrap; min-width: 0; }
 .kanban__session-heading a:first-child { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kanban__session-heading a:last-child { flex-shrink: 0; }
+.kanban__session-heading a { max-width: 100%; }
 .kanban__session-run dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; }
 .kanban__session-run dd { margin: 0; overflow-wrap: anywhere; }
+.kanban__copy-button { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 4px; vertical-align: middle; }
+.kanban__copy-button svg { width: 18px; height: 18px; }
+.kanban__review-guide { padding: 12px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; }
+.kanban__review-guide li { margin: 8px 0; }

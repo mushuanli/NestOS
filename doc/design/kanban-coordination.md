@@ -523,7 +523,7 @@ C4Container
 
 准备工作区时将上下文随执行策略冻结，写入 `_nestos/kanban/manifest.json` 的 `context.input`。同一 manifest 还包含 runId、itemId、attemptId 及协议与仓库范围；重启核对完整 manifest，不能在旧尝试中替换当前看板或决策。Session prompt 只要求读取该文件并遵循文件协议。来源身份由宿主负责，VFS 和通用文件交换不识别 Kanban 字段，Agent 无须调用 Kanban API。
 
-看板任务卡片的「执行会话」为独立锚点，任务标题按钮仍打开详情；会话入口和任务按钮是兄弟节点，避免在按钮内嵌套链接。详情标题中的「执行会话」同样支持打开当前会话；新标签页及修饰键保持浏览器原生语义。任务详情诊断区分 load/render/session/references/children 阶段，不将所有问题合并为 ui.render。
+看板任务卡片的「执行会话」为独立锚点，任务标题按钮仍打开详情；会话入口和任务按钮是兄弟节点，避免在按钮内嵌套链接。详情标题中的「执行会话」同样支持打开当前会话；普通点击通过宿主回调在 NestOS 内打开持久标签，已打开的同一会话只激活、不重复创建；移除重复的浏览器“新标签页打开”链接。修饰键保留锚点的浏览器语义。任务详情诊断区分 load/render/session/references/children 阶段，不将所有问题合并为 ui.render。
 
 ### 原始执行过程与完成后的后续工作
 
@@ -533,7 +533,7 @@ C4Container
 
 `executionSession(boardId, itemId, {includeRelated: true})` 显式加载完整列表，普通活动查询维持原成本；独立库通过可选 `KanbanSessionSource.related` 注入关联，不依赖 Session／Kernel。NestOS 从执行绑定、规划 journal、收尾 journal 和参与者投影；规划旧记录按原 board/item/revision/signature 摘要核验并补建历史索引，后续规划追加索引而非覆盖历史。修复会话使用现有 `link-reference`：`system: nestos-fix-session`、`id: 实际 Session ID`，可选 `revision: Round ID`；登记不等于启动或完成任务。实际规划／收尾 Session 来自正式调用回执，不将 caller Session 当成另一执行会话。
 
-列表在展开时读取，支持显式刷新及新标签页访问；15 秒轮询不枚举历史，重绘当前活动时保留已展开列表。读取只观察原持久记录，不提交指令、不取得 writer、不打开或恢复 Session。单会话的状态由授权冷摘要读取；执行状态核对对应 Kernel 任务及子树，原生 turn 按原 Invocation 检查 checkpoint／活动 journal，避免将新 turn 错配给旧轮次。缺失数据保留未知和具体错误码，不伪造完成时间。CLI `kanban sessions <board-id> <item-id>` 使用同一接口。
+列表在展开时读取，支持显式刷新及 NestOS 内标签页访问；15 秒轮询不枚举历史，重绘当前活动时保留已展开列表。读取只观察原持久记录，不提交指令、不取得 writer、不打开或恢复 Session。单会话的状态由授权冷摘要读取；执行状态核对对应 Kernel 任务及子树，原生 turn 按原 Invocation 检查 checkpoint／活动 journal，避免将新 turn 错配给旧轮次。缺失数据保留未知和具体错误码，不伪造完成时间。CLI `kanban sessions <board-id> <item-id>` 使用同一接口。
 
 决策的执行完成后移除两种运行入口，新 operationId 也拒绝重新运行（DECISION_EXECUTION_COMPLETED）。原 operationId 的回执核对保留幂等性。之后发现问题应在适当看板创建新任务，关联原决策或已完成任务；不通过重新运行已完成决策覆盖原验收事实。
 
@@ -593,3 +593,14 @@ NestOS 的 Git 策略位于 presets/kanban-work-resources：从事项和工作�
 清理先冻结检查版本并 CAS 领取唯一操作，再将 _nestos/kanban 下的协议、冻结 prompt、沟通及结果归档到用户存储 /var/lib/kanban/worktree-archives/<id>/。单文件最多 1 MiB、总计 16 MiB、最多 1000 条目；字节摘要、读取前后版本和归档幂等核对必须通过。随后重新核对任务、原生调用和 Git 事实，才执行 git worktree remove 及 git branch -d；不使用 --force 或 -D，不自动合并、提交或丢弃修改。目录移除后的归档、会话历史和关联仍保留。
 
 prepared/removing/cleaned 回执持久化。进入移除前的失败释放该次准备领取，可重查后重试；进入移除后的未知结果阻止重放。成功重试返回原资源状态并补齐幂等清理日志。并发操作、过期预览、项目变化、未完成任务、脏树、未合入、在用或未知执行均不得删除。
+
+
+### 开发任务验收与服务版本
+
+`review` 只表示执行者已交付，需记录独立验收结论；它不能证明 AI 独立验收通过、人工验收通过或某个构建已上线。开发预设通过 UI `reviewGuidance` 回调提供流程说明，独立库只渲染语义说明，不识别部署、Git 或 HTTP 宿主。当前界面尚未提供自动切换验收版本操作，不把说明当成已执行回执。
+
+开发验收采用**替换当前服务**：保留当前版本与回滚信息，构建包含待验收改动的候选版本，停止旧进程后在同一地址、端口启动候选版本；不并行启动第二个共享数据的宿主。确认 health 的运行版本匹配任务及候选构建，再执行人工验收并记录证据；AI 测试与人工体验分别确认。涉及数据格式变更时先保存数据并核对回滚兼容性，不能仅靠切回旧二进制保证可恢复。
+
+验收通过只记录结论，不自动 commit、合入、部署或清理。按原任务提交策略显式提交与合入主分支，再部署正式版本；只有终态、会话释放、修改已保存且成果已合入的工作区可以清理。未通过时创建关联原任务的修复任务，保留原交付基线与验收证据；进入原会话主要用于查看过程、沟通和澄清，修改成果必须重新交付并验收。需要时切回原服务。
+
+工作区默认查询 `workResources(boardId, itemId, {inspect: false})`，只显示持久关联及可复制的名称、路径、分支；不会查询远程 Git、原生会话或把“已关联”当成可清理证据。展开时只读取一次，后台事件保留当前内容和在途请求；显式刷新重新读取关联，“检查清理条件”才执行检查。原无 query 的检查接口保持兼容，所有清理操作仍在后端重新核验版本和安全条件。手工“关联已有讨论会话”可多次添加，登记为观察者与状态订阅，不启动 AI、不合并对话历史、不替代主执行绑定。

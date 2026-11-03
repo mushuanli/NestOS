@@ -43,3 +43,12 @@ it('forwards visibility without destroying the cached workspace', async () => {
     expect(workbench.destroy).not.toHaveBeenCalled();
     await module.dispose();
 });
+it('preserves explicit internal-tab navigation through both direct and recoverable workspace adapters', async () => {
+    const workbench = controller(), restoreResource = vi.fn(async () => {}), options = {newTab: true};
+    const direct = createWorkspaceModule(workbench);
+    await restoreWorkspaceResource(direct.workbench, 'native-resource', options);
+    expect(workbench.openResource).toHaveBeenCalledExactlyOnceWith('native-resource', options);
+    const recoverable = createWorkspaceModule({...workbench, restoreResource});
+    await restoreWorkspaceResource(recoverable.workbench, 'other-resource', options);
+    expect(restoreResource).toHaveBeenCalledExactlyOnceWith('other-resource', options);
+});

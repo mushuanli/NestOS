@@ -161,7 +161,8 @@ it('renders real Session anchors and preserves modified clicks for browser tabs'
     const view = new KanbanWorkbench({editor, service: f.service, presentation: presentation('links'), selected: vi.fn(), openSession,
         sessionUrl: id => '#/workbench/' + id, initialResource: '/board/links/task'}); closes.push(() => view.destroy()); await view.start();
     const anchor = editor.querySelector<HTMLAnchorElement>('a[data-session=execution]')!;
-    expect(anchor.href).toContain('#/workbench/execution'); expect(editor.querySelector<HTMLAnchorElement>('a[target=_blank]')!.rel).toContain('noopener');
+    expect(anchor.href).toContain('#/workbench/execution'); expect(editor.querySelector('a[target=_blank]')).toBeNull();
+    expect(editor.querySelectorAll('.kanban__execution-detail a[data-session=execution]')).toHaveLength(1);
     const modified = new MouseEvent('click', {bubbles: true, cancelable: true, ctrlKey: true}); anchor.dispatchEvent(modified);
     expect(modified.defaultPrevented).toBe(false); expect(openSession).not.toHaveBeenCalled();
     anchor.click(); await vi.waitFor(() => expect(openSession).toHaveBeenCalledWith('execution'));
@@ -177,7 +178,8 @@ it('shows projected activity as a read-only record with independently resolved S
         referenceLink: async () => ({href: '#/workbench/session', label: 'Execution', sessionId: 'session'})}); closes.push(() => view.destroy()); await view.start();
     expect(editor.querySelector('[data-form=record-link]')).toBeNull(); expect(executions).not.toHaveBeenCalled();
     expect(editor.querySelector<HTMLAnchorElement>('[data-reference-links] a')!.href).toContain('#/workbench/session');
-    expect(editor.querySelectorAll('[data-reference-links] a[target=_blank]')).toHaveLength(1);
+    expect(editor.querySelectorAll('[data-reference-links] a[data-session=session]')).toHaveLength(1);
+    expect(editor.querySelectorAll('[data-reference-links] a[target=_blank]')).toHaveLength(0);
 });
 it('returns an updated log view to the first page when background activity invalidates its cursor', async () => {
     const f = await fixture();

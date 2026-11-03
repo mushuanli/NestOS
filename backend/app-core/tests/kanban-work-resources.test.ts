@@ -54,6 +54,14 @@ it('checks real Git ancestry, uncommitted changes and ignored files before offer
     await mkdir(join(f.physical, 'cache')); await writeFile(join(f.physical, 'cache/private'), 'Keep');
     expect(worktreeBlockers(await inspectWorktree(f.process, f.tree))).toContain('WORKTREE_UNTRACKED_IGNORED');
 });
+it('lists saved associations without remote Git or native-session inspection and refuses unchecked cleanup', async () => {
+    const f = await fixture(); f.commands.splice(0);
+    const rows = await f.api.workResources('board','item',{inspect:false});
+    expect(rows[0]).toMatchObject({id:'ready',title:'work/ready',location:f.tree.directory,state:'associated',canCleanup:false,version:''});
+    expect(f.commands).toEqual([]); expect(native.reasons).toEqual([]);
+    await expect(f.api.cleanupWorkResource('board',{operationId:'unchecked',itemId:'item',resourceId:'ready',version:''})).rejects.toMatchObject({code:'INVALID_WORK_RESOURCE_CLEANUP'});
+    await expect(f.api.workResources('board','item',{inspect:'yes'} as never)).rejects.toMatchObject({code:'INVALID_WORK_RESOURCE_QUERY'});
+});
 it('excludes only archived protocol evidence without enumerating ignored dependency files', async () => {
     const f = await fixture();
     await mkdir(join(f.physical, '_nestos/kanban/inbox'), {recursive: true});

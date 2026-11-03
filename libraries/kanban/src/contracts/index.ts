@@ -17,4 +17,4 @@ export type {KanbanContent, KanbanContentItem, KanbanContentRecord, KanbanConten
 export type {KanbanAutomationSettings, KanbanAutomationOption, KanbanAutomationTarget, KanbanAutomationCatalog, KanbanAnalysisStatus} from './automation';
 export {sameAutomationBinding} from './automation';
 export type {KanbanItemResourceCatalog, KanbanRecordResource, KanbanRecordExecution, KanbanRecordRunRequest} from './record-execution';
-export type {KanbanWorkResource, KanbanWorkResourceCleanup} from './work-resources';
+export type {KanbanWorkResource, KanbanWorkResourceCleanup, KanbanWorkResourceQuery} from './work-resources';

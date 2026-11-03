@@ -3,7 +3,7 @@ import {executionSessionReference} from '@itookit/app-contracts';
 import {ACTION_ICONS, createModuleLogger, randomUUID, t} from '@itookit/common';
 import {WorkbenchTabs, type WorkbenchTab} from '../workbench/tabs';
 import type {WorkbenchWindowBinding} from '../workbench/windows';
-import {kanbanPresentation} from './host';
+import {kanbanPresentation, kanbanReviewGuidance} from './host';
 import {KanbanSidebar} from './sidebar';
 import {VFS_DOM_EVENTS} from '@itookit/vfs-ui';
 
@@ -63,7 +63,7 @@ export class KanbanWindowWorkbench {
     private createPage(tab: WorkbenchTab<Page>): void {
         const editor = document.createElement('div'); tab.panel.append(editor);
         const view = new KanbanView({...this.options, sidebar: undefined, editor, initialResource: tab.id,
-            presentation: kanbanPresentation, executionReference: executionSessionReference,
+            presentation: kanbanPresentation, executionReference: executionSessionReference, reviewGuidance: this.options.reviewGuidance ?? kanbanReviewGuidance,
             navigate: path => this.navigate(path), changed: () => this.updatePage(tab),
             selected: () => this.updatePage(tab), committed: () => this.navigation.invalidate(),
             mountTitleBar: (container, parts) => this.tabs.mountTitleBar(container, parts),

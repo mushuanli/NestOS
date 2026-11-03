@@ -357,7 +357,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const module = createKanbanWorkspace({service: services.kanban, sidebar: sidebarEl, editor: editorEl,
                 windows: windowBinding, initialResource, sessionUrl, referenceLink: kanbanReferenceLink(services.projects),
                 selected: path => selectionHistory(elementId, path, 'push'),
-                openSession: id => handleNavigationRequest({target: 'chat', resourceId: id})});
+                openSession: id => handleNavigationRequest({target: 'chat', resourceId: id, options: {newTab: true}})});
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
             if (visibleWorkspaceId !== elementId || document.hidden) await module.workbench.setVisible?.(false);
             else options.onWorkspaceReady?.({editor: editorEl});
@@ -599,7 +599,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (!closed && !replayingHistory && routingRevision === undefined && visibleWorkspaceId === id) updateHistory(id, resource, mode);
     };
 
-    const performNavigation = async (workspaceId: string, resourceId?: string, sourceSlug?: string, historyReplay?: symbol): Promise<void> => {
+    const performNavigation = async (workspaceId: string, resourceId?: string, sourceSlug?: string, historyReplay?: symbol, openOptions?: import('@itookit/app-contracts').WorkspaceOpenOptions): Promise<void> => {
         if (replayingHistory !== historyReplay) replayingHistory = undefined;
         const revision = ++navigationRevision;
         if (closed) return;
@@ -644,7 +644,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             if (closed || revision !== navigationRevision) return;
             if (mgr && resourceId) {
                 const wasAlreadyOpen = mgr.getActiveResourceId() === resourceId;
-                await restoreWorkspaceResource(mgr, resourceId);
+                await restoreWorkspaceResource(mgr, resourceId, openOptions);
                 if (closed || revision !== navigationRevision) return;
                 // A retained editor needs the anchor forwarded explicitly.
                 if (wasAlreadyOpen) {
@@ -752,7 +752,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 }
                 const resourceId = req.resourceId ?? (isProjectWorkspace(targetWsId) ? '/' : undefined);
                 updateHistory(targetWsId, resourceId ?? null, 'push');
-                await performNavigation(targetWsId, resourceId, req.target);
+                await performNavigation(targetWsId, resourceId, req.target, undefined, req.options?.newTab ? {newTab: true} : undefined);
             }
         }
     };

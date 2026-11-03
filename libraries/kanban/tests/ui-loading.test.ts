@@ -6,7 +6,7 @@ import {KanbanWorkbench} from '../src/ui';
 import type {KanbanClient, KanbanSessionItemPage, KanbanExecutionSessionDetail} from '../src/contracts';
 
 const closes: Array<() => Promise<void>> = [];
-afterEach(async () => {for (const close of closes.splice(0).reverse()) await close(); vi.useRealTimers(); vi.restoreAllMocks(); document.body.replaceChildren();});
+afterEach(async () => {for (const close of closes.splice(0).reverse()) await close(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.replaceChildren();});
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 async function fixture() {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); closes.push(() => manager.dispose());
@@ -46,7 +46,7 @@ it('loads the related Session list only on expansion, links the native Session, 
     await vi.waitFor(()=>expect(f.editor.querySelectorAll('[data-related-session]')).toHaveLength(1));
     expect(execution.mock.calls.filter(([, , query])=>query?.includeRelated)).toHaveLength(1);
     expect(section.querySelector('a')?.getAttribute('href')).toBe('#/workbench/%2Fnative%2Foriginal');
-    expect(section.querySelector('a[target="_blank"]')).not.toBeNull(); expect(section.querySelector('session')).toBeNull();
+    expect(section.querySelector('a[target="_blank"]')).toBeNull(); expect(section.querySelector('session')).toBeNull();
     expect(section.textContent).toContain('turn-2'); expect(section.textContent).toContain('sessionContinuation');
     await (view as any).refreshActivity((view as any).generation);
     expect(f.editor.querySelector('[data-related-sessions]')).toBe(section); expect(section.open).toBe(true);
@@ -122,8 +122,8 @@ it('loads host work resources only on expansion and leaves retained resources pr
     expect(f.editor.querySelector<HTMLButtonElement>('[data-action=cleanup-work-resource]')!.disabled).toBe(true);
     expect(f.service.cleanupWorkResource).not.toHaveBeenCalled(); expect(f.editor.inert).not.toBe(true);
 });
-it('preserves an expanded resource section when an event refresh invalidates its pending read', async () => {
-    const f = await fixture(), gate = deferred<[]>();
+it('preserves an expanded resource section and its single pending read across repeated background events', async () => {
+    const f = await fixture(), gate = deferred<any[]>();
     const resources = [{id: 'tree', kind: 'opaque', title: 'Workspace', location: '/retained', version: 'v1',
         state: 'retained' as const, reasons: ['UNMERGED'], properties: [], canCleanup: false}];
     f.service.workResources = vi.fn().mockReturnValueOnce(gate.promise).mockResolvedValue(resources);
@@ -131,10 +131,44 @@ it('preserves an expanded resource section when an event refresh invalidates its
     section.open = true;
     await vi.waitFor(() => expect(f.service.workResources).toHaveBeenCalledOnce());
     view.invalidateFromEvents();
+    gate.resolve(resources);
     await vi.waitFor(() => expect(f.editor.querySelector('[data-work-resource]')).not.toBeNull());
     expect(f.editor.querySelector('[data-work-resources]')).toBe(section); expect(section.open).toBe(true);
-    gate.resolve([]); await Promise.resolve(); await Promise.resolve();
+    view.invalidateFromEvents(); await new Promise(resolve=>setTimeout(resolve,30));
+    expect(f.service.workResources).toHaveBeenCalledExactlyOnceWith('work','one',{inspect:false});
     expect(f.editor.querySelector('[data-work-resource]')).not.toBeNull();
+});
+it('re-reads associations once when the item links change while an older read is pending', async () => {
+    const f=await fixture(), gate=deferred<any[]>();
+    const resource=(id:string)=>({id,kind:'opaque',title:id,location:'/'+id,version:'',state:'associated',reasons:[],properties:[],canCleanup:false});
+    f.service.workResources=vi.fn().mockReturnValueOnce(gate.promise).mockResolvedValue([resource('new-tree')]);
+    const view=await f.mount(),section=f.editor.querySelector<HTMLDetailsElement>('[data-work-resources]')!;
+    section.open=true;section.dispatchEvent(new Event('toggle'));
+    await vi.waitFor(()=>expect(f.service.workResources).toHaveBeenCalledOnce());
+    await f.service.execute('work',{operationId:'associate-resource',expectedRevision:(await f.service.read('work')).revision,
+        command:{type:'link-reference',itemId:'one',reference:{system:'external-resource',id:'new-tree'}}});
+    view.invalidateFromEvents();
+    await vi.waitFor(()=>expect(section.dataset.associationRevision).toBe('1'));
+    gate.resolve([resource('old-tree')]);
+    await vi.waitFor(()=>expect(f.editor.querySelector('[data-work-resource="new-tree"]')).not.toBeNull());
+    expect(f.editor.querySelector('[data-work-resource="old-tree"]')).toBeNull();
+    expect(f.service.workResources).toHaveBeenCalledTimes(2);
+    expect(f.service.workResources).toHaveBeenLastCalledWith('work','one',{inspect:false});
+});
+it('copies saved workspace fields and checks cleanup only after an explicit request', async () => {
+    const f = await fixture(), writeText = vi.fn(async () => {});
+    vi.stubGlobal('navigator', Object.create(navigator, {clipboard: {value: {writeText}}}));
+    f.service.workResources = vi.fn(async () => [{id:'tree',kind:'opaque',title:'work/one',location:'/retained',version:'',state:'associated',reasons:[],properties:[],canCleanup:false}]);
+    await f.mount(); const section=f.editor.querySelector<HTMLDetailsElement>('[data-work-resources]')!;
+    section.open=true; section.dispatchEvent(new Event('toggle'));
+    await vi.waitFor(()=>expect(section.querySelector('[data-work-resource]')).not.toBeNull());
+    section.querySelector<HTMLButtonElement>('[data-copy="/retained"]')!.click();
+    await vi.waitFor(()=>expect(writeText).toHaveBeenCalledExactlyOnceWith('/retained'));
+    await vi.waitFor(()=>expect(f.editor.hasAttribute('aria-busy')).toBe(false));
+    expect(f.service.workResources).toHaveBeenCalledTimes(1);
+    section.querySelector<HTMLButtonElement>('[data-action="inspect-work-resources"]')!.click();
+    await vi.waitFor(()=>expect(f.service.workResources).toHaveBeenCalledTimes(2));
+    expect(f.service.workResources).toHaveBeenLastCalledWith('work','one',{inspect:true});
 });
 it('shows continuation only when the host provides an eligible predecessor', async () => {
     const f = await fixture();

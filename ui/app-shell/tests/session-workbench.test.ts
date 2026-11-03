@@ -36,6 +36,17 @@ it.each(['/folder:P/@files', '/s/files'])('keeps the file directory %s unchanged
     } finally {await f.workbench.destroy();}
 });
 describe('Session workbench lifecycle', () => {
+    it('opens a requested internal tab without replacing the previous preview or duplicating an existing Session', async () => {
+        const f = setup(); await f.workbench.start(); const tabs = (f.workbench as any).tabs;
+        try {
+            await tabs.open('previous-preview', 'Previous', true);
+            await f.workbench.openResource('s', {newTab:true});
+            expect(tabs.get('previous-preview')?.preview).toBe(false); expect(tabs.get('s')?.preview).toBe(false);
+            await f.workbench.openResource('s', {newTab:true});
+            expect(tabs.values().filter((tab:any)=>tab.id==='s')).toHaveLength(1);
+            expect(tabs.get('previous-preview')).toBeDefined();
+        } finally {await f.workbench.destroy();}
+    });
     it('retains an unavailable MCP binding when restoring a route instead of replacing it as stale', async () => {
         const f = setup(); await f.workbench.start();
         const error = new RemoteConnectionUnavailableError({connectionId: 'missing', connectionName: 'Office',

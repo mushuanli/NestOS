@@ -7,5 +7,7 @@ it('describes replacement acceptance without claiming a deployment or enabling a
     expect(text).toContain('先停止当前服务');expect(text).toContain('不并行启动第二份服务');
     expect(text).toContain('尚未提供自动切换');expect(text).toContain('不代表当前服务已切换');
     expect(text).toContain('不会自动 commit');expect(text).toContain('已合入主分支');
+    expect(text).toContain('继续原主执行 Session');expect(text).toContain('由用户选择或修改处理方案');
+    expect(text).toContain('任一变化');expect(text).toContain('不自动新建会话');
     expect(kanbanReviewGuidance({} as never,{externalRefs:[]} as never)).toBeUndefined();
 });

@@ -12,6 +12,7 @@ export const kanbanReviewGuidance: NonNullable<KanbanUIOptions['reviewGuidance']
     if (!item.externalRefs?.some(ref => ref.system === 'nestos-worktree') && board.automation?.preparation?.id !== 'git-worktree') return;
     return {title: t('kanban.developmentReview.title'), paragraphs: [
         t('kanban.developmentReview.pending'), t('kanban.developmentReview.switch'), t('kanban.developmentReview.verify'),
-        t('kanban.developmentReview.accept'), t('kanban.developmentReview.reject'), t('kanban.developmentReview.cleanup'),
+        t('kanban.developmentReview.accept'), t('kanban.developmentReview.mergeAnalysis'), t('kanban.developmentReview.mergeConfirm'),
+        t('kanban.developmentReview.reject'), t('kanban.developmentReview.cleanup'),
     ]};
 };

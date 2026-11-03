@@ -284,9 +284,10 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const navigationObservers = new Map<WorkspaceController, () => void>();
     let visibleWorkspaceId: string | undefined;
-    const windows = new WorkbenchWindows(()=>[...document.querySelectorAll<HTMLButtonElement>('.app-nav-btn[data-target]')].map(button=>({
+    const windows = new WorkbenchWindows(()=>[...new Map([...document.querySelectorAll<HTMLButtonElement>('.app-nav-btn[data-target]')]
+        .map(button=>[button.dataset.target!,button] as const)).values()].map(button=>({
         id:button.dataset.target!,title:button.getAttribute('aria-label')||button.title||button.textContent?.trim()||button.dataset.target!,
-        icon:button.querySelector('svg')?.outerHTML,active:button.dataset.target===visibleWorkspaceId,
+        icon:button.querySelector('svg, i, [aria-hidden="true"]')?.outerHTML,active:button.dataset.target===visibleWorkspaceId,
         activate:()=>navigateWorkspace(button.dataset.target!),
     }))); windows.query = options.recovery?.openedQuery ?? '';
     let navigationRevision = 0, closed = false;

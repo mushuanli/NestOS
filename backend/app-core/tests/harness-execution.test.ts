@@ -4,6 +4,26 @@ import { ExecutionJournal, nativeOperationId } from '../src/projects/harness-exe
 import { complete, fixture, interaction, request } from './harness-execution-fixture';
 
 describe('durable native Harness execution', () => {
+    it('names a new native Session with journaled metadata before sending its prompt', async () => {
+        const f = fixture(); f.profile.capabilities.rename = true;
+        f.client.rename = vi.fn(async (_profile, _session, title, options) => {
+            const journal = f.records.get(harnessExecutionJournalKey(f.context))!.value as any;
+            expect(journal.operations.title.outcome).toBe('pending');
+            expect(f.client.turn).not.toHaveBeenCalled();
+            return f.committed(options, {session: {...f.session, title}}) as {session: typeof f.session};
+        });
+        complete(f); const named = {...request, title: 'Development #2'};
+        await f.make().execute(named, f.context);
+        await f.make().reconcile(named, f.context);
+        expect(f.client.rename).toHaveBeenCalledOnce(); expect(f.client.create).toHaveBeenCalledOnce(); expect(f.client.turn).toHaveBeenCalledOnce();
+    });
+    it('keeps title response loss separate from execution and never creates a replacement Session', async () => {
+        const f = fixture(); f.profile.capabilities.rename = true;
+        f.client.rename = vi.fn(async () => {throw new Error('response lost');}); complete(f);
+        await expect(f.make().execute({...request, title: 'Task'}, f.context)).resolves.toMatchObject({sessionId: 'native-session'});
+        expect(f.client.create).toHaveBeenCalledOnce(); expect(f.client.turn).toHaveBeenCalledOnce();
+        expect(JSON.stringify(vi.mocked(f.context.emit!).mock.calls)).not.toContain(request.prompt);
+    });
     it('reports scoped not-started evidence without acquiring a connection when no original journal exists', async () => {
         const f = fixture();
         expect(await f.make().reconcile(request, f.context)).toEqual({status: 'not-started', evidence: {

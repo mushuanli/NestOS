@@ -8,12 +8,14 @@ import type { HarnessConnectionSnapshot, HarnessExecutionRequest, HarnessExecuti
 
 export interface HarnessProgramInput {
     connection: HarnessConnectionSnapshot;
+    title?: string;
     messages?: HarnessInputMessage[];
     attachments?: import('../llm-management/contracts/harness-execution').HarnessInputAttachment[];
     prompt?: string;
     dependencies?: Array<{ taskId: string; input: string; output?: string; injectOutput?: boolean }>;
     includeDependencyOutputs?: boolean;
-    timeoutMs?: number;
+    /** Explicit total deadline; absent or null follows the native turn until terminal evidence. */
+    timeoutMs?: number | null;
     context?: import('../llm-management/contracts/context-binding').HarnessContextRequest;
     /** Canonical messages live in messages; the remaining assembly facts share its immutable Task input. */
     contextSnapshot?: Omit<ContextSnapshot, 'canonicalMessages'>;
@@ -63,10 +65,11 @@ function ready(state: State): Result {
     state.running = true;
     state.notificationKey = `harness.execution.${state.handleId}`;
     const request: HarnessExecutionRequest = { connection: state.input.connection, ...nativeInput(state),
+        ...(state.input.title !== undefined ? {title: state.input.title} : {}),
         resourceHandleId: state.handleId, notificationKey: state.notificationKey,
         ...(state.input.context ? {context: state.input.context} : {}) };
     return { ...waiting(state), actions: [{ type: 'effect', effect: { id: 'harness', kind: 'harness.execute', version: '1',
-        request, idempotencyKey: 'harness', timeoutMs: state.input.timeoutMs ?? 1_800_000,
+        request, idempotencyKey: 'harness', timeoutMs: state.input.timeoutMs ?? null,
         grants: [{ handleId: state.handleId, right: 'execute' }] } }] };
 }
 
@@ -118,7 +121,9 @@ function nativeInput(state: State) {
 function validateInput(input: HarnessProgramInput): void {
     prepareHarnessInput(input);
     if (!validConnection(input.connection)) throw inputError('HARNESS_CONNECTION_INVALID');
-    if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1)) throw inputError('HARNESS_TIMEOUT_INVALID');
+    if (input.timeoutMs !== undefined && input.timeoutMs !== null && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1)) throw inputError('HARNESS_TIMEOUT_INVALID');
+    if (input.title !== undefined && (typeof input.title !== 'string' || !input.title.trim() || /[\x00-\x1f\x7f]/.test(input.title)
+        || new TextEncoder().encode(input.title).byteLength > 512)) throw inputError('HARNESS_TITLE_INVALID');
     if (input.context) assertHarnessContextRequest(input.context);
     if (input.context && input.includeDependencyOutputs !== false && input.dependencies?.some(item => item.injectOutput !== false))
         throw inputError('HARNESS_CONTEXT_DEPENDENCIES_UNSNAPSHOTTED');

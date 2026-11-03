@@ -47,7 +47,7 @@ function snapshotInput(input: DirectConversationPreparationInput): DirectConvers
     if (![task?.id, task?.sessionId, input?.roundId].every(value => typeof value === 'string' && !!value.trim())
         || !task?.input || task.input.sessionId !== undefined && task.input.sessionId !== task.sessionId)
         throw Object.assign(new Error('Direct preparation identity does not match its Session'), {code: 'CALL_PREPARATION_SCOPE_MISMATCH'});
-    return {...structuredClone({roundId: input.roundId, config: input.config, contextFiles: input.contextFiles,
+    return {...structuredClone({roundId: input.roundId, title: input.title, config: input.config, contextFiles: input.contextFiles,
         ...(input.currentInput ? {currentInput: input.currentInput} : {}),
         task: {id: task.id, sessionId: task.sessionId, input: task.input, ...(task.frozen ? {frozen: task.frozen} : {})}}), log: input.log};
 }

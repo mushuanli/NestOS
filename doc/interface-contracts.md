@@ -287,6 +287,10 @@ HTTP v15 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClie
 
 ## 原生 Harness 斜杠命令
 
+原生执行的 `HarnessProgramInput.timeoutMs` 只表示显式总时限，省略或 `null` 均不设置 Effect 截止时间；不能用固定 30 分钟推断活跃 turn 失效。运行/完成按当前 Session 与 turn 的权威事件和终态判断，目录或历史文件更新时间仅是活跃证据，不是完成依据。缺少进展和断线保留可诊断的未知状态，不自动重新创建会话。显式总时限即使持续活跃也会到期，不能与无进展检测混用。
+
+`HarnessExecutionRequest.title` 是与 prompt 分离的宿主元数据（1–512 UTF-8 字节，无控制字符）。Session 准备从自身持久标题冻结并限制长度；支持 rename 的目标在新会话首次 turn 前通过已有原生操作回执命名，恢复只核对原操作，不新建 Session。续接或 fork 不覆盖既有名称；命名失败只记录元数据错误，不重派开发。VFS 与窗口列表共享最多 40 个字素的展示省略规则，保留完整搜索、编辑与可访问名称，窄屏继续按实际宽度单行省略。
+
 ConversationControls 的可选 commands/command 端口承接当前原生会话的命令目录和执行；snapshot.supportsSlashCommands 只在宿主声明能力时启用。cells-driver 通过 profile.capabilities.slashCommands 协商，目录为纯数据，具体命令名与原生 RPC 留在 cells 对应插件内。Claude 使用 SDK 目录及 slash prompt，Codex 将 compact/review 映射为专用控制调用，DSH 使用原生 commands/list 与 commands/execute。
 
 原生会话输入使用 NativeSlashCommandPlugin 提供候选，不混入本地 Kernel slash 操作；选择只填入输入，发送时再次验证当前目录。command 沿用 epoch、requestId、项目 revision、操作队列和 reconcile，可接纳但不产生 turnId；只有 prompt 类命令产生原生用户消息时才按该消息身份呈现。DSH command/run、command/done 以稳定 commandId 进入系统记录。未知操作跨视图保留，接纳不清除提交后的新草稿；关闭输入释放插件并拒绝迟到目录恢复弹层。

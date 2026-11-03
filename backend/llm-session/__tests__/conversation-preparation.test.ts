@@ -52,6 +52,13 @@ function nativeInput(): DirectConversationPreparationInput {
         nodeConnectionId: 'node', projectId: 'project', profileId: 'claude', project: {root: '/workspace'}};
     return value;
 }
+it('freezes the Session title separately from native prompt content and preserves an explicit deadline', async () => {
+    const value = nativeInput(); value.config.constraints = {timeout: 7200000};
+    const prepared = await prepareDirectConversationRun(value, options());
+    expect(prepared.definition.task.input).toMatchObject({title: 'Actual callee', timeoutMs: 7200000});
+    expect((prepared.definition.task.input as {title: string}).title).not.toContain(value.task.input.text);
+    expect(value.title).toBeUndefined();
+});
 it('assembles real scoped history and host rules without creating a Round, Task, model request or controller', async () => {
     await append('selected', 'Selected question'); const configured = options();
     configured.resolveSessionContext = async actual => {expect(actual).toBe(sessionId); return {projectInstructions: 'Project rules', skillInstructions: '', skillIndex: ''};};

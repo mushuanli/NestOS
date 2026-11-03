@@ -116,7 +116,7 @@ pnpm --filter @itookit/cli exec vitest run tests/harness-real-model-live.test.ts
 ## 当前边界
 
 - 输入支持文本消息、已物化的文本/图片附件，以及标准 image/file 资产引用；原生 profile 必须声明相应能力。PDF 等其他格式须先显式转换，远程 URL 不由适配器自动下载。Agent 的 system/user 历史作为调用上下文传入，远端实际系统权限仍由原生 profile 控制。
-- 当前返回核对后的终态文本，尚未将原生token流逐条投影为本地聊天增量。Harness Effect默认超时30分钟，Flow节点可显式设置合法的 `config.timeoutMs`，超时仍须确认远程停止。
+- 当前返回核对后的终态文本，尚未将原生token流逐条投影为本地聊天增量。Harness Effect 默认没有总时限，以当前 turn 的权威终态收尾；Flow 节点或 Agent 可以显式设置合法的总 `timeoutMs`，超时仍须确认远程停止。总时限与无进展检测分开，不能因执行超过 30 分钟就判活跃会话失败。
 - 本地模型、Bash、MCP 和 Skill 能力不自动转授原生会话；远端执行由已授权项目、profile 与原生审批控制。
 - 本地模型 token 统计不代表原生会话成本；远端提供的 usage 保留在 harness 结果中，缺失不等于免费。
 - 复用既有 cells 项目沙箱。Claude profile满16个加载进程时，回收最旧的空闲、未借用、无活动turn和无待审批会话；确认进程退出才腾槽，超时保留容量并返回具体错误，历史与回执保留供冷恢复。本次未新增 Firecracker、网络出口代理、远程机器部署或 RAPTOR 专用运行时。

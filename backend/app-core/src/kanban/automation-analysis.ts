@@ -80,7 +80,7 @@ async function loadJob(options: AnalysisOptions, board: KanbanBoard, item: Kanba
 function newJob(board: KanbanBoard, item: KanbanItem, target: TargetRef, signature: string, id = randomUUID(), instruction = preset.instruction): Job {
     const context = board.items.map(({id, title, responsibility, acceptance, planning, status}) => ({id, title, responsibility, acceptance, planning, status}));
     return {id, signature, itemRevision: item.revision, phase: 'prepared', status: {itemId: item.id, state: 'analyzing'},
-        input: {title: t('kanban.automationAnalysis'), request: {expectedSessionId: id, expectedBranch: 'main', expectedTarget: target,
+        input: {title: `${t('kanban.automationAnalysis')} · ${item.number ? '#' + item.number + ' · ' : ''}${item.title}`, request: {expectedSessionId: id, expectedBranch: 'main', expectedTarget: target,
             target: {kind: target.kind, id: target.id, version: target.version},
             source: {kind: 'composer', text: JSON.stringify({instruction, snapshot: {item, items: context, workTypes:board.workTypes??DEFAULT_KANBAN_WORK_TYPES, defaultWorkType:board.defaultWorkType??'task'}}), attachments: [], values: {}},
             submission: {id, source: {kind: 'conversation', ownerId: id, id}}}}};

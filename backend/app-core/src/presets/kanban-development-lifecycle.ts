@@ -29,7 +29,7 @@ export function developmentLifecycle(options: Options) {
             enqueue(options, state, boardId, dispatch, item, observation, kind, target)};
 }
 function lifecycleExecutor(options: Options) {
-    return createPublishedKanbanWorkExecutor({...options, title: dispatch => t('kanban.lifecycleTitle', {stage: dispatch.id.split('-postload-').at(-1) ?? ''}), binding: async dispatch => {
+    return createPublishedKanbanWorkExecutor({...options, title: (dispatch, item) => `${t('kanban.lifecycleTitle', {stage: dispatch.id.split('-postload-').at(-1) ?? ''})} · ${item.number ? '#' + item.number : item.title}`, binding: async dispatch => {
         const id = dispatch.id.replace(/-postload-(succeeded|failed|cancelled)$/, '');
         const override = await options.journal.get<TargetRef>('lifecycle-target:' + dispatch.id);
         if (override) return {target: override};

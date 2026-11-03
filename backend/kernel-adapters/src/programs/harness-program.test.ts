@@ -15,6 +15,18 @@ const context: HarnessContextRequest = {invocationId: 'call', branchId: 'main', 
     input: {mode: 'host-assembled', snapshotRef: 'snapshot', digest: 'digest'}};
 afterEach(async () => { for (const close of closures.splice(0).reverse()) await close(); });
 
+it.each([undefined, null, 60000])('uses only an explicit native total deadline: %s', timeoutMs => {
+    const program = new HarnessProgram(), initial = program.init({connection, prompt: 'Private prompt', title: 'Short task', timeoutMs});
+    const ready = program.reduce(initial.state, {type: 'signal', signal: {type: 'capabilities', payload: {harnessHandleId: 'native'}}} as never);
+    expect(ready.actions).toContainEqual(expect.objectContaining({type: 'effect', effect: expect.objectContaining({
+        timeoutMs: timeoutMs ?? null, request: expect.objectContaining({title: 'Short task'}),
+    })}));
+});
+
+it.each(['', 'bad\nname', 'x'.repeat(513)])('rejects invalid native title metadata', title => {
+    expect(() => new HarnessProgram().init({connection, prompt: 'Private prompt', title})).toThrow();
+});
+
 it('rejects an assembly reference with no persisted matching snapshot basis', () => {
     const program = new HarnessProgram(), input = {connection, context, messages: [{role: 'user', content: 'Review'}]};
     expect(() => program.init(input)).toThrow('HARNESS_CONTEXT_SNAPSHOT_REQUIRED');

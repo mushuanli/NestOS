@@ -39,6 +39,8 @@ export interface HarnessConnectionSnapshot extends HarnessExecutionConnection {
 
 export interface HarnessExecutionRequest {
     connection: HarnessConnectionSnapshot;
+    /** Host metadata for a newly created conversation; never inferred from prompt content. */
+    title?: string;
     prompt: string;
     attachments?: HarnessInputAttachment[];
     resourceHandleId: string;

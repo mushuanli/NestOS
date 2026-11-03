@@ -12,7 +12,7 @@ import {compactNavigation} from './compact-navigation';
 import {mountContentTitleBar} from './content-titlebar';
 import type {ContentTitleBarParts} from '@itookit/ui-common-adapter';
 import {MOBILE_NAVIGATION_QUERY} from '@itookit/ui-common-adapter';
-import { Drawer } from '@itookit/vfs-ui';
+import { Drawer, formatDisplayLabel } from '@itookit/vfs-ui';
 import type {WindowManagementOptions} from '@itookit/vfs-ui';
 import type { WorkbenchWindowBinding, WorkbenchWindow } from './windows';
 import {captureEditor, restoreEditor, type EditorRecoveryState} from './recovery';
@@ -471,11 +471,12 @@ export class WorkbenchTabs<T> {
     }
     private openedLabel(label: HTMLButtonElement, tab: WorkbenchTab<T>): void {
         const text = label.lastElementChild!; text.className = 'workbench-tabs__opened-text';
-        const title = document.createElement('span'); title.textContent = tab.title; text.replaceChildren(title);
+        const title = document.createElement('span'); title.textContent = formatDisplayLabel(tab.title); title.title = tab.title; text.replaceChildren(title);
+        label.title = tab.title; label.setAttribute('aria-label', tab.title);
         const context = [this.actions.navigation, tab.context, tab.location].filter(Boolean).join(' · ');
         if (context) {
             const location = document.createElement('small'); location.textContent = context; text.append(location);
-            label.title = context; label.setAttribute('aria-label', `${tab.title} — ${context}`);
+            label.title = `${tab.title} — ${context}`; label.setAttribute('aria-label', `${tab.title} — ${context}`);
         }
     }
     private filterOpened(): void {

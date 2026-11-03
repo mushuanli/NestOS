@@ -14,6 +14,22 @@ import { createVFS, MemoryBackend, FSError } from '@itookit/vfs-core';
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 
+it('shortens window labels while searching and activating by the complete name and identity', async () => {
+    const f = tabsFixture(), title = '开发任务'.repeat(30) + 'distinctive-tail';
+    try {
+        await f.tabs.open('stable-id', title, false);
+        const row = f.tabs.opened.querySelector<HTMLElement>('[data-opened-id="stable-id"]')!;
+        expect(row.querySelector('.workbench-tabs__opened-text > span')!.textContent).toBe('开发任务'.repeat(9) + '开发任…');
+        const label = row.querySelector<HTMLButtonElement>('.workbench-tabs__opened-label')!;
+        expect(label.title).toContain(title); expect(label.getAttribute('aria-label')).toContain(title);
+        const search = f.tabs.opened.querySelector<HTMLInputElement>('input[type="search"]')!;
+        search.value = 'distinctive-tail'; search.dispatchEvent(new Event('input'));
+        expect(row.hidden).toBe(false); label.click();
+        await vi.waitFor(() => expect(f.tabs.current?.id).toBe('stable-id'));
+        expect(f.tabs.current?.title).toBe(title);
+    } finally {await f.tabs.destroy();}
+});
+
 it('shows project context once when a restored conversation title already includes it', () => {
     const container = document.createElement('div'), view = compactNavigation(container, 'Project', () => {}, () => {});
     try {

@@ -92,12 +92,16 @@ async function nativeConversation(client: ApplicationClient, args: string[]): Pr
         if (action === 'query' || action === 'reconcile-query') return await nativeQuery(conversation, action, required(value, 'query command or report id'), args[5]);
         await conversation.read();
         if (action === 'show') return conversation.snapshot();
+        if (action === 'rename') {
+            if (!conversation.rename) throw Object.assign(new Error('Native conversation does not support renaming'), {code: 'ECAPABILITY'});
+            return await conversation.rename(required(value, 'session title'));
+        }
         if (action === 'branches') return await conversation.branches();
         if (action === 'send') return await conversation.send(required(value, 'message'));
         if (action === 'fork') return await conversation.fork(required(value, 'branch name'));
         if (action === 'reconcile') return await conversation.reconcile(value);
         if (action === 'interrupt') return await conversation.interrupt();
-        throw new Error('conversation requires show/send/query/reconcile-query/branches/fork/reconcile/interrupt');
+        throw new Error('conversation requires show/send/rename/query/reconcile-query/branches/fork/reconcile/interrupt');
     } finally { await conversation.close(); }
 }
 async function nativeQuery(conversation: ProjectConversationPort, action: 'query' | 'reconcile-query', value: string, requestId?: string): Promise<unknown> {

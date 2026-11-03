@@ -9,7 +9,7 @@ interface WorkExecutionPolicy {maxDepth: number; timeoutMs?: number | null}
 interface FrozenWork {schema: 1; dispatch: KanbanDispatch; input: IndependentCallInput; policy: WorkExecutionPolicy}
 export interface PublishedKanbanWorkOptions {
     onSessionPrepared?(dispatch: KanbanDispatch, item: KanbanItem, sessionId: string): Promise<void>;
-    title?(dispatch: KanbanDispatch): string;
+    title?(dispatch: KanbanDispatch, item: KanbanItem): string;
     observe?(dispatch: KanbanDispatch, observation: KanbanExecutionObservation): Promise<KanbanExecutionObservation>;
     calls: Pick<IndependentCallService,'prepareTaskCall'|'submitPreparedTaskCall'|'inspectTaskCallSubmission'|'list'>; kernel: Pick<Kernel,'task'>;
     /** Stable Session preparation is owned by the host's existing session journal. */
@@ -25,7 +25,7 @@ export function createPublishedKanbanWorkExecutor(options: PublishedKanbanWorkOp
             const sessionId=await options.prepareSession(dispatch.id);
             await options.onSessionPrepared?.(dispatch, item, sessionId);
             const binding=await options.binding(dispatch, item);
-            const input: IndependentCallInput={title:options.title?.(dispatch) ?? 'Kanban work', request:{expectedSessionId:sessionId,expectedBranch:'main',expectedTarget:binding.target,
+            const input: IndependentCallInput={title:options.title?.(dispatch, item) ?? `${item.number ? '#' + item.number + ' · ' : ''}${item.title}`, request:{expectedSessionId:sessionId,expectedBranch:'main',expectedTarget:binding.target,
                 target:{kind:binding.target.kind,id:binding.target.id,version:binding.target.version},overrides:binding.overrides,
                 source:{kind:'composer',text:JSON.stringify({item,inputs:dispatch.inputs,dependencies:await options.context?.(dispatch,item),planId:dispatch.planId,planRevision:dispatch.planRevision}),attachments:[],values:{}},
                 submission:{id:dispatch.id,source:{kind:'conversation',ownerId:sessionId,id:dispatch.id}}}};

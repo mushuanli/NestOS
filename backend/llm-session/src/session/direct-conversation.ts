@@ -14,6 +14,7 @@ import type {ChatAttachment, ExecutionTask, ExecutorConfig} from '../core/types'
 export interface DirectToolCatalog {definitions: ToolDefinition[]; externalIds: string[];}
 /** Ready context and input only; planning does not require a UI state or a running Task. */
 export interface DirectConversationInput {
+    title?: string;
     task: Pick<ExecutionTask, 'sessionId' | 'input'>;
     config: ExecutorConfig;
     roundId: string;
@@ -105,9 +106,12 @@ function modelTaskSpec(execution: DirectConversationInput, snapshot: ContextSnap
 
 function harnessInput(execution: DirectConversationInput, snapshot: ContextSnapshot): HarnessProgramInput {
     const {canonicalMessages, ...contextSnapshot} = structuredClone(snapshot), context = harnessContext(execution, snapshot);
+    const metadata = {title: Array.from((execution.title || execution.config.name || execution.config.id).replace(/[\x00-\x1f\x7f]/g, ' ').trim()).slice(0, 120).join(''),
+        ...(execution.config.constraints?.timeout !== undefined ? {timeoutMs: execution.config.constraints.timeout} : {})};
     if (context && context.conversation.mode !== 'new') return {connection: structuredClone(execution.config.harnessConnection!),
-        ...harnessIncrementalInput(execution), context};
+        ...metadata, ...harnessIncrementalInput(execution), context};
     return {connection: structuredClone(execution.config.harnessConnection!), messages: canonicalMessages,
+        ...metadata,
         ...(context ? {context, contextSnapshot} : {})};
 }
 

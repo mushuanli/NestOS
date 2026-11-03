@@ -183,7 +183,7 @@ function help(): string {
         `  nestos notify list\n` +
         `  nestos conversation query <project-id> <profile-id> <session-id> <command> [query-id]\n` +
         `  nestos conversation reconcile-query <project-id> <profile-id> <session-id> <query-id>\n` +
-        `  nestos conversation show|send|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +
+        `  nestos conversation show|send|rename|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +
         `  nestos connection list | mcp list | task show|events|cancel <session-id> <task-id>\n` +
         `  --connect https://host:2000 --client-cert file --client-key file --ca-cert file\n` +
         `  nestos validate [-f nestos.yml] [--offline]\n` +

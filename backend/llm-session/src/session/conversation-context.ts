@@ -57,7 +57,8 @@ export class ConversationContextBuilder {
         const pending = await this.currentMessages(execution);
         const assembler = this.contextAssembler(execution, location.branchRef, manifest, includeMemory, pending);
         const plan = contextPlan(execution, location, profile, pending);
-        const seed = (await this.options.engine.getManifest(execution.task.sessionId)).initialContext;
+        const session = await this.options.engine.getManifest(execution.task.sessionId), seed = session.initialContext;
+        execution.title ??= session.title;
         if (seed) plan.explicitInputs.push({ kind: 'text', content: typeof seed.value === 'string' ? seed.value : JSON.stringify(seed.value), label: 'Initial conversation material', order: 0 });
         const result = await assembler.assemble(plan, execution.task.id, {
             id: execution.config.id,

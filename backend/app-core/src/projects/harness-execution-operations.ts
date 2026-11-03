@@ -3,6 +3,7 @@ import type { HarnessExecutionRequest, HarnessInlineAttachment } from '@itookit/
 import type { HarnessConnectionAcquisition } from './harness-connections';
 import { ExecutionJournal, executionError, jsonValue, nativeOperationId, type NativeOperation } from './harness-execution-journal';
 import {attachExecutionContext} from './harness-execution-context';
+import {prepareNativeTitle} from './harness-execution-title';
 
 export interface NativeExecution {
     acquired: HarnessConnectionAcquisition; journal: ExecutionJournal; request: HarnessExecutionRequest; signal: AbortSignal;
@@ -60,6 +61,7 @@ export async function prepareNativeTurn(run: NativeExecution): Promise<void> {
         if (typeof id !== 'string' || !id) throw executionError('NATIVE_SESSION_INVALID');
         await run.journal.save({ sessionId: id });
     }
+    await prepareNativeTitle(run, title => nativeMutation(run, 'title', options => client.rename!(profile.id, run.journal.data.sessionId!, title, options)));
     await attachExecutionContext(run);
     if (!run.journal.data.turnId) {
         const result = await nativeMutation(run, 'turn', options => client.turn(profile.id, run.journal.data.sessionId!,

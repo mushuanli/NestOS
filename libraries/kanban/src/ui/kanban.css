@@ -165,3 +165,4 @@
 
 .kanban .kanban__item-open { display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
 .kanban__item-open:focus-visible { outline: 2px solid var(--kanban-color-primary, #5277dd); outline-offset: 3px; }
+.kanban [data-item-execution]:empty { display: none; }

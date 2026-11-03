@@ -45,7 +45,10 @@ export function detailView(ui: KanbanPresentation, board: KanbanBoardSummary, it
         <div data-analysis></div><div data-execution-session></div><section data-reference-links></section>
         <h4>${escapeHTML(ui.text('sessions'))}</h4>${item.participants.map(p => `<button type="button" data-session="${escapeAttr(p.sessionId)}">${escapeHTML(p.sessionId)} · ${escapeHTML(p.roles.join(', '))}</button>`).join('') || `<p>${escapeHTML(ui.text('none'))}</p>`}
         ${archived ? '' : `<form data-form="session">${suggestionField({name: 'sessionId', label: 'session', kind: 'session', manual: true, required: true})}<button>${escapeHTML(ui.text('registerSession'))}</button></form>`}
-        <details><summary>${escapeHTML(ui.text('eventsHelp'))}</summary><ol>${events.map(event => `<li>${escapeHTML(event.kind)} · ${escapeHTML(event.actor.id ?? event.actor.agentId ?? '')} · ${escapeHTML(new Date(event.at).toLocaleString())}${event.data.message ? `<p>${escapeHTML(event.data.message)}</p>` : ''}</li>`).join('')}</ol></details>`;
+        <section data-item-events>${itemEventsView(ui, events)}</section>`;
+}
+export function itemEventsView(ui: KanbanPresentation, events: KanbanEvent[]): string {
+    return `<details><summary>${escapeHTML(ui.text('eventsHelp'))}</summary><ol>${events.map(event => `<li>${escapeHTML(event.kind)} · ${escapeHTML(event.actor.id ?? event.actor.agentId ?? '')} · ${escapeHTML(new Date(event.at).toLocaleString())}${event.data.message ? `<p>${escapeHTML(event.data.message)}</p>` : ''}</li>`).join('')}</ol></details>`;
 }
 function controls(ui: KanbanPresentation, board: KanbanBoardSummary, item: KanbanItem, actor: KanbanPrincipal | undefined, archived: boolean): string {
     if (archived) return button(ui, 'restore', 'restore');

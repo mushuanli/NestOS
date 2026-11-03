@@ -2,8 +2,19 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {SeqKanbanStore, type KanbanCommand} from '../src';
 import {createKanbanActivityModule} from '../src/activity';
+import {createKanbanSessionActivity} from '../src/session-activity';
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of closes.splice(0).reverse()) await close();});
+it('avoids workflow and full catalog reads when an authorized page or task has no execution bindings', async () => {
+    const page = {items: [{id: 'one'}], revision: 1, total: 1};
+    const core = {query: vi.fn(async () => page), item: vi.fn(async () => ({item: {id: 'one'}})),
+        catalog: vi.fn(async () => {throw new Error('Unnecessary catalog read');}), workflow: vi.fn(async () => {throw new Error('Unnecessary workflow read');})};
+    const activity = createKanbanSessionActivity(core as never, undefined, vi.fn(), 'external-job');
+    expect(await activity.queryActivity('board')).toEqual(page);
+    expect(await activity.executionSession('board', 'one')).toEqual({history: []});
+    expect(core.query).toHaveBeenCalledOnce(); expect(core.item).toHaveBeenCalledOnce();
+    expect(core.catalog).not.toHaveBeenCalled(); expect(core.workflow).not.toHaveBeenCalled();
+});
 it('drains admitted resource observations before closing core queries and refuses new admissions', async () => {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}); closes.push(() => manager.dispose());
     const store = await SeqKanbanStore.open(await manager.openFileSystem('/'));

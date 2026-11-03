@@ -55,6 +55,5 @@ export function boardView(ui: KanbanPresentation, board: KanbanBoardSummary, pag
 function itemCard(ui:KanbanPresentation,board:KanbanBoardSummary,item:KanbanSessionItemPage['items'][number],sessionUrl?: (id:string)=>string):string {
     const content=`<strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(kanbanReference(board, item))}</small><small>P${item.planning.priority} · ${escapeHTML(item.planning.area ?? '')} · ${escapeHTML(item.planning.milestone ?? '')}</small>${item.pendingAmendments ? `<small class="kanban__badge">${escapeHTML(ui.text('pendingAmendments'))} (${item.pendingAmendments})</small>` : ''}${item.progress ? `<small>${item.progress.completed}/${item.progress.total}</small>` : ''}`;
     const identity=`data-item="${escapeAttr(item.id)}"`;
-    if(!item.execution)return `<button type="button" class="kanban__card" ${identity}>${content}</button>`;
-    return `<article class="kanban__card"><button type="button" class="kanban__item-open" ${identity}>${content}</button>${executionBadge(ui,item.execution,sessionUrl)}</article>`;
+    return `<article class="kanban__card"><button type="button" class="kanban__item-open" ${identity}>${content}</button><span data-item-execution="${escapeAttr(item.id)}">${executionBadge(ui,item.execution,sessionUrl)}</span></article>`;
 }

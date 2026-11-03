@@ -20,13 +20,14 @@ export interface KanbanExecutionBridgeOptions {
     worker(principal: KanbanPrincipal): Promise<KanbanService>;
     executor: KanbanExecutionPort;
     authorize(stage: 'prepare' | 'start' | 'inspect', dispatch: KanbanDispatch): Promise<void>;
-    log(input: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; durationMs: number}): void;
+    log(input: {operationId: string; stage: string; result: 'success' | 'failure'; code?: string; retryAfterMs?: number; durationMs: number}): void;
     executionReference?(sessionId: string, dispatchId: string): import('./contracts').KanbanExternalReference;
     subscribe?(wake: () => void): () => void;
     autoDispatch?: boolean | (() => Promise<boolean>); shutdownTimeoutMs?: number;
     estimate?(item: KanbanItem, principal: KanbanPrincipal): Promise<KanbanEstimate | undefined>;
 }
 interface ExecutionRecord {schema: 1; fence: string; request: unknown; digest: string; phase: 'prepared' | 'submitting'}
+interface ReadFailure {code: string; count: number; retryAt: number}
 type TrackWrite = <T>(operation: Promise<T>) => Promise<T>;
 
 /** The host owns execution. Prepared/submitting identities survive response loss and host shutdown. */
@@ -37,10 +38,11 @@ export async function createKanbanExecutionBridge(options: KanbanExecutionBridge
     if(!options.fs.meta.seq?.transaction) throw new KanbanError('TRANSACTION_REQUIRED');
     let stopped=false, again=false, pending: Promise<void>|undefined;
     const writes=new Set<Promise<unknown>>();
+    const failures = new Map<string, ReadFailure>();
     const track:TrackWrite=operation=>{const tracked=operation.finally(()=>{writes.delete(tracked);});writes.add(tracked);return tracked;};
     const active=()=>!stopped;
     const scan=async()=>{if(stopped) return; if(pending) {again=true; return pending;} const started=Date.now();
-        pending=runBridge(options,path,active,track).catch(error=>{try {options.log({operationId:randomUUID(),stage:'bridge.scan',result:'failure',code:safeCode(error),durationMs:Date.now()-started});} catch {/* Diagnostics cannot replay work. */} throw error;}).finally(()=>{pending=undefined;if(again&&!stopped) {again=false;void scan().catch(()=>{});}});
+        pending=runBridge(options,path,active,track,failures).catch(error=>{try {options.log({operationId:randomUUID(),stage:'bridge.scan',result:'failure',code:safeCode(error),durationMs:Date.now()-started});} catch {/* Diagnostics cannot replay work. */} throw error;}).finally(()=>{pending=undefined;if(again&&!stopped) {again=false;void scan().catch(()=>{});}});
         return pending;
     };
     const unsubscribe=options.subscribe?.(()=>{void scan().catch(()=>{});});
@@ -51,11 +53,13 @@ export async function createKanbanExecutionBridge(options: KanbanExecutionBridge
         finally {if(timer) clearTimeout(timer);await Promise.allSettled([...writes]);}
     }};
 }
-async function runBridge(options: KanbanExecutionBridgeOptions, path: string, active: () => boolean, track: TrackWrite): Promise<void> {
+async function runBridge(options: KanbanExecutionBridgeOptions, path: string, active: () => boolean, track: TrackWrite, failures: Map<string, ReadFailure>): Promise<void> {
     const workflow=await options.service.workflow(options.boardId);
+    const live = new Set(Object.values(workflow.dispatches).filter(dispatch => ['prepared', 'running', 'unknown'].includes(dispatch.outcome)).map(dispatch => dispatch.id));
+    for (const id of failures.keys()) if (!live.has(id)) failures.delete(id);
     for(const dispatch of Object.values(workflow.dispatches)) {
         if(!active()) return;
-        if(['prepared','running','unknown'].includes(dispatch.outcome)) await runDispatch(options,path,dispatch,active,track);
+        if(live.has(dispatch.id) && (failures.get(dispatch.id)?.retryAt ?? 0) <= Date.now()) await runDispatch(options,path,dispatch,active,track,failures);
     }
     const automatic = typeof options.autoDispatch === 'function' ? await options.autoDispatch() : options.autoDispatch;
     if(!automatic||!active()) return;
@@ -68,12 +72,12 @@ async function runBridge(options: KanbanExecutionBridgeOptions, path: string, ac
             const estimate=await options.estimate?.(item,owner);if(!active()) return;
             await worker.execute(board.id,{operationId:randomUUID(),expectedRevision:board.revision,command:{type:'prepare-dispatch',itemId:id,dispatchId,estimate}});
             const dispatch=(await options.service.workflow(board.id)).dispatches[dispatchId];
-            if(active()) await runDispatch(options,path,dispatch,active,track);
+            if(active()) await runDispatch(options,path,dispatch,active,track,failures);
         }
         catch(error) {if(!['WIP_LIMIT','ASSIGNEE_WIP_LIMIT','READY_LIMIT','REVISION_CONFLICT'].includes(safeCode(error))) throw error;}
     }
 }
-async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch, active: () => boolean, track: TrackWrite): Promise<void> {
+async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch, active: () => boolean, track: TrackWrite, failures: Map<string, ReadFailure>): Promise<void> {
     const start=Date.now(); let stage: 'inspect' | 'prepare' | 'start'='inspect', result: KanbanExecutionObservation;
     try {
         let record=await loadRecord(options,path,dispatch);if(!active()) return;
@@ -87,8 +91,15 @@ async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, 
         const submit=record.phase==='prepared'&&await track(claimSubmission(options,path,dispatch));
         if(!active()) return; stage=submit?'start':'inspect';await options.authorize(stage,dispatch);if(!active()) return;
         result=await (submit?options.executor.start(record.request):options.executor.inspect(record.request));
-    } catch(error) {result={outcome:stage==='prepare'?'failed':'unknown',code:safeCode(error)};}
-    try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
+        failures.delete(dispatch.id);
+    } catch(error) {
+        result={outcome:stage==='prepare'?'failed':'unknown',code:safeCode(error)};
+        if (stage === 'inspect') {
+            const previous = failures.get(dispatch.id), count = previous && previous.code === result.code ? previous.count + 1 : 1;
+            failures.set(dispatch.id, {code: result.code!, count, retryAt: Date.now() + Math.min(60000, 1000 * 2 ** Math.min(count - 1, 6))});
+        }
+    }
+    try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,...(failures.has(dispatch.id)?{retryAfterMs:Math.max(0,failures.get(dispatch.id)!.retryAt-Date.now())}:{}),durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
     if(active()) try {await linkSession(options,dispatch,result.executionSessionId);if(active()) await settle(options,dispatch,result);} catch(error) {if(safeCode(error)!=='REVISION_CONFLICT') throw error;}
 }
 async function loadRecord(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch): Promise<ExecutionRecord|undefined> {

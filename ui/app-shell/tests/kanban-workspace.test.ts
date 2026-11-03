@@ -80,7 +80,7 @@ it('binds an execution Session through the inspector, shows session-only activit
     f.editor.querySelector<HTMLButtonElement>('[data-form=execution-session] [role=option]')!.click();await submit(f.editor,'execution-session');
     expect(f.editor.querySelector('[data-execution-session]')!.textContent).toContain('Execution conversation');
     await click(f.editor,'[data-execution-session] [data-session]');expect(f.openSession).toHaveBeenCalledWith('execution-session');
-    await click(f.editor,'[data-action=close-panel]');expect(f.editor.querySelector('[data-execution-state=running]')).not.toBeNull();
+    await click(f.editor,'[data-action=close-panel]');await vi.waitFor(()=>expect(f.editor.querySelector('[data-execution-state=running]')).not.toBeNull());
     const filter=f.editor.querySelector<HTMLSelectElement>('[name=execution]')!;filter.value='recent';await submit(f.editor,'filter');
     expect(f.editor.querySelectorAll('[data-item]')).toHaveLength(1);
     expect(f.editor.querySelector('[data-content]')!.textContent).not.toContain('taskId');expect(inspect).toHaveBeenCalled();

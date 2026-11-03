@@ -17,7 +17,7 @@ async function fixture(prefix = 'one', mountNavigation?: (container: HTMLElement
     return {root, service, view};
 }
 async function idle(root: HTMLElement) {await vi.waitFor(() => expect(root.querySelector('main')!.hasAttribute('aria-busy')).toBe(false));}
-async function click(root: HTMLElement, selector: string) {root.querySelector<HTMLButtonElement>(selector)!.click(); await idle(root);}
+async function click(root: HTMLElement, selector: string) {await vi.waitFor(() => expect(root.querySelector(selector)).not.toBeNull()); root.querySelector<HTMLButtonElement>(selector)!.click(); await idle(root);}
 function fill(root: HTMLElement, name: string, value: string) {
     const field = root.querySelector<HTMLInputElement>(`[name=${name}]`)!;
     field.value = value; field.dispatchEvent(new Event('input', {bubbles: true}));
@@ -125,7 +125,7 @@ it('lists children on a feature, prefills its parent when creating work, and ope
     await f.service.execute(board.id, {operationId: 'feature', expectedRevision: board.revision, command: {type: 'create-item',
         item: {id: 'feature', title: 'Cloze modes', responsibility: 'Support modes', acceptance: 'Verified'}, planning: {kind: 'feature', priority: 2, dependencies: [], references: []}}});
     await f.view.openResource('/board/hierarchy/feature');
-    expect(f.root.querySelector('[data-children]')?.textContent).toContain('one:children (0)');
+    await vi.waitFor(() => expect(f.root.querySelector('[data-children]')?.textContent).toContain('one:children (0)'));
     await click(f.root, '[data-action=new-child]');
     expect(new FormData(f.root.querySelector('[data-form=item]')!).get('parentId')).toBe('feature');
     expect(new FormData(f.root.querySelector('[data-form=item]')!).get('kind')).toBe('task');
@@ -133,7 +133,7 @@ it('lists children on a feature, prefills its parent when creating work, and ope
     const child = (await f.service.read(board.id)).items.find(item => item.title === 'Implement')!;
     expect(child.planning?.parentId).toBe('feature');
     await click(f.root, '[data-panel] [data-item=feature]');
-    expect(f.root.querySelector('[data-children]')?.textContent).toContain('Implement');
+    await vi.waitFor(() => expect(f.root.querySelector('[data-children]')?.textContent).toContain('Implement'));
     await click(f.root, '[data-children] [data-item]'); expect(f.view.getActiveResourceId()).toBe('/board/hierarchy/' + child.id);
 });
 it('runs a decision on its current board by default and requires an explicit action for a new board', async () => {
@@ -221,6 +221,7 @@ it('opens the card execution link directly without opening task details or nesti
     const editor=document.createElement('main');document.body.append(editor);const openSession=vi.fn(async()=>{});
     const view=new KanbanWorkbench({editor,service:f.service,presentation:presentation('direct'),selected:vi.fn(),openSession,
         sessionUrl:id=>'#/workbench/'+id,initialResource:'/board/direct-session'});closes.push(()=>view.destroy());await view.start();
+    await vi.waitFor(()=>expect(editor.querySelector('.kanban__card a[data-session]')).not.toBeNull());
     const link=editor.querySelector<HTMLAnchorElement>('.kanban__card a[data-session="/native/execution"]')!;
     expect(link.textContent).toBe('direct:executionSession');expect(link.closest('button')).toBeNull();
     expect(editor.querySelector('.kanban__card button[data-item=task]')).not.toBeNull();

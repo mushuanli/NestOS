@@ -18,6 +18,7 @@ export class KanbanWorkbench {
     private actor?: KanbanPrincipal;
     private automationCatalog?: import('../contracts').KanbanAutomationCatalog;
     private item?: KanbanItem;
+    private itemArchived = false;
     private boardId = '';
     private recordKind?: 'log' | 'decision';
     private recordId = '';
@@ -32,6 +33,7 @@ export class KanbanWorkbench {
     private eventGeneration = 0;
     private abort = new AbortController();
     private busy = false;
+    private background?: Promise<void>;
     private operationStage = 'ui.operation';
     private dirty = false;
     private visible = true;
@@ -84,8 +86,13 @@ export class KanbanWorkbench {
                 if (container) container.innerHTML = preparationFields(this.board, this.automationCatalog, target.value ? JSON.parse(target.value) : null);
             }
         }, {signal});
-        editor.addEventListener('input', event => {if ((event.target as HTMLElement).closest('[data-panel]') && !(event.target as HTMLElement).closest('[data-form=reference]')) {this.dirty = true; this.options.changed?.();}}, {signal});
-        if (this.options.service?.queryActivity) this.activityTimer=setInterval(()=>{if(this.visible&&!document.hidden&&!this.busy&&!this.dirty&&(this.board?.automation?.enabled||this.page?.items.some(item=>item.execution)||this.query.execution&&this.query.execution!=='all')) this.invalidateFromEvents();},15000);
+        editor.addEventListener('input', event => {
+            const target = event.target as HTMLElement;
+            if (target.closest('[data-form=reference]')) return;
+            if (target.closest('form')) this.generation++;
+            if (target.closest('[data-panel]')) {this.dirty = true; this.options.changed?.();}
+        }, {signal});
+        if (this.options.service?.queryActivity) this.activityTimer=setInterval(()=>{if(this.visible&&!document.hidden&&(this.board?.automation?.enabled||this.page?.items.some(item=>item.execution)||this.query.execution&&this.query.execution!=='all')) this.refreshInBackground(true);},15000);
         if (this.options.initialResource !== undefined) await this.openResource(this.options.initialResource);
         else await this.run(() => this.refresh());
     }
@@ -126,22 +133,63 @@ export class KanbanWorkbench {
     }
     invalidateFromEvents(): void {
         this.invalid = true; this.eventGeneration++;
-        if (this.visible && !this.busy && !this.dirty) void this.run(() => this.refresh());
+        this.refreshInBackground();
     }
     setVisible(visible: boolean): void {this.visible = visible; if (visible && this.invalid) this.invalidateFromEvents();}
+    private refreshInBackground(activityOnly = false): void {
+        if (this.background || this.busy || this.dirty || !this.visible || this.abort.signal.aborted) return;
+        if (document.activeElement?.closest('form') && this.options.editor.contains(document.activeElement)) return;
+        const started = Date.now(), operationId = randomUUID();
+        const reading = activityOnly ? this.refreshActivity(this.generation) : this.refresh(), generation = this.generation;
+        this.background = reading.catch(error => {
+            if (!this.alive(generation)) return;
+            this.invalid = false;
+            if (!this.abort.signal.aborted) {this.reportRead('ui.background', error, operationId, started); this.error(errorText(error, this.ui.label, 'ui.background'));}
+        }).finally(() => {
+            this.background = undefined;
+            if (this.invalid && !this.busy && !this.dirty && this.visible && !this.abort.signal.aborted) this.refreshInBackground();
+        });
+    }
+    private queryPage(): Promise<KanbanSessionItemPage> {
+        const service = this.options.service!;
+        return this.query.execution && this.query.execution !== 'all' && service.queryActivity
+            ? service.queryActivity(this.boardId, this.query) : service.query(this.boardId, this.query);
+    }
+    private async refreshActivity(generation: number): Promise<void> {
+        if (this.item && this.itemId) {await this.loadExecutionSections(generation, this.item, this.itemArchived); return;}
+        if (!this.board || this.recordId || this.recordKind || !this.options.service?.queryActivity) return;
+        await this.supplement('ui.activity', generation, () => this.options.service!.queryActivity!(this.boardId, this.query), page => {
+            if (page.revision !== this.page?.revision) {this.invalid = true; this.refreshInBackground(); return;}
+            if (JSON.stringify(page) === JSON.stringify(this.page)) return;
+            const sameItems = page.total === this.page.total && page.nextCursor === this.page.nextCursor
+                && JSON.stringify(page.items.map(item => item.id)) === JSON.stringify(this.page.items.map(item => item.id));
+            this.page = page;
+            if (sameItems) {
+                const sessions = new Map(page.items.map(item => [item.id, item.execution]));
+                for (const slot of this.content().querySelectorAll<HTMLElement>('[data-item-execution]')) {
+                    const html = this.ui.executionBadge(sessions.get(slot.dataset.itemExecution!), this.options.sessionUrl);
+                    if (slot.innerHTML !== html) slot.innerHTML = html;
+                }
+                return;
+            }
+            preserveBoardScroll(this.content(), () => {this.content().innerHTML = this.ui.boardView(this.board!, page, this.query, true, !!this.options.service?.automationCatalog, this.options.sessionUrl);});
+            this.mountHeaderActions();
+        });
+    }
     private async refresh(): Promise<void> {
         const service = this.options.service, generation = ++this.generation, events = this.eventGeneration;
         if (!service) {this.content().innerHTML = `<p>${escapeHTML(this.ui.label('unavailable'))}</p>`; return;}
-        this.operationStage = 'ui.catalog';
-        const [boards, actor] = await Promise.all([service.catalog?.() ?? service.list(), service.currentPrincipal()]);
+        this.operationStage = 'ui.snapshot';
+        const pageRequest = this.boardId ? this.queryPage() : undefined;
+        const itemRequest = this.boardId && this.itemId ? service.item(this.boardId, this.itemId) : undefined;
+        const [boards, actor, initialPage, initialItem] = await Promise.all([service.catalog?.() ?? service.list(), service.currentPrincipal(), pageRequest, itemRequest]);
         if (!this.alive(generation)) return;
         this.actor = actor;
         if (!this.boardId && this.options.initialResource === undefined) this.boardId = boards[0]?.id ?? '';
         this.board = boards.find(board => board.id === this.boardId);
         if (this.boardId && !this.board) throw Object.assign(new Error('Board unavailable'), {code: 'BOARD_NOT_FOUND'});
         if(this.query.execution&&this.query.execution!=='all'&&!service.queryActivity) throw Object.assign(new Error('Execution Session projection unavailable'),{code:'EXECUTION_SESSION_UNAVAILABLE'});
-        this.operationStage = 'ui.query';
-        const page = this.board ? await (service.queryActivity?.(this.boardId,this.query) ?? service.query(this.boardId, this.query)) : undefined;
+        const page = this.board ? initialPage ?? await this.queryPage() : undefined;
         if (!this.alive(generation)) return;
         this.page = page; this.invalid = events !== this.eventGeneration;
         if (this.options.sidebar) this.options.sidebar.innerHTML = this.ui.navigation(boards, this.boardId);
@@ -153,26 +201,74 @@ export class KanbanWorkbench {
         const navigation = this.content().querySelector<HTMLElement>('[data-navigation]');
         if (navigation && !this.options.mountTitleBar) this.releaseNavigation = this.options.mountNavigation?.(navigation);
         if (this.recordId) await this.showRecord(this.recordId, generation);
-        else if (this.itemId) await this.showItem(generation);
+        else if (this.itemId) await this.showItem(generation, initialItem);
+        else if (!this.recordKind) void this.refreshActivity(generation);
+        this.mountHeaderActions();
         this.operationStage = 'ui.selection'; this.options.selected(this.getActiveResourceId());
     }
-    private async showItem(generation = this.generation): Promise<void> {
+    private async showItem(generation = this.generation, loaded?: Awaited<ReturnType<NonNullable<KanbanUIOptions['service']>['item']>>): Promise<void> {
         const service = this.options.service;
         if (!service || !this.board || !this.itemId) return;
         this.operationStage='ui.item.load';
-        const [{item, archive}, events, records, execution, analysis] = await Promise.all([service.item(this.boardId, this.itemId), service.events(this.boardId, 0, 200), service.records(this.boardId, {itemId: this.itemId, limit: 10}),service.executionSession?.(this.boardId,this.itemId), this.board.automation ? service.analysisStatus?.(this.boardId,this.itemId) : undefined]);
+        const {item, archive} = loaded ?? await service.item(this.boardId, this.itemId);
         if (!this.alive(generation)) return;
         this.operationStage='ui.item.render';
-        this.item = item; this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, events.filter(event => event.itemId === item.id).reverse()), 'item:' + item.id);
-        if (this.board.automation) this.panel().querySelector('[data-analysis]')!.innerHTML = analysisView(this.options.presentation, analysis ?? null);
-        this.operationStage='ui.item.session';
-        if(execution) this.panel().querySelector('[data-execution-session]')!.innerHTML=this.ui.executionSessionView(execution,!!this.options.executionReference&&!archive&&!['completed','cancelled'].includes(item.status), this.options.sessionUrl);
-        this.panel().querySelector('[data-related-records]')!.innerHTML = `<h4>${escapeHTML(this.ui.label('relatedRecords'))} (${records.total})</h4>${this.ui.recordLinks(records, this.board)}<div class="kanban__actions">${this.ui.button('new-log', 'newLog')}${this.ui.button('new-decision', 'newDecision')}</div>`;
-        this.operationStage='ui.item.references';
-        await this.showReferenceLinks(item.externalRefs ?? [], generation, new Set(execution?.history.map(binding => binding.sessionId)));
-        this.operationStage='ui.item.children';
-        await this.showChildren(generation);
+        if (!this.drawer.open || this.itemArchived !== !!archive || JSON.stringify(this.item) !== JSON.stringify(item)) this.drawer.show(this.ui.detailView(this.board, item, this.actor, !!archive, []), 'item:' + item.id);
+        this.item = item; this.itemArchived = !!archive;
+        this.loadItemSections(generation, item, !!archive);
         this.options.selected(this.getActiveResourceId());
+    }
+    private loadItemSections(generation: number, item: KanbanItem, archived: boolean): void {
+        const service = this.options.service!, boardId = this.boardId;
+        void this.supplement('ui.item.events', generation, () => service.events(boardId, 0, 200), events => {
+            this.setSection('[data-item-events]', this.ui.itemEventsView(events.filter(event => event.itemId === item.id).reverse()));
+        }, '[data-item-events]');
+        void this.supplement('ui.item.records', generation, () => service.records(boardId, {itemId: item.id, limit: 10}), records => {
+            this.setSection('[data-related-records]', `<h4>${escapeHTML(this.ui.label('relatedRecords'))} (${records.total})</h4>${this.ui.recordLinks(records, this.board!)}<div class="kanban__actions">${this.ui.button('new-log', 'newLog')}${this.ui.button('new-decision', 'newDecision')}</div>`);
+        }, '[data-related-records]');
+        void this.loadExecutionSections(generation, item, archived, true);
+        if (!service.executionSession) this.loadReferenceSection(generation, item);
+        void this.supplement('ui.item.children', generation, () => this.showChildren(generation), () => {}, '[data-children]');
+    }
+    private async loadExecutionSections(generation: number, item: KanbanItem, archived: boolean, references = false): Promise<void> {
+        const service = this.options.service!, boardId = this.boardId, reads: Promise<void>[] = [];
+        if (service.executionSession) reads.push(this.supplement('ui.item.session', generation, () => service.executionSession!(boardId, item.id), execution => {
+            this.setSection('[data-execution-session]', this.ui.executionSessionView(execution, !!this.options.executionReference && !archived && !['completed', 'cancelled'].includes(item.status), this.options.sessionUrl));
+            if (references) this.loadReferenceSection(generation, item, new Set(execution.history.map(binding => binding.sessionId)));
+        }, '[data-execution-session]'));
+        if (this.board?.automation && service.analysisStatus) reads.push(this.supplement('ui.item.analysis', generation, () => service.analysisStatus!(boardId, item.id), analysis => {
+            this.setSection('[data-analysis]', analysisView(this.options.presentation, analysis ?? null));
+        }, '[data-analysis]'));
+        await Promise.all(reads);
+    }
+    private loadReferenceSection(generation: number, item: KanbanItem, skip?: Set<string>): void {
+        void this.supplement('ui.item.references', generation, () => this.showReferenceLinks(item.externalRefs ?? [], generation, skip), () => {}, '[data-reference-links]');
+    }
+    private async supplement<T>(stage: string, generation: number, read: () => Promise<T>, apply: (value: T) => void, selector?: string): Promise<void> {
+        const started = Date.now(), operationId = randomUUID();
+        try {
+            const value = await read();
+            if (!this.alive(generation) || this.dirty) return;
+            apply(value);
+            try {this.options.presentation.log?.({operationId, stage, result: 'success', durationMs: Date.now() - started});} catch { /* Diagnostics cannot change a read result. */ }
+        } catch (error) {
+            if (!this.alive(generation)) return;
+            this.reportRead(stage, error, operationId, started);
+            const slot = selector ? this.panel().querySelector(selector) : undefined;
+            if (slot) {
+                const notice = slot.querySelector('[data-read-error]') ?? document.createElement('p'); notice.setAttribute('role', 'alert'); notice.setAttribute('data-read-error', '');
+                notice.textContent = errorText(error, this.ui.label, stage); if (!notice.parentElement) slot.append(notice);
+            }
+            else this.error(errorText(error, this.ui.label, stage));
+        }
+    }
+    private setSection(selector: string, html: string): void {
+        const slot = this.panel().querySelector(selector);
+        if (slot && slot.innerHTML !== html) slot.innerHTML = html;
+    }
+    private reportRead(stage: string, error: unknown, operationId = randomUUID(), started = Date.now()): void {
+        const raw = (error as {code?: unknown})?.code;
+        try {this.options.presentation.log?.({operationId, stage, result: 'failure', ...failureDetails(error), code: typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'KANBAN_OPERATION_FAILED', durationMs: Date.now() - started});} catch { /* Diagnostics cannot change a read result. */ }
     }
     private async showChildren(generation: number, cursor?: string): Promise<void> {
         const {service} = this.options, item = this.item, board = this.board;
@@ -337,7 +433,7 @@ export class KanbanWorkbench {
         if (this.busy || this.abort.signal.aborted) return;
         const operationId = randomUUID(), started = Date.now();
         this.operationStage = 'ui.operation';
-        this.busy = true; this.status(this.ui.label('loading')); this.error(''); this.options.editor.setAttribute('aria-busy', 'true'); this.options.editor.inert = true;
+        this.generation++; this.busy = true; this.status(this.ui.label('loading')); this.error(''); this.options.editor.setAttribute('aria-busy', 'true');
         let succeeded = false;
         try {await action(); succeeded = true;}
         catch (error) {
@@ -349,7 +445,7 @@ export class KanbanWorkbench {
             this.busy = false;
             if (!this.abort.signal.aborted) {
                 this.status(''); this.options.editor.removeAttribute('aria-busy'); this.options.editor.inert = false; this.mountHeaderActions(); this.drawer.flushFocus(); this.options.changed?.();
-                if (succeeded && this.invalid && this.visible && !this.dirty) void this.run(() => this.refresh());
+                if (succeeded && this.invalid && this.visible && !this.dirty) this.refreshInBackground();
             }
         }
     }
@@ -403,7 +499,7 @@ export class KanbanWorkbench {
             if (this.dirty) this.closePanel();
             await this.options.navigate(`/board/${encodeURIComponent(this.boardId)}`); return;
         }
-        this.closePanel(); this.options.selected(this.getActiveResourceId());
+        this.closePanel(); void this.refreshActivity(this.generation); this.options.selected(this.getActiveResourceId());
     }
     private alive(generation: number): boolean {return generation === this.generation && !this.abort.signal.aborted;}
     private content(): HTMLElement {return this.options.editor.querySelector('[data-content]')!;}

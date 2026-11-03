@@ -1,8 +1,8 @@
 import type {KanbanPresentation} from './ports';
 import {boardView, catalogView, navigation, button} from './view';
-import {detailView, newBoardForm, newItemForm} from './forms';
+import {detailView, itemEventsView, newBoardForm, newItemForm} from './forms';
 import {recordLinks, recordsView, recordDetail, recordForm} from './context-view';
-import {executionSessionView} from './session-view';
+import {executionSessionView, executionBadge} from './session-view';
 import {copyReference} from './references';
 
 export function createRenderer(ui: KanbanPresentation) {
@@ -13,6 +13,7 @@ export function createRenderer(ui: KanbanPresentation) {
         navigation: bind(navigation),
         button: bind(button),
         detailView: bind(detailView),
+        itemEventsView: bind(itemEventsView),
         newBoardForm: bind(newBoardForm),
         newItemForm: bind(newItemForm),
         recordLinks: bind(recordLinks),
@@ -20,6 +21,7 @@ export function createRenderer(ui: KanbanPresentation) {
         recordDetail: bind(recordDetail),
         recordForm: bind(recordForm),
         executionSessionView: bind(executionSessionView),
+        executionBadge: bind(executionBadge),
         copyReference: bind(copyReference)
     };
 }

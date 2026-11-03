@@ -109,3 +109,20 @@ it('reconciles repeated running/unknown transitions and renews the same fenced o
     } finally {time.mockRestore();}
     expect(f.executor.start).toHaveBeenCalledTimes(1);
 });
+it('backs off thrown observation failures and recovers the original attempt without replaying work', async () => {
+    const f = await fixture(); await f.prepare(); const bridge = await f.bridge(); await bridge.scan();
+    const clock = vi.spyOn(Date, 'now'), start = Date.now(); clock.mockReturnValue(start);
+    try {
+        vi.mocked(f.executor.inspect).mockRejectedValue(Object.assign(new Error('PRIVATE'), {code: 'ARTIFACT_CONFLICT'}));
+        await bridge.scan(); await bridge.scan();
+        expect(f.executor.inspect).toHaveBeenCalledTimes(1);
+        expect((await f.service.workflow('b')).dispatches.d).toMatchObject({outcome: 'unknown', code: 'ARTIFACT_CONFLICT'});
+        clock.mockReturnValue(start + 1000); await bridge.scan(); await bridge.scan();
+        expect(f.executor.inspect).toHaveBeenCalledTimes(2);
+        clock.mockReturnValue(start + 2000); await bridge.scan(); expect(f.executor.inspect).toHaveBeenCalledTimes(2);
+        clock.mockReturnValue(start + 3000); vi.mocked(f.executor.inspect).mockResolvedValue({outcome: 'succeeded'});
+        await bridge.scan(); expect((await f.service.workflow('b')).dispatches.d.outcome).toBe('succeeded');
+        expect(f.executor.start).toHaveBeenCalledTimes(1); expect(f.executor.prepare).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(f.log.mock.calls)).not.toContain('PRIVATE');
+    } finally {clock.mockRestore();}
+});

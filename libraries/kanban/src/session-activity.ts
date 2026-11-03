@@ -16,6 +16,7 @@ function currentBinding(refs: KanbanExternalReference[]|undefined, itemId:string
 export function createKanbanSessionActivity(core: KanbanService, options: KanbanSessionActivityOptions | undefined, log: (event: {operationId:string;sessionId?:string;stage:string;result:'failure';code:string;durationMs:number})=>void, referenceSystem: string) {
     const inspect=createSessionInspector(options,log);
     const project=async(boardId:string,rows:KanbanSessionItemSummary[])=>{
+        if(!rows.some(row=>executionBindings(row.externalRefs,referenceSystem).length))return rows;
         const [board,workflow]=await Promise.all([boardMetadata(core,boardId),core.workflow(boardId)]), bindings=new Map(rows.map(row=>[row.id,currentBinding(row.externalRefs,row.id,workflow,referenceSystem)]));
         const ids=[...new Set([...bindings.values()].flatMap(ref=>ref?[ref.id]:[]))], states=new Map<string,KanbanExecutionSession>();let next=0;
         await Promise.all(Array.from({length:Math.min(ids.length,8)},async()=>{while(next<ids.length) {const id=ids[next++];states.set(id,await inspect(board,id));}}));
@@ -24,7 +25,9 @@ export function createKanbanSessionActivity(core: KanbanService, options: Kanban
     return {
         queryActivity:(boardId:string,query:import('./contracts').KanbanSessionActivityQuery={})=>querySessionItems(core,boardId,query,rows=>project(boardId,rows)),
         async executionSession(boardId:string,itemId:string) {
-            const [{item},board,workflow]=await Promise.all([core.item(boardId,itemId),boardMetadata(core,boardId),core.workflow(boardId)]),bindings=executionBindings(item.externalRefs,referenceSystem),last=currentBinding(item.externalRefs,itemId,workflow,referenceSystem);
+            const {item}=await core.item(boardId,itemId),bindings=executionBindings(item.externalRefs,referenceSystem);
+            if(!bindings.length)return {history:[]};
+            const [board,workflow]=await Promise.all([boardMetadata(core,boardId),core.workflow(boardId)]),last=currentBinding(item.externalRefs,itemId,workflow,referenceSystem);
             return {current:last?await inspect(board,last.id):undefined,history:bindings.map(ref=>({sessionId:ref.id,bindingId:ref.revision,current:ref===last})).reverse()};
         },
         validate:(board:KanbanBoard,command:KanbanCommand|undefined,actor:KanbanActor)=>validateBinding(core,options,board,command,actor,referenceSystem),

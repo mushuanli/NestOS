@@ -16,7 +16,8 @@ it('creates files and conversations with styled icon buttons on fixed directory 
     const projects = new ProjectService(root, repository, mounts, files); await projects.ensureStartup();
     const project = await projects.create('Empty'), path = folderBrowserPath(project.path);
     const sidebar = document.createElement('aside'), main = document.createElement('main'), style = document.createElement('style');
-    style.textContent = readFileSync('src/styles/workspace.css', 'utf8'); document.head.append(style); document.body.append(sidebar, main);
+    style.textContent = readFileSync('../../libraries/vfs-ui/src/styles/directory.css', 'utf8')
+        + readFileSync('src/styles/workspace.css', 'utf8'); document.head.append(style); document.body.append(sidebar, main);
     const modal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal'), close = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close');
     Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {configurable: true, value() {this.open = true;}});
     Object.defineProperty(HTMLDialogElement.prototype, 'close', {configurable: true, value() {this.open = false;}});

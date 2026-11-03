@@ -44,7 +44,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/llm-ui` | 独立 Chat、Flow 与设置 UI；仅依赖 mdxeditor 和零依赖 ui-common，Flow 与设置分别通过 /flow、/settings 可选子入口提供。 |
 | `@itookit/image-parser` | 独立图片缩放、裁剪与 Scanic 透视校正；/ui 多图编辑面板，/vfs 可选授权读取。 |
 | `@itookit/llm-ui-adapter` | NestOS 的 Session/Task/Flow/VFS 接线与原产品编辑器兼容入口。 |
-| `@itookit/vfs-ui` | 独立文件/资源浏览 UI：目录导航、标签、内容大纲；仅依赖 vfs-core，通过公开接口注入数据源、动作、展示和持久化。 |
+| `@itookit/vfs-ui` | 独立文件/资源浏览 UI：目录导航、通用目录内容页（排序、多选、创建时间列）、标签、内容大纲；仅依赖 vfs-core，通过公开接口注入数据源、动作、展示和持久化。 |
 | `@itookit/mdxeditor` | 独立 CodeMirror 6 编辑器（[独立仓库](https://github.com/mushuanli/mdxeditor)，源码工作区接入），不依赖其他内部包；宿主通过公共附件、存储、导航和保存接口注入能力。 |
 | `@itookit/mdx-adapter` | NestOS 编辑器适配：VFS/namespace/Session 校验、文件格式、插件元数据、笔记挖空复习状态的共享 seqfile（路径作用域、评分时按卡写入）、附件管理 UI、文件聊天引用及会话打印。 |
 | `@itookit/ui-common-adapter` | 通用编辑器宿主契约、应用设置基类与保存/恢复基础设施；导航、弹窗和浏览器工具由独立 ui-common 提供。 |

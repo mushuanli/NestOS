@@ -388,7 +388,7 @@ C4Component
 
 工作台、文件目录和会话集合搜索统一使用多关键字 AND：空格、制表符和全角空格分词，忽略大小写与词序，重复词不增加约束，标点按字面匹配。名称/路径要求同一个名称/路径包含所有词，文件内容要求同一个命中行包含所有词，会话内容/用户提问要求同一条消息包含所有词；不跨消息或来源拼接命中。API 中显式换行仍作为字面多行片段。通用分词与匹配由 vfs-core 的纯工具提供，调用方决定匹配单位；不改变底层 `name.contains` 等字面存储查询契约。
 
-`DirectoryList` 只提供搜索插槽和列表/结果切换；`ProjectSearchPanel` 复用防抖、取消、代次隔离、结果提示和安全文本渲染，销毁页面时取消读取。宿主将命中转换为规范资源，打开前核对项目身份与远程授权指纹；本地命中保留分支及轮次消息身份，远程命中保留 profile/session/turn/item，文件命中保留路径与行号。
+`vfs-ui.createDirectoryList` 提供通用目录展示、创建时间末列、搜索插槽和列表/结果切换；`ProjectSearchPanel` 复用防抖、取消、代次隔离、结果提示和安全文本渲染，销毁页面时取消读取。宿主将命中转换为规范资源，打开前核对项目身份与远程授权指纹；本地命中保留分支及轮次消息身份，远程命中保留 profile/session/turn/item，文件命中保留路径与行号。
 
 `ProjectSearch` 位于 app-core 的 projects 用例层：本地文件通过 `openFiles` 的授权 VFS 视图与 `discoverFiles` 遍历，按文件名搜索不读正文；内容读取复用驱动有界 read。隐藏目录、私有目录、忽略文件及二进制不进入正文命中。`vfsdriver-local`、IndexedDB 和 MemoryBackend 保持存储职责，不增加 UI 搜索策略或会话字段。本地会话通过 Repository 读取摘要，内容/用户提问显式读取各存活分支的轮次，按消息角色区分，排除删除/内部轮次和 system 上下文。每次查询有超时、结果与扫描预算；达到预算或某来源不可用时明确报告部分结果。
 
@@ -429,7 +429,7 @@ C4Component
 ```mermaid
 C4Component
   title 页面搜索：表示、项目查询与存储边界
-  Component(page, "DirectoryList / ProjectSearchPanel", "app-shell", "名称默认值、范围切换、防抖、取消与命中跳转")
+  Component(page, "DirectoryList / ProjectSearchPanel", "vfs-ui + app-shell adapter", "名称默认值、范围切换、防抖、取消与命中跳转")
   Component(query, "ProjectSearch", "app-core", "项目授权、AND 匹配单位、共享预算与部分结果")
   Component(keywords, "searchKeywords / matchesKeywords", "vfs-core pure utilities", "通用字面分词与 AND 匹配；无 I/O")
   Component(files, "VFS discovery + readContent", "vfs-core", "授权目录遍历与有界文件读取")

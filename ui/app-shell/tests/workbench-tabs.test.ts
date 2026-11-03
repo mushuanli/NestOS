@@ -460,9 +460,9 @@ it('shows readable file sizes before modified time and keeps unknown directory s
         { id: '/note.md', name: 'note.md', type: 'file', size: 1536, created: 1700000000000, modified: 1700000100000, description: '说明' },
         { id: '/image.png', name: 'image.png', type: 'file', size: 2097152 },
     ] });
-    expect([...list.querySelectorAll('th')].map(cell => (cell as HTMLElement).dataset.column)).toEqual(['name', 'size', 'modified', 'type']);
+    expect([...list.querySelectorAll('th')].map(cell => (cell as HTMLElement).dataset.column)).toEqual(['name', 'size', 'modified', 'type', 'created']);
     expect(list.querySelector('details')).toBeNull();
-    expect(list.querySelector('[data-resource-id="/note.md"]')?.children).toHaveLength(4);
+    expect(list.querySelector('[data-resource-id="/note.md"]')?.children).toHaveLength(5);
     const tooltip = list.querySelector<HTMLButtonElement>('[data-resource-id="/note.md"] .workbench-directory__name')!.title;
     expect(tooltip).toContain('note.md\n说明'); expect(tooltip).toContain('创建时间:'); expect(tooltip).toContain('修改时间:');
     expect(tooltip).toContain(new Date(1700000000000).toLocaleString('zh-CN'));

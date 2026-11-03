@@ -146,3 +146,5 @@ C4Component
 ## 公共 UI 与宿主适配
 
 `libraries/ui-common`（@itookit/ui-common）是零运行时依赖的 DOM 导航基础库；原业务契约保留于 `ui/ui-common-adapter`（@itookit/ui-common-adapter）。Markdown、聊天和看板 UI 直接依赖基础库并共用标题栏布局，宿主只注入导航、项目/窗口状态、文案图标与业务菜单；不把 VFS、Session 或路由实现放入基础库。原编辑控件及菜单节点在重排中保留身份，手机次要动作移入同一菜单；视图和绑定销毁释放布局租约，迟到清理不能夺走新绑定的控件。
+
+项目、笔记、私密和普通文件工作区的完整目录内容页共用 `vfs-ui.createDirectoryList`，表格、工具栏、多选、面包屑与列宽调整的 DOM/CSS 归独立库。app-shell 的 workbench/directory-list 仅适配翻译、图标、业务类型、诊断和选择订阅；项目聚合读取、权限、路由、收藏及搜索服务由宿主注入。创建时间作为末列，支持排序，缺失或无效值显示“—”。

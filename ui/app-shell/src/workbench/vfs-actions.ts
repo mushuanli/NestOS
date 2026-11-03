@@ -1,6 +1,5 @@
 import { t } from '@itookit/common';
-import type { VFSUIShell } from '@itookit/vfs-ui';
-import type { DirectoryBulkAction } from './directory-selection';
+import type { VFSUIShell, DirectoryBulkAction } from '@itookit/vfs-ui';
 
 /** Reuses VFS menu policy and the existing export, delete and move commands. */
 export function directoryBulkActions(ui: VFSUIShell, beforeRun?: (ids: string[]) => void): DirectoryBulkAction[] {

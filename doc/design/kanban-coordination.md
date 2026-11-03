@@ -547,7 +547,7 @@ C4Container
 
 `continue-execution` 显式指定失败或取消的前一派发及全新的派发 ID。协调者才能请求；完成事项、过期前驱、仍未结算的执行、变更的计划或额外人工阻塞均拒绝。命令同事务领取新 fence，保留原派发终态，新的 attempt 通过 continuation.previousDispatchId 追溯来源。迟到的旧结果不能改变新尝试。请求 operationId、dispatchId 和 expectedRevision 必须冻结，HTTP 结果未知时只核对原回执。
 
-独立执行桥只增加可选 prepareContinuation 端口。它读取前次已冻结的执行请求，再按原有 prepared/submitting 准入记录启动；重启只 inspect 已提交的同一请求。NestOS 使用正式 Session 提交队列，在原主执行 Session、分支和显式 Harness context binding 上创建一个新轮次；不重新创建主 Session、工作树或规划 Agent。普通 Session 提交与冷回执观察封装在 run/session-submission，业务判断归 kanban/continued-work 及产品预设。
+独立执行桥只增加可选 prepareContinuation 端口。它读取前次已冻结的执行请求，再按原有 prepared/submitting 准入记录启动；重启只 inspect 已提交的同一请求。NestOS 使用正式 Session 提交队列，在原主执行 Session、分支和显式 Harness context binding 上创建一个新轮次；不重新创建主 Session、工作树或规划 Agent。原生选择使用 resume，表示恢复该会话的当前上下文，不声明严格原生 head 条件写；严格 continue 在没有该能力时仍拒绝。普通 Session 提交与冷回执观察封装在 run/session-submission，业务判断归 kanban/continued-work 及产品预设。
 
 准入前先取得原 Session writer。只有宿主明确确认未启动且可重试的拒绝（如写租约暂不可用）才将同一冻结请求恢复为 prepared 并退避重试；该状态持久化后重启仍可接着准入。提交结果未知、网络丢响应和未确认的外部副作用保持 submitting，只查询原回执。普通状态观察不得重新发送 continue。
 

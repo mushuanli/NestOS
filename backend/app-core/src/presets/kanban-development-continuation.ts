@@ -47,7 +47,9 @@ async function publishContinuation(options: Options, input: Parameters<NonNullab
         {profile: original.policy.profile, commit: original.policy.commit, modules: original.policy.modules.join(',')});
     const record = await journal.update<DevelopmentWorkspaceRecord>('development-workspace:' + dispatch.id, old => old ?? {...original, policy,
         worktreeId: tree.id, communicationDirectory: original.directory + '/_nestos/kanban/continuations/' + dispatch.id,
-        context: {...original.context as object, task: item, continuation: {dispatchId: dispatch.id, previousDispatchId: dispatch.continuation!.previousDispatchId,
+        context: {...original.context as object, task: {id: item.id, parentId: item.planning?.parentId ?? null, title: item.title,
+            responsibility: item.responsibility, acceptance: item.acceptance, dependencies: item.planning?.dependencies ?? []},
+            continuation: {dispatchId: dispatch.id, previousDispatchId: dispatch.continuation!.previousDispatchId,
             originalDispatchId: input.originalDispatch.id, sessionId: input.sessionId}}});
     await journal.update('worktree:' + dispatch.id, old => old ?? tree);
     const managed = await journal.get('managed-agent:work-' + input.originalDispatch.id);

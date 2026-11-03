@@ -82,6 +82,44 @@ it('refuses native continuation before acquiring a connection when conditional w
     await expect(f.make().execute(continuation, f.context)).rejects.toMatchObject({code: 'CONTEXT_NATIVE_WRITE_UNSUPPORTED', executionOutcome: 'not-started'});
     expect(f.connections.acquire).not.toHaveBeenCalled(); expect(f.client.turn).not.toHaveBeenCalled(); expect(f.records.size).toBe(0);
 });
+async function resumeFixture() {
+    const f = fixture(); complete(f); await f.make().execute(call, f.context);
+    const binding = (await store(f).list())[0]; f.session.activeTurnId = ''; f.session.status = 'idle';
+    const next = {...call, context: {...context, invocationId: 'resume-call', input: {mode: 'native-continuation' as const, inputRef: 'increment', digest: 'hash'},
+        conversation: {mode: 'resume' as const, bindingId: binding.id, expectedBindingRevision: binding.revision, expectedGeneration: binding.generation}}};
+    const owner = {...f.context, taskId: 'resume-task', effectId: 'resume-effect'};
+    vi.mocked(f.client.turn).mockImplementation(async (_profile, _session, _prompt, options) => f.committed(options, {turnId: 'resumed-turn'}) as {turnId: string});
+    return {f, next, owner, binding};
+}
+it('resumes the same native Session, records the new checkpoint and reconciles without another turn', async () => {
+    const {f, next, owner, binding} = await resumeFixture();
+    f.push('item/completed', {threadId: 'native-session', turnId: 'resumed-turn', item: {id: 'resumed-answer', type: 'agentMessage', text: 'Resumed answer'}});
+    f.push('turn/completed', {threadId: 'native-session', turn: {id: 'resumed-turn', status: 'completed'}});
+    expect(await f.make().execute(next, owner)).toMatchObject({sessionId: 'native-session', turnId: 'resumed-turn', text: 'Resumed answer'});
+    expect(f.client.create).toHaveBeenCalledOnce(); expect(f.client.turn).toHaveBeenCalledTimes(2);
+    const resumed = (await store(f).get(binding.id))!;
+    expect(resumed.knownHeadRef).toBe('resumed-turn'); expect(resumed.checkpoints).toHaveLength(2);
+    expect(await f.make().reconcile(next, owner)).toMatchObject({status: 'completed'});
+    expect(f.client.turn).toHaveBeenCalledTimes(2); expect(resumed.activeOperation).toBeUndefined();
+});
+it.each(['busy', 'epoch'] as const)('refuses a %s native resume without creating or advancing a Session', async reason => {
+    const {f, next, owner, binding} = await resumeFixture();
+    if (reason === 'busy') f.session.activeTurnId = 'another-turn'; else f.data.epoch = 'replacement';
+    await expect(f.make().execute(next, owner)).rejects.toMatchObject({code: reason === 'busy' ? 'CONTEXT_NATIVE_BUSY' : 'CONTEXT_NATIVE_EPOCH_CHANGED', executionOutcome: 'not-started'});
+    expect(f.client.create).toHaveBeenCalledOnce(); expect(f.client.turn).toHaveBeenCalledOnce();
+    expect((await store(f).get(binding.id))?.activeOperation).toBeUndefined();
+});
+it('cancels only the newly resumed turn and retains the original Session', async () => {
+    const {f, next, owner} = await resumeFixture(), provider = f.make();
+    const running = provider.execute(next, owner).catch(error => error);
+    await vi.waitFor(() => expect(f.client.turn).toHaveBeenCalledTimes(2)); f.controller.abort(); await running;
+    vi.mocked(f.client.interrupt).mockImplementation(async (_profile, _session, _turn, options) => {
+        f.committed(options, {}); f.push('turn/completed', {threadId: 'native-session', turn: {id: 'resumed-turn', status: 'cancelled'}});
+    });
+    await expect(provider.cancel(next, owner)).resolves.toMatchObject({status: 'stopped'});
+    expect(f.client.interrupt).toHaveBeenCalledWith('claude', 'native-session', 'resumed-turn', expect.anything());
+    expect(f.client.create).toHaveBeenCalledOnce();
+});
 
 it.each(['create', 'turn'] as const)('releases a binding only after an authoritative %s rejection', async step => {
     const f = fixture(); vi.mocked(f.client[step]).mockRejectedValueOnce(Object.assign(new Error('Rejected fixture operation'),

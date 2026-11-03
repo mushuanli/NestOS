@@ -13,6 +13,7 @@ it('rejects a native context on model and Flow calls instead of silently discard
         .toThrowError(expect.objectContaining({code: 'CONTEXT_TARGET_NOT_HARNESS'}));
 });
 it('rejects strict native continuation and invalid prompt append while preserving the source definition', () => {
+    expect(() => assertContextSelection({overrides: {harnessConversation: {mode: 'resume', bindingId: 'b', expectedBindingRevision: 1, expectedGeneration: 1}}}, harness)).not.toThrow();
     expect(() => assertContextSelection({overrides: {harnessConversation: {mode: 'continue', bindingId: 'b', expectedBindingRevision: 1, expectedGeneration: 1}}}, harness))
         .toThrowError(expect.objectContaining({code: 'CONTEXT_NATIVE_WRITE_UNSUPPORTED'}));
     expect(() => applyHarnessOverrides(harness, {overrides: {systemPromptAppend: {} as never}}))

@@ -4,6 +4,8 @@
 
 纯内容摘要通过 `@itookit/llm-context/digest` 的 `sha256Bytes`、`sha256Hex` 和 `sha256HexSync` 调用，源码与发布产物均提供独立 ESM/CJS 及声明入口。契约层需要摘要时使用该入口，避免通过包根加载 Context 运行时；既有根导出与包内 `content/digest` 转发保留兼容。
 
+Harness 会话选择的 `resume` 模式表示在同一有效 binding、Session 和分支上恢复原生会话的当前上下文，输入只发送本轮增量。宿主核对 binding revision/generation、策略与授权、原生 epoch、工作目录和空闲状态；沿用现有 native Session，通过稳定操作回执启动新 turn，记录新的终态检查点。它不声明原生 head 的条件写保证，严格 `continue` 模式在服务端缺少该能力时仍拒绝。取消只定位本轮 turn，重启核对原 turn 回执，不重新创建会话或发送增量。
+
 ## 接口与实现位置
 
 | 接口 | 用途 | 实现 |

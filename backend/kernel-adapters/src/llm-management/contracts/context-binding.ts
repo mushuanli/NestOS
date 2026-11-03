@@ -2,6 +2,7 @@
 export type ConversationSelection =
     | {mode: 'new'; seedContextRef?: string}
     | {mode: 'continue'; bindingId: string; expectedBindingRevision: number; expectedGeneration: number}
+    | {mode: 'resume'; bindingId: string; expectedBindingRevision: number; expectedGeneration: number}
     | {mode: 'fork'; sourceBindingId: string; expectedBindingRevision: number; expectedGeneration: number; checkpointRef: string};
 
 export interface HarnessContextRequest {
@@ -76,7 +77,7 @@ export function assertHarnessContextRequest(value: HarnessContextRequest): void 
 }
 
 export function assertConversationSelection(selection: ConversationSelection): void {
-    if (!selection || typeof selection !== 'object' || !['new', 'continue', 'fork'].includes(selection.mode)) fail('CONTEXT_REQUEST_INVALID');
+    if (!selection || typeof selection !== 'object' || !['new', 'continue', 'resume', 'fork'].includes(selection.mode)) fail('CONTEXT_REQUEST_INVALID');
     const fields = selectionFields(selection);
     if (!Object.keys(selection).every(key => fields.includes(key))) fail('CONTEXT_REQUEST_INVALID');
     if (selection.mode === 'new') {
@@ -85,7 +86,7 @@ export function assertConversationSelection(selection: ConversationSelection): v
 }
 function selectionFields(selection: ConversationSelection): string[] {
     if (selection.mode === 'new') return ['mode', 'seedContextRef'];
-    return ['mode', 'expectedBindingRevision', 'expectedGeneration', ...(selection.mode === 'continue' ? ['bindingId'] : ['sourceBindingId', 'checkpointRef'])];
+    return ['mode', 'expectedBindingRevision', 'expectedGeneration', ...(selection.mode !== 'fork' ? ['bindingId'] : ['sourceBindingId', 'checkpointRef'])];
 }
 
 function validRequestFields(value: HarnessContextRequest): boolean {
@@ -102,7 +103,7 @@ function validExistingInput(input: HarnessContextRequest['input'], selection: Ex
 }
 function validExistingSelection(selection: Exclude<ConversationSelection, {mode: 'new'}>): boolean {
     return positiveInteger(selection.expectedBindingRevision) && positiveInteger(selection.expectedGeneration)
-        && (selection.mode === 'continue' ? reference(selection.bindingId) : reference(selection.sourceBindingId) && reference(selection.checkpointRef));
+        && (selection.mode !== 'fork' ? reference(selection.bindingId) : reference(selection.sourceBindingId) && reference(selection.checkpointRef));
 }
 function reference(value: unknown): value is string {return typeof value === 'string' && value.length > 0 && value.length <= 4096;}
 function positiveInteger(value: number): boolean {return Number.isSafeInteger(value) && value > 0;}

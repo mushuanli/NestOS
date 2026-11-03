@@ -30,7 +30,7 @@ export class HarnessContextBindings {
             if (sameOperation(current?.activeOperation, operation) || sameOperation(current?.lastOperation, operation)) {
                 assertCompatible(current!, context, connection); return current!;
             }
-            if (context.conversation.mode === 'continue') return continueBinding(current, context, connection, operation);
+            if (context.conversation.mode === 'continue' || context.conversation.mode === 'resume') return continueBinding(current, context, connection, operation);
             if (current) throw executionError('CONTEXT_BINDING_CONFLICT');
             if (context.conversation.mode === 'fork') return forkBinding(id, this.sessionId, collection, context, connection, operation);
             return newBinding(id, this.sessionId, context, connection, operation);
@@ -136,7 +136,7 @@ function forkBinding(id: string, sessionId: string, collection: BindingCollectio
 function continueBinding(current: ContextBinding | undefined, context: HarnessContextRequest, connection: HarnessConnectionSnapshot,
     operation: ContextBindingOperation): ContextBinding {
     if (!current) throw executionError('CONTEXT_BINDING_NOT_FOUND');
-    const selection = context.conversation as Extract<Selection, {mode: 'continue'}>;
+    const selection = context.conversation as Extract<Selection, {mode: 'continue' | 'resume'}>;
     if (current.id !== selection.bindingId || current.revision !== selection.expectedBindingRevision
         || current.generation !== selection.expectedGeneration) throw executionError('CONTEXT_BINDING_CHANGED');
     if (current.validity !== 'valid') throw executionError('CONTEXT_BINDING_INVALID');

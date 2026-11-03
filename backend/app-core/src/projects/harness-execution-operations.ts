@@ -53,7 +53,8 @@ function rejectionCode(value: unknown): string {
 export async function prepareNativeTurn(run: NativeExecution): Promise<void> {
     assertPreparedAttachments(run);
     const { client, profile, workspaceId } = run.acquired;
-    if (run.request.context?.conversation.mode === 'fork') await prepareForkSession(run);
+    if (run.request.context?.conversation.mode === 'resume') await prepareResumedSession(run);
+    else if (run.request.context?.conversation.mode === 'fork') await prepareForkSession(run);
     else if (!run.journal.data.sessionId) {
         const result = await nativeMutation(run, 'create', options => client.create(profile.id, workspaceId, {...options,
             ...(run.request.connection.directory ? {directory: run.request.connection.directory} : {})}));
@@ -71,6 +72,18 @@ export async function prepareNativeTurn(run: NativeExecution): Promise<void> {
         if (typeof id !== 'string' || !id) throw executionError('NATIVE_TURN_INVALID');
         await run.journal.save({ turnId: id });
     }
+}
+
+/** Resume follows this Session's current native context; it promises no conditional head write. */
+async function prepareResumedSession(run: NativeExecution): Promise<void> {
+    if (!run.acquired.profile.capabilities.resume || !run.journal.data.sessionId) throw executionError('CONTEXT_RESUME_UNSUPPORTED');
+    if (run.journal.data.turnId || run.journal.data.operations.turn) return;
+    const {session} = await run.acquired.client.read(run.acquired.profile.id, run.journal.data.sessionId, nativeOptions(run));
+    if (session.id !== run.journal.data.sessionId || session.cwd && run.request.connection.directory
+        && !session.cwd.endsWith('/' + run.request.connection.directory)) throw executionError('CONTEXT_NATIVE_SCOPE_CHANGED');
+    if (!session.resumable || session.activeTurnId || ['running', 'busy', 'inProgress'].includes(session.status ?? '')
+        || session.writerLock?.status === 'unknown' || session.writerLock?.status === 'held' && !session.owned)
+        throw executionError('CONTEXT_NATIVE_BUSY');
 }
 
 function assertPreparedAttachments(run: NativeExecution): void {

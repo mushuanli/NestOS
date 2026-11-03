@@ -26,6 +26,13 @@ export async function claimExecutionContext(journal: ExecutionJournal, request: 
     const store = bindings(journal);
     if ((journal.data.operations.create || journal.data.operations.fork) && !await store.get(journal.data.bindingId!)) throw executionError('CONTEXT_BINDING_NOT_FOUND');
     const binding = await store.claim(journal.data.bindingId!, request.context, request.connection, journal.contextOperation());
+    if (request.context.conversation.mode === 'resume') {
+        const native = binding.nativeRef;
+        if (!native || native.epoch !== journal.data.epoch || native.nodeConnectionId !== request.connection.nodeConnectionId
+            || native.profileId !== request.connection.profileId) throw executionError('CONTEXT_NATIVE_EPOCH_CHANGED');
+        if (journal.data.sessionId && journal.data.sessionId !== native.sessionId) throw executionError('JOURNAL_CONFLICT');
+        if (!journal.data.sessionId) await journal.save({sessionId: native.sessionId});
+    }
     if (binding.forkedFrom && journal.data.forkSource && canonical(binding.forkedFrom) !== canonical(journal.data.forkSource))
         throw executionError('JOURNAL_CONFLICT');
     if (binding.forkedFrom && !journal.data.forkSource) await journal.save({forkSource: binding.forkedFrom});

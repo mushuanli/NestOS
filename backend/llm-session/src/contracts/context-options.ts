@@ -27,7 +27,7 @@ export interface ContextOptionsPage {
     basis: string;
     revision: number | null;
     dynamicPolicy: 'dispatch-validation-required';
-    modes: {new: ContextModeSupport; fork: ContextModeSupport; continue: ContextModeSupport};
+    modes: {new: ContextModeSupport; fork: ContextModeSupport; continue: ContextModeSupport; resume?: ContextModeSupport};
     sources: ContextSourceOption[];
     checkpoints?: ContextCheckpointOption[];
     nextCursor?: ContextOptionsCursor;

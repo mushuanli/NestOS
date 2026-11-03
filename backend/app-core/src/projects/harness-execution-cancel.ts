@@ -44,6 +44,7 @@ async function settleCleanupContext(options: HarnessExecutionOptions, journal: E
     await options.settleContextForCleanup(journal, unstarted, context);
 }
 async function recoverReferences(run: NativeExecution): Promise<boolean> {
+    if (run.request.context?.conversation.mode === 'resume') return !!run.journal.data.sessionId && recoverReference(run, 'turn');
     const creation = run.request.context?.conversation.mode === 'fork' ? 'fork' : 'create';
     for (const step of [creation, 'turn'] as const) {
         if (!await recoverReference(run, step)) return false;

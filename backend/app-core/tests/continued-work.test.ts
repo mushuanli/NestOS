@@ -20,7 +20,7 @@ it('continues the original execution Session with explicit context selection and
     const f = fixture(); context.bindings = {binding: {id: 'binding', branchId: 'main', validity: 'valid', revision: 3, generation: 1}};
     const frozen = await f.executor.prepareContinuation!(f.dispatch as any, f.item as any, f.original) as any;
     expect(frozen.request).toMatchObject({expectedSessionId: 'original-execution', submission: {id: 'continuation'},
-        overrides: {harnessConversation: {mode: 'continue', bindingId: 'binding', expectedBindingRevision: 3}}});
+        overrides: {harnessConversation: {mode: 'resume', bindingId: 'binding', expectedBindingRevision: 3}}});
     expect(await f.executor.start(frozen)).toMatchObject({executionSessionId: 'original-execution', outcome: 'running'});
     const recovered = withContinuedWork(f.primary as any, f.options); await recovered.inspect(JSON.parse(JSON.stringify(frozen)));
     expect(f.submission.start).toHaveBeenCalledOnce(); expect(f.submission.inspect).toHaveBeenCalledOnce();

@@ -73,7 +73,8 @@ function projectOptions(query: ContextOptionsQuery, basis: string, revision: num
     return {kind: 'direct-harness', target: query.target, sessionId: query.sessionId, branchId: query.branchId, basis, revision,
         dynamicPolicy: 'dispatch-validation-required', modes: {new: {supported: true},
             fork: {supported: checkpointForkSupported(inspection), ...(!checkpointForkSupported(inspection) ? {code: 'CONTEXT_CHECKPOINT_FORK_UNSUPPORTED'} : {})},
-            continue: {supported: false, code: 'CONTEXT_NATIVE_WRITE_UNSUPPORTED'}}, sources,
+            continue: {supported: false, code: 'CONTEXT_NATIVE_WRITE_UNSUPPORTED'},
+            resume: {supported: inspection.profile.capabilities.resume === true}}, sources,
         ...(checkpoints ? {checkpoints} : {}), ...(page.nextCursor ? {nextCursor: {basis, catalog: page.nextCursor}} : {})};
 }
 function bindingPage(query: ContextOptionsQuery, revision: number | null, bindings: ContextBinding[]): ContextBindingPage {

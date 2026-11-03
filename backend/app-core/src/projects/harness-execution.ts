@@ -95,7 +95,7 @@ class NativeHarnessExecutionProvider implements HarnessExecutionProvider {
     }
     private async failExecution(error: unknown, request: HarnessExecutionRequest, context: EffectExecutionContext,
         journal: ExecutionJournal, startedAt: number): Promise<never> {
-        const failure = classifyExecutionFailure(error, journal), correlation = executionCorrelation(request, journal);
+        const failure = classifyExecutionFailure(error, journal, request.context?.conversation.mode === 'resume'), correlation = executionCorrelation(request, journal);
         try {
             if ((failure as {executionOutcome?: string})?.executionOutcome === 'not-started') await settleExecutionContext(journal, true);
         } catch (settlementError) {
@@ -130,11 +130,11 @@ class NativeHarnessExecutionProvider implements HarnessExecutionProvider {
 function replayableTerminal(data: ExecutionJournalData): boolean {
     return !!data.terminal && (data.terminal !== 'completed' || data.outputChecked === true);
 }
-function classifyExecutionFailure(error: unknown, journal: ExecutionJournal): unknown {
+function classifyExecutionFailure(error: unknown, journal: ExecutionJournal, resume = false): unknown {
     const data = journal.data;
     const notStarted = data?.operations.create?.outcome === 'not-committed' || data?.operations.fork?.outcome === 'not-committed'
         || data?.operations.turn?.outcome === 'not-committed' && !data.turnId
-        || !!data?.forkRejected || data && !data.operations.create && !data.operations.fork && !data.operations.turn && !data.sessionId;
+        || !!data?.forkRejected || data && !data.operations.create && !data.operations.fork && !data.operations.turn && (!data.sessionId || resume);
     return notStarted ? Object.assign(error instanceof Error ? error : executionError(safeCode(error)), { executionOutcome: 'not-started' }) : error;
 }
 export function safeCode(error: unknown): string {

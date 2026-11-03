@@ -53,8 +53,9 @@ export class ExecutionJournal {
         return true;
     }
     async initialize(epoch: string): Promise<void> {
+        const selection = this.request.context?.conversation;
         this.data = { version: 1, owner: identity(this.context), fingerprint: sha256HexSync(canonical(this.request)),
-            epoch, operations: {}, texts: [], notified: [], ...(this.request.context ? {bindingId: `cb_${randomUUID()}`} : {}) };
+            epoch, operations: {}, texts: [], notified: [], ...(this.request.context ? {bindingId: selection?.mode === 'resume' ? selection.bindingId : `cb_${randomUUID()}`} : {}) };
         await this.save({});
     }
     async save(update: Partial<ExecutionJournalData>): Promise<void> {

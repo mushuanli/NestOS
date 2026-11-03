@@ -48,7 +48,8 @@ async function prepare(options: ContinueWorkOptions, dispatch: KanbanDispatch, i
     const request: SubmissionRequest = {expectedSessionId: sessionId, expectedBranch: branch, expectedTarget: target,
         target: {kind: target.kind, id: target.id, version: target.version}, source: {kind: 'composer', text: instruction, attachments: [], values: {}},
         submission: {id: dispatch.id, source: {kind: 'conversation', ownerId: sessionId, id: dispatch.id}},
-        ...(binding ? {overrides: {harnessConversation: {mode: 'continue', bindingId: binding.id,
-            expectedBindingRevision: binding.revision, expectedGeneration: binding.generation}}} : {})};
+        overrides: {...original.overrides, baseRoundId: undefined, newBranchName: undefined, branchMode: 'continue',
+            ...(binding ? {harnessConversation: {mode: 'resume', bindingId: binding.id,
+                expectedBindingRevision: binding.revision, expectedGeneration: binding.generation}} : {})}};
     return {schema: 2, dispatch, origin, request};
 }

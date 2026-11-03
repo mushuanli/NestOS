@@ -261,4 +261,6 @@ WorkbenchSidebar 只适配 WorkbenchSnapshot 与 vfs-ui SidebarState，页签 DO
 
 窗口列表属于工作区：桌面入口位于标签栏右侧，侧栏展开时使用侧栏已有入口并隐藏标签栏入口；页面标题中的窗口按钮仅在手机显示。Up 属于当前资源，保留在编辑器标题栏，标签栏不挂 Up；标签栏不挂更多菜单，关闭已保存与重新打开通过窗口列表操作。
 
+项目主页和完整目录页的 DirectoryList 与窗口列表、VFS 行统一复用 vfs-ui.formatDisplayLabel，名称最多显示 40 个字素，窄列继续单行省略；不在宿主复制截断算法。tooltip、可访问名称、筛选、排序与资源身份仍使用完整原文。
+
 返回策略统一在 navigation/page-history：手机标题栏、文件编辑器及 compact 导航都调用 navigateWorkspaceBack，存在站内历史时回到实际上一页，首次深链才返回列表；桌面侧栏图标继续只折叠侧栏。普通资源选择 push，装配、历史回放与旧路由规范化不把中间选中通知写回历史。列表/详情即使 URL 相同也保留独立历史状态；新显式导航会终止旧回放模式。

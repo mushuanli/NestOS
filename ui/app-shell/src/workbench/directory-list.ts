@@ -2,7 +2,7 @@ import { DirectoryToolbar } from './directory-toolbar';
 import { installColumnResize } from './column-resize';
 import { t, getLocale, FILE_BROWSER_ICONS, ACTION_ICONS, fileTypeIcon } from '@itookit/common';
 import { decorateButton } from './controls';
-import { formatFileSize, type VFSUIShell } from '@itookit/vfs-ui';
+import { formatDisplayLabel, formatFileSize, type VFSUIShell } from '@itookit/vfs-ui';
 import { DirectorySelection, type DirectoryBulkAction } from './directory-selection';
 import { FSError, matchesKeywords, searchKeywords } from '@itookit/vfs-core';
 import { createDirectoryBreadcrumbs, type DirectoryBreadcrumb } from './directory-breadcrumbs';
@@ -50,7 +50,7 @@ export async function refreshDirectoryList(panel: HTMLElement): Promise<void> {
 }
 const date = (value?: string | number) => value !== undefined && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString(getLocale()) : '—';
 
-/** Full names wrap; creation time is available in the filename tooltip. */
+/** Display labels are bounded; full names and creation time remain in the tooltip. */
 export function createDirectoryList(options: DirectoryListOptions): HTMLElement {
     const panel = document.createElement('section'); panel.className = 'workbench-directory';
     const heading = document.createElement('h2'); heading.textContent = options.title;
@@ -154,6 +154,7 @@ function renderEntry(body: HTMLTableSectionElement, entry: DirectoryEntry, optio
         const row = body.insertRow(); row.dataset.resourceId = entry.id;
         row.classList.toggle('is-selected', !!selection?.ids.has(entry.id));
         const open = action(entry.name, () => options.open(entry.id), entry.icon ?? (entry.type === 'session' ? FILE_BROWSER_ICONS.newSession : fileTypeIcon(entry.name, entry.type === 'directory'))); open.className = 'workbench-directory__name'; open.disabled = !!entry.disabled; open.title = entryDetails(entry);
+        open.lastElementChild!.textContent = formatDisplayLabel(entry.name);
         open.querySelector('.workbench-icon')!.classList.add('file-type-icon');
         const name = row.insertCell(); name.append(open);
         if (selection) { const checkbox = selection.checkbox(entry.id, entry.name); checkbox.disabled = !!entry.disabled; name.prepend(checkbox); }

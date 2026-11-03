@@ -300,14 +300,18 @@ it('restores sidebar width while ignoring obsolete collapsed sections', () => {
     expect(host.style.getPropertyValue('--vfs-sidebar-width')).toBe('336px'); restored.destroy();
 });
 it('filters full filenames and preserves its query across a metadata refresh', async () => {
-    const open = vi.fn();
+    const open = vi.fn(), name = '完整文件名称'.repeat(30) + '隐藏尾部.md';
     const list = createDirectoryList({ title: 'Docs', path: '/docs', entries: [
-        { id: '/docs/long.md', name: '完整文件名称很长但必须可读.md', type: 'file', created: 1, modified: 2 },
+        { id: '/docs/long.md', name, type: 'file', created: 1, modified: 2 },
         { id: '/docs/other.md', name: 'other.md', type: 'file' },
-    ], open, refresh: async () => [{ id: '/docs/long.md', name: '完整文件名称很长但必须可读.md', type: 'file', modified: 3 }] });
-    const input = list.querySelector<HTMLInputElement>('input[type="search"]')!; input.value = '完整'; input.dispatchEvent(new Event('input'));
+    ], open, refresh: async () => [{ id: '/docs/long.md', name, type: 'file', modified: 3 }] });
+    const label = list.querySelector<HTMLButtonElement>('[data-resource-id="/docs/long.md"] .workbench-directory__name')!;
+    expect(Array.from(label.lastElementChild!.textContent!).length).toBe(40);
+    expect(label.lastElementChild!.textContent).toMatch(/…$/);
+    expect(label.getAttribute('aria-label')).toBe(name); expect(label.title).toContain(name);
+    const input = list.querySelector<HTMLInputElement>('input[type="search"]')!; input.value = '隐藏尾部'; input.dispatchEvent(new Event('input'));
     expect(list.querySelectorAll('tbody tr')).toHaveLength(1);
-    await refreshDirectoryList(list); expect(input.value).toBe('完整');
+    await refreshDirectoryList(list); expect(input.value).toBe('隐藏尾部');
     list.querySelector<HTMLButtonElement>('.workbench-directory__name')!.click(); expect(open).toHaveBeenCalledWith('/docs/long.md');
 });
 it('selects filtered directory rows, preserves checks across sorting and gates bulk mutations', async () => {

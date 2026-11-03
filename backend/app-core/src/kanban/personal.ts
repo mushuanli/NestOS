@@ -62,7 +62,8 @@ function personalOptions({store, journal, events, diagnostics, sessions, kernel,
     return {
         executionSessions:sessions&&kernel?{source:{...createLocalKanbanSessionSource(sessions,kernel,automationOptions?.executionResource),
             ...(automationOptions ? {related: relatedKanbanSessions({journal, calls: automationOptions.calls,
-                repository: automationOptions.sessions, kernel: automationOptions.kernel, resources: automationOptions.sessionExecutionResources})} : {})}}:undefined,
+                repository: automationOptions.sessions, kernel: automationOptions.kernel, resources: automationOptions.sessionExecutionResources,
+                related: automationOptions.relatedSessions})} : {})}}:undefined,
         suggestions: async (_board, kind, search, limit) => {
             if (kind !== 'session') return undefined;
             const rows = await sessions?.listSummaries?.() ?? [];

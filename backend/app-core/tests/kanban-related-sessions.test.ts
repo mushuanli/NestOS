@@ -8,6 +8,7 @@ import {analysisHistory} from '../src/kanban/automation-analysis';
 import {relatedExecutionReader} from '../src/kanban/related-session-executions';
 import {developmentSessionResources} from '../src/presets/kanban-work-resources';
 import {harnessExecutionJournalKey} from '../src/projects/harness-execution-journal';
+import {developmentLifecycleSessions} from '../src/presets/kanban-development-lifecycle';
 
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {for (const close of closes.splice(0).reverse()) await close();});
@@ -39,7 +40,7 @@ it('recovers all legacy planning Sessions within board/item scope and keeps only
     await f.journal.update('development-lifecycle-index',()=>['hook','foreign-hook','child-hook']);
     for(const [key,boardId,itemId] of [['hook','b','work'],['foreign-hook','other-board','work'],['child-hook','b','child']])
         await f.journal.update(key,()=>({id:key,boardId,dispatch:{itemId},request:{input:{request:{expectedSessionId:key,submission:{id:key}}}}}));
-    const related=relatedKanbanSessions({...f} as never);
+    const related=relatedKanbanSessions({...f, related: (boardId: string, itemId: string) => developmentLifecycleSessions(f as never, boardId, itemId)} as never);
     const rows=await related(board,item,workflow);
     expect(rows.map(row=>[row.sessionId,row.purpose]).sort()).toEqual([
         ['main','execution'],['main','execution'],['fix','fix'],['node-planner-1','planning'],['node-planner-2','planning'],['node-hook','finalization'],

@@ -2,7 +2,7 @@ import {lifecyclePromptFiles} from '../run/prompt-lifecycle';
 import {developmentObservation} from './kanban-development-log';
 import {t} from '@itookit/common';
 import type {TargetRef} from '@itookit/llm-flow/contracts';
-import type {KanbanDispatch, KanbanItem} from '@itookit/kanban/contracts';
+import type {KanbanDispatch, KanbanItem, KanbanSessionAssociation} from '@itookit/kanban/contracts';
 import type {KanbanExecutionObservation} from '@itookit/kanban/execution';
 import type {UserEventService} from '../events/service';
 import {createPublishedKanbanWorkExecutor, type PublishedKanbanWorkOptions} from '../kanban/published-work';
@@ -21,12 +21,25 @@ export function developmentLifecycle(options: Options) {
         if (state.stopped) return Promise.resolve();
         return state.pending ??= advance(options, state).finally(() => {state.pending = undefined;});
     };
-    return {scan, async settled(dispatchId: string, outcome: string) {
+    return {scan, sessions: (boardId: string, itemId: string) => developmentLifecycleSessions(options, boardId, itemId),
+        async settled(dispatchId: string, outcome: string) {
             const job = await options.journal.get<Job>('development-lifecycle:' + dispatchId + '-postload-' + outcome);
             return !job || job.done === true;
         }, async dispose() {state.stopped = true; await state.pending;},
         enqueue: (boardId: string, dispatch: KanbanDispatch, item: KanbanItem, observation: KanbanExecutionObservation, kind: 'task' | 'decision' = 'task', target?: TargetRef) =>
             enqueue(options, state, boardId, dispatch, item, observation, kind, target)};
+}
+/** Read only the actual child identity; a caller or an unsubmitted hook is not an execution Session. */
+export async function developmentLifecycleSessions(options: Pick<Options, 'journal' | 'calls'>, boardId: string, itemId: string): Promise<KanbanSessionAssociation[]> {
+    const keys = await options.journal.get<string[]>('development-lifecycle-index') ?? [], rows: KanbanSessionAssociation[] = [];
+    for (const key of keys) {
+        const job = await options.journal.get<Job>(key);
+        if (!job || job.boardId !== boardId || job.dispatch.itemId !== itemId) continue;
+        const request = job.request as {input: import('@itookit/llm-session/contracts').IndependentCallInput};
+        const admission = await options.calls.inspectTaskCallSubmission(request.input);
+        if (admission?.executionSessionId) rows.push({sessionId: admission.executionSessionId, purpose: 'finalization', execution: {id: job.id, purpose: 'finalization'}});
+    }
+    return rows;
 }
 function lifecycleExecutor(options: Options) {
     return createPublishedKanbanWorkExecutor({...options, title: (dispatch, item) => `${t('kanban.lifecycleTitle', {stage: dispatch.id.split('-postload-').at(-1) ?? ''})} · ${item.number ? '#' + item.number : item.title}`, binding: async dispatch => {

@@ -1,6 +1,5 @@
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import type {IndependentCallService} from '@itookit/llm-session';
-import type {IndependentCallInput} from '@itookit/llm-session/contracts';
 import type {KanbanBoard, KanbanItem, KanbanWorkflowState, KanbanSessionAssociation, KanbanSessionExecution} from '@itookit/kanban/contracts';
 import type {KanbanSessionSource} from '@itookit/kanban/activity';
 import type {KanbanAutomationJournal} from './automation-journal';
@@ -11,8 +10,8 @@ import {requireValue} from './validation';
 interface Options extends SessionExecutionOptions {
     journal: KanbanAutomationJournal;
     calls: Pick<IndependentCallService, 'inspectTaskCallSubmission'>;
+    related?(boardId: string, itemId: string): Promise<KanbanSessionAssociation[]>;
 }
-interface LifecycleJob {id: string; boardId: string; dispatch: {itemId: string}; request: {input: IndependentCallInput}}
 const log = createModuleLogger('KanbanSessions');
 
 export function relatedKanbanSessions(options: Options): NonNullable<KanbanSessionSource['related']> {
@@ -47,7 +46,10 @@ async function collect(options: Options, board: KanbanBoard, item: KanbanItem, w
             if (admission?.executionSessionId) await append(admission.executionSessionId, {id: job.id, purpose: 'planning'});
         });
     }
-    pending.push(...await lifecycleReaders(options, board.id, item.id, append));
+    for (const row of await options.related?.(board.id, item.id) ?? []) {
+        if (row.execution) pending.push(() => append(row.sessionId, row.execution!));
+        else rows.push(row);
+    }
     let next = 0;
     const results = await Promise.allSettled(Array.from({length: Math.min(pending.length, 8)}, async () => {while (next < pending.length) await pending[next++]();}));
     const failure = results.find(row => row.status === 'rejected'); if (failure?.status === 'rejected') throw failure.reason;
@@ -63,18 +65,4 @@ function executionAppender(read: ReturnType<typeof relatedExecutionReader>, rows
             rows.push({sessionId, purpose: execution.purpose, execution: {...execution, state: 'unknown', code}});
         }
     };
-}
-
-async function lifecycleReaders(options: Options, boardId: string, itemId: string, append: (sessionId: string, execution: KanbanSessionExecution) => Promise<void>) {
-    const keys = await options.journal.get<string[]>('development-lifecycle-index') ?? [];
-    const readers: Array<() => Promise<void>> = [];
-    for (const key of keys) {
-        const job = await options.journal.get<LifecycleJob>(key);
-        if (!job || job.boardId !== boardId || job.dispatch.itemId !== itemId) continue;
-        readers.push(async () => {
-            const admission = await options.calls.inspectTaskCallSubmission(job.request.input);
-            if (admission?.executionSessionId) await append(admission.executionSessionId, {id: job.id, purpose: 'finalization'});
-        });
-    }
-    return readers;
 }

@@ -549,6 +549,8 @@ C4Container
 
 独立执行桥只增加可选 prepareContinuation 端口。它读取前次已冻结的执行请求，再按原有 prepared/submitting 准入记录启动；重启只 inspect 已提交的同一请求。NestOS 使用正式 Session 提交队列，在原主执行 Session、分支和显式 Harness context binding 上创建一个新轮次；不重新创建主 Session、工作树或规划 Agent。普通 Session 提交与冷回执观察封装在 run/session-submission，业务判断归 kanban/continued-work 及产品预设。
 
+准入前先取得原 Session writer。只有宿主明确确认未启动且可重试的拒绝（如写租约暂不可用）才将同一冻结请求恢复为 prepared 并退避重试；该状态持久化后重启仍可接着准入。提交结果未知、网络丢响应和未确认的外部副作用保持 submitting，只查询原回执。普通状态观察不得重新发送 continue。
+
 开发预设冻结原 commit/modules 约束，核验原调用、收尾调用和原生会话已停止，拒绝已清理/变更的工作区。保留未提交修改，将本轮 prompt、manifest 和协议发布到原工作树 `_nestos/kanban/continuations/<dispatch-id>/`。该目录的 inbox/outbox 使用新 attemptId；旧邮箱仅供查看，不参与本轮状态判定。项目级 `_nestos/kanban/policies/<profile>/task-continue-pre.md` 优先于 NestOS 用户策略，task-continue-post.md 可选；冻结后重启不重新读取作者文件。沿用 task.md 的交付与 succ/fail/cancel/clear 收尾规则。prompt bundle 最多 32 个文件，单文件仍限 64 KiB。
 
 UI 的“续办原任务”只对宿主声明的可续办前驱显示，CLI `kanban continue <board-id> --file request.json` 使用相同的正式命令。续办请求进入看板日志；会话仍沿用原始深链，执行历史保留各次派发关联。重启恢复不自动把所有失败事项重新派发；已登记的续办请求由原执行桥和 Session 恢复链继续处理，成功必须经过原生终态、文件结果和交付验证后进入验收。

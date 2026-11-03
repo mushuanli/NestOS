@@ -54,6 +54,17 @@ it('refuses continuation for completed work and by a worker without coordinator 
     await expect(f.run({type: 'continue-execution', previousDispatchId: 'd', dispatchId: 'extra'})).rejects.toMatchObject({code: 'EXECUTION_NOT_CONTINUABLE'});
     await expect(f.run({type: 'continue-execution', previousDispatchId: 'd', dispatchId: 'extra'}, f.worker)).rejects.toMatchObject({code: 'COORDINATOR_REQUIRED'});
 });
+it('retries the same frozen request after a confirmed unstarted admission across restart', async () => {
+    const f = await fixture(); await f.prepare();
+    vi.mocked(f.executor.start).mockRejectedValueOnce(Object.assign(new Error('read only'),
+        {code: 'QUEUE_READ_ONLY', executionOutcome: 'not-started', retryable: true}));
+    const bridge = await f.bridge(); await bridge.scan(); await bridge.quiesce();
+    expect((await f.service.workflow('b')).dispatches.d.outcome).toBe('unknown');
+    const recovered = await f.bridge(); await recovered.scan();
+    expect(f.executor.prepare).toHaveBeenCalledOnce(); expect(f.executor.start).toHaveBeenCalledTimes(2);
+    expect(f.executor.start).toHaveBeenNthCalledWith(1, {dispatchId: 'd'});
+    expect(f.executor.start).toHaveBeenNthCalledWith(2, {dispatchId: 'd'});
+});
 it('allows only one submitting bridge across concurrent observers',async()=>{
     const f=await fixture();await f.prepare();const first=await f.bridge(),second=await f.bridge();
     await Promise.all([first.scan(),second.scan()]);

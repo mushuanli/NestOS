@@ -96,8 +96,11 @@ async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, 
         result=await (submit?options.executor.start(record.request):options.executor.inspect(record.request));
         failures.delete(dispatch.id);
     } catch(error) {
-        result={outcome:stage==='prepare'?'failed':'unknown',code:safeCode(error)};
-        if (stage === 'inspect') {
+        const notStarted = (error as {executionOutcome?: string; retryable?: boolean})?.executionOutcome === 'not-started'
+            && (error as {retryable?: boolean}).retryable === true;
+        if (notStarted && stage === 'start') await track(releaseUnstartedSubmission(options, path, dispatch));
+        result={outcome:stage==='prepare'&&!notStarted?'failed':'unknown',code:safeCode(error)};
+        if (stage === 'inspect' || notStarted) {
             const previous = failures.get(dispatch.id), count = previous && previous.code === result.code ? previous.count + 1 : 1;
             failures.set(dispatch.id, {code: result.code!, count, retryAt: Date.now() + Math.min(60000, 1000 * 2 ** Math.min(count - 1, 6))});
         }
@@ -105,6 +108,14 @@ async function runDispatch(options: KanbanExecutionBridgeOptions, path: string, 
     if (stage !== 'inspect' || executionObservationChanged(dispatch, result) || previousFailure && !failures.has(dispatch.id))
         try {options.log({operationId:dispatch.id,stage:`bridge.${stage}`,result:['unknown','failed','cancelled'].includes(result.outcome)?'failure':'success',code:result.code,...(failures.has(dispatch.id)?{retryAfterMs:Math.max(0,failures.get(dispatch.id)!.retryAt-Date.now())}:{}),durationMs:Date.now()-start});} catch {/* Metadata-only diagnostics. */}
     if(active()) try {await linkSession(options,dispatch,result.executionSessionId);if(active()) await settle(options,dispatch,result);} catch(error) {if(safeCode(error)!=='REVISION_CONFLICT') throw error;}
+}
+async function releaseUnstartedSubmission(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch): Promise<void> {
+    await options.fs.meta.seq!.transaction!(async tx => {
+        const raw = await tx.getEntry(path, dispatch.id);
+        if (!raw) throw new KanbanError('EXECUTION_JOURNAL_MISSING');
+        const record = decodeRecord(raw, dispatch);
+        if (record.phase === 'submitting') await tx.setEntry(path, dispatch.id, JSON.stringify({...record, phase: 'prepared'}));
+    });
 }
 async function prepareRequest(options: KanbanExecutionBridgeOptions, path: string, dispatch: KanbanDispatch, item: KanbanItem): Promise<unknown> {
     if (!dispatch.continuation) return options.executor.prepare(dispatch, item);

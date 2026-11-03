@@ -51,3 +51,13 @@ it('uses ordinary Session admission and withholds success until the full executi
     round.submission = {...request.submission, id: 'wrong'};
     await expect(port.inspect(request)).rejects.toMatchObject({code: 'SUBMISSION_HISTORY_CONFLICT'});
 });
+it('distinguishes a confirmed writer rejection from an uncertain submitted request', async () => {
+    const request = {expectedSessionId: 'same', expectedBranch: 'main', submission: {id: 'new'}} as any;
+    const open = vi.fn(), options = {contexts: {open}, ensureWritable: async () => false} as any;
+    await expect(sessionSubmission(options).start(request)).rejects.toMatchObject({code: 'SESSION_WRITER_UNAVAILABLE', executionOutcome: 'not-started', retryable: true});
+    expect(open).not.toHaveBeenCalled();
+    const lease = {commandBus: {execute: vi.fn(async () => {throw Object.assign(new Error('transport'), {code: 'EIO'});})}, dispose: vi.fn()};
+    options.ensureWritable = async () => true; open.mockResolvedValue(lease);
+    const error = await sessionSubmission(options).start(request).catch(error => error);
+    expect(error.code).toBe('EIO'); expect(error.executionOutcome).toBeUndefined(); expect(lease.dispose).toHaveBeenCalledOnce();
+});

@@ -4,7 +4,7 @@ import type {ConversationContexts} from '../runtime/conversation-contexts';
 import {failure} from './prompt-bundle';
 
 interface Options {contexts: Pick<ConversationContexts, 'open'>; repository: Pick<ISessionRepository, 'readDocument'>;
-    kernel: Pick<Kernel, 'task' | 'inspectSession'>}
+    kernel: Pick<Kernel, 'task' | 'inspectSession'>; ensureWritable?(sessionId: string): Promise<boolean>}
 function requireValue(value: unknown, code: string): asserts value {if (!value) throw failure(code);}
 export interface SessionSubmissionObservation {sessionId: string; outcome: 'running' | 'unknown' | 'succeeded' | 'failed' | 'cancelled'; code?: string}
 /** Submit through the ordinary durable Session queue; observation never activates a view. */
@@ -12,8 +12,15 @@ export function sessionSubmission(options: Options) {
     const inspect = (request: SubmissionRequest) => inspectSubmission(options, request);
     return {inspect, async start(request: SubmissionRequest) {
         requireValue(request.expectedSessionId && request.submission?.id && request.expectedBranch, 'SUBMISSION_INVALID');
+        if (options.ensureWritable && !await options.ensureWritable(request.expectedSessionId))
+            throw Object.assign(failure('SESSION_WRITER_UNAVAILABLE'), {executionOutcome: 'not-started', retryable: true});
         const lease = await options.contexts.open(request.expectedSessionId);
         try {await lease.commandBus.execute(SessionCommand.Submit, request);}
+        catch (error) {
+            if ((error as {code?: string})?.code === 'QUEUE_READ_ONLY')
+                throw Object.assign(error as Error, {executionOutcome: 'not-started', retryable: true});
+            throw error;
+        }
         finally {await lease.dispose();}
         return inspect(request);
     }};
